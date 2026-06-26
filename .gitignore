@@ -1,0 +1,33 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Fichiers compilés
+*.bin
+*.elf
+*.hex
+*.map
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*.log
+*~
+.DS_Store
+Thumbs.db
+
+# Secrets éventuels
+secrets.h
+credentials.h
+.env
+
+# Archives locales et exports de versions
+*.zip

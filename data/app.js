@@ -1,0 +1,1106 @@
+// ===============================================
+//  app.js -- Arrosage ESP32 v2
+// ===============================================
+
+const DAYS_ESP = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const DAYS_FULL = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+// -- Helpers zones ----------------------------
+function getNbZones()  { return status?.zones?.length || 2; }
+function getZoneName(i){ return status?.zones?.[i]?.name || `Zone ${i+1}`; }
+function isZoneActive(i){ return !!(status?.zones?.[i]?.active || status?.zones?.[i]?.relayActive); }
+
+let status      = null;
+let adminStatus = null;
+let modalZone   = -1, modalDay = -1, modalIsInterval = false;
+
+// Cache des slots par zone : charge a la demande, invalide apres saveSlots
+// _zoneSlots[z] = { daySlots: [...], intervalSlots: [...] } | null
+const _zoneSlots = [];
+
+async function loadZoneSlots(z) {
+  try {
+    const r = await fetch(`/api/zone?z=${z}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    _zoneSlots[z] = data;
+    return data;
+  } catch(e) { return null; }
+}
+
+async function ensureAllZoneSlots() {
+  const nb = getNbZones();
+  const missing = [];
+  for (let z = 0; z < nb; z++) {
+    if (!_zoneSlots[z]) missing.push(z);
+  }
+  if (missing.length === 0) return;
+  await Promise.all(missing.map(z => loadZoneSlots(z)));
+}
+
+// Horloge supprimee -- heure affichee via wifi-badge (NTP)
+
+// -- Fetch ------------------------------------
+let _fetching = false;
+let _fetchTimer = null;
+async function fetchStatus() {
+  if (_fetching) { console.log('[fetch] skipped -- already fetching'); return; }
+  _fetching = true;
+  _fetchTimer = setTimeout(() => { 
+    console.log('[fetch] watchdog fired -- resetting _fetching');
+    _fetching = false; 
+  }, 6000);
+  try {
+    console.log('[fetch] start');
+    const r = await fetch('/api/status');
+    console.log('[fetch] response', r.status);
+    status = await r.json();
+    console.log('[fetch] ok, zones=', status?.zones?.length);
+    renderAll();
+  } catch(e) {
+    console.log('[fetch] error', e);
+    addLog('Erreur connexion');
+  } finally {
+    clearTimeout(_fetchTimer);
+    _fetching = false;
+  }
+}
+
+async function fetchAdminStatus() {
+  try {
+    const r = await fetch('/api/adminStatus');
+    adminStatus = await r.json();
+    populateDrawer();
+  } catch(e) { /* silencieux */ }
+}
+
+// -- Helpers index jour -----------------------
+function jsToEsp(d) { return d === 0 ? 6 : d - 1; }
+function getTodayEspIdx() { return jsToEsp(new Date().getDay()); }
+
+// -- Render all ------------------------------
+function renderAll() {
+  if (!status) return;
+  document.getElementById('wifi-badge').textContent =
+    status.synced ? status.time.slice(11,16) : 'NTP...';
+  renderZones();
+  // Charger les slots manquants puis rendre le planning
+  ensureAllZoneSlots().then(() => renderPlanning());
+}
+
+// -- Zones : vue normale (cartes) ou dense (tableau) --
+const ZONE_COLORS = ['green','blue','amber','purple','green','blue','amber','purple',
+                     'green','blue','amber','purple','green','blue','amber','purple'];
+
+// Preference affichage zones : 'normal' (defaut) ou 'dense'
+let _zonesView = 'normal';
+try { _zonesView = localStorage.getItem('zonesView') || 'normal'; } catch(e) {}
+
+function setZonesView(v) {
+  _zonesView = v;
+  try { localStorage.setItem('zonesView', v); } catch(e) {}
+  _applyZonesViewBtn();
+  renderZones();
+}
+
+function _applyZonesViewBtn() {
+  const btn = document.getElementById('btn-zones-view');
+  if (!btn) return;
+  if (_zonesView === 'dense') {
+    btn.textContent    = 'Desactiver';
+    btn.style.background    = 'var(--green-dim)';
+    btn.style.borderColor   = 'var(--green-mid)';
+    btn.style.color         = 'var(--green)';
+  } else {
+    btn.textContent    = 'Activer';
+    btn.style.background    = 'var(--bg2)';
+    btn.style.borderColor   = 'var(--border2)';
+    btn.style.color         = 'var(--text2)';
+  }
+}
+
+function renderZones() {
+  if (_zonesView === 'dense') renderZonesTable();
+  else                        renderZonesGrid();
+}
+
+// -- Vue normale (cartes pleine largeur) -----
+function renderZonesGrid() {
+  const el     = document.getElementById('zones-container');
+  const manDur = status.manualDurationMin || 10;
+
+  el.style.display = 'block';
+  el.style.cssText = '';
+
+  el.innerHTML = status.zones.map((z, i) => {
+    const name   = z.name || `Zone ${i+1}`;
+    const active = z.relayActive || z.active;
+    const color  = ZONE_COLORS[i];
+    const modeStr = z.mode === 1
+      ? `Intervalle / ${z.intervalDays||z.interval||2}j`
+      : 'Jours fixes';
+    const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
+    const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
+    const reason   = z.reason || z.lastReason || 'En attente';
+
+    return `
+    <div class="zone-card zone-color-${color} ${active ? 'zone-card-active' : ''}"
+         onclick="openZoneConfigModal(${i})" title="Configurer ${name}">
+      <div class="zone-card-header">
+        <div class="zone-name">
+          <span class="zone-dot zone-dot-${color}"></span>
+          ${name}
+          <span class="zone-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
+        </div>
+        <div class="zone-reason">${reason}</div>
+        <button class="btn-run ${active ? 'active' : ''}"
+                onclick="event.stopPropagation(); toggleManual(${i}, ${!active})">
+          ${active ? 'Arreter' : 'Arroser ' + manDur + ' min'}
+        </button>
+      </div>
+      <div class="zone-card-meta">
+        <span class="zone-meta-item">&#128197; ${modeStr}</span>
+        <span class="zone-meta-item">&#9748; &ge;${threshMm}mm / ${hours}h</span>
+        <span class="zone-meta-edit">&#9998; Configurer</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// -- Vue tableau compact ---------------------
+function renderZonesTable() {
+  const el     = document.getElementById('zones-container');
+  const manDur = status.manualDurationMin || 10;
+
+  el.style.cssText = '';
+
+  const rows = status.zones.map((z, i) => {
+    const name   = z.name || `Zone ${i+1}`;
+    const active = z.relayActive || z.active;
+    const color  = ZONE_COLORS[i];
+    const mode   = z.mode === 1
+      ? `Intervalle&nbsp;/${z.intervalDays||z.interval||2}j`
+      : 'Jours fixes';
+    const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
+    const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
+    const reason   = z.reason || z.lastReason || 'En attente';
+
+    return `<tr class="${active ? 'zone-active-'+color : ''}"
+                onclick="openZoneConfigModal(${i})"
+                title="Configurer ${name}">
+      <td class="zt-name zt-name-${color}">
+        <span class="zone-dot zone-dot-${color}"></span>
+        ${name}
+        <span class="zt-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
+      </td>
+      <td class="zt-cell zt-mode">${mode}</td>
+      <td class="zt-cell zt-rain">&#9748;&nbsp;&ge;&nbsp;${threshMm}mm&nbsp;/&nbsp;${hours}h</td>
+      <td class="zt-cell zt-reason">${reason}</td>
+      <td class="zt-cell zt-edit-hint">&#9998;</td>
+      <td class="zt-action" onclick="event.stopPropagation()">
+        <button class="btn-run ${active ? 'active' : ''}"
+                onclick="toggleManual(${i}, ${!active})">
+          ${active ? 'Arreter' : 'Arroser&nbsp;'+manDur+'&nbsp;min'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table class="zones-table"><tbody>${rows}</tbody></table>`;
+}
+
+// -- Modal config zone -----------------------
+function openZoneConfigModal(zoneIdx) {
+  const z      = status.zones[zoneIdx];
+  const name   = z.name || `Zone ${zoneIdx+1}`;
+  const color  = ZONE_COLORS[zoneIdx];
+  const mode   = z.mode ?? 0;
+  const intD   = z.intervalDays || z.interval || 2;
+  const thresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
+  const hours  = z.rain?.hours    ?? z.rainHours  ?? 24;
+
+  document.getElementById('modal-title-text').textContent = `Config -- ${name}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="zone-cfg-modal-header">
+      <span class="zone-dot zone-dot-${color}" style="width:12px;height:12px"></span>
+      <span class="zone-cfg-modal-name">${name}</span>
+    </div>
+
+    <div class="zone-cfg-field">
+      <label>Nom</label>
+      <input type="text" id="zcfg-name" value="${name}" maxlength="20" placeholder="Nom de la zone">
+    </div>
+
+    <hr class="zone-cfg-sep">
+
+    <div class="zone-cfg-field">
+      <label>Mode planification</label>
+      <select id="zcfg-mode" onchange="zcfgToggleInterval()">
+        <option value="0" ${mode===0?'selected':''}>Jours fixes</option>
+        <option value="1" ${mode===1?'selected':''}>Intervalle</option>
+      </select>
+    </div>
+
+    <div id="zcfg-interval-row" class="zone-cfg-row"
+         style="display:${mode===1?'grid':'none'}">
+      <div class="zone-cfg-field" style="margin-bottom:0">
+        <label>Intervalle (jours)</label>
+        <input type="number" id="zcfg-intd" min="1" max="30" value="${intD}">
+      </div>
+    </div>
+
+    <hr class="zone-cfg-sep">
+
+    <div class="zone-cfg-row">
+      <div class="zone-cfg-field">
+        <label>&#9748; Seuil pluie (mm)</label>
+        <input type="number" id="zcfg-thresh" min="0" max="50" step="0.5" value="${thresh}">
+      </div>
+      <div class="zone-cfg-field">
+        <label>Fenetre (heures)</label>
+        <input type="number" id="zcfg-hours" min="1" max="48" value="${hours}">
+      </div>
+    </div>
+
+    <button class="btn-full" onclick="saveZoneConfig(${zoneIdx})">Enregistrer</button>
+  `;
+  document.getElementById('modal').classList.add('open');
+}
+
+function zcfgToggleInterval() {
+  const isInterval = document.getElementById('zcfg-mode').value === '1';
+  document.getElementById('zcfg-interval-row').style.display = isInterval ? 'grid' : 'none';
+}
+
+async function saveZoneConfig(zoneIdx) {
+  const name   = document.getElementById('zcfg-name').value.trim();
+  const mode   = parseInt(document.getElementById('zcfg-mode').value);
+  const intD   = parseInt(document.getElementById('zcfg-intd')?.value)   || 2;
+  const thresh = parseFloat(document.getElementById('zcfg-thresh').value) || 0;
+  const hours  = parseInt(document.getElementById('zcfg-hours').value)    || 24;
+
+  const reqs = [
+    api('/api/mode',      { zone: zoneIdx, mode }),
+    api('/api/rain',      { zone: zoneIdx, threshold: thresh, hours }),
+  ];
+  if (name) reqs.push(api('/api/zoneName', { zone: zoneIdx, name }));
+  if (mode === 1) reqs.push(api('/api/interval', { zone: zoneIdx, interval: intD }));
+
+  await Promise.all(reqs);
+  toast('Zone enregistree');
+  addLog(`Zone ${zoneIdx+1} config sauvegardee`);
+  closeModal();
+  fetchStatus();
+}
+
+// -- Planning --------------------------------
+function renderPlanning() {
+  const todayEsp = getTodayEspIdx();
+  const nb = getNbZones();
+  // Planning web : toujours 7 jours + meteo quelle que soit le nb de zones
+  // Le LCD adapte son affichage (2 cols compact), pas le web
+  const nbCols = 7;
+  const colDays  = Array.from({length:nbCols}, (_,i) => (todayEsp+i)%7);
+  const grid     = document.getElementById('planning-grid');
+  // Adapter la grille CSS au nb de colonnes
+  grid.style.gridTemplateColumns = `72px repeat(${nbCols}, 1fr)`;
+  let html       = '';
+
+  // Headers jours
+  html += `<div></div>`;
+  colDays.forEach((esp,col) => {
+    const dayFull  = DAYS_FULL[esp];
+    const dayShort = DAYS_ESP[esp];
+    // Sur mobile (CSS) day-full est masque, day-short visible
+    const marker = col===0 ? ' <<' : '';
+    // Choix du nom selon largeur fenetre - pas de double span dans le DOM
+    const label  = (nb > 8 || window.innerWidth < 700)
+      ? dayShort + marker
+      : dayFull  + marker;
+    html += `<div class="pg-header ${col===0?'today':''}">${label}</div>`;
+  });
+
+  // Meteo : toujours affichee
+  const forecast = status.forecast || [];
+  html += `<div></div>`;
+  colDays.forEach((esp,col) => {
+    const fd = forecast[col];
+    if (fd && fd.valid) {
+      const rain = parseFloat(fd.rainMm ?? fd.rain)||0;
+      const temp = parseFloat(fd.tempMax);
+      const icon = rain>1.0?'&#127783;':'&#9728;';
+      const tip  = weatherTooltipHtml(fd, DAYS_FULL[esp]);
+      html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''}">
+        <div class="wx-icon">${icon}</div>
+        ${!isNaN(temp)?`<div class="wx-temp">${temp.toFixed(0)}C</div>`:''}
+        ${rain>0?`<div class="wx-rain">${rain.toFixed(1)}mm</div>`:""}
+        ${tip}
+      </div>`;
+    } else {
+      html += `<div class="pg-weather" style="opacity:.25"><div class="wx-icon">--</div></div>`;
+    }
+  });
+
+  // Zones
+  status.zones.forEach((z,zi) => {
+    const name = z.name || `Zone ${zi+1}`;
+    const rainThresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
+    const zoneColor = ZONE_COLORS[zi];  // identite couleur de cette zone
+
+    // Couleur hex reelle de la zone (depuis displayConfig si disponible)
+    const colorKeyMap = {green:'cZone0', blue:'cZone1', amber:'cZone2', purple:'cZone3'};
+    const zHex = (displayConfig && displayConfig[colorKeyMap[zoneColor]]) || null;
+
+    if (z.mode === 0) {
+      // Header avec couleur de zone
+      html += `<div class="pg-header zone-hdr pg-zone-label-${zoneColor}" style="font-size:${nb>8?'9px':'11px'}">${name}</div>`;
+      colDays.forEach((espIdx,col) => {
+      const slots   = (_zoneSlots[zi]?.daySlots?.[espIdx]) || (z.daySlots && z.daySlots[espIdx]) || [];
+        const enabled = slots.filter(s => s.e??s.enabled);
+        const hasAny  = enabled.length > 0;
+        const fd      = forecast[col];
+        const rainMm  = fd ? (parseFloat(fd.rainMm)||0) : 0;
+        const rainBlk = hasAny && rainMm >= rainThresh;
+        const cls     = !hasAny ? 'off' : rainBlk ? 'rain' : 'on';
+        // Fond teinte de la couleur de zone pour les jours avec creneaux (non pluie)
+        const bgStyle = (hasAny && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
+        html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
+                      onclick="openDayModal(${zi},${espIdx})">
+          ${hasAny
+            ? enabled.map(s=>`<div class="mini-slot ${rainBlk?'amber':zoneColor}">
+                ${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
+            : `<div class="pg-cross">--</div>`}
+        </div>`;
+      });
+    } else {
+      // Mode intervalle : calculer les jours de declenchement
+      const enabled    = (_zoneSlots[zi]?.intervalSlots || z.intervalSlots || []).filter(s=>s.e??s.enabled);
+      const intervalD  = z.intervalDays||z.interval||2;
+      const lastDay    = z.lastWateredDay||0;  // epoch/86400
+      const todayEpoch = Math.floor(Date.now()/86400000);
+      // Calculer le prochain jour de declenchement
+      let nextEpoch = lastDay > 0 ? lastDay + intervalD : todayEpoch;
+      while (nextEpoch < todayEpoch) nextEpoch += intervalD;
+      // Jours de declenchement dans la fenetre d affichage (toute la fenetre)
+      const triggerCols = new Set();
+      let d = nextEpoch;
+      // Parcourir suffisamment d iterations pour couvrir nbCols jours
+      const maxIter = Math.ceil(nbCols / Math.max(1, intervalD)) + 2;
+      for (let k = 0; k < maxIter; k++, d += intervalD) {
+        const offset = d - todayEpoch;
+        if (offset < 0) continue;
+        if (offset >= nbCols) break;
+        triggerCols.add(offset);
+      }
+
+      // Header zone avec indicateur intervalle et couleur de zone
+      html += `<div class="pg-header zone-hdr">
+        <span class="pg-zone-label-${zoneColor}">${name}</span>
+        <span style="font-size:9px;color:var(--muted);margin-left:4px">/${intervalD}j</span>
+      </div>`;
+      colDays.forEach((espIdx, col) => {
+        const isTrigger = triggerCols.has(col);
+        const fd        = forecast[col] || {};
+        const rainMm    = parseFloat(fd.rainMm)||0;
+        const rainBlk   = isTrigger && rainMm >= rainThresh;
+        const cls       = isTrigger ? (rainBlk?'rain':'interval-on') : 'interval-off';
+        const inner     = isTrigger
+          ? (enabled.length
+              ? enabled.map(s=>`<div class="mini-slot ${rainBlk?'amber':zoneColor}">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
+              : `<span class="pg-zone-label-${zoneColor}" style="font-size:11px">&#8635; /${intervalD}j</span>`)
+          : `<div class="pg-cross">--</div>`;
+        const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
+        html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
+                      onclick="openIntervalModal(${zi})" title="/${intervalD}j">
+          ${inner}
+        </div>`;
+      });
+    }
+  });
+
+  grid.innerHTML = html;
+  bindWeatherTooltips();
+}
+
+
+
+function bindWeatherTooltips() {
+  document.querySelectorAll('.wx-tooltip-host').forEach(host => {
+    const tip = host.querySelector('.wx-tooltip');
+    if (!tip) return;
+    const place = () => {
+      const r = host.getBoundingClientRect();
+      const margin = 8;
+      // Le tooltip est en position fixed : il échappe au overflow du planning.
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth;
+      const th = tip.offsetHeight;
+      let left = r.left + r.width / 2 - tw / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - tw - margin));
+      let top = r.bottom + margin;
+      if (top + th > window.innerHeight - margin) top = r.top - th - margin;
+      top = Math.max(margin, Math.min(top, window.innerHeight - th - margin));
+      tip.style.left = `${Math.round(left)}px`;
+      tip.style.top  = `${Math.round(top)}px`;
+    };
+    host.addEventListener('mouseenter', place);
+    host.addEventListener('mousemove', place);
+    host.addEventListener('mouseleave', () => { tip.style.display = ''; });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function weatherTooltipHtml(fd, dayLabel) {
+  const cfg = Object.assign({}, DISP_DEFAULTS, displayConfig || {});
+  const lines = [];
+  const n = (v, digits=0) => Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : null;
+  const desc = String(fd.description || '').trim();
+
+  if (cfg.weatherTipCondition && desc) lines.push(`<strong>${escapeHtml(desc.charAt(0).toUpperCase()+desc.slice(1))}</strong>`);
+  if (cfg.weatherTipTemp) {
+    const tmin=n(fd.tempMin), tmax=n(fd.tempMax), feels=n(fd.feelsLikeMax);
+    if (tmin!==null && tmax!==null) lines.push(`Température : ${tmin} à ${tmax} °C`);
+    if (feels!==null && Number(feels) > -90) lines.push(`Ressenti max. : ${feels} °C`);
+  }
+  if (cfg.weatherTipRain) {
+    const rain=n(fd.rainMm,1); if (rain!==null) lines.push(`Pluie prévue : ${rain} mm`);
+  }
+  if (cfg.weatherTipPop) {
+    const pop=n(fd.rainProbability); if (pop!==null) lines.push(`Probabilité de pluie : ${pop} %`);
+  }
+  if (cfg.weatherTipHumidity) {
+    const hum=n(fd.humidityMax); if (hum!==null) lines.push(`Humidité max. : ${hum} %`);
+  }
+  if (cfg.weatherTipWind) {
+    const wind=n(fd.windMaxKmh); if (wind!==null) lines.push(`Vent max. : ${wind} km/h`);
+  }
+  if (cfg.weatherTipGust) {
+    const gust=n(fd.gustMaxKmh); if (gust!==null && Number(gust)>0) lines.push(`Rafales max. : ${gust} km/h`);
+  }
+  if (cfg.weatherTipClouds) {
+    const clouds=n(fd.cloudsMax); if (clouds!==null) lines.push(`Couverture nuageuse : ${clouds} %`);
+  }
+  if (cfg.weatherTipPressure) {
+    const pressure=n(fd.pressureAvg); if (pressure!==null && Number(pressure)>0) lines.push(`Pression moyenne : ${pressure} hPa`);
+  }
+  if (!lines.length) return '';
+  return `<div class="wx-tooltip"><div class="wx-tooltip-title">${escapeHtml(dayLabel)}</div>${lines.map(x=>`<div>${x}</div>`).join('')}</div>`;
+}
+
+function pad(n) { return String(n||0).padStart(2,'0'); }
+
+// -- Modal slots (charge les donnees a la demande) ----------
+async function openDayModal(zone, espDayIdx) {
+  modalZone = zone; modalDay = espDayIdx; modalIsInterval = false;
+  const name = status.zones[zone]?.name || ('Zone '+(zone+1));
+  const dayName = DAYS_FULL[espDayIdx] || DAYS_ESP[espDayIdx];
+  document.getElementById('modal-title-text').textContent = `${name} -- ${dayName}`;
+  document.getElementById('modal-body').innerHTML =
+    '<div style="text-align:center;padding:20px;color:var(--muted)">Chargement...</div>';
+  document.getElementById('modal').classList.add('open');
+  try {
+    const r = await fetch(`/api/zone?z=${zone}`);
+    const data = await r.json();
+    _zoneSlots[zone] = data;
+    document.getElementById('modal-body').innerHTML =
+      buildSlotsHTML('ds', data.daySlots?.[espDayIdx] || []);
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML =
+      '<div style="color:var(--red);padding:12px">Erreur de chargement</div>';
+  }
+}
+
+async function openIntervalModal(zone) {
+  modalZone = zone; modalDay = -1; modalIsInterval = true;
+  const z = status.zones[zone];
+  const name = z?.name || ('Zone '+(zone+1));
+  document.getElementById('modal-title-text').textContent =
+    `${name} -- Intervalle (/${z?.intervalDays||z?.interval||2}j)`;
+  document.getElementById('modal-body').innerHTML =
+    '<div style="text-align:center;padding:20px;color:var(--muted)">Chargement...</div>';
+  document.getElementById('modal').classList.add('open');
+  try {
+    const r = await fetch(`/api/zone?z=${zone}`);
+    const data = await r.json();
+    _zoneSlots[zone] = data;
+    document.getElementById('modal-body').innerHTML =
+      buildSlotsHTML('is', data.intervalSlots || []);
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML =
+      '<div style="color:var(--red);padding:12px">Erreur de chargement</div>';
+  }
+}
+
+function buildSlotsHTML(prefix, slots) {
+  // Colonnes : actif | heure debut | min debut | duree (min)
+  let html = `<div class="slot-header">
+    <span></span>
+    <span colspan="2" style="grid-column:span 2;text-align:center;font-size:9px">
+      -- Heure de debut --
+    </span>
+    <span>Duree</span>
+    <span>#</span>
+  </div>
+  <div class="slot-header" style="margin-top:-4px">
+    <span>Actif</span><span>h</span><span>min</span><span>min</span><span></span>
+  </div>`;
+  slots.forEach((s,si) => {
+    const h  = s.h  ?? s.hour;
+    const m  = s.m  ?? s.minute;
+    const d  = s.d  ?? s.duration;
+    const en = s.e  ?? s.enabled;
+    html += `<div class="slot-row">
+      <button class="slot-toggle ${en?'on':''}" id="${prefix}-t-${si}"
+              title="${en?'Cliquer pour desactiver ce slot':'Cliquer pour activer ce slot'}"
+              onclick="toggleSlot('${prefix}',${si})">${en?'&#10003;':'&#9675;'}</button>
+      <input class="slot-input" type="number" id="${prefix}-h-${si}"
+             min="0" max="23" value="${h}" ${!en?'disabled':''}
+             title="Heure de debut (0-23)">
+      <input class="slot-input" type="number" id="${prefix}-m-${si}"
+             min="0" max="59" value="${m}" ${!en?'disabled':''}
+             title="Minute de debut (0-59)">
+      <input class="slot-input" type="number" id="${prefix}-d-${si}"
+             min="1" max="120" value="${d}" ${!en?'disabled':''}
+             title="Duree en minutes">
+      <span class="slot-num">${si+1}</span>
+    </div>`;
+  });
+  html += `<button class="btn-full" onclick="saveSlots()">Enregistrer</button>`;
+  return html;
+}
+
+function toggleSlot(prefix, si) {
+  const btn  = document.getElementById(`${prefix}-t-${si}`);
+  const isOn = btn.classList.toggle('on');
+  btn.textContent = isOn ? 'OK' : '?';
+  ['h','m','d'].forEach(f =>
+    document.getElementById(`${prefix}-${f}-${si}`).disabled = !isOn);
+}
+
+async function saveSlots() {
+  const prefix   = modalIsInterval ? 'is' : 'ds';
+  const endpoint = modalIsInterval ? '/api/intervalslot' : '/api/dayslot';
+  const reqs = [];
+  for (let si = 0; si < 5; si++) {
+    const enabled = document.getElementById(`${prefix}-t-${si}`).classList.contains('on');
+    const body = {
+      zone: modalZone, slotIdx: si,
+      hour:     parseInt(document.getElementById(`${prefix}-h-${si}`).value),
+      minute:   parseInt(document.getElementById(`${prefix}-m-${si}`).value),
+      duration: parseInt(document.getElementById(`${prefix}-d-${si}`).value),
+      enabled
+    };
+    if (!modalIsInterval) body.day = modalDay;
+    reqs.push(api(endpoint, body));
+  }
+  await Promise.all(reqs);
+  toast('Sauvegarde');
+  addLog(`Zone ${modalZone+1} -- ${modalIsInterval ? 'intervalle' : DAYS_ESP[modalDay]} sauvegarde`);
+  // Invalider le cache de la zone modifiee pour forcer le rechargement
+  _zoneSlots[modalZone] = null;
+  closeModal();
+  // Recharger les slots de cette zone puis rerendre le planning
+  await loadZoneSlots(modalZone);
+  fetchStatus();
+}
+
+function closeModalOutside(e) { if (e.target===document.getElementById('modal')) closeModal(); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+// -- Actions zones ----------------------------
+// saveMode / saveInterval / saveRain : appeles depuis saveZoneConfig (modal config zone)
+async function toggleManual(zone, state) {
+  await api('/api/manual', {zone, state});
+  addLog(`Zone ${zone+1} -- ${state?'arrosage demarre':'arret'}`);
+  fetchStatus();
+}
+
+// -- Drawer -----------------------------------
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+  fetchAdminStatus();
+  fetchDisplayConfig();  // pre-remplit la section Affichage LCD a chaque ouverture
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+function populateDrawer() {
+  if (!adminStatus) return;
+  const s = adminStatus;
+
+  // Marquer la valeur courante de nbZones pour detecter les changements
+  if (s.system) {
+    const el = document.getElementById('cfg-nb-zones');
+    if (el) el.dataset.current = s.system.nbZones ?? 2;
+  }
+
+  // Titre header avec ville OWM
+  const city = s.owm?.city || '';
+  document.getElementById('header-city').textContent = city;
+  if (city) {
+    document.getElementById('header-title').textContent = 'AQUALOOK -- ' + city.toUpperCase();
+  }
+
+  // WiFi
+  const ssid = s.wifi?.ssid || '--';
+  document.getElementById('wifi-info').innerHTML =
+    `SSID : <span>${ssid}</span><br>
+     IP : <span>${s.wifi?.ip||'--'}</span><br>
+     ?tat : <span>${s.wifi?.state||'--'}</span>`;
+
+  // NTP
+  if (s.ntp) {
+    document.getElementById('cfg-ntp-server').value = s.ntp.server || 'pool.ntp.org';
+    document.getElementById('cfg-ntp-gmt').value    = s.ntp.gmtOffset ?? 3600;
+    document.getElementById('cfg-ntp-dst').value    = s.ntp.dstOffset ?? 3600;
+  }
+
+  // OWM
+  if (s.owm) {
+    document.getElementById('cfg-owm-units').value = s.owm.units || 'metric';
+    // Detecter le mode depuis les valeurs stockees
+    const hasCity = s.owm.city && s.owm.city.length > 0;
+    const mode = hasCity ? 'city' : 'gps';
+    document.getElementById('cfg-owm-mode').value = mode;
+    if (hasCity) {
+      document.getElementById('cfg-owm-city').value    = s.owm.city || '';
+      document.getElementById('cfg-owm-country').value = s.owm.country || 'FR';
+    } else {
+      document.getElementById('cfg-owm-lat').value = s.owm.lat ?? '';
+      document.getElementById('cfg-owm-lon').value = s.owm.lon ?? '';
+    }
+    toggleOwmMode();
+    // Afficher indicateur visuel si cle configuree (ne pas pre-remplir -- securite)
+    const keyEl = document.getElementById('cfg-owm-key');
+    if (s.owm?.hasKey) {
+      keyEl.placeholder = '(cle configuree -- laisser vide pour conserver)';
+      keyEl.style.borderColor = 'var(--green)';
+    } else {
+      keyEl.placeholder = 'Cle API OWM';
+      keyEl.style.borderColor = '';
+    }
+  }
+
+  // Zones : noms modifiables via modale config zone -- pas de champs drawer
+  if (s.system) {
+    document.getElementById('cfg-maxwater').value       = s.system.maxWateringMin ?? 60;
+    document.getElementById('cfg-screen-timeout').value = s.system.screenTimeout  ?? 5;
+    document.getElementById('cfg-led-mode').value       = s.system.ledMode        ?? 1;
+    // Setter le select nb zones sur la valeur la plus proche
+    const nbZ = s.system.nbZones ?? 2;
+    const sel = document.getElementById('cfg-nb-zones');
+    const opts = [1,2,4,8];
+    const closest = opts.reduce((a,b) => Math.abs(b-nbZ)<Math.abs(a-nbZ)?b:a);
+    sel.value = closest;
+    document.getElementById('cfg-nb-relais').value = closest;
+    // Logique relais
+    const rlSel = document.getElementById('cfg-relay-logic');
+    if (rlSel) rlSel.value = s.system.relayLogic ?? 0;
+  }
+  if (status) {
+    document.getElementById('cfg-manual-dur').value = status.manualDurationMin ?? 10;
+  }
+  // Synchroniser le bouton affichage dense
+  _applyZonesViewBtn();
+
+  // Systeme
+  const rlLabel = (s.system?.relayLogic === 1) ? 'Directe (bit=1 ON)' : 'Inverse (bit=0 ON)';
+  document.getElementById('sys-info').innerHTML =
+    `IP : <span>${s.wifi?.ip||'--'}</span><br>
+     RAM libre : <span>${s.heap||'--'} o</span><br>
+     Uptime : <span>${fmtUptime(s.uptime)}</span><br>
+     NTP : <span>${s.ntp?.synced ? s.ntp.time : 'Non sync'}</span><br>
+     OWM : <span>${s.owm?.hasKey ? 'OK Cle configuree' : '? Pas de cle'}</span><br>
+     Ville : <span>${s.owm?.city || s.owm?.lat || '--'}</span><br>
+     Veille : <span>${s.system?.screenTimeout===0 ? 'Desactivee' : (s.system?.screenTimeout||5)+'min'}</span><br>
+     Zones / Relais : <span>${s.system?.nbZones||2} / ${s.system?.nbRelais||2}</span><br>
+     Logique relais : <span>${rlLabel}</span>`;
+}
+
+function fmtUptime(s) {
+  if (!s) return '--';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return `${h}h${String(m).padStart(2,'0')}m${String(sec).padStart(2,'0')}s`;
+}
+
+// -- Sauvegarde config ------------------------
+async function saveCfgWifi() {
+  const ssid = document.getElementById('cfg-ssid').value.trim();
+  const pwd  = document.getElementById('cfg-pwd').value;
+  if (!ssid) { toast('SSID requis', true); return; }
+  if (!confirm(`Changer le WiFi vers "${ssid}" et redemarrer ?`)) return;
+  await api('/api/wifi', {ssid, pwd});
+  toast('Redemarrage en cours...');
+  closeDrawer();
+}
+
+async function saveCfgNtp() {
+  await api('/api/ntp', {
+    server:    document.getElementById('cfg-ntp-server').value.trim() || 'pool.ntp.org',
+    gmtOffset: parseInt(document.getElementById('cfg-ntp-gmt').value) || 3600,
+    dstOffset: parseInt(document.getElementById('cfg-ntp-dst').value) || 3600
+  });
+  toast('NTP mis a jour');
+}
+
+function toggleOwmMode() {
+  const mode = document.getElementById('cfg-owm-mode').value;
+  document.getElementById('owm-city-block').style.display = mode==='city' ? '' : 'none';
+  document.getElementById('owm-gps-block').style.display  = mode==='gps'  ? '' : 'none';
+}
+
+async function saveCfgOwm() {
+  const apiKey  = document.getElementById('cfg-owm-key').value.trim();
+  const units   = document.getElementById('cfg-owm-units').value;
+  const mode    = document.getElementById('cfg-owm-mode').value;
+  const body    = {units};
+
+  if (apiKey) body.apiKey = apiKey;  // ne pas ecraser si vide
+
+  if (mode === 'gps') {
+    body.lat = parseFloat(document.getElementById('cfg-owm-lat').value) || 0;
+    body.lon = parseFloat(document.getElementById('cfg-owm-lon').value) || 0;
+    // Effacer ville/pays si on passe en GPS
+    body.city    = '';
+    body.country = '';
+  } else {
+    const city    = document.getElementById('cfg-owm-city').value.trim();
+    const country = document.getElementById('cfg-owm-country').value.trim().toUpperCase();
+    if (!city) { toast('Ville requise', true); return; }
+    body.city    = city;
+    body.country = country || 'FR';
+    // Coordonnees a 0 = OWM utilisera ville/pays
+    body.lat = 0;
+    body.lon = 0;
+  }
+
+  await api('/api/owm', body);
+  toast('Meteo enregistree');
+}
+
+async function saveCfgZones() {
+  // Noms de zones : modifiables via la modale de config zone (clic sur la carte)
+  const maxMin   = parseInt(document.getElementById('cfg-maxwater').value)    || 60;
+  const manDur   = parseInt(document.getElementById('cfg-manual-dur').value)  || 10;
+  const nbZones  = Math.min(8, parseInt(document.getElementById('cfg-nb-zones').value) || 2);
+  const nbRelais = parseInt(document.getElementById('cfg-nb-relais').value)   || 2;
+  const curNbZ   = parseInt(document.getElementById('cfg-nb-zones').dataset.current || '2');
+
+  if (nbZones !== curNbZ) {
+    if (!confirm(`Changer a ${nbZones} zones declenchera un reboot. Continuer ?`)) return;
+  }
+
+  // Une seule requête et une seule écriture LittleFS : la durée manuelle
+  // et la configuration système sont appliquées ensemble hors callback AsyncTCP.
+  // nbZones est toujours envoyé, y compris lors d'une diminution 8 -> 4/2.
+  const sysBody = {
+    maxWateringMin: maxMin,
+    manualDurationMin: manDur,
+    nbZones,
+    nbRelais: nbZones
+  };
+
+  await api('/api/system', sysBody);
+
+  toast(nbZones !== curNbZ ? 'Reboot en cours...' : 'Zones enregistrees');
+}
+
+function syncNbRelais() {
+  // Nb relais = nb zones (lies)
+  const nb = document.getElementById('cfg-nb-zones').value;
+  document.getElementById('cfg-nb-relais').value = nb;
+}
+
+async function saveCfgSystem() {
+  const timeout = parseInt(document.getElementById('cfg-screen-timeout').value) || 5;
+  const ledMode = parseInt(document.getElementById('cfg-led-mode').value)       || 1;
+
+  await api('/api/system', { screenTimeout: timeout, ledMode });
+  toast('Systeme enregistre');
+}
+
+async function saveCfgRelayLogic() {
+  const rl = parseInt(document.getElementById('cfg-relay-logic').value) || 0;
+  if (!confirm(`Modifier la logique relais (${rl===0?'inverse':'directe'}) ? Prend effet immediatement.`)) return;
+  await api('/api/system', { relayLogic: rl });
+  toast('Logique relais enregistree -- verifier le comportement des relais');
+  fetchAdminStatus();
+}
+
+async function launchCaptive() {
+  if (!confirm('Lancer le portail captif ? Le module passera en mode AP.')) return;
+  await fetch('/api/captive', {method:'POST'});
+  toast('Portail captif active');
+  closeDrawer();
+}
+
+async function resetConfig() {
+  if (!confirm('Reinitialiser toute la configuration et redemarrer ?')) return;
+  await fetch('/api/resetConfig', {method:'POST'});
+  toast('Reinitialisation...');
+  closeDrawer();
+}
+
+// -- Helpers ----------------------------------
+async function api(endpoint, body) {
+  return fetch(endpoint, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+}
+
+let toastTimer;
+function toast(msg, error=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.color = error ? 'var(--red)' : 'var(--green)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+const logEntries = [];
+function addLog(msg) {
+  const now = new Date().toLocaleTimeString('fr-FR');
+  logEntries.unshift(`[${now}] ${msg}`);
+  if (logEntries.length > 20) logEntries.pop();
+  const logsEl = document.getElementById('logs');
+  if (logsEl) logsEl.innerHTML =
+    logEntries.map(l=>`<div class="log-entry">${l}</div>`).join('');
+}
+
+function toggleActivity() {
+  const card = document.getElementById('activity-card');
+  const btn  = document.getElementById('btn-toggle-activity');
+  const hidden = card.style.display === 'none';
+  card.style.display = hidden ? '' : 'none';
+  btn.textContent = hidden ? 'Masquer' : 'Afficher';
+  try { localStorage.setItem('showActivity', hidden?'1':'0'); } catch(e){}
+}
+
+// Appliquer preferences au chargement
+(function() {
+  try {
+    const pref = localStorage.getItem('showActivity');
+    if (pref === '0') {
+      const card = document.getElementById('activity-card');
+      const btn  = document.getElementById('btn-toggle-activity');
+      if (card) card.style.display = 'none';
+      if (btn)  btn.textContent = 'Afficher';
+    }
+  } catch(e){}
+  // Initialiser le bouton affichage dense
+  _applyZonesViewBtn();
+})();
+
+// -- Init -------------------------------------
+fetchStatus();
+fetchAdminStatus();  // charge ville + config systeme au demarrage
+fetchDisplayConfig(); // charge les tokens de design LCD et applique les couleurs de zone web
+setInterval(fetchStatus, 8000);        // 8s -- moins agressif pour l'ESP32
+setInterval(fetchAdminStatus, 60000);  // 1min -- rarement necessaire
+
+// ===============================================
+//  Affichage LCD -- tokens de design
+// ===============================================
+
+let displayConfig = null;
+
+// Champs couleurs (#rrggbb) et champs numeriques
+const DISP_COLOR_FIELDS   = ['cBg','cSurface','cSurface2','cBorder',
+                              'cText','cText2','cMuted','cActiveBg',
+                              'cZone0','cZone1','cZone2','cZone3'];
+const DISP_NUMERIC_FIELDS = ['rSm','rMd','rLg','accentBarW',
+                              'refreshNomMs','refreshActMs',
+                              'planGap','g2Gpad','g4Gpad',
+                              'showWeatherIcon','showWeatherTemp',
+                              'weatherTipCondition','weatherTipTemp','weatherTipRain',
+                              'weatherTipPop','weatherTipHumidity','weatherTipWind',
+                              'weatherTipGust','weatherTipClouds','weatherTipPressure'];
+
+// Valeurs par defaut -- utilisees si le fetch echoue ou si config.json
+// ne contient pas encore la section display (premiere mise en service)
+const DISP_DEFAULTS = {
+  cBg:'#101818', cSurface:'#182420', cSurface2:'#283028', cBorder:'#384c40',
+  cText:'#f8fcf8', cText2:'#c0d0c8', cMuted:'#789c80', cActiveBg:'#382020',
+  cZone0:'#00fc00', cZone1:'#0090f8', cZone2:'#f8a400', cZone3:'#780078',
+  rSm:4, rMd:6, rLg:10, accentBarW:3,
+  refreshNomMs:5000, refreshActMs:1000,
+  planGap:6, g2Gpad:1, g4Gpad:1,
+  showWeatherIcon:true, showWeatherTemp:false,
+  weatherTipCondition:true, weatherTipTemp:true, weatherTipRain:true,
+  weatherTipPop:true, weatherTipHumidity:true, weatherTipWind:true,
+  weatherTipGust:true, weatherTipClouds:false, weatherTipPressure:false
+};
+
+async function fetchDisplayConfig() {
+  try {
+    var r = await fetch('/api/display');
+    if (r.ok) {
+      var data = await r.json();
+      // Merger avec les defaults pour garantir que tous les champs sont presents
+      // meme si la section display est absente de config.json (premiere mise en service)
+      displayConfig = Object.assign({}, DISP_DEFAULTS, data);
+    } else {
+      displayConfig = Object.assign({}, DISP_DEFAULTS);
+    }
+  } catch(e) {
+    // Serveur indisponible ou route absente -- toujours afficher des valeurs
+    displayConfig = Object.assign({}, DISP_DEFAULTS);
+  }
+  populateDisplaySection();
+}
+
+function populateDisplaySection() {
+  if (!displayConfig) return;
+  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
+  DISP_COLOR_FIELDS.forEach(function(f) {
+    var el = document.getElementById('disp-' + f);
+    if (el && displayConfig[f]) el.value = displayConfig[f];
+  });
+  DISP_NUMERIC_FIELDS.forEach(function(f) {
+    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traités séparément
+    var el = document.getElementById('disp-' + f);
+    if (el && displayConfig[f] !== undefined) el.value = displayConfig[f];
+  });
+  BOOL_FIELDS.forEach(function(f) {
+    var el = document.getElementById('disp-' + f);
+    if (el) el.checked = !!displayConfig[f];
+  });
+  // Synchroniser les couleurs de zone de la page web avec la palette configuree
+  applyWebZoneColors(displayConfig);
+}
+
+// Surcharge dynamique des couleurs de zone de la page web.
+// Injecte un bloc <style> qui ecrase les selecteurs de zone specifiques
+// (barres de zone, mini-slots du planning, fonds actifs).
+// N'ecrase PAS --green/--blue/--amber/--purple qui sont les couleurs
+// generales de l'interface web (boutons, focus, liens...).
+function applyWebZoneColors(cfg) {
+  if (!cfg) return;
+  var id = 'aqualook-zone-theme';
+  var el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('style');
+    el.id = id;
+    document.head.appendChild(el);
+  }
+  var z0 = cfg.cZone0 || '#00fc00';
+  var z1 = cfg.cZone1 || '#0090f8';
+  var z2 = cfg.cZone2 || '#f8a400';
+  var z3 = cfg.cZone3 || '#780078';
+  // Fond semi-transparent pour mini-slots et cartes actives
+  // '28' = 16/256 ~ 10% opacite en hex, lisible sur fond clair
+  el.textContent = [
+    // Barres d identite de zone (cartes et vue dense)
+    '.zone-color-green  { border-left-color: ' + z0 + ' !important; }',
+    '.zone-color-blue   { border-left-color: ' + z1 + ' !important; }',
+    '.zone-color-amber  { border-left-color: ' + z2 + ' !important; }',
+    '.zone-color-purple { border-left-color: ' + z3 + ' !important; }',
+    // Fonds actifs des cartes zone
+    '.zone-color-green.zone-card-active  { background: ' + z0 + '18 !important; }',
+    '.zone-color-blue.zone-card-active   { background: ' + z1 + '18 !important; }',
+    '.zone-color-amber.zone-card-active  { background: ' + z2 + '18 !important; }',
+    '.zone-color-purple.zone-card-active { background: ' + z3 + '18 !important; }',
+    // Mini-slots du planning semaine (couleur identite de zone)
+    '.mini-slot.green  { background: ' + z0 + '28 !important; color: ' + z0 + ' !important; }',
+    '.mini-slot.blue   { background: ' + z1 + '28 !important; color: ' + z1 + ' !important; }',
+    '.mini-slot.amber  { background: ' + z2 + '28 !important; color: ' + z2 + ' !important; }',
+    '.mini-slot.purple { background: ' + z3 + '28 !important; color: ' + z3 + ' !important; }',
+    // Vue dense : bordures de la colonne nom
+    '.zt-name-green  { border-left-color: ' + z0 + ' !important; }',
+    '.zt-name-blue   { border-left-color: ' + z1 + ' !important; }',
+    '.zt-name-amber  { border-left-color: ' + z2 + ' !important; }',
+    '.zt-name-purple { border-left-color: ' + z3 + ' !important; }',
+    // En-tetes de zone (mode intervalle et noms de zone dans le planning)
+    '.pg-zone-label-green  { color: ' + z0 + ' !important; }',
+    '.pg-zone-label-blue   { color: ' + z1 + ' !important; }',
+    '.pg-zone-label-amber  { color: ' + z2 + ' !important; }',
+    '.pg-zone-label-purple { color: ' + z3 + ' !important; }'
+  ].join('\n');
+}
+
+// ---------------------------------------------
+//  Live preview : prise en compte immediate des couleurs
+//  sans attendre le bouton Appliquer.
+//  - oninput (drag color picker) -> preview web instantane
+//    + save ESP32 debounce 600ms
+//  - onchange (champs numeriques) -> save immediat
+// ---------------------------------------------
+var _dispSaveTimer = null;
+
+function onDispColorChange() {
+  // Preview web immediat avec les valeurs courantes des pickers
+  var tmpCfg = Object.assign({}, displayConfig || DISP_DEFAULTS);
+  DISP_COLOR_FIELDS.forEach(function(f) {
+    var el = document.getElementById('disp-' + f);
+    if (el) tmpCfg[f] = el.value;
+  });
+  applyWebZoneColors(tmpCfg);
+
+  // Sauvegarde differee sur ESP32 (evite un POST par pixel draggue)
+  clearTimeout(_dispSaveTimer);
+  _dispSaveTimer = setTimeout(saveCfgDisplay, 600);
+}
+
+function onDispNumericChange() {
+  clearTimeout(_dispSaveTimer);
+  _dispSaveTimer = setTimeout(saveCfgDisplay, 300);
+}
+
+async function saveCfgDisplay() {
+  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
+  var body = {};
+  DISP_COLOR_FIELDS.forEach(function(f) {
+    var el = document.getElementById('disp-' + f);
+    if (el) body[f] = el.value;
+  });
+  DISP_NUMERIC_FIELDS.forEach(function(f) {
+    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traités séparément
+    var el = document.getElementById('disp-' + f);
+    if (el) body[f] = parseInt(el.value, 10) || 0;
+  });
+  BOOL_FIELDS.forEach(function(f) {
+    var el = document.getElementById('disp-' + f);
+    if (el) body[f] = el.checked;
+  });
+  var r = await api('/api/display', body);
+  if (r && r.ok) {
+    toast('Affichage LCD mis a jour');
+    displayConfig = body;
+  } else {
+    toast('Erreur sauvegarde affichage', true);
+  }
+}
+
+async function resetCfgDisplay() {
+  if (!confirm('Reinitialiser les valeurs par defaut de l affichage LCD ?')) return;
+  // Envoyer un objet vide : le serveur garde les defaults de CfgDisplay()
+  // en ne remplacant que les champs presents -- envoyer les defaults explicitement
+  var defaults = {
+    cBg:'#101818', cSurface:'#182420', cSurface2:'#283028', cBorder:'#384c40',
+    cText:'#f8fcf8', cText2:'#c0d0c8', cMuted:'#789c80', cActiveBg:'#382020',
+    cZone0:'#00fc00', cZone1:'#0090f8', cZone2:'#f8a400', cZone3:'#780078',
+    rSm:4, rMd:6, rLg:10, accentBarW:3,
+    refreshNomMs:5000, refreshActMs:1000,
+    planGap:6, g2Gpad:1, g4Gpad:1
+  };
+  var r = await api('/api/display', defaults);
+  if (r && r.ok) {
+    displayConfig = defaults;
+    populateDisplaySection();
+    toast('Valeurs par defaut restaurees');
+  } else {
+    toast('Erreur reinitialisation', true);
+  }
+}
