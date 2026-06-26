@@ -695,14 +695,11 @@ function populateDrawer() {
     document.getElementById('cfg-maxwater').value       = s.system.maxWateringMin ?? 60;
     document.getElementById('cfg-screen-timeout').value = s.system.screenTimeout  ?? 5;
     document.getElementById('cfg-led-mode').value       = s.system.ledMode        ?? 1;
-    // Setter le select nb zones sur la valeur la plus proche
+    // Contrôleur puis liste des zones compatible avec ce matériel
     const nbZ = s.system.nbZones ?? 2;
-    const sel = document.getElementById('cfg-nb-zones');
-    const opts = [1,2,4,8];
-    const closest = opts.reduce((a,b) => Math.abs(b-nbZ)<Math.abs(a-nbZ)?b:a);
-    sel.value = closest;
-    document.getElementById('cfg-nb-relais').value = closest;
-    // Logique relais
+    const rcSel = document.getElementById('cfg-relay-controller');
+    if (rcSel) rcSel.value = s.system.relayController ?? 0;
+    updateZoneOptions(nbZ);
     const rlSel = document.getElementById('cfg-relay-logic');
     if (rlSel) rlSel.value = s.system.relayLogic ?? 0;
   }
@@ -714,6 +711,7 @@ function populateDrawer() {
 
   // Systeme
   const rlLabel = (s.system?.relayLogic === 1) ? 'Directe (bit=1 ON)' : 'Inverse (bit=0 ON)';
+  const rcLabel = (s.system?.relayController === 1) ? 'MCP23017' : 'XL9535';
   document.getElementById('sys-info').innerHTML =
     `IP : <span>${s.wifi?.ip||'--'}</span><br>
      RAM libre : <span>${s.heap||'--'} o</span><br>
@@ -722,7 +720,8 @@ function populateDrawer() {
      OWM : <span>${s.owm?.hasKey ? 'OK Cle configuree' : '? Pas de cle'}</span><br>
      Ville : <span>${s.owm?.city || s.owm?.lat || '--'}</span><br>
      Veille : <span>${s.system?.screenTimeout===0 ? 'Desactivee' : (s.system?.screenTimeout||5)+'min'}</span><br>
-     Zones / Relais : <span>${s.system?.nbZones||2} / ${s.system?.nbRelais||2}</span><br>
+     Zones : <span>${s.system?.nbZones||2}</span><br>
+     Contrôleur relais : <span>${rcLabel}</span><br>
      Logique relais : <span>${rlLabel}</span>`;
 }
 
@@ -792,7 +791,6 @@ async function saveCfgZones() {
   const maxMin   = parseInt(document.getElementById('cfg-maxwater').value)    || 60;
   const manDur   = parseInt(document.getElementById('cfg-manual-dur').value)  || 10;
   const nbZones  = Math.min(8, parseInt(document.getElementById('cfg-nb-zones').value) || 2);
-  const nbRelais = parseInt(document.getElementById('cfg-nb-relais').value)   || 2;
   const curNbZ   = parseInt(document.getElementById('cfg-nb-zones').dataset.current || '2');
 
   if (nbZones !== curNbZ) {
@@ -805,8 +803,7 @@ async function saveCfgZones() {
   const sysBody = {
     maxWateringMin: maxMin,
     manualDurationMin: manDur,
-    nbZones,
-    nbRelais: nbZones
+    nbZones
   };
 
   await api('/api/system', sysBody);
@@ -814,10 +811,26 @@ async function saveCfgZones() {
   toast(nbZones !== curNbZ ? 'Reboot en cours...' : 'Zones enregistrees');
 }
 
-function syncNbRelais() {
-  // Nb relais = nb zones (lies)
-  const nb = document.getElementById('cfg-nb-zones').value;
-  document.getElementById('cfg-nb-relais').value = nb;
+function updateZoneOptions(preferredValue) {
+  const controller = parseInt(document.getElementById('cfg-relay-controller')?.value || '0');
+  const select = document.getElementById('cfg-nb-zones');
+  if (!select) return;
+
+  const current = Number.isFinite(Number(preferredValue))
+    ? Number(preferredValue)
+    : (parseInt(select.value) || parseInt(select.dataset.current) || 2);
+  const values = controller === 1 ? [1,2,3,4,5,6,7,8] : [2,4,6,8];
+  const chosen = values.reduce((best, value) =>
+    Math.abs(value-current) < Math.abs(best-current) ? value : best, values[0]);
+
+  select.innerHTML = values.map(value =>
+    `<option value="${value}">${value} zone${value>1?'s':''}</option>`).join('');
+  select.value = String(chosen);
+
+  const hint = document.getElementById('cfg-zones-hint');
+  if (hint) hint.textContent = controller === 1
+    ? 'MCP23017 : choix libre de 1 a 8 zones. 1 zone pilote 1 sortie.'
+    : 'XL9535 : choix provisoire par paires de 2, de 2 a 8 zones.';
 }
 
 async function saveCfgSystem() {
@@ -826,6 +839,16 @@ async function saveCfgSystem() {
 
   await api('/api/system', { screenTimeout: timeout, ledMode });
   toast('Systeme enregistre');
+}
+
+async function saveCfgRelayController() {
+  const rc = parseInt(document.getElementById('cfg-relay-controller').value) || 0;
+  const nbZones = parseInt(document.getElementById('cfg-nb-zones').value) || 2;
+  const label = rc === 1 ? 'MCP23017' : 'XL9535';
+  if (!confirm(`Utiliser le contrôleur ${label} avec ${nbZones} zone${nbZones>1?'s':''} ? Le module va redémarrer.`)) return;
+  await api('/api/system', { relayController: rc, nbZones });
+  toast('Contrôleur enregistré — reboot en cours...');
+  closeDrawer();
 }
 
 async function saveCfgRelayLogic() {

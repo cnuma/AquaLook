@@ -511,6 +511,7 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         sys["nbZones"]         = _config->system().nbZones;
         sys["nbRelais"]        = _config->system().nbRelaisPhysical;
         sys["relayLogic"]      = _config->system().relayLogic;
+        sys["relayController"] = _config->system().relayController;
         sys["maxZones"]        = (uint8_t)MAX_ZONES;
     }
 
@@ -726,23 +727,28 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
     if (doc["relayLogic"].is<uint8_t>() || doc["relayLogic"].is<int>()) {
         next.relayLogic = constrain((uint8_t)(doc["relayLogic"] | 1), (uint8_t)0, (uint8_t)1);
     }
+    if (doc["relayController"].is<uint8_t>() || doc["relayController"].is<int>()) {
+        next.relayController = constrain((uint8_t)(doc["relayController"] | RELAY_CONTROLLER_XL9535),
+                                         (uint8_t)RELAY_CONTROLLER_XL9535,
+                                         (uint8_t)RELAY_CONTROLLER_MCP23017);
+    }
 
     const uint8_t oldNbZones = _config->nbZones();
     if (doc["nbZones"].is<uint8_t>() || doc["nbZones"].is<int>()) {
-        next.nbZones = constrain((uint8_t)(doc["nbZones"] | oldNbZones),
-                                 (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
+        uint8_t requested = constrain((uint8_t)(doc["nbZones"] | oldNbZones),
+                                      (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
+        if (next.relayController == RELAY_CONTROLLER_XL9535) {
+            // Configuration provisoire XL9535 : cartes ajoutées par paires de sorties.
+            requested = constrain((uint8_t)((requested + 1U) & 0xFEU), (uint8_t)2, (uint8_t)8);
+        }
+        next.nbZones = requested;
     }
 
-    // Relation AquaLook actuelle : un relais physique par zone.
-    // Si nbRelais est fourni, il reste borné à nbZones.
-    if (doc["nbRelais"].is<uint8_t>() || doc["nbRelais"].is<int>()) {
-        next.nbRelaisPhysical = constrain((uint8_t)(doc["nbRelais"] | next.nbZones),
-                                          (uint8_t)1, next.nbZones);
-    } else if (next.nbZones != oldNbZones) {
-        next.nbRelaisPhysical = next.nbZones;
-    }
+    // Invariant matériel AquaLook : une zone correspond exactement à une sortie relais.
+    next.nbRelaisPhysical = next.nbZones;
 
-    const bool needReboot = (next.nbZones != oldNbZones);
+    const bool needReboot = (next.nbZones != oldNbZones) ||
+                            (next.relayController != _config->system().relayController);
 
     uint16_t manualDuration = _config->manual().durationMin;
     bool manualDurationValid = false;

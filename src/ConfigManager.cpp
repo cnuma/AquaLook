@@ -23,6 +23,14 @@ struct PersistedConfig {
     uint32_t crc32;
 };
 
+uint8_t normalizeActiveZones(uint8_t zones, uint8_t controller) {
+    zones = constrain(zones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
+    if (controller == RELAY_CONTROLLER_XL9535) {
+        zones = constrain((uint8_t)((zones + 1U) & 0xFEU), (uint8_t)2, (uint8_t)8);
+    }
+    return zones;
+}
+
 uint32_t crc32Bytes(const uint8_t* data, size_t len) {
     uint32_t crc = 0xFFFFFFFFUL;
     for (size_t i = 0; i < len; ++i) {
@@ -126,9 +134,10 @@ bool ConfigManager::loadNvs() {
     memcpy(_zones, blob->zones, sizeof(_zones));
     free(blob);
 
-    _system.nbZones = constrain(_system.nbZones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
-    _system.nbRelaisPhysical = constrain(_system.nbRelaisPhysical,
-                                         (uint8_t)1, _system.nbZones);
+    _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
+                              ? _system.relayController : RELAY_CONTROLLER_XL9535;
+    _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+    _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
     _loaded = true;
     EventLog::log(LOG_INFO, "Config: charge depuis NVS (schema %u)", CFG_NVS_SCHEMA);
@@ -217,12 +226,15 @@ bool ConfigManager::loadLegacyJson() {
         // nbZones : clamp entre 1 et MAX_ZONES
         uint8_t nz = sys["nbZones"] | (uint8_t)NB_ZONES;
         _system.nbZones = constrain(nz, 1, MAX_ACTIVE_ZONES);
-        uint8_t nr = sys["nbRelais"] | (uint8_t)_system.nbZones;
-        _system.nbRelaisPhysical = constrain(nr, 1, _system.nbZones);
+        _system.nbRelaisPhysical = _system.nbZones;
         // relayLogic : si absent du JSON (config anterieure), defaut=1 (direct)
         // Le champ | 255 distingue "absent" de "present a 0"
         uint8_t rl = sys["relayLogic"] | (uint8_t)255;
         _system.relayLogic = (rl <= 1) ? rl : 1;  // absent -> 1 (direct)
+        uint8_t rc = sys["relayController"] | (uint8_t)RELAY_CONTROLLER_XL9535;
+        _system.relayController = (rc <= RELAY_CONTROLLER_MCP23017) ? rc : RELAY_CONTROLLER_XL9535;
+        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbRelaisPhysical = _system.nbZones;
     }
 
     // ── Display (tokens de design LCD) ────────────────────────
@@ -460,9 +472,10 @@ void ConfigManager::setSystemAndManualDuration(const CfgSystem& cfg,
     _system.maxWateringMin   = cfg.maxWateringMin;
     _system.screenTimeoutMin = cfg.screenTimeoutMin;
     _system.ledMode          = constrain(cfg.ledMode, (uint8_t)0, (uint8_t)4);
-    _system.nbZones          = constrain(cfg.nbZones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
-    _system.nbRelaisPhysical = constrain(cfg.nbRelaisPhysical,
-                                         (uint8_t)1, _system.nbZones);
+    _system.relayController  = (cfg.relayController <= RELAY_CONTROLLER_MCP23017)
+                               ? cfg.relayController : RELAY_CONTROLLER_XL9535;
+    _system.nbZones          = normalizeActiveZones(cfg.nbZones, _system.relayController);
+    _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic       = (cfg.relayLogic <= 1) ? cfg.relayLogic : 1;
 
     save();
@@ -495,9 +508,10 @@ void ConfigManager::setSystem(const CfgSystem& cfg) {
     _system.maxWateringMin   = cfg.maxWateringMin;
     _system.screenTimeoutMin = cfg.screenTimeoutMin;
     _system.ledMode          = constrain(cfg.ledMode, (uint8_t)0, (uint8_t)4);
-    _system.nbZones          = constrain(cfg.nbZones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
-    _system.nbRelaisPhysical = constrain(cfg.nbRelaisPhysical,
-                                         (uint8_t)1, _system.nbZones);
+    _system.relayController  = (cfg.relayController <= RELAY_CONTROLLER_MCP23017)
+                               ? cfg.relayController : RELAY_CONTROLLER_XL9535;
+    _system.nbZones          = normalizeActiveZones(cfg.nbZones, _system.relayController);
+    _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic       = (cfg.relayLogic <= 1) ? cfg.relayLogic : 1;
 
     save();

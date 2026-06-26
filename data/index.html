@@ -187,15 +187,9 @@
     </div>
     <div class="cfg-section-body">
       <div class="cfg-field">
-        <label>Nombre de zones (= relais)</label>
-        <select id="cfg-nb-zones" onchange="syncNbRelais()">
-          <option value="1">1 zone / 1 relais</option>
-          <option value="2" selected>2 zones / 2 relais</option>
-          <option value="4">4 zones / 4 relais</option>
-          <option value="8">8 zones / 8 relais</option>
-        </select>
-        <div class="cfg-hint">Reboot automatique apres modification</div>
-        <input type="hidden" id="cfg-nb-relais">
+        <label>Nombre de zones</label>
+        <select id="cfg-nb-zones"></select>
+        <div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie. Reboot automatique apres modification.</div>
       </div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Duree max arrosage (min)</label>
@@ -206,6 +200,15 @@
         </div>
       </div>
       <button class="btn-cfg primary" onclick="saveCfgZones()">Enregistrer</button>
+      <div class="cfg-field" style="margin-top:16px">
+        <label>Contrôleur des relais</label>
+        <select id="cfg-relay-controller" onchange="updateZoneOptions()">
+          <option value="0">XL9535 (carte YellowCard)</option>
+          <option value="1">MCP23017 (modules relais externes)</option>
+        </select>
+        <div class="cfg-hint">Adresse I2C : 0x20 — redémarrage après modification</div>
+        <button class="btn-cfg warn" onclick="saveCfgRelayController()" style="margin-top:8px">Appliquer le contrôleur</button>
+      </div>
       <!-- Logique relais : parametre sensible hardware -->
       <div class="cfg-field" style="margin-top:16px;padding:10px;border:1px dashed var(--amber);border-radius:6px;background:var(--bg2)">
         <label style="color:var(--amber)">&#9888; Logique relais (hardware)</label>

@@ -76,6 +76,10 @@ struct CfgOwm {
 // MAX_ZONES reste à 16 en interne pour préserver la structure des données.
 static constexpr uint8_t MAX_ACTIVE_ZONES = 8;
 
+// Contrôleur matériel des sorties relais
+static constexpr uint8_t RELAY_CONTROLLER_XL9535   = 0;
+static constexpr uint8_t RELAY_CONTROLLER_MCP23017 = 1;
+
 // ── Système (nouveau v2) ──────────────────────────────────────
 struct CfgSystem {
     uint16_t maxWateringMin    = 60;   // durée max arrosage (min)
@@ -83,10 +87,12 @@ struct CfgSystem {
     uint8_t  ledMode           = 1;    // 0=off..4=arc-en-ciel
     uint8_t  nbZones           = 2;    // zones actives (1..MAX_ACTIVE_ZONES)
     uint8_t  nbRelaisPhysical  = 2;    // relais câblés (<=nbZones)
-    uint8_t  relayLogic        = 1;    // 0=inverse (bit=0→ON), 1=direct (bit=1→ON) — défaut carte XL9535-K2V5
+    uint8_t  relayLogic        = 1;    // 0=inverse (bit=0→ON), 1=direct (bit=1→ON)
+    uint8_t  relayController   = RELAY_CONTROLLER_XL9535; // 0=XL9535, 1=MCP23017
     CfgSystem() : maxWateringMin(60), screenTimeoutMin(5),
                   ledMode(1), nbZones(NB_ZONES),
-                  nbRelaisPhysical(NB_ZONES), relayLogic(1) {}
+                  nbRelaisPhysical(NB_ZONES), relayLogic(1),
+                  relayController(RELAY_CONTROLLER_XL9535) {}
 };
 
 // ── Planning zone ─────────────────────────────────────────────
@@ -212,6 +218,7 @@ public:
     uint8_t          nbZones()        const { return _system.nbZones; }
     uint8_t          nbRelais()       const { return _system.nbRelaisPhysical; }
     uint8_t          relayLogic()     const { return _system.relayLogic; }
+    uint8_t          relayController() const { return _system.relayController; }
 
     bool isLoaded() const { return _loaded; }
 
