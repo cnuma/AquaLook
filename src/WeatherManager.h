@@ -13,6 +13,7 @@ struct ForecastDay {
     float    tempMin         =  99.0f;
     float    feelsLikeMax    = -99.0f;
     float    windMaxKmh      = 0.0f;
+    int16_t  windDeg         = -1;    // direction du vent associee a la vitesse max
     float    gustMaxKmh      = 0.0f;
     uint8_t  rainProbability = 0;       // maximum journalier, en %
     uint8_t  humidityMax     = 0;

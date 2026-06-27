@@ -408,6 +408,7 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         fo["rainProbability"] = fd.rainProbability;
         fo["humidityMax"]     = fd.humidityMax;
         fo["windMaxKmh"]      = fd.windMaxKmh;
+        fo["windDeg"]         = fd.windDeg;
         fo["gustMaxKmh"]      = fd.gustMaxKmh;
         fo["cloudsMax"]       = fd.cloudsMax;
         fo["pressureAvg"]     = fd.pressureAvg;

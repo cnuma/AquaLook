@@ -327,16 +327,20 @@ function renderPlanning() {
     const fd = forecast[col];
     if (fd && fd.valid) {
       const rain = parseFloat(fd.rainMm ?? fd.rain)||0;
-      const temp = parseFloat(fd.tempMax);
+      const tmax = parseFloat(fd.tempMax), tmin = parseFloat(fd.tempMin);
+      const wind = parseFloat(fd.windMaxKmh), windDeg = parseFloat(fd.windDeg);
       const icon = rain>1.0?'&#127783;':'&#9728;';
       const tip  = weatherTooltipHtml(fd, DAYS_FULL[esp]);
       const visual = !!(displayConfig && displayConfig.weatherVisualsEnabled);
-      const tempClass = visual && !isNaN(temp) ? weatherTempClass(temp) : '';
       const rainPct = visual ? Math.max(0, Math.min(100, rain / 20 * 100)) : 0;
-      html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''} ${tempClass}">
+      const windInfo = visual && !isNaN(wind) && wind>0
+        ? `<div class="wx-wind"><span class="wx-wind-arrow" style="transform:rotate(${isNaN(windDeg)?0:windDeg}deg)">&#8593;</span>${isNaN(windDeg)?'':weatherWindCardinal(windDeg)+' '}${wind.toFixed(0)}km/h</div>` : '';
+      html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''}">
         <div class="wx-content">
           <div class="wx-icon">${icon}</div>
-          ${!isNaN(temp)?`<div class="wx-temp">${temp.toFixed(0)}C</div>`:''}
+          ${visual && !isNaN(tmin)?`<span class="wx-temp-pill ${weatherTempClass(tmin)}">${tmin.toFixed(0)}°</span>`:''}
+          ${!isNaN(tmax)?`<span class="wx-temp-pill ${weatherTempClass(tmax)}">${tmax.toFixed(0)}°</span>`:''}
+          ${windInfo}
           ${rain>0?`<div class="wx-rain">${rain.toFixed(1)}mm</div>`:""}
         </div>
         ${visual?`<div class="wx-rain-gauge" title="Pluie prévue : ${rain.toFixed(1)} mm"><span style="height:${rainPct.toFixed(0)}%"></span></div>`:''}
@@ -465,6 +469,9 @@ function weatherTempClass(temp) {
   if (temp < 20) return 'wx-temp-mild';
   if (temp < 27) return 'wx-temp-warm';
   return 'wx-temp-hot';
+}
+function weatherWindCardinal(deg) {
+  return ['N','NE','E','SE','S','SO','O','NO'][Math.round((((deg%360)+360)%360)/45)%8];
 }
 
 function weatherTooltipHtml(fd, dayLabel) {

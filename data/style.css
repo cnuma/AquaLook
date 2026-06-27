@@ -1,17 +1,15 @@
 @import url('/style-base.css');
 
-/* Meteo enrichie : teintes pastel et temperature lisible. */
-.wx-temp-freezing { background: #e8f3fb !important; border-color: #bdd8ea !important; }
-.wx-temp-cold     { background: #edf7fa !important; border-color: #c5e1e8 !important; }
-.wx-temp-mild     { background: #eef7ef !important; border-color: #c9dfcc !important; }
-.wx-temp-warm     { background: #fff7e6 !important; border-color: #ead7aa !important; }
-.wx-temp-hot      { background: #fceeee !important; border-color: #e7c4c1 !important; }
-.pg-weather[class*="wx-temp-"] .wx-temp {
-  display: inline-block;
-  margin-top: 1px;
-  padding: 1px 5px;
-  border-radius: 8px;
-  background: rgba(255,255,255,.78);
-  color: var(--text);
-  box-shadow: 0 0 0 1px rgba(60,90,65,.10);
-}
+/* Meteo Web : case blanche, couleur concentree sur les temperatures. */
+.pg-weather[class*="wx-temp-"]{background:#fff!important}
+.wx-content{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 4px}
+.wx-icon{flex-basis:100%}
+.wx-temp-pill{display:inline-block;padding:1px 5px;border-radius:9px;font-weight:700;line-height:1.35;box-shadow:0 0 0 1px rgba(40,70,55,.12)}
+.wx-temp-freezing{background:#cfe8ff;color:#124b78}
+.wx-temp-cold{background:#dff2ff;color:#176080}
+.wx-temp-mild{background:#e7f5dc;color:#35621f}
+.wx-temp-warm{background:#ffe9ad;color:#805400}
+.wx-temp-hot{background:#ffd3cf;color:#9d2219}
+.wx-wind{flex-basis:100%;font-size:9px;color:var(--text2);white-space:nowrap}
+.wx-wind-arrow{display:inline-block;margin-right:2px;font-size:12px;transform-origin:center}
+.wx-rain{flex-basis:100%}

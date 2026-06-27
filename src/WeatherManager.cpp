@@ -132,6 +132,7 @@ void WeatherManager::fetch() {
         const uint8_t clouds   = constrain((int)(entry["clouds"]["all"] | 0), 0, 100);
         const uint16_t pressure = (uint16_t)(entry["main"]["pressure"] | 0);
         const float windKmh = (entry["wind"]["speed"] | 0.0f) * 3.6f;
+        const int16_t windDeg = entry["wind"]["deg"] | -1;
         const float gustKmh = (entry["wind"]["gust"]  | 0.0f) * 3.6f;
         const float popRaw = entry["pop"] | 0.0f;
         const uint8_t popPct = constrain((int)lroundf(popRaw * 100.0f), 0, 100);
@@ -160,7 +161,10 @@ void WeatherManager::fetch() {
             if (temp > day.tempMax) day.tempMax = temp;
             if (temp < day.tempMin) day.tempMin = temp;
             if (feelsLike > day.feelsLikeMax) day.feelsLikeMax = feelsLike;
-            if (windKmh > day.windMaxKmh) day.windMaxKmh = windKmh;
+            if (windKmh > day.windMaxKmh) {
+                day.windMaxKmh = windKmh;
+                day.windDeg = windDeg;
+            }
             if (gustKmh > day.gustMaxKmh) day.gustMaxKmh = gustKmh;
             if (popPct > day.rainProbability) day.rainProbability = popPct;
             if (humidity > day.humidityMax) day.humidityMax = humidity;
