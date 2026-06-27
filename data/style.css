@@ -11,5 +11,9 @@
 .wx-temp-warm{background:#ffe9ad;color:#805400}
 .wx-temp-hot{background:#ffd3cf;color:#9d2219}
 .wx-wind{flex-basis:100%;font-size:9px;color:var(--text2);white-space:nowrap}
-.wx-wind-arrow{display:inline-block;margin-right:2px;font-size:12px;transform-origin:center}
+.wx-wind-arrow{display:inline-block;margin-right:2px;font-size:12px;transform-origin:center;rotate:180deg}
 .wx-rain{flex-basis:100%}
+
+/* Entetes des jours : bleu petrole pour les distinguer des zones. */
+.planning-grid>.pg-header:not(.zone-hdr){color:#2f6f7e}
+.planning-grid>.pg-header.today:not(.zone-hdr){color:#174f5d;font-weight:700}
