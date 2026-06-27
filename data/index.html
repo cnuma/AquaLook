@@ -29,7 +29,7 @@
 </style>
 </head>
 <body>
-<!-- Header -->
+
 <header>
   <div class="header-logo">
     <div class="logo-row">
@@ -48,17 +48,17 @@
     <span></span><span></span><span></span>
   </button>
 </header>
-<!-- Zones -->
+
 <div class="card">
   <div class="card-title">Zones</div>
   <div id="zones-container"></div>
 </div>
-<!-- Planning -->
+
 <div class="planning-card">
   <div class="card-title">Planning semaine</div>
   <div class="planning-grid" id="planning-grid"></div>
 </div>
-<!-- Logs -->
+
 <div class="card">
   <div class="card-title">Activité
     <button id="btn-toggle-activity" onclick="toggleActivity()"
@@ -71,7 +71,7 @@
     <div id="logs"><div class="log-entry">En attente...</div></div>
   </div>
 </div>
-<!-- Modal slots -->
+
 <div class="modal-overlay" id="modal" onclick="closeModalOutside(event)">
   <div class="modal">
     <div class="modal-title">
@@ -81,7 +81,7 @@
     <div id="modal-body"></div>
   </div>
 </div>
-<!-- Drawer configuration -->
+
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="drawer">
   <div class="drawer-header">
@@ -89,7 +89,7 @@
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Déverrouiller admin</button>
   </div>
-  <!-- WiFi -->
+
   <div class="cfg-section" id="sec-wifi">
     <div class="cfg-section-header" onclick="toggleSection('sec-wifi')">
       <span class="cfg-section-title"><span class="sec-icon">📡</span>WiFi</span>
@@ -109,7 +109,7 @@
       </button>
     </div>
   </div>
-  <!-- NTP -->
+
   <div class="cfg-section" id="sec-ntp">
     <div class="cfg-section-header" onclick="toggleSection('sec-ntp')">
       <span class="cfg-section-title"><span class="sec-icon">🕐</span>NTP / Heure</span>
@@ -148,7 +148,7 @@
           <option value="gps">Coordonnées GPS</option>
         </select>
       </div>
-      <!-- Mode ville -->
+
       <div id="owm-city-block">
         <div class="cfg-field-row">
           <div class="cfg-field"><label>Ville</label>
@@ -160,7 +160,7 @@
           </div>
         </div>
       </div>
-      <!-- Mode GPS -->
+
       <div id="owm-gps-block" style="display:none">
         <div class="cfg-field-row">
           <div class="cfg-field"><label>Latitude</label>
@@ -187,6 +187,23 @@
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
+      <div class="cfg-subsection-title" style="margin-top:10px">Couleur des zones</div>
+      <div class="cfg-field-row">
+        <div class="cfg-field"><label>Zone 1</label>
+          <input type="color" id="disp-cZone0" class="cfg-color" oninput="onDispColorChange()">
+        </div>
+        <div class="cfg-field"><label>Zone 2</label>
+          <input type="color" id="disp-cZone1" class="cfg-color" oninput="onDispColorChange()">
+        </div>
+        <div class="cfg-field"><label>Zone 3</label>
+          <input type="color" id="disp-cZone2" class="cfg-color" oninput="onDispColorChange()">
+        </div>
+        <div class="cfg-field"><label>Zone 4+</label>
+          <input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()">
+        </div>
+      </div>
+
+
       <div class="cfg-field">
         <label>Contrôleur des relais</label>
         <select id="cfg-relay-controller" onchange="updateZoneOptions()">
@@ -216,7 +233,7 @@
           <input type="number" id="cfg-manual-dur" min="1" max="120" placeholder="10">
         </div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgRelaySetup()">Enregistrer la configuration</button>
+      <button class="btn-cfg primary" onclick="saveCfgRelaySetup(),saveCfgDisplay()">Enregistrer la configuration</button>
       <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
         <label style="margin-bottom:0">Affichage dense</label>
         <button id="btn-zones-view"
@@ -304,14 +321,14 @@
       <div class="cfg-hint" style="margin-top:6px">Par défaut : condition, températures, pluie, probabilité, humidité, vent et rafales.</div>
     </div>
   </div>
-  <!-- Affichage LCD -->
+
   <div class="cfg-section" id="sec-display">
     <div class="cfg-section-header" onclick="toggleSection('sec-display')">
       <span class="cfg-section-title"><span class="sec-icon">&#128444;</span>Affichage LCD</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
     <div class="cfg-section-body">
-      <!-- Palette couleurs -->
+
       <div class="cfg-subsection-title">Palette</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Fond</label>
@@ -343,23 +360,7 @@
           <input type="color" id="disp-cActiveBg" class="cfg-color" oninput="onDispColorChange()">
         </div>
       </div>
-      <!-- Accents zones -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Couleur des zones</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Zone 1</label>
-          <input type="color" id="disp-cZone0" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 2</label>
-          <input type="color" id="disp-cZone1" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 3</label>
-          <input type="color" id="disp-cZone2" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 4+</label>
-          <input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
-      <!-- Formes -->
+
       <div class="cfg-subsection-title" style="margin-top:10px">Formes</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Rayon SM (px)</label>
@@ -375,7 +376,7 @@
       <div class="cfg-field"><label>Largeur barre zone (px)</label>
         <input type="number" id="disp-accentBarW" min="1" max="8" style="width:80px" onchange="onDispNumericChange()">
       </div>
-      <!-- Timing -->
+
       <div class="cfg-subsection-title" style="margin-top:10px">Rafraichissement LCD</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Nominal (ms)</label>
@@ -401,7 +402,7 @@
         </div>
       </div>
       <div class="cfg-hint">Activer la température réduit légèrement la hauteur des lignes de zone.</div>
-      <!-- Layout -->
+
       <div class="cfg-subsection-title" style="margin-top:10px">Espacement</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Planning / boutons (px)</label>
@@ -425,7 +426,7 @@
     </div>
   </div>
 </div><!-- /drawer -->
-<!-- Toast -->
+
 <div id="toast"></div>
 <!-- Lien diagnostic caché — accessible via clic sur le point en bas à gauche -->
 <a href="/api/logs" target="_blank"
