@@ -39,6 +39,25 @@ static uint8_t weatherRainBarHeight(float rainMm, uint8_t maxHeight) {
     return h == 0 ? 1 : h;
 }
 
+
+// Indique si une colonne du planning correspond à un jour réellement prévu
+// pour une zone en mode intervalle. Le calcul reprend la logique d'exécution :
+// premier arrosage aujourd'hui si aucun historique, sinon dernier jour + intervalle.
+static bool intervalDayIsPlanned(const ZoneSchedule& zs,
+                                 uint32_t todayEpochDay,
+                                 uint8_t daysAhead) {
+    const uint32_t targetDay = todayEpochDay + daysAhead;
+    const uint32_t interval  = zs.intervalDays > 0 ? zs.intervalDays : 1;
+
+    if (zs.lastWateredDay == 0) {
+        return (daysAhead % interval) == 0;
+    }
+
+    uint32_t nextDay = zs.lastWateredDay + interval;
+    while (nextDay < todayEpochDay) nextDay += interval;
+    return targetDay >= nextDay && ((targetDay - nextDay) % interval) == 0;
+}
+
 #define SCREEN_W   320
 #define SCREEN_H   240
 
@@ -781,6 +800,14 @@ void DisplayManager::renderPlanSprite() {
         for (int col = 0; col < 7; col++) {
             int espIdx = (baseIdx + col) % 7;
             int x0 = PL_LABEL_W + col * PL_DAY_W + 1;
+            if (zs.mode != 0) {
+                const uint32_t todayEpochDay =
+                    (_ntp && _ntp->isSynced()) ? _ntp->getEpochDay() : 0;
+                if (todayEpochDay == 0 ||
+                    !intervalDayIsPlanned(zs, todayEpochDay, (uint8_t)col)) {
+                    continue;
+                }
+            }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
@@ -908,6 +935,14 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
         for (uint8_t c = 0; c < 2; c++) {
             int espIdx = (baseIdx + c) % 7;
             uint16_t cx = LABEL_W_G2 + c * COL_W;
+            if (zs.mode != 0) {
+                const uint32_t todayEpochDay =
+                    (_ntp && _ntp->isSynced()) ? _ntp->getEpochDay() : 0;
+                if (todayEpochDay == 0 ||
+                    !intervalDayIsPlanned(zs, todayEpochDay, c)) {
+                    continue;
+                }
+            }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
                 const TimeSlot& slot = ds.slots[sl];
@@ -981,6 +1016,14 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
         for (uint8_t col = 0; col < 7; col++) {
             int      espIdx = (baseIdx + col) % 7;
             uint16_t x0     = PL_LABEL_W + col * DAY_W + 1;
+            if (zs.mode != 0) {
+                const uint32_t todayEpochDay =
+                    (_ntp && _ntp->isSynced()) ? _ntp->getEpochDay() : 0;
+                if (todayEpochDay == 0 ||
+                    !intervalDayIsPlanned(zs, todayEpochDay, col)) {
+                    continue;
+                }
+            }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
