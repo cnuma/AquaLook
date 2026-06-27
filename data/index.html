@@ -80,9 +80,8 @@
 <div id="drawer">
   <div class="drawer-header">
     <span class="drawer-title">Paramètres</span>
-    <button class="drawer-close" onclick="closeDrawer()">✕</button>
-  <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Déverrouiller admin</button>
-  </div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+  <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Admin : verrouillé</button>
   <div class="cfg-section" id="sec-wifi">
     <div class="cfg-section-header" onclick="toggleSection('sec-wifi')">
       <span class="cfg-section-title"><span class="sec-icon">📡</span>WiFi</span>
@@ -410,7 +409,7 @@
           text-decoration:none" title="Logs"></a>
 <script>
 const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","relay-admin"];
-function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);if(e)e.style.display=v?"":"none"});let b=document.getElementById("admin-btn");if(b)b.textContent=v?"Verrouiller admin":"Déverrouiller admin"}
+function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);if(e)e.style.display=v?"":"none"});let b=document.getElementById("admin-btn");if(b)b.textContent=v?"Admin : déverrouillé":"Admin : verrouillé"}
 function adminToggle(){let v=sessionStorage.getItem("aqadm")==="1";if(v){sessionStorage.removeItem("aqadm");adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem("aqadm","1");adminApply(1)}
 document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem("aqadm")==="1"));
 </script>
