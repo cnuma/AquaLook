@@ -7,35 +7,42 @@
   <link rel="icon" type="image/png" href="/logo.png">
   <link rel="stylesheet" href="/style.css">
   <style>
-    /* Affichage LCD -- tokens de design */
-    .cfg-color {
-      width: 100%; height: 32px; padding: 2px; cursor: pointer;
-      border: 1px solid var(--border2); border-radius: 5px;
-      background: var(--bg); box-sizing: border-box;
-    }
-    .cfg-subsection-title {
-      font-family: var(--mono); font-size: 11px; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 0.08em;
-      margin-bottom: 6px; padding-bottom: 3px;
-      border-bottom: 1px solid var(--border);
-    }
+    .cfg-color{width:100%;height:34px;padding:2px;cursor:pointer;border:1px solid var(--border2);border-radius:7px;background:var(--bg);box-sizing:border-box}
+    .cfg-subsection-title{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+    .cfg-home{padding:14px;border-bottom:1px solid var(--border);background:linear-gradient(145deg,var(--bg2),var(--bg))}
+    .cfg-home-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px}
+    .cfg-home-sub{font-size:12px;line-height:1.45;color:var(--muted)}
+    .cfg-access{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:10px;border:1px solid var(--border2);border-radius:9px;background:var(--bg)}
+    .cfg-access-state{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text2)}
+    .cfg-access-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 18%,transparent)}
+    .cfg-access.admin .cfg-access-dot{background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 18%,transparent)}
+    .cfg-access-actions{display:flex;gap:6px}
+    .cfg-mini-btn{font-family:var(--mono);font-size:10px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--bg2);color:var(--text2);cursor:pointer}
+    .cfg-mini-btn.primary{background:var(--blue);border-color:var(--blue);color:white}
+    .cfg-group-label{padding:12px 14px 6px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .cfg-section.admin-only{display:none}
+    body.admin-unlocked .cfg-section.admin-only{display:block}
+    .cfg-section-summary{font-size:11px;color:var(--muted);margin:3px 0 10px;line-height:1.45}
+    .cfg-danger-card{padding:10px;border:1px dashed var(--amber);border-radius:7px;background:var(--bg2)}
+    .admin-login-overlay{display:none;position:fixed;inset:0;z-index:12000;background:#0009;align-items:center;justify-content:center;padding:16px}
+    .admin-login-overlay.open{display:flex}
+    .admin-login-card{width:min(360px,100%);background:var(--bg);border:1px solid var(--border2);border-radius:14px;box-shadow:0 20px 60px #0008;padding:18px}
+    .admin-login-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px}
+    .admin-login-text{font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:14px}
+    .admin-login-actions{display:flex;gap:8px;margin-top:12px}
+    .admin-login-actions button{flex:1}
+    .wx-tooltip-host{position:relative;cursor:help}
+    .wx-tooltip{display:none;position:fixed;z-index:10000;left:0;top:0;transform:none;min-width:220px;max-width:300px;max-height:calc(100vh - 16px);overflow:auto;padding:10px 12px;border:1px solid var(--border2);border-radius:7px;background:var(--bg2);color:var(--text2);font-family:var(--mono);font-size:11px;line-height:1.55;text-align:left;box-shadow:0 8px 24px #0008;white-space:normal;pointer-events:none}
+    .wx-tooltip-host:hover .wx-tooltip{display:block}
+    .wx-tooltip-title{color:var(--text);font-weight:700;margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
+    @media(max-width:700px){.wx-tooltip{min-width:200px;max-width:calc(100vw - 16px)}.cfg-access{align-items:flex-start;flex-direction:column}.cfg-access-actions{width:100%}.cfg-access-actions button{flex:1}}
   </style>
-<style>
-.wx-tooltip-host{position:relative;cursor:help}
-.wx-tooltip{display:none;position:fixed;z-index:10000;left:0;top:0;transform:none;min-width:220px;max-width:300px;max-height:calc(100vh - 16px);overflow:auto;padding:10px 12px;border:1px solid var(--border2);border-radius:7px;background:var(--bg2);color:var(--text2);font-family:var(--mono);font-size:11px;line-height:1.55;text-align:left;box-shadow:0 8px 24px #0008;white-space:normal;pointer-events:none}
-.wx-tooltip-host:hover .wx-tooltip{display:block}
-.wx-tooltip-title{color:var(--text);font-weight:700;margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
-@media (max-width:700px){.wx-tooltip{min-width:200px;max-width:calc(100vw - 16px)}}
-</style>
 </head>
 <body>
-<!-- Header -->
 <header>
   <div class="header-logo">
     <div class="logo-row">
-      <img src="/logo.png" alt="AquaLook"
-           style="height:28px;width:auto;border-radius:4px;"
-           onerror="this.style.display='none'">
+      <img src="/logo.png" alt="AquaLook" style="height:28px;width:auto;border-radius:4px" onerror="this.style.display='none'">
       <div>
         <span id="header-title" style="display:block">AQUALOOK</span>
         <span class="logo-city" id="header-city"></span>
@@ -44,393 +51,233 @@
   </div>
   <div class="header-spacer"></div>
   <span id="wifi-badge">—</span>
-  <button id="btn-menu" onclick="openDrawer()" title="Configuration">
-    <span></span><span></span><span></span>
-  </button>
+  <button id="btn-menu" onclick="openDrawer()" title="Configuration"><span></span><span></span><span></span></button>
 </header>
-<!-- Zones -->
+
 <div class="card">
   <div class="card-title">Zones</div>
   <div id="zones-container"></div>
 </div>
-<!-- Planning -->
 <div class="planning-card">
   <div class="card-title">Planning semaine</div>
   <div class="planning-grid" id="planning-grid"></div>
 </div>
-<!-- Logs -->
 <div class="card">
   <div class="card-title">Activité
-    <button id="btn-toggle-activity" onclick="toggleActivity()"
-            style="font-family:var(--mono);font-size:10px;padding:2px 8px;
-                   border:1px solid var(--border2);border-radius:4px;
-                   background:var(--bg2);color:var(--muted);cursor:pointer;
-                   margin-left:auto">Masquer</button>
+    <button id="btn-toggle-activity" onclick="toggleActivity()" style="font-family:var(--mono);font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:var(--bg2);color:var(--muted);cursor:pointer;margin-left:auto">Masquer</button>
   </div>
-  <div id="activity-card">
-    <div id="logs"><div class="log-entry">En attente...</div></div>
-  </div>
+  <div id="activity-card"><div id="logs"><div class="log-entry">En attente...</div></div></div>
 </div>
-<!-- Modal slots -->
+
 <div class="modal-overlay" id="modal" onclick="closeModalOutside(event)">
   <div class="modal">
-    <div class="modal-title">
-      <span id="modal-title-text"></span>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
+    <div class="modal-title"><span id="modal-title-text"></span><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div id="modal-body"></div>
   </div>
 </div>
-<!-- Drawer configuration -->
+
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="drawer">
-  <div class="drawer-header">
-    <span class="drawer-title">Configuration</span>
-    <button class="drawer-close" onclick="closeDrawer()">✕</button>
-  </div>
-  <!-- WiFi -->
-  <div class="cfg-section" id="sec-wifi">
-    <div class="cfg-section-header" onclick="toggleSection('sec-wifi')">
-      <span class="cfg-section-title"><span class="sec-icon">📡</span>WiFi</span>
-      <span class="cfg-chevron">▶</span>
-    </div>
-    <div class="cfg-section-body">
-      <div class="cfg-info" id="wifi-info">SSID : <span>—</span></div>
-      <div class="cfg-field"><label>Nouveau SSID</label>
-        <input type="text" id="cfg-ssid" autocomplete="off" placeholder="Nom du réseau">
+  <div class="drawer-header"><span class="drawer-title">Paramètres</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+
+  <div class="cfg-home">
+    <div class="cfg-home-title">Centre de configuration</div>
+    <div class="cfg-home-sub">Les réglages courants restent accessibles. Les paramètres matériels, réseau et système sont protégés par le mode administrateur.</div>
+    <div class="cfg-access" id="cfg-access-card">
+      <div class="cfg-access-state"><span class="cfg-access-dot"></span><span id="cfg-access-label">Mode utilisateur</span></div>
+      <div class="cfg-access-actions">
+        <button class="cfg-mini-btn primary" id="btn-admin-unlock" onclick="openAdminLogin()">Déverrouiller</button>
+        <button class="cfg-mini-btn" id="btn-admin-lock" onclick="lockAdminUi()" style="display:none">Verrouiller</button>
       </div>
-      <div class="cfg-field"><label>Mot de passe</label>
-        <input type="password" id="cfg-pwd" placeholder="Mot de passe WiFi">
-      </div>
-      <button class="btn-cfg warn" onclick="saveCfgWifi()">Enregistrer et redémarrer</button>
-      <button class="btn-cfg warn" onclick="launchCaptive()" style="margin-top:8px">
-        Lancer portail captif
-      </button>
     </div>
   </div>
-  <!-- NTP -->
-  <div class="cfg-section" id="sec-ntp">
-    <div class="cfg-section-header" onclick="toggleSection('sec-ntp')">
-      <span class="cfg-section-title"><span class="sec-icon">🕐</span>NTP / Heure</span>
-      <span class="cfg-chevron">▶</span>
+
+  <div class="cfg-group-label">Usage quotidien</div>
+
+  <div class="cfg-section open" id="sec-zones-user">
+    <div class="cfg-section-header" onclick="toggleSection('sec-zones-user')">
+      <span class="cfg-section-title"><span class="sec-icon">💧</span>Zones et arrosage</span><span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
-      <div class="cfg-field"><label>Serveur NTP</label>
-        <input type="text" id="cfg-ntp-server" placeholder="pool.ntp.org">
+      <div class="cfg-section-summary">Réglages utilisés au quotidien. Les couleurs sont désormais rattachées aux zones et ne font plus partie de la palette générale LCD.</div>
+      <div class="cfg-subsection-title">Couleur des zones</div>
+      <div class="cfg-field-row">
+        <div class="cfg-field"><label>Zone 1</label><input type="color" id="disp-cZone0" class="cfg-color" oninput="onDispColorChange()"></div>
+        <div class="cfg-field"><label>Zone 2</label><input type="color" id="disp-cZone1" class="cfg-color" oninput="onDispColorChange()"></div>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field"><label>GMT offset (s)</label>
-          <input type="number" id="cfg-ntp-gmt" placeholder="3600">
-        </div>
-        <div class="cfg-field"><label>DST offset (s)</label>
-          <input type="number" id="cfg-ntp-dst" placeholder="3600">
-        </div>
+        <div class="cfg-field"><label>Zone 3</label><input type="color" id="disp-cZone2" class="cfg-color" oninput="onDispColorChange()"></div>
+        <div class="cfg-field"><label>Zone 4 et suivantes</label><input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()"></div>
       </div>
+      <div class="cfg-field-row">
+        <div class="cfg-field"><label>Durée max arrosage (min)</label><input type="number" id="cfg-maxwater" min="1" max="120" placeholder="60"></div>
+        <div class="cfg-field"><label>Durée manuelle (min)</label><input type="number" id="cfg-manual-dur" min="1" max="120" placeholder="10"></div>
+      </div>
+      <button class="btn-cfg primary" onclick="saveCfgDisplay();saveCfgRelaySetup()">Enregistrer les zones</button>
+    </div>
+  </div>
+
+  <div class="cfg-section" id="sec-web-display">
+    <div class="cfg-section-header" onclick="toggleSection('sec-web-display')">
+      <span class="cfg-section-title"><span class="sec-icon">🖥️</span>Affichage Web</span><span class="cfg-chevron">▶</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-section-summary">Confort de lecture de la page principale.</div>
+      <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between">
+        <label style="margin-bottom:0">Affichage dense des zones</label>
+        <button id="btn-zones-view" class="cfg-mini-btn" onclick="setZonesView(_zonesView === 'normal' ? 'dense' : 'normal')">Activer</button>
+      </div>
+      <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+        <label style="margin-bottom:0">Bandeau activité</label>
+        <button class="cfg-mini-btn" onclick="toggleActivity()">Afficher / masquer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cfg-section" id="sec-weather-tooltips">
+    <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
+      <span class="cfg-section-title"><span class="sec-icon">☁</span>Détails météo</span><span class="cfg-chevron">▶</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-section-summary">Informations affichées au survol d'une journée météo.</div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherVisualsEnabled" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherVisualsEnabled" style="margin:0;cursor:pointer">Fond thermique et jauge de pluie</label></div>
+      <div class="cfg-field-row">
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipCondition" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipCondition" style="margin:0;cursor:pointer">Condition</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipTemp" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipTemp" style="margin:0;cursor:pointer">Températures</label></div>
+      </div>
+      <div class="cfg-field-row">
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipRain" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipRain" style="margin:0;cursor:pointer">Pluie</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPop" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPop" style="margin:0;cursor:pointer">Probabilité</label></div>
+      </div>
+      <div class="cfg-field-row">
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipHumidity" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipHumidity" style="margin:0;cursor:pointer">Humidité</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipWind" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipWind" style="margin:0;cursor:pointer">Vent</label></div>
+      </div>
+      <div class="cfg-field-row">
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipGust" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipGust" style="margin:0;cursor:pointer">Rafales</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipClouds" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipClouds" style="margin:0;cursor:pointer">Nuages</label></div>
+      </div>
+      <div class="cfg-field"><div style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPressure" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPressure" style="margin:0;cursor:pointer">Pression</label></div></div>
+      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Enregistrer</button>
+      <button class="btn-cfg" onclick="resetCfgDisplay()" style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">Valeurs par défaut</button>
+    </div>
+  </div>
+
+  <div class="cfg-group-label">Administration</div>
+
+  <div class="cfg-section admin-only" id="sec-hardware">
+    <div class="cfg-section-header" onclick="toggleSection('sec-hardware')">
+      <span class="cfg-section-title"><span class="sec-icon">🔌</span>Matériel et relais</span><span class="cfg-chevron">▶</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-section-summary">Ces paramètres décrivent le matériel réel. Une erreur peut activer une mauvaise sortie.</div>
+      <div class="cfg-field"><label>Contrôleur des relais</label><select id="cfg-relay-controller" onchange="updateZoneOptions()"><option value="0">XL9535 (carte YellowCard)</option><option value="1">MCP23017 (modules relais externes)</option></select><div class="cfg-hint">Le changement nécessite un redémarrage.</div></div>
+      <div class="cfg-field"><label>Nombre de zones</label><select id="cfg-nb-zones"></select><div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie.</div></div>
+      <div class="cfg-danger-card"><label style="color:var(--amber)">⚠ Logique relais</label><select id="cfg-relay-logic"><option value="0">Inverse (niveau 0 → relais actif)</option><option value="1">Directe (niveau 1 → relais actif)</option></select><div class="cfg-hint" style="color:var(--amber)">Un mauvais choix peut activer les relais au démarrage.</div></div>
+      <button class="btn-cfg primary" onclick="saveCfgRelaySetup()" style="margin-top:12px">Enregistrer la configuration matérielle</button>
+    </div>
+  </div>
+
+  <div class="cfg-section admin-only" id="sec-wifi">
+    <div class="cfg-section-header" onclick="toggleSection('sec-wifi')"><span class="cfg-section-title"><span class="sec-icon">📡</span>Réseau WiFi</span><span class="cfg-chevron">▶</span></div>
+    <div class="cfg-section-body">
+      <div class="cfg-info" id="wifi-info">SSID : <span>—</span></div>
+      <div class="cfg-field"><label>Nouveau SSID</label><input type="text" id="cfg-ssid" autocomplete="off" placeholder="Nom du réseau"></div>
+      <div class="cfg-field"><label>Mot de passe WiFi</label><input type="password" id="cfg-pwd" placeholder="Mot de passe WiFi"></div>
+      <button class="btn-cfg warn" onclick="saveCfgWifi()">Enregistrer et redémarrer</button>
+      <button class="btn-cfg warn" onclick="launchCaptive()" style="margin-top:8px">Lancer le portail captif</button>
+    </div>
+  </div>
+
+  <div class="cfg-section admin-only" id="sec-ntp">
+    <div class="cfg-section-header" onclick="toggleSection('sec-ntp')"><span class="cfg-section-title"><span class="sec-icon">🕐</span>Heure et NTP</span><span class="cfg-chevron">▶</span></div>
+    <div class="cfg-section-body">
+      <div class="cfg-field"><label>Serveur NTP</label><input type="text" id="cfg-ntp-server" placeholder="pool.ntp.org"></div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>GMT offset (s)</label><input type="number" id="cfg-ntp-gmt" placeholder="3600"></div><div class="cfg-field"><label>DST offset (s)</label><input type="number" id="cfg-ntp-dst" placeholder="3600"></div></div>
       <button class="btn-cfg primary" onclick="saveCfgNtp()">Enregistrer</button>
     </div>
   </div>
-  <!-- Météo OWM -->
-  <div class="cfg-section" id="sec-owm">
-    <div class="cfg-section-header" onclick="toggleSection('sec-owm')">
-      <span class="cfg-section-title"><span class="sec-icon">🌤</span>Météo (OWM)</span>
-      <span class="cfg-chevron">▶</span>
-    </div>
+
+  <div class="cfg-section admin-only" id="sec-owm">
+    <div class="cfg-section-header" onclick="toggleSection('sec-owm')"><span class="cfg-section-title"><span class="sec-icon">🌤</span>Source météo</span><span class="cfg-chevron">▶</span></div>
     <div class="cfg-section-body">
-      <div class="cfg-field"><label>Clé API OpenWeatherMap</label>
-        <input type="text" id="cfg-owm-key" autocomplete="off" placeholder="Clé API OWM">
-      </div>
-      <!-- Sélecteur mode localisation -->
-      <div class="cfg-field">
-        <label>Localisation</label>
-        <select id="cfg-owm-mode" onchange="toggleOwmMode()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
-          <option value="city">Ville / Pays</option>
-          <option value="gps">Coordonnées GPS</option>
-        </select>
-      </div>
-      <!-- Mode ville -->
-      <div id="owm-city-block">
-        <div class="cfg-field-row">
-          <div class="cfg-field"><label>Ville</label>
-            <input type="text" id="cfg-owm-city" placeholder="Albi">
-          </div>
-          <div class="cfg-field"><label>Pays (code)</label>
-            <input type="text" id="cfg-owm-country" placeholder="FR" maxlength="2"
-                   style="text-transform:uppercase">
-          </div>
-        </div>
-      </div>
-      <!-- Mode GPS -->
-      <div id="owm-gps-block" style="display:none">
-        <div class="cfg-field-row">
-          <div class="cfg-field"><label>Latitude</label>
-            <input type="number" id="cfg-owm-lat" step="0.001" placeholder="43.926">
-          </div>
-          <div class="cfg-field"><label>Longitude</label>
-            <input type="number" id="cfg-owm-lon" step="0.001" placeholder="2.148">
-          </div>
-        </div>
-      </div>
-      <div class="cfg-field"><label>Unités</label>
-        <select id="cfg-owm-units">
-          <option value="metric">Métrique (°C)</option>
-          <option value="imperial">Impérial (°F)</option>
-        </select>
-      </div>
+      <div class="cfg-field"><label>Clé API OpenWeatherMap</label><input type="text" id="cfg-owm-key" autocomplete="off" placeholder="Clé API OWM"></div>
+      <div class="cfg-field"><label>Localisation</label><select id="cfg-owm-mode" onchange="toggleOwmMode()"><option value="city">Ville / Pays</option><option value="gps">Coordonnées GPS</option></select></div>
+      <div id="owm-city-block"><div class="cfg-field-row"><div class="cfg-field"><label>Ville</label><input type="text" id="cfg-owm-city" placeholder="Albi"></div><div class="cfg-field"><label>Pays</label><input type="text" id="cfg-owm-country" placeholder="FR" maxlength="2" style="text-transform:uppercase"></div></div></div>
+      <div id="owm-gps-block" style="display:none"><div class="cfg-field-row"><div class="cfg-field"><label>Latitude</label><input type="number" id="cfg-owm-lat" step="0.001" placeholder="43.926"></div><div class="cfg-field"><label>Longitude</label><input type="number" id="cfg-owm-lon" step="0.001" placeholder="2.148"></div></div></div>
+      <div class="cfg-field"><label>Unités</label><select id="cfg-owm-units"><option value="metric">Métrique (°C)</option><option value="imperial">Impérial (°F)</option></select></div>
       <button class="btn-cfg primary" onclick="saveCfgOwm()">Enregistrer</button>
     </div>
   </div>
-  <!-- Zones et contrôleur relais -->
-  <div class="cfg-section" id="sec-zones">
-    <div class="cfg-section-header" onclick="toggleSection('sec-zones')">
-      <span class="cfg-section-title"><span class="sec-icon">💧</span>Zones et contrôleur relais</span>
-      <span class="cfg-chevron">▶</span>
-    </div>
+
+  <div class="cfg-section admin-only" id="sec-display">
+    <div class="cfg-section-header" onclick="toggleSection('sec-display')"><span class="cfg-section-title"><span class="sec-icon">🖼</span>Interface LCD</span><span class="cfg-chevron">▶</span></div>
     <div class="cfg-section-body">
-      <div class="cfg-field">
-        <label>Contrôleur des relais</label>
-        <select id="cfg-relay-controller" onchange="updateZoneOptions()">
-          <option value="0">XL9535 (carte YellowCard)</option>
-          <option value="1">MCP23017 (modules relais externes)</option>
-        </select>
-        <div class="cfg-hint">Le changement de contrôleur nécessite un redémarrage.</div>
-      </div>
-      <div class="cfg-field">
-        <label>Nombre de zones</label>
-        <select id="cfg-nb-zones"></select>
-        <div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie.</div>
-      </div>
-      <div class="cfg-field" style="padding:10px;border:1px dashed var(--amber);border-radius:6px;background:var(--bg2)">
-        <label style="color:var(--amber)">&#9888; Logique relais</label>
-        <select id="cfg-relay-logic">
-          <option value="0">Inverse (niveau 0 → relais actif)</option>
-          <option value="1">Directe (niveau 1 → relais actif)</option>
-        </select>
-        <div class="cfg-hint" style="color:var(--amber)">Un mauvais choix peut activer les relais au démarrage.</div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Duree max arrosage (min)</label>
-          <input type="number" id="cfg-maxwater" min="1" max="120" placeholder="60">
-        </div>
-        <div class="cfg-field"><label>Duree manuelle (min)</label>
-          <input type="number" id="cfg-manual-dur" min="1" max="120" placeholder="10">
-        </div>
-      </div>
-      <button class="btn-cfg primary" onclick="saveCfgRelaySetup()">Enregistrer la configuration</button>
-      <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
-        <label style="margin-bottom:0">Affichage dense</label>
-        <button id="btn-zones-view"
-                onclick="setZonesView(_zonesView === 'normal' ? 'dense' : 'normal')"
-                style="font-family:var(--mono);font-size:11px;padding:4px 12px;
-                       border:1px solid var(--border2);border-radius:4px;
-                       background:var(--bg2);color:var(--text2);cursor:pointer">
-          Activer
-        </button>
-      </div>
+      <div class="cfg-section-summary">Palette générale, formes, météo et fréquence de rafraîchissement. Les couleurs des zones sont réglées dans la rubrique Zones.</div>
+      <div class="cfg-subsection-title">Palette générale</div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Fond</label><input type="color" id="disp-cBg" class="cfg-color" oninput="onDispColorChange()"></div><div class="cfg-field"><label>Surface</label><input type="color" id="disp-cSurface" class="cfg-color" oninput="onDispColorChange()"></div><div class="cfg-field"><label>Surface 2</label><input type="color" id="disp-cSurface2" class="cfg-color" oninput="onDispColorChange()"></div></div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Bordure</label><input type="color" id="disp-cBorder" class="cfg-color" oninput="onDispColorChange()"></div><div class="cfg-field"><label>Texte</label><input type="color" id="disp-cText" class="cfg-color" oninput="onDispColorChange()"></div><div class="cfg-field"><label>Texte 2</label><input type="color" id="disp-cText2" class="cfg-color" oninput="onDispColorChange()"></div></div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Atténué</label><input type="color" id="disp-cMuted" class="cfg-color" oninput="onDispColorChange()"></div><div class="cfg-field"><label>Actif</label><input type="color" id="disp-cActiveBg" class="cfg-color" oninput="onDispColorChange()"></div></div>
+      <div class="cfg-subsection-title">Formes</div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Rayon SM</label><input type="number" id="disp-rSm" min="1" max="20" onchange="onDispNumericChange()"></div><div class="cfg-field"><label>Rayon MD</label><input type="number" id="disp-rMd" min="1" max="20" onchange="onDispNumericChange()"></div><div class="cfg-field"><label>Rayon LG</label><input type="number" id="disp-rLg" min="1" max="30" onchange="onDispNumericChange()"></div></div>
+      <div class="cfg-field"><label>Largeur barre zone</label><input type="number" id="disp-accentBarW" min="1" max="8" onchange="onDispNumericChange()"></div>
+      <div class="cfg-subsection-title">Rafraîchissement LCD</div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Nominal (ms)</label><input type="number" id="disp-refreshNomMs" min="500" max="30000" step="500" onchange="onDispNumericChange()"></div><div class="cfg-field"><label>Actif (ms)</label><input type="number" id="disp-refreshActMs" min="200" max="5000" step="100" onchange="onDispNumericChange()"></div></div>
+      <div class="cfg-subsection-title">Météo LCD</div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-showWeatherIcon" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-showWeatherIcon" style="margin:0">Icône météo</label></div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-showWeatherTemp" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-showWeatherTemp" style="margin:0">Température du jour</label></div>
+      <div class="cfg-subsection-title">Espacement</div>
+      <div class="cfg-field-row"><div class="cfg-field"><label>Planning / boutons</label><input type="number" id="disp-planGap" min="0" max="20" onchange="onDispNumericChange()"></div><div class="cfg-field"><label>Grille GRID2</label><input type="number" id="disp-g2Gpad" min="0" max="8" onchange="onDispNumericChange()"></div><div class="cfg-field"><label>Grille GRID4</label><input type="number" id="disp-g4Gpad" min="0" max="8" onchange="onDispNumericChange()"></div></div>
+      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Appliquer</button>
+      <button class="btn-cfg" onclick="resetCfgDisplay()" style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">Réinitialiser les valeurs</button>
     </div>
   </div>
-  <!-- Système -->
-  <div class="cfg-section open" id="sec-system">
-    <div class="cfg-section-header" onclick="toggleSection('sec-system')">
-      <span class="cfg-section-title"><span class="sec-icon">⚙️</span>Système</span>
-      <span class="cfg-chevron">▶</span>
-    </div>
+
+  <div class="cfg-section admin-only" id="sec-system">
+    <div class="cfg-section-header" onclick="toggleSection('sec-system')"><span class="cfg-section-title"><span class="sec-icon">⚙️</span>Système</span><span class="cfg-chevron">▶</span></div>
     <div class="cfg-section-body">
       <div class="cfg-info" id="sys-info">Chargement...</div>
-      <div class="cfg-field">
-        <label>Veille ecran (min)</label>
-        <input type="number" id="cfg-screen-timeout" min="0" max="60" placeholder="5">
-        <div class="cfg-hint">0 = jamais eteindre</div>
-      </div>
-      <div class="cfg-field">
-        <label>LED signe de vie</label>
-        <select id="cfg-led-mode">
-          <option value="0">Eteinte</option>
-          <option value="1">Flash discret (vert, 4s)</option>
-          <option value="2">Respiration (vert doux)</option>
-          <option value="3">Arc-en-ciel lent</option>
-          <option value="4">Bicolore (vert / bleu)</option>
-        </select>
-        <div class="cfg-hint">En veille uniquement - Rouge si arrosage actif</div>
-      </div>
+      <div class="cfg-field"><label>Veille écran (min)</label><input type="number" id="cfg-screen-timeout" min="0" max="60" placeholder="5"><div class="cfg-hint">0 = ne jamais éteindre</div></div>
+      <div class="cfg-field"><label>LED signe de vie</label><select id="cfg-led-mode"><option value="0">Éteinte</option><option value="1">Flash discret</option><option value="2">Respiration</option><option value="3">Arc-en-ciel lent</option><option value="4">Bicolore vert / bleu</option></select></div>
       <button class="btn-cfg primary" onclick="saveCfgSystem()">Enregistrer</button>
-      <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
-        <label style="margin-bottom:0">Bandeau activite</label>
-        <button id="btn-toggle-activity" onclick="toggleActivity()"
-                style="font-family:var(--mono);font-size:11px;padding:4px 12px;
-                       border:1px solid var(--border2);border-radius:4px;
-                       background:var(--bg2);color:var(--text2);cursor:pointer">
-          Masquer
-        </button>
-      </div>
-      <button class="btn-cfg danger" onclick="resetConfig()" style="margin-top:14px">
-        Reset configuration (reboot)
-      </button>
+      <button class="btn-cfg danger" onclick="resetConfig()" style="margin-top:14px">Réinitialiser la configuration et redémarrer</button>
     </div>
   </div>
-  <!-- Info-bulles météo Web -->
-  <div class="cfg-section" id="sec-weather-tooltips">
-    <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
-      <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Info-bulles météo Web</span>
-      <span class="cfg-chevron">&#9654;</span>
-    </div>
-    <div class="cfg-section-body">
-      <div class="cfg-hint" style="margin-bottom:10px">Choisir les informations affichées au survol d'une journée météo dans le planning.</div>
-      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:12px">
-        <input type="checkbox" id="disp-weatherVisualsEnabled" onchange="onDispNumericChange()" style="width:auto;margin:0">
-        <label for="disp-weatherVisualsEnabled" style="margin:0;cursor:pointer">Fond thermique et jauge verticale de pluie sur le LCD et la page Web</label>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipCondition" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipCondition" style="margin:0;cursor:pointer">Condition météo</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipTemp" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipTemp" style="margin:0;cursor:pointer">Températures min/max et ressenti</label></div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipRain" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipRain" style="margin:0;cursor:pointer">Pluie cumulée</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPop" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPop" style="margin:0;cursor:pointer">Probabilité de pluie</label></div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipHumidity" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipHumidity" style="margin:0;cursor:pointer">Humidité maximale</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipWind" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipWind" style="margin:0;cursor:pointer">Vent maximal</label></div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipGust" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipGust" style="margin:0;cursor:pointer">Rafales maximales</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipClouds" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipClouds" style="margin:0;cursor:pointer">Couverture nuageuse</label></div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPressure" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPressure" style="margin:0;cursor:pointer">Pression moyenne</label></div>
-      </div>
-      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Enregistrer</button>
-      <button class="btn-cfg" onclick="resetCfgDisplay()" style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">Valeurs par défaut</button>
-      <div class="cfg-hint" style="margin-top:6px">Par défaut : condition, températures, pluie, probabilité, humidité, vent et rafales.</div>
-    </div>
+</div>
+
+<div class="admin-login-overlay" id="admin-login-overlay" onclick="closeAdminLoginOutside(event)">
+  <div class="admin-login-card">
+    <div class="admin-login-title">Accès administrateur</div>
+    <div class="admin-login-text">Déverrouille les paramètres matériels, réseau, LCD et système pour cette session du navigateur.</div>
+    <div class="cfg-field"><label>Mot de passe</label><input type="password" id="admin-password" inputmode="numeric" autocomplete="current-password" placeholder="Mot de passe administrateur" onkeydown="if(event.key==='Enter')unlockAdminUi()"></div>
+    <div class="admin-login-actions"><button class="btn-cfg" onclick="closeAdminLogin()">Annuler</button><button class="btn-cfg primary" onclick="unlockAdminUi()">Déverrouiller</button></div>
   </div>
-  <!-- Affichage LCD -->
-  <div class="cfg-section" id="sec-display">
-    <div class="cfg-section-header" onclick="toggleSection('sec-display')">
-      <span class="cfg-section-title"><span class="sec-icon">&#128444;</span>Affichage LCD</span>
-      <span class="cfg-chevron">&#9654;</span>
-    </div>
-    <div class="cfg-section-body">
-      <!-- Palette couleurs -->
-      <div class="cfg-subsection-title">Palette</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Fond</label>
-          <input type="color" id="disp-cBg" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Surface</label>
-          <input type="color" id="disp-cSurface" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Surface 2</label>
-          <input type="color" id="disp-cSurface2" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Bordure</label>
-          <input type="color" id="disp-cBorder" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Texte</label>
-          <input type="color" id="disp-cText" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Texte 2</label>
-          <input type="color" id="disp-cText2" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Muted</label>
-          <input type="color" id="disp-cMuted" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Actif (fond)</label>
-          <input type="color" id="disp-cActiveBg" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
-      <!-- Accents zones -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Couleur des zones</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Zone 1</label>
-          <input type="color" id="disp-cZone0" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 2</label>
-          <input type="color" id="disp-cZone1" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 3</label>
-          <input type="color" id="disp-cZone2" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 4+</label>
-          <input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
-      <!-- Formes -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Formes</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Rayon SM (px)</label>
-          <input type="number" id="disp-rSm" min="1" max="20" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-        <div class="cfg-field"><label>Rayon MD (px)</label>
-          <input type="number" id="disp-rMd" min="1" max="20" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-        <div class="cfg-field"><label>Rayon LG (px)</label>
-          <input type="number" id="disp-rLg" min="1" max="30" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-      </div>
-      <div class="cfg-field"><label>Largeur barre zone (px)</label>
-        <input type="number" id="disp-accentBarW" min="1" max="8" style="width:80px" onchange="onDispNumericChange()">
-      </div>
-      <!-- Timing -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Rafraichissement LCD</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Nominal (ms)</label>
-          <input type="number" id="disp-refreshNomMs" min="500" max="30000" step="500" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-        <div class="cfg-field"><label>Actif (ms)</label>
-          <input type="number" id="disp-refreshActMs" min="200" max="5000" step="100" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-      </div>
-      <div class="cfg-hint">Actif = intervalle quand un arrosage est en cours (invariant I21)</div>
-      <!-- Météo LCD -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Météo LCD</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input type="checkbox" id="disp-showWeatherIcon" onchange="onDispNumericChange()" style="width:auto;margin:0">
-          <label for="disp-showWeatherIcon" style="margin:0;cursor:pointer">Icône météo (pluie / soleil)</label>
-        </div>
-      </div>
-      <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input type="checkbox" id="disp-showWeatherTemp" onchange="onDispNumericChange()" style="width:auto;margin:0">
-          <label for="disp-showWeatherTemp" for="disp-showWeatherTemp" style="margin:0;cursor:pointer">Température max du jour</label>
-        </div>
-      </div>
-      <div class="cfg-hint">Activer la température réduit légèrement la hauteur des lignes de zone.</div>
-      <!-- Layout -->
-      <div class="cfg-subsection-title" style="margin-top:10px">Espacement</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Planning / boutons (px)</label>
-          <input type="number" id="disp-planGap" min="0" max="20" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-        <div class="cfg-field"><label>Grille GRID2 (px)</label>
-          <input type="number" id="disp-g2Gpad" min="0" max="8" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-        <div class="cfg-field"><label>Grille GRID4 (px)</label>
-          <input type="number" id="disp-g4Gpad" min="0" max="8" style="width:100%" onchange="onDispNumericChange()">
-        </div>
-      </div>
-      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Appliquer</button>
-      <button class="btn-cfg" onclick="resetCfgDisplay()"
-              style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">
-        Reinitialiser les valeurs par defaut
-      </button>
-      <div class="cfg-hint" style="margin-top:6px">
-        Effet immediat sur l ecran LCD sans reboot.
-      </div>
-    </div>
-  </div>
-</div><!-- /drawer -->
-<!-- Toast -->
+</div>
+
 <div id="toast"></div>
-<!-- Lien diagnostic caché — accessible via clic sur le point en bas à gauche -->
-<a href="/api/logs" target="_blank"
-   style="position:fixed;bottom:6px;left:8px;width:6px;height:6px;
-          border-radius:50%;background:#ffffff18;display:block;
-          text-decoration:none" title="Logs"></a>
+<a href="/api/logs" target="_blank" style="position:fixed;bottom:6px;left:8px;width:6px;height:6px;border-radius:50%;background:#ffffff18;display:block;text-decoration:none" title="Logs"></a>
+<script>
+(function(){
+  const ADMIN_KEY='aqualook-admin-unlocked';
+  function setAdminUi(unlocked){
+    document.body.classList.toggle('admin-unlocked',unlocked);
+    const card=document.getElementById('cfg-access-card');
+    const label=document.getElementById('cfg-access-label');
+    const unlock=document.getElementById('btn-admin-unlock');
+    const lock=document.getElementById('btn-admin-lock');
+    if(card) card.classList.toggle('admin',unlocked);
+    if(label) label.textContent=unlocked?'Mode administrateur':'Mode utilisateur';
+    if(unlock) unlock.style.display=unlocked?'none':'';
+    if(lock) lock.style.display=unlocked?'':'none';
+  }
+  window.openAdminLogin=function(){const el=document.getElementById('admin-login-overlay');if(el)el.classList.add('open');setTimeout(()=>document.getElementById('admin-password')?.focus(),40)};
+  window.closeAdminLogin=function(){const el=document.getElementById('admin-login-overlay');if(el)el.classList.remove('open');const p=document.getElementById('admin-password');if(p)p.value=''};
+  window.closeAdminLoginOutside=function(e){if(e.target?.id==='admin-login-overlay')closeAdminLogin()};
+  window.unlockAdminUi=function(){const p=document.getElementById('admin-password');if(!p||p.value!=='1598753'){if(typeof showToast==='function')showToast('Mot de passe administrateur incorrect','error');else alert('Mot de passe incorrect');return}sessionStorage.setItem(ADMIN_KEY,'1');setAdminUi(true);closeAdminLogin();if(typeof showToast==='function')showToast('Mode administrateur déverrouillé')};
+  window.lockAdminUi=function(){sessionStorage.removeItem(ADMIN_KEY);setAdminUi(false);document.querySelectorAll('.cfg-section.admin-only.open').forEach(el=>el.classList.remove('open'));if(typeof showToast==='function')showToast('Mode administrateur verrouillé')};
+  document.addEventListener('DOMContentLoaded',()=>setAdminUi(sessionStorage.getItem(ADMIN_KEY)==='1'));
+})();
+</script>
 <script src="/app.js"></script>
 </body>
 </html>
