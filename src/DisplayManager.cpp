@@ -648,25 +648,15 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
 //  Sprites HOME
 // ═══════════════════════════════════════════════════════════════
 void DisplayManager::renderTimeSprite() {
-    // Sprite 108x20 : heure size2 (gauche) + température size1 (dessous à droite)
-    // séparés visuellement pour éviter la collision
+    // Heure seule dans le bandeau : la température est déjà visible dans le planning.
     _sprTime.fillSprite(Theme::SURFACE);
     _sprTime.setFreeFont(nullptr);
-
-    // Heure HH:MM en grand
     _sprTime.setTextSize(2);
     _sprTime.setTextColor(Theme::TEXT, Theme::SURFACE);
+    _sprTime.setTextDatum(MC_DATUM);
     String t = (_ntp && _ntp->isSynced()) ? _ntp->getHHMM() : "--:--";
-    _sprTime.drawString(t.c_str(), 0, 2);
-
-    // Température en petit — séparée par un espace visuel
-    if (_weather && _weather->hasFetched()) {
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%.0fC", _weather->getTempC());
-        _sprTime.setTextSize(1);
-        _sprTime.setTextColor(Theme::AMBER, Theme::SURFACE);
-        _sprTime.drawString(buf, 68, 6);  // x=68 après "HH:MM" size2 = ~60px
-    }
+    _sprTime.drawString(t.c_str(), 55, 10);
+    _sprTime.setTextDatum(TL_DATUM);
     _sprTime.pushSprite(182, 6);
 }
 
@@ -706,12 +696,13 @@ void DisplayManager::renderPlanSprite() {
     if (weatherVisuals) {
         for (uint8_t col = 0; col < 5; ++col) {
             ForecastDay fd = _weather ? _weather->getForecastDay(col) : ForecastDay{};
-            if (!fd.valid || fd.tempMax <= -50.0f) continue;
+            if (!fd.valid) continue;
             const int x0 = PL_LABEL_W + col * PL_DAY_W + 1;
             const int y0 = 11;
             const int h = _planHdrH > y0 ? _planHdrH - y0 - 1 : 0;
             if (h <= 0) continue;
-            _sprPlan.fillRect(x0, y0, PL_DAY_W - 2, h, weatherTempBg565(fd.tempMax));
+            // Fond neutre : seules les pastilles de température portent la couleur.
+            _sprPlan.fillRect(x0, y0, PL_DAY_W - 2, h, Theme::SURFACE2);
             _sprPlan.drawRect(x0 + PL_DAY_W - 7, y0 + 2, 4, h - 4, Theme::BLUE);
             uint8_t barH = weatherRainBarHeight(fd.rainMm, h > 6 ? h - 6 : 0);
             if (barH) _sprPlan.fillRect(x0 + PL_DAY_W - 6, y0 + h - 3 - barH, 2, barH, Theme::BLUE);
@@ -746,12 +737,27 @@ void DisplayManager::renderPlanSprite() {
                                 fd.valid, /*showTemp=*/false);
             }
             if (disp.showWeatherTemp && fd.valid && fd.tempMax > -50.0f) {
-                char tbuf[8];
-                snprintf(tbuf, sizeof(tbuf), "%.0fC", fd.tempMax);
-                const uint16_t tempY = disp.showWeatherIcon ? 29 : 15;
+                const uint16_t tempY = disp.showWeatherIcon ? 28 : 15;
+                // Réserver explicitement la bande de droite à la jauge de pluie.
+                // Deux pastilles plus compactes évitent que le maxi la recouvre.
+                const int pillW = 14;
+                const int pillH = 10;
+                const int minX  = cx - 17;
+                const int maxX  = cx - 2;
+                char tmin[5], tmax[5];
+                snprintf(tmin, sizeof(tmin), "%.0f", fd.tempMin);
+                snprintf(tmax, sizeof(tmax), "%.0f", fd.tempMax);
+                _sprPlan.fillRoundRect(minX, tempY, pillW, pillH, 4,
+                                       weatherTempBg565(fd.tempMin));
+                _sprPlan.fillRoundRect(maxX, tempY, pillW, pillH, 4,
+                                       weatherTempBg565(fd.tempMax));
                 _sprPlan.setTextSize(1);
-                _sprPlan.setTextColor(fd.rainMm > 1.0f ? Theme::BLUE : Theme::AMBER, Theme::BG);
-                _sprPlan.drawString(tbuf, cx - 7, tempY);
+                _sprPlan.setTextDatum(MC_DATUM);
+                _sprPlan.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMin));
+                _sprPlan.drawString(tmin, minX + pillW / 2, tempY + 5);
+                _sprPlan.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMax));
+                _sprPlan.drawString(tmax, maxX + pillW / 2, tempY + 5);
+                _sprPlan.setTextDatum(TL_DATUM);
             }
         }
     }
@@ -803,76 +809,95 @@ void DisplayManager::renderPlanSprite() {
 void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint16_t planW) {
     _tft.fillRect(0, destY, planW, sprH, Theme::BG);
 
-    // En mode 8 zones, le bandeau planning est très étroit (64 px).
-    // On réserve deux lignes compactes : jour puis météo, sans chevauchement.
-    const uint16_t HDR_H       = 24;
+    // Mode 5-8 zones : densifier les huit lignes de planning afin de
+    // réserver une vraie zone météo en haut (jour, icône, mini, maxi, pluie).
+    const uint16_t HDR_H       = 42;
     const uint16_t LABEL_W_G2  = 12;
     uint16_t zoneAreaH         = sprH - HDR_H;
     uint8_t  nbPlan            = min(_nbZones, (uint8_t)8);
     uint16_t zoneH             = (nbPlan > 0) ? (zoneAreaH / nbPlan) : zoneAreaH;
     if (zoneH < 4) zoneH = 4;
 
-    // 2 colonnes bornées à planW : aujourd'hui + demain.
-    // La colonne des bulles est réduite pour gagner de la largeur utile.
     const uint16_t COL_W = (planW - LABEL_W_G2) / 2;
     int todayIdx = todayEspIdx();
-    // Si NTP non synced (todayIdx==-1), partir de lundi (0) sans surlignage
     int baseIdx = (todayIdx >= 0) ? todayIdx : 0;
     const char* jours[] = {"Lu","Ma","Me","Je","Ve","Sa","Di"};
 
-    // ── En-têtes colonnes ──
     for (uint8_t c = 0; c < 2; c++) {
-        int      espIdx = (baseIdx + c) % 7;
-        uint16_t cx     = LABEL_W_G2 + c * COL_W;
-        // Surligner aujourd'hui seulement si NTP synced
-        uint16_t col_c  = (c == 0 && todayIdx >= 0) ? Theme::CYAN : Theme::MUTED;
+        int espIdx = (baseIdx + c) % 7;
+        uint16_t cx = LABEL_W_G2 + c * COL_W;
+        uint16_t col_c = (c == 0 && todayIdx >= 0) ? Theme::CYAN : Theme::MUTED;
         _tft.setFreeFont(nullptr);
         _tft.setTextSize(1);
         _tft.setTextColor(col_c, Theme::BG);
         _tft.setTextDatum(TC_DATUM);
         _tft.drawString(jours[espIdx], cx + COL_W / 2, destY + 1);
 
-        // Météo compacte sur une seconde ligne : pictogramme à gauche,
-        // température à droite. Les deux tiennent dans une colonne de 26 px.
         ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
         if (fd.valid && fd.tempMax > -50.0f) {
-            if (_config && _config->weatherVisualsEnabled()) {
-                const uint16_t boxY = destY + 10;
-                const uint16_t boxH = HDR_H > 11 ? HDR_H - 11 : 0;
-                if (boxH > 0) {
-                    _tft.fillRect(cx + 1, boxY, COL_W - 2, boxH, weatherTempBg565(fd.tempMax));
-                    _tft.drawRect(cx + COL_W - 7, boxY + 1, 4, boxH - 2, Theme::BLUE);
-                    uint8_t barH = weatherRainBarHeight(fd.rainMm, boxH > 4 ? boxH - 4 : 0);
-                    if (barH) _tft.fillRect(cx + COL_W - 6, boxY + boxH - 2 - barH, 2, barH, Theme::BLUE);
+            const bool visuals = _config && _config->weatherVisualsEnabled();
+            const uint16_t boxY = destY + 10;
+            const uint16_t boxH = HDR_H - 11;
+
+            if (visuals) {
+                _tft.fillRect(cx + 1, boxY, COL_W - 2, boxH, Theme::SURFACE2);
+                _tft.drawRect(cx + COL_W - 6, boxY + 1, 4, boxH - 2, Theme::BLUE);
+                uint8_t barH = weatherRainBarHeight(fd.rainMm, boxH > 4 ? boxH - 4 : 0);
+                if (barH)
+                    _tft.fillRect(cx + COL_W - 5, boxY + boxH - 2 - barH, 2, barH, Theme::BLUE);
+
+                const uint16_t iconX = cx + 3;
+                const uint16_t iconY = destY + 12;
+                if (fd.rainMm > 1.0f) {
+                    _tft.fillRoundRect(iconX, iconY + 1, 9, 4, 2, Theme::MUTED);
+                    _tft.drawFastVLine(iconX + 2, iconY + 6, 2, Theme::BLUE);
+                    _tft.drawFastVLine(iconX + 6, iconY + 6, 2, Theme::BLUE);
+                } else {
+                    _tft.fillCircle(iconX + 4, iconY + 4, 3, Theme::AMBER);
                 }
-            }
-            const uint16_t wx = cx + 3;
-            const uint16_t wy = destY + 11;
-            if (fd.rainMm > 1.0f) {
-                _tft.fillRoundRect(wx, wy + 1, 8, 4, 2, Theme::MUTED);
-                _tft.drawFastVLine(wx + 2, wy + 6, 2, Theme::BLUE);
-                _tft.drawFastVLine(wx + 6, wy + 6, 2, Theme::BLUE);
+
+                char tmin[5], tmax[5];
+                snprintf(tmin, sizeof(tmin), "%.0f", fd.tempMin);
+                snprintf(tmax, sizeof(tmax), "%.0f", fd.tempMax);
+                const uint16_t pillX = cx + 2;
+                const uint16_t pillW = COL_W - 9;
+                const uint16_t pillH = 8;
+                const uint16_t maxY = destY + 24;
+                const uint16_t minY = destY + 33;
+                _tft.fillRoundRect(pillX, maxY, pillW, pillH, 3, weatherTempBg565(fd.tempMax));
+                _tft.fillRoundRect(pillX, minY, pillW, pillH, 3, weatherTempBg565(fd.tempMin));
+                _tft.setTextDatum(MC_DATUM);
+                _tft.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMax));
+                _tft.drawString(tmax, pillX + pillW / 2, maxY + pillH / 2);
+                _tft.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMin));
+                _tft.drawString(tmin, pillX + pillW / 2, minY + pillH / 2);
             } else {
-                _tft.fillCircle(wx + 4, wy + 4, 3, Theme::AMBER);
+                const uint16_t wx = cx + 3;
+                const uint16_t wy = destY + 13;
+                if (fd.rainMm > 1.0f) {
+                    _tft.fillRoundRect(wx, wy + 1, 8, 4, 2, Theme::MUTED);
+                    _tft.drawFastVLine(wx + 2, wy + 6, 2, Theme::BLUE);
+                    _tft.drawFastVLine(wx + 6, wy + 6, 2, Theme::BLUE);
+                } else {
+                    _tft.fillCircle(wx + 4, wy + 4, 3, Theme::AMBER);
+                }
+                char wbuf[6];
+                snprintf(wbuf, sizeof(wbuf), "%.0f", fd.tempMax);
+                _tft.setTextColor(fd.rainMm > 1.0f ? Theme::BLUE : Theme::AMBER, Theme::BG);
+                _tft.setTextDatum(TR_DATUM);
+                _tft.drawString(wbuf, cx + COL_W - 2, destY + 13);
             }
-            char wbuf[6];
-            snprintf(wbuf, sizeof(wbuf), "%.0f", fd.tempMax);
-            _tft.setTextColor(fd.rainMm > 1.0f ? Theme::BLUE : Theme::AMBER, Theme::BG);
-            _tft.setTextDatum(TR_DATUM);
-            _tft.drawString(wbuf, cx + COL_W - 2, destY + 11);
         }
         _tft.setTextDatum(TL_DATUM);
         _tft.drawFastVLine(cx, destY, sprH, Theme::BORDER);
     }
     _tft.drawFastHLine(0, destY + HDR_H - 1, planW, Theme::BORDER);
 
-    // ── Lignes zones ──
     for (uint8_t z = 0; z < nbPlan; z++) {
-        uint16_t rowY  = destY + HDR_H + z * zoneH;
+        uint16_t rowY = destY + HDR_H + z * zoneH;
         uint16_t col_z = Theme::ZONE_COLORS[z % 4];
         _tft.drawFastHLine(0, rowY + zoneH - 1, planW, Theme::BORDER);
 
-        // Bulle de couleur dans la colonne planning.
         const int16_t bulletX = LABEL_W_G2 / 2;
         const int16_t bulletY = rowY + zoneH / 2;
         const int16_t bulletR = max(2, min(4, (int)(zoneH / 2 - 1)));
@@ -881,26 +906,21 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
         if (!_schedule) continue;
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
         for (uint8_t c = 0; c < 2; c++) {
-            int      espIdx = (baseIdx + c) % 7;
-            uint16_t x0     = LABEL_W_G2 + c * COL_W + 1;
+            int espIdx = (baseIdx + c) % 7;
+            uint16_t cx = LABEL_W_G2 + c * COL_W;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
-            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                const TimeSlot& sl = ds.slots[s];
-                if (!sl.enabled) continue;
-                float frac = (float)(sl.hour * 60 + sl.minute) / 1440.0f;
-                int sx = x0 + (int)(frac * (COL_W - 2));
-                int sw = max(2, (int)((float)sl.duration / 1440.0f * (COL_W - 2)));
-                uint16_t barH = max((uint16_t)2, (uint16_t)(zoneH - 4));
-                _tft.fillRoundRect(sx, rowY + 2, sw, barH, 1, col_z);
+            for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
+                const TimeSlot& slot = ds.slots[sl];
+                if (!slot.enabled) continue;
+                float frac = (float)(slot.hour * 60 + slot.minute) / 1440.0f;
+                int sx = cx + 1 + (int)(frac * (COL_W - 2));
+                int sw = max(2, (int)((float)slot.duration / 1440.0f * (COL_W - 2)));
+                _tft.fillRoundRect(sx, rowY + 2, sw, max(2, (int)zoneH - 4), 1, col_z);
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────
-//  Planning 7 jours plein écran avec météo — GRID4 vues 0 et 1
-//  destY : y départ, h : hauteur disponible
-//  zStart..zEnd-1 : plage de zones à afficher (0-7 ou 8-15)
 // ─────────────────────────────────────────────
 void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                                            uint8_t zStart, uint8_t zEnd) {
@@ -1130,19 +1150,23 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.drawString(next.c_str(), 6, next.length() <= 11 ? 32 : 38);
         _sprBtn0.setTextSize(1);
 
-        // Météo
-        if (_weather && _weather->hasFetched()) {
-            ForecastDay fd = _weather->getForecastDay(0);
-            char wbuf[20];
-            if (fd.tempMax > -50.0f)
-                snprintf(wbuf, sizeof(wbuf), "%s %.0fmm %.0fC",
-                         fd.rainMm > 1.0f ? "~" : "o",
-                         fd.rainMm, fd.tempMax);
+        // Informations propres à la zone : mode et éventuel blocage pluie.
+        if (_schedule) {
+            ZoneSchedule zs = _schedule->getZoneSchedule(zone);
+            char modeBuf[28];
+            if (zs.mode == 0)
+                snprintf(modeBuf, sizeof(modeBuf), "Jours fixes");
             else
-                snprintf(wbuf, sizeof(wbuf), "%s %.0fmm",
-                         fd.rainMm > 1.0f ? "~" : "o", fd.rainMm);
-            _sprBtn0.setTextColor(fd.rainMm > 1.0f ? Theme::BLUE : Theme::AMBER, bg);
-            _sprBtn0.drawString(wbuf, 6, 58);
+                snprintf(modeBuf, sizeof(modeBuf), "Intervalle / %uj", (unsigned)zs.intervalDays);
+
+            bool rainBlocked = false;
+            if (_weather && _weather->hasFetched() && _config) {
+                ForecastDay fd = _weather->getForecastDay(0);
+                rainBlocked = fd.valid && fd.rainMm >= _config->zone(zone).rain.thresholdMm;
+            }
+            _sprBtn0.setTextColor(rainBlocked ? Theme::AMBER : Theme::MUTED, bg);
+            _sprBtn0.drawString(modeBuf, 6, 58);
+            _sprBtn0.drawString(rainBlocked ? "Pluie : arrosage bloque" : "Pluie : aucun blocage", 6, 69);
         }
 
         _sprBtn0.setTextColor(Theme::MUTED, bg);
