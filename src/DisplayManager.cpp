@@ -1008,62 +1008,75 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.setTextDatum(TL_DATUM);
 
     } else {
-        // Prochain slot — logique différenciée jours fixes vs intervalle
+        // Prochain slot — toujours chercher le créneau futur le plus proche.
+        // Les slots peuvent être enregistrés dans un ordre quelconque : ne jamais
+        // considérer que slots[0] est chronologiquement le premier.
         String next = "--:--";
         if (_schedule && _ntp && _ntp->isSynced()) {
-            ZoneSchedule zs  = _schedule->getZoneSchedule(zone);
-            int todayEsp     = todayEspIdx();
-            uint32_t epochNow = _ntp->getEpochDay();
+            ZoneSchedule zs   = _schedule->getZoneSchedule(zone);
+            const int todayEsp = todayEspIdx();
+            const uint32_t epochNow = _ntp->getEpochDay();
+            const int nowMin = _ntp->getHour() * 60 + _ntp->getMinute();
+            const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
+
+            auto findEarliestSlot = [](const DaySchedule& ds, int minExclusive,
+                                       uint8_t& outHour, uint8_t& outMinute) -> bool {
+                int bestMin = 24 * 60;
+                bool found = false;
+                for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+                    const TimeSlot& slot = ds.slots[s];
+                    if (!slot.enabled) continue;
+                    const int slotMin = slot.hour * 60 + slot.minute;
+                    if (slotMin <= minExclusive || slotMin >= bestMin) continue;
+                    bestMin = slotMin;
+                    outHour = slot.hour;
+                    outMinute = slot.minute;
+                    found = true;
+                }
+                return found;
+            };
 
             if (zs.mode == 0) {
-                // Mode jours fixes : parcourir les 7 prochains jours
+                // Jours fixes : aujourd'hui, ignorer les créneaux passés ; pour les
+                // jours suivants, choisir le premier créneau chronologique du jour.
                 for (int d = 0; d < NB_DAYS; d++) {
-                    int dayIdx = (todayEsp + d) % NB_DAYS;
-                    DaySchedule& ds = zs.daySlots[dayIdx];
-                    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                        if (!ds.slots[s].enabled) continue;
-                        // Aujourd'hui : vérifier si l'heure n'est pas passée
-                        if (d == 0) {
-                            int curH = _ntp->getHour();
-                            int curM = _ntp->getMinute();
-                            int slotMin = ds.slots[s].hour * 60 + ds.slots[s].minute;
-                            int nowMin  = curH * 60 + curM;
-                            if (slotMin <= nowMin) continue; // déjà passé
-                        }
-                        // Calculer le nom du jour (Lu, Ma...)
-                        const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
-                        char buf2[18];
-                        if (d == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d",   ds.slots[s].hour, ds.slots[s].minute);
-                        else if (d == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", ds.slots[s].hour, ds.slots[s].minute);
-                        else             snprintf(buf2, sizeof(buf2), "%s %02d:%02d",      JOURS[dayIdx], ds.slots[s].hour, ds.slots[s].minute);
-                        next = buf2;
-                        d = NB_DAYS; break;
-                    }
-                }
-            } else {
-                // Mode intervalle : calculer la prochaine date depuis lastWateredDay
-                uint32_t lastDay = zs.lastWateredDay;
-                uint32_t nextDay = (lastDay > 0)
-                    ? lastDay + zs.intervalDays
-                    : epochNow;  // jamais arrosé → aujourd'hui
+                    const int dayIdx = (todayEsp + d) % NB_DAYS;
+                    uint8_t hour = 0, minute = 0;
+                    const int minExclusive = (d == 0) ? nowMin : -1;
+                    if (!findEarliestSlot(zs.daySlots[dayIdx], minExclusive, hour, minute)) continue;
 
-                // Si nextDay est passé, avancer par intervalles jusqu'au futur
-                while (nextDay < epochNow) nextDay += zs.intervalDays;
-
-                // Trouver le premier slot activé
-                for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                    if (!zs.intervalSlots.slots[s].enabled) continue;
-                    // Convertir nextDay en index jour semaine ESP (0=lun)
-                    // epoch day 0 = jeudi 1/1/1970 → jeudi = idx 3
-                    uint8_t nextEspIdx = (uint8_t)((nextDay + 3) % 7);
-                    const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
-                    int32_t daysAhead = (int32_t)(nextDay - epochNow);
-                    char buf2[18];
-                    if (daysAhead <= 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d",   zs.intervalSlots.slots[s].hour, zs.intervalSlots.slots[s].minute);
-                    else if (daysAhead == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", zs.intervalSlots.slots[s].hour, zs.intervalSlots.slots[s].minute);
-                    else                     snprintf(buf2, sizeof(buf2), "%s %02d:%02d",      JOURS[nextEspIdx], zs.intervalSlots.slots[s].hour, zs.intervalSlots.slots[s].minute);
+                    char buf2[20];
+                    if (d == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
+                    else if (d == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
+                    else             snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[dayIdx], hour, minute);
                     next = buf2;
                     break;
+                }
+            } else {
+                // Intervalle : déterminer le prochain jour autorisé, puis chercher le
+                // premier créneau encore futur. Si tous les créneaux du jour sont
+                // passés, avancer d'un intervalle complet.
+                uint32_t nextDay = (zs.lastWateredDay > 0)
+                    ? zs.lastWateredDay + zs.intervalDays
+                    : epochNow;
+                while (nextDay < epochNow) nextDay += zs.intervalDays;
+
+                uint8_t hour = 0, minute = 0;
+                int minExclusive = (nextDay == epochNow) ? nowMin : -1;
+                if (!findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute) &&
+                    nextDay == epochNow) {
+                    nextDay += zs.intervalDays;
+                    minExclusive = -1;
+                }
+
+                if (findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute)) {
+                    const int32_t daysAhead = (int32_t)(nextDay - epochNow);
+                    const uint8_t nextEspIdx = (uint8_t)((nextDay + 3) % 7);
+                    char buf2[20];
+                    if (daysAhead == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
+                    else if (daysAhead == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
+                    else                     snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[nextEspIdx], hour, minute);
+                    next = buf2;
                 }
             }
         }
