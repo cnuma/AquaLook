@@ -637,10 +637,14 @@ function populateDrawer() {
   if (!adminStatus) return;
   const s = adminStatus;
 
-  // Marquer la valeur courante de nbZones pour detecter les changements
+  // Conserver les valeurs appliquées pour détecter les changements nécessitant un reboot.
   if (s.system) {
-    const el = document.getElementById('cfg-nb-zones');
-    if (el) el.dataset.current = s.system.nbZones ?? 2;
+    const zonesEl = document.getElementById('cfg-nb-zones');
+    const ctrlEl  = document.getElementById('cfg-relay-controller');
+    const logicEl = document.getElementById('cfg-relay-logic');
+    if (zonesEl) zonesEl.dataset.current = s.system.nbZones ?? 2;
+    if (ctrlEl)  ctrlEl.dataset.current  = s.system.relayController ?? 0;
+    if (logicEl) logicEl.dataset.current = s.system.relayLogic ?? 0;
   }
 
   // Titre header avec ville OWM
@@ -786,29 +790,48 @@ async function saveCfgOwm() {
   toast('Meteo enregistree');
 }
 
-async function saveCfgZones() {
-  // Noms de zones : modifiables via la modale de config zone (clic sur la carte)
-  const maxMin   = parseInt(document.getElementById('cfg-maxwater').value)    || 60;
-  const manDur   = parseInt(document.getElementById('cfg-manual-dur').value)  || 10;
-  const nbZones  = Math.min(8, parseInt(document.getElementById('cfg-nb-zones').value) || 2);
-  const curNbZ   = parseInt(document.getElementById('cfg-nb-zones').dataset.current || '2');
+async function saveCfgRelaySetup() {
+  const controller = parseInt(document.getElementById('cfg-relay-controller').value) || 0;
+  const relayLogic = parseInt(document.getElementById('cfg-relay-logic').value) || 0;
+  const nbZones = Math.min(8, parseInt(document.getElementById('cfg-nb-zones').value) || 2);
+  const maxMin = Math.min(120, Math.max(1, parseInt(document.getElementById('cfg-maxwater').value) || 60));
+  const manDur = Math.min(120, Math.max(1, parseInt(document.getElementById('cfg-manual-dur').value) || 10));
 
-  if (nbZones !== curNbZ) {
-    if (!confirm(`Changer a ${nbZones} zones declenchera un reboot. Continuer ?`)) return;
+  const ctrlEl = document.getElementById('cfg-relay-controller');
+  const logicEl = document.getElementById('cfg-relay-logic');
+  const zonesEl = document.getElementById('cfg-nb-zones');
+  const oldController = parseInt(ctrlEl.dataset.current || '0');
+  const oldRelayLogic = parseInt(logicEl.dataset.current || '0');
+  const oldNbZones = parseInt(zonesEl.dataset.current || '2');
+  const needReboot = controller !== oldController || relayLogic !== oldRelayLogic || nbZones !== oldNbZones;
+
+  if (needReboot) {
+    const controllerLabel = controller === 1 ? 'MCP23017' : 'XL9535';
+    const logicLabel = relayLogic === 0 ? 'inverse' : 'directe';
+    const message = `Appliquer ${controllerLabel}, ${nbZones} zone${nbZones>1?'s':''}, logique ${logicLabel} ? Le module va redémarrer.`;
+    if (!confirm(message)) return;
   }
 
-  // Une seule requête et une seule écriture LittleFS : la durée manuelle
-  // et la configuration système sont appliquées ensemble hors callback AsyncTCP.
-  // nbZones est toujours envoyé, y compris lors d'une diminution 8 -> 4/2.
-  const sysBody = {
+  const response = await api('/api/system', {
+    relayController: controller,
+    relayLogic,
+    nbZones,
     maxWateringMin: maxMin,
-    manualDurationMin: manDur,
-    nbZones
-  };
+    manualDurationMin: manDur
+  });
 
-  await api('/api/system', sysBody);
+  if (!response.ok) {
+    toast('Erreur pendant l enregistrement', true);
+    return;
+  }
 
-  toast(nbZones !== curNbZ ? 'Reboot en cours...' : 'Zones enregistrees');
+  if (needReboot) {
+    toast('Configuration enregistrée — redémarrage...');
+    closeDrawer();
+  } else {
+    toast('Configuration enregistrée');
+    fetchAdminStatus();
+  }
 }
 
 function updateZoneOptions(preferredValue) {
@@ -835,28 +858,10 @@ function updateZoneOptions(preferredValue) {
 
 async function saveCfgSystem() {
   const timeout = parseInt(document.getElementById('cfg-screen-timeout').value) || 5;
-  const ledMode = parseInt(document.getElementById('cfg-led-mode').value)       || 1;
+  const ledMode = parseInt(document.getElementById('cfg-led-mode').value) || 1;
 
   await api('/api/system', { screenTimeout: timeout, ledMode });
   toast('Systeme enregistre');
-}
-
-async function saveCfgRelayController() {
-  const rc = parseInt(document.getElementById('cfg-relay-controller').value) || 0;
-  const nbZones = parseInt(document.getElementById('cfg-nb-zones').value) || 2;
-  const label = rc === 1 ? 'MCP23017' : 'XL9535';
-  if (!confirm(`Utiliser le contrôleur ${label} avec ${nbZones} zone${nbZones>1?'s':''} ? Le module va redémarrer.`)) return;
-  await api('/api/system', { relayController: rc, nbZones });
-  toast('Contrôleur enregistré — reboot en cours...');
-  closeDrawer();
-}
-
-async function saveCfgRelayLogic() {
-  const rl = parseInt(document.getElementById('cfg-relay-logic').value) || 0;
-  if (!confirm(`Modifier la logique relais (${rl===0?'inverse':'directe'}) ? Prend effet immediatement.`)) return;
-  await api('/api/system', { relayLogic: rl });
-  toast('Logique relais enregistree -- verifier le comportement des relais');
-  fetchAdminStatus();
 }
 
 async function launchCaptive() {

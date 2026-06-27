@@ -748,7 +748,8 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
     next.nbRelaisPhysical = next.nbZones;
 
     const bool needReboot = (next.nbZones != oldNbZones) ||
-                            (next.relayController != _config->system().relayController);
+                            (next.relayController != _config->system().relayController) ||
+                            (next.relayLogic != _config->system().relayLogic);
 
     uint16_t manualDuration = _config->manual().durationMin;
     bool manualDurationValid = false;

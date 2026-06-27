@@ -179,17 +179,33 @@
       <button class="btn-cfg primary" onclick="saveCfgOwm()">Enregistrer</button>
     </div>
   </div>
-  <!-- Zones -->
+  <!-- Zones et contrôleur relais -->
   <div class="cfg-section" id="sec-zones">
     <div class="cfg-section-header" onclick="toggleSection('sec-zones')">
-      <span class="cfg-section-title"><span class="sec-icon">💧</span>Zones</span>
+      <span class="cfg-section-title"><span class="sec-icon">💧</span>Zones et contrôleur relais</span>
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
       <div class="cfg-field">
+        <label>Contrôleur des relais</label>
+        <select id="cfg-relay-controller" onchange="updateZoneOptions()">
+          <option value="0">XL9535 (carte YellowCard)</option>
+          <option value="1">MCP23017 (modules relais externes)</option>
+        </select>
+        <div class="cfg-hint">Le changement de contrôleur nécessite un redémarrage.</div>
+      </div>
+      <div class="cfg-field">
         <label>Nombre de zones</label>
         <select id="cfg-nb-zones"></select>
-        <div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie. Reboot automatique apres modification.</div>
+        <div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie.</div>
+      </div>
+      <div class="cfg-field" style="padding:10px;border:1px dashed var(--amber);border-radius:6px;background:var(--bg2)">
+        <label style="color:var(--amber)">&#9888; Logique relais</label>
+        <select id="cfg-relay-logic">
+          <option value="0">Inverse (niveau 0 → relais actif)</option>
+          <option value="1">Directe (niveau 1 → relais actif)</option>
+        </select>
+        <div class="cfg-hint" style="color:var(--amber)">Un mauvais choix peut activer les relais au démarrage.</div>
       </div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Duree max arrosage (min)</label>
@@ -199,26 +215,7 @@
           <input type="number" id="cfg-manual-dur" min="1" max="120" placeholder="10">
         </div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgZones()">Enregistrer</button>
-      <div class="cfg-field" style="margin-top:16px">
-        <label>Contrôleur des relais</label>
-        <select id="cfg-relay-controller" onchange="updateZoneOptions()">
-          <option value="0">XL9535 (carte YellowCard)</option>
-          <option value="1">MCP23017 (modules relais externes)</option>
-        </select>
-        <div class="cfg-hint">Adresse I2C : 0x20 — redémarrage après modification</div>
-        <button class="btn-cfg warn" onclick="saveCfgRelayController()" style="margin-top:8px">Appliquer le contrôleur</button>
-      </div>
-      <!-- Logique relais : parametre sensible hardware -->
-      <div class="cfg-field" style="margin-top:16px;padding:10px;border:1px dashed var(--amber);border-radius:6px;background:var(--bg2)">
-        <label style="color:var(--amber)">&#9888; Logique relais (hardware)</label>
-        <select id="cfg-relay-logic">
-          <option value="0">Inverse (bit=0 → ON) — défaut</option>
-          <option value="1">Directe (bit=1 → ON)</option>
-        </select>
-        <div class="cfg-hint" style="color:var(--amber)">Sensible — modifier uniquement si les relais s activent a l envers</div>
-        <button class="btn-cfg warn" onclick="saveCfgRelayLogic()" style="margin-top:8px">Appliquer</button>
-      </div>
+      <button class="btn-cfg primary" onclick="saveCfgRelaySetup()">Enregistrer la configuration</button>
       <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
         <label style="margin-bottom:0">Affichage dense</label>
         <button id="btn-zones-view"
