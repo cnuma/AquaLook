@@ -824,6 +824,7 @@ void WebManager::handleGetDisplay(AsyncWebServerRequest* req) {
     // Options météo LCD
     doc["showWeatherIcon"] = d.showWeatherIcon;
     doc["showWeatherTemp"] = d.showWeatherTemp;
+    doc["weatherVisualsEnabled"] = _config->weatherVisualsEnabled();
     doc["weatherTipCondition"] = d.weatherTipCondition;
     doc["weatherTipTemp"]      = d.weatherTipTemp;
     doc["weatherTipRain"]      = d.weatherTipRain;
@@ -882,6 +883,8 @@ void WebManager::handleSetDisplay(AsyncWebServerRequest* req, JsonDocument& doc)
     if (doc["g4Gpad"].is<int>())  d.g4Gpad  = constrain((uint8_t)(doc["g4Gpad"]  | 1), (uint8_t)0, (uint8_t)8);
     if (doc["showWeatherIcon"].is<bool>()) d.showWeatherIcon = doc["showWeatherIcon"];
     if (doc["showWeatherTemp"].is<bool>()) d.showWeatherTemp = doc["showWeatherTemp"];
+    if (doc["weatherVisualsEnabled"].is<bool>())
+        _config->setWeatherVisualsEnabled(doc["weatherVisualsEnabled"]);
     if (doc["weatherTipCondition"].is<bool>()) d.weatherTipCondition = doc["weatherTipCondition"];
     if (doc["weatherTipTemp"].is<bool>())      d.weatherTipTemp      = doc["weatherTipTemp"];
     if (doc["weatherTipRain"].is<bool>())      d.weatherTipRain      = doc["weatherTipRain"];

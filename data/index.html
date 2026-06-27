@@ -275,6 +275,10 @@
     </div>
     <div class="cfg-section-body">
       <div class="cfg-hint" style="margin-bottom:10px">Choisir les informations affichées au survol d'une journée météo dans le planning.</div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:12px">
+        <input type="checkbox" id="disp-weatherVisualsEnabled" onchange="onDispNumericChange()" style="width:auto;margin:0">
+        <label for="disp-weatherVisualsEnabled" style="margin:0;cursor:pointer">Fond thermique et jauge verticale de pluie sur le LCD et la page Web</label>
+      </div>
       <div class="cfg-field-row">
         <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipCondition" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipCondition" style="margin:0;cursor:pointer">Condition météo</label></div>
         <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipTemp" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipTemp" style="margin:0;cursor:pointer">Températures min/max et ressenti</label></div>

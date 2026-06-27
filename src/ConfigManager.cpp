@@ -55,6 +55,14 @@ void ConfigManager::begin() {
         EventLog::log(LOG_INFO, "Config: LittleFS monte (lecture ressources)");
     }
 
+    {
+        Preferences prefs;
+        if (prefs.begin(CFG_NVS_NAMESPACE, true)) {
+            _weatherVisualsEnabled = prefs.getBool("wxVisual", false);
+            prefs.end();
+        }
+    }
+
     if (loadNvs()) return;
 
     // Migration unique depuis l'ancien /config.json, sans jamais le réécrire.
@@ -573,6 +581,18 @@ void ConfigManager::setZoneName(uint8_t z, const char* name) {
 // ─────────────────────────────────────────────────────────────
 //  Affichage LCD — hot-reload, pas de reboot
 // ─────────────────────────────────────────────────────────────
+
+void ConfigManager::setWeatherVisualsEnabled(bool enabled) {
+    if (_weatherVisualsEnabled == enabled) return;
+    _weatherVisualsEnabled = enabled;
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBool("wxVisual", enabled);
+        prefs.end();
+    }
+    EventBus::displayDirty = true;
+}
+
 void ConfigManager::setDisplay(const CfgDisplay& d) {
     _display = d;
     save();

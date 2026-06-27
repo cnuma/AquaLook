@@ -330,10 +330,16 @@ function renderPlanning() {
       const temp = parseFloat(fd.tempMax);
       const icon = rain>1.0?'&#127783;':'&#9728;';
       const tip  = weatherTooltipHtml(fd, DAYS_FULL[esp]);
-      html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''}">
-        <div class="wx-icon">${icon}</div>
-        ${!isNaN(temp)?`<div class="wx-temp">${temp.toFixed(0)}C</div>`:''}
-        ${rain>0?`<div class="wx-rain">${rain.toFixed(1)}mm</div>`:""}
+      const visual = !!(displayConfig && displayConfig.weatherVisualsEnabled);
+      const tempClass = visual && !isNaN(temp) ? weatherTempClass(temp) : '';
+      const rainPct = visual ? Math.max(0, Math.min(100, rain / 20 * 100)) : 0;
+      html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''} ${tempClass}">
+        <div class="wx-content">
+          <div class="wx-icon">${icon}</div>
+          ${!isNaN(temp)?`<div class="wx-temp">${temp.toFixed(0)}C</div>`:''}
+          ${rain>0?`<div class="wx-rain">${rain.toFixed(1)}mm</div>`:""}
+        </div>
+        ${visual?`<div class="wx-rain-gauge" title="Pluie prévue : ${rain.toFixed(1)} mm"><span style="height:${rainPct.toFixed(0)}%"></span></div>`:''}
         ${tip}
       </div>`;
     } else {
@@ -451,6 +457,14 @@ function bindWeatherTooltips() {
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function weatherTempClass(temp) {
+  if (temp < 5) return 'wx-temp-freezing';
+  if (temp < 12) return 'wx-temp-cold';
+  if (temp < 20) return 'wx-temp-mild';
+  if (temp < 27) return 'wx-temp-warm';
+  return 'wx-temp-hot';
 }
 
 function weatherTooltipHtml(fd, dayLabel) {
@@ -951,7 +965,7 @@ const DISP_COLOR_FIELDS   = ['cBg','cSurface','cSurface2','cBorder',
 const DISP_NUMERIC_FIELDS = ['rSm','rMd','rLg','accentBarW',
                               'refreshNomMs','refreshActMs',
                               'planGap','g2Gpad','g4Gpad',
-                              'showWeatherIcon','showWeatherTemp',
+                              'showWeatherIcon','showWeatherTemp','weatherVisualsEnabled',
                               'weatherTipCondition','weatherTipTemp','weatherTipRain',
                               'weatherTipPop','weatherTipHumidity','weatherTipWind',
                               'weatherTipGust','weatherTipClouds','weatherTipPressure'];
@@ -965,7 +979,7 @@ const DISP_DEFAULTS = {
   rSm:4, rMd:6, rLg:10, accentBarW:3,
   refreshNomMs:5000, refreshActMs:1000,
   planGap:6, g2Gpad:1, g4Gpad:1,
-  showWeatherIcon:true, showWeatherTemp:false,
+  showWeatherIcon:true, showWeatherTemp:false, weatherVisualsEnabled:false,
   weatherTipCondition:true, weatherTipTemp:true, weatherTipRain:true,
   weatherTipPop:true, weatherTipHumidity:true, weatherTipWind:true,
   weatherTipGust:true, weatherTipClouds:false, weatherTipPressure:false
@@ -991,7 +1005,7 @@ async function fetchDisplayConfig() {
 
 function populateDisplaySection() {
   if (!displayConfig) return;
-  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
+  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherVisualsEnabled','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
   DISP_COLOR_FIELDS.forEach(function(f) {
     var el = document.getElementById('disp-' + f);
     if (el && displayConfig[f]) el.value = displayConfig[f];
@@ -1087,7 +1101,7 @@ function onDispNumericChange() {
 }
 
 async function saveCfgDisplay() {
-  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
+  var BOOL_FIELDS = ['showWeatherIcon','showWeatherTemp','weatherVisualsEnabled','weatherTipCondition','weatherTipTemp','weatherTipRain','weatherTipPop','weatherTipHumidity','weatherTipWind','weatherTipGust','weatherTipClouds','weatherTipPressure'];
   var body = {};
   DISP_COLOR_FIELDS.forEach(function(f) {
     var el = document.getElementById('disp-' + f);
@@ -1121,7 +1135,11 @@ async function resetCfgDisplay() {
     cZone0:'#00fc00', cZone1:'#0090f8', cZone2:'#f8a400', cZone3:'#780078',
     rSm:4, rMd:6, rLg:10, accentBarW:3,
     refreshNomMs:5000, refreshActMs:1000,
-    planGap:6, g2Gpad:1, g4Gpad:1
+    planGap:6, g2Gpad:1, g4Gpad:1,
+    showWeatherIcon:true, showWeatherTemp:false, weatherVisualsEnabled:false,
+    weatherTipCondition:true, weatherTipTemp:true, weatherTipRain:true,
+    weatherTipPop:true, weatherTipHumidity:true, weatherTipWind:true,
+    weatherTipGust:true, weatherTipClouds:false, weatherTipPressure:false
   };
   var r = await api('/api/display', defaults);
   if (r && r.ok) {

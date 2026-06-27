@@ -22,6 +22,23 @@ static uint16_t hexToRgb565(const char* hex) {
     return (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
 }
 
+
+static uint16_t weatherTempBg565(float tempC) {
+    if (tempC < 5.0f)  return 0x11A9; // bleu froid sombre
+    if (tempC < 12.0f) return 0x1A4B; // bleu clair sombre
+    if (tempC < 20.0f) return 0x2246; // vert sombre
+    if (tempC < 27.0f) return 0x4A24; // ambre sombre
+    return 0x49A4;                    // rouge sombre
+}
+
+static uint8_t weatherRainBarHeight(float rainMm, uint8_t maxHeight) {
+    if (rainMm <= 0.0f || maxHeight == 0) return 0;
+    float ratio = rainMm / 20.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+    uint8_t h = (uint8_t)(ratio * maxHeight + 0.5f);
+    return h == 0 ? 1 : h;
+}
+
 #define SCREEN_W   320
 #define SCREEN_H   240
 
@@ -685,6 +702,21 @@ void DisplayManager::renderPlanSprite() {
     const char* jours[] = {"Lu","Ma","Me","Je","Ve","Sa","Di"};
     int todayIdx = todayEspIdx();
     int baseIdx  = (todayIdx >= 0) ? todayIdx : 0;
+    const bool weatherVisuals = _config && _config->weatherVisualsEnabled();
+    if (weatherVisuals) {
+        for (uint8_t col = 0; col < 5; ++col) {
+            ForecastDay fd = _weather ? _weather->getForecastDay(col) : ForecastDay{};
+            if (!fd.valid || fd.tempMax <= -50.0f) continue;
+            const int x0 = PL_LABEL_W + col * PL_DAY_W + 1;
+            const int y0 = 11;
+            const int h = _planHdrH > y0 ? _planHdrH - y0 - 1 : 0;
+            if (h <= 0) continue;
+            _sprPlan.fillRect(x0, y0, PL_DAY_W - 2, h, weatherTempBg565(fd.tempMax));
+            _sprPlan.drawRect(x0 + PL_DAY_W - 7, y0 + 2, 4, h - 4, Theme::BLUE);
+            uint8_t barH = weatherRainBarHeight(fd.rainMm, h > 6 ? h - 6 : 0);
+            if (barH) _sprPlan.fillRect(x0 + PL_DAY_W - 6, y0 + h - 3 - barH, 2, barH, Theme::BLUE);
+        }
+    }
     for (int col = 0; col < 7; col++) {
         int espIdx = (baseIdx + col) % 7;
         int x = PL_LABEL_W + col * PL_DAY_W + PL_DAY_W / 2 - 8;
@@ -804,6 +836,16 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
         // température à droite. Les deux tiennent dans une colonne de 26 px.
         ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
         if (fd.valid && fd.tempMax > -50.0f) {
+            if (_config && _config->weatherVisualsEnabled()) {
+                const uint16_t boxY = destY + 10;
+                const uint16_t boxH = HDR_H > 11 ? HDR_H - 11 : 0;
+                if (boxH > 0) {
+                    _tft.fillRect(cx + 1, boxY, COL_W - 2, boxH, weatherTempBg565(fd.tempMax));
+                    _tft.drawRect(cx + COL_W - 7, boxY + 1, 4, boxH - 2, Theme::BLUE);
+                    uint8_t barH = weatherRainBarHeight(fd.rainMm, boxH > 4 ? boxH - 4 : 0);
+                    if (barH) _tft.fillRect(cx + COL_W - 6, boxY + boxH - 2 - barH, 2, barH, Theme::BLUE);
+                }
+            }
             const uint16_t wx = cx + 3;
             const uint16_t wy = destY + 11;
             if (fd.rainMm > 1.0f) {

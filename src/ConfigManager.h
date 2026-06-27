@@ -215,6 +215,7 @@ public:
     const CfgSystem& system() const { return _system; }
     const CfgZone&   zone(uint8_t z) const;
     const CfgDisplay& display() const { return _display; }
+    bool weatherVisualsEnabled() const { return _weatherVisualsEnabled; }
     uint8_t          nbZones()        const { return _system.nbZones; }
     uint8_t          nbRelais()       const { return _system.nbRelaisPhysical; }
     uint8_t          relayLogic()     const { return _system.relayLogic; }
@@ -257,6 +258,7 @@ public:
 
     // Affichage LCD (display tokens)
     void setDisplay(const CfgDisplay& d);  // hot-reload, pas de reboot
+    void setWeatherVisualsEnabled(bool enabled);
 
     // Planning
     void setZoneMode(uint8_t zone, uint8_t mode);
@@ -280,6 +282,7 @@ private:
     CfgDisplay _display;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
     bool      _loaded = false;
+    bool      _weatherVisualsEnabled = false;
 
     bool loadNvs();
     bool loadLegacyJson();

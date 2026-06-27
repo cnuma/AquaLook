@@ -578,3 +578,21 @@ header {
   border: none; border-top: 1px dashed var(--border);
   margin: 14px 0;
 }
+
+/* Météo enrichie : teinte thermique + jauge pluie (option utilisateur) */
+.pg-weather { position: relative; overflow: visible; min-height: 48px; }
+.wx-content { position: relative; z-index: 1; }
+.wx-temp-freezing { background: #17324a; }
+.wx-temp-cold     { background: #21485a; }
+.wx-temp-mild     { background: #254a36; }
+.wx-temp-warm     { background: #5a4820; }
+.wx-temp-hot      { background: #5a2824; }
+.wx-rain-gauge {
+  position: absolute; right: 3px; top: 4px; bottom: 4px; width: 5px;
+  border: 1px solid rgba(120,180,255,.65); border-radius: 3px;
+  background: rgba(0,0,0,.18); overflow: hidden;
+}
+.wx-rain-gauge span {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: #4aa3ff; min-height: 0;
+}
