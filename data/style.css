@@ -1,7 +1,8 @@
 @import url('/style-base.css');
 
-/* Meteo Web : case blanche, couleur concentree sur les temperatures. */
-.pg-weather[class*="wx-temp-"]{background:#fff!important}
+/* Meteo Web : fond bleu-gris neutre, couleur concentree sur les temperatures. */
+.pg-weather{background:#f2f6f8!important;border-color:#c8d6dc!important}
+.pg-weather.today-wx{background:#edf4f7!important;border-color:#75a9bb!important}
 .wx-content{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 4px}
 .wx-icon{flex-basis:100%}
 .wx-temp-pill{display:inline-block;padding:1px 5px;border-radius:9px;font-weight:700;line-height:1.35;box-shadow:0 0 0 1px rgba(40,70,55,.12)}
