@@ -1,0 +1,12 @@
+$ErrorActionPreference = "Stop"
+
+Write-Host "Socle Codex deja integre au depot."
+Write-Host "Verifier les fichiers suivants :"
+Write-Host "  AGENTS.md"
+Write-Host "  README.md"
+Write-Host "  docs/codex/"
+Write-Host ""
+Write-Host "Controles recommandes :"
+Write-Host "  git status"
+Write-Host "  git diff --check"
+Write-Host "  git diff --stat"
