@@ -9,6 +9,7 @@
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
+#include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
 
 // ── Instances ─────────────────────────────────
@@ -128,6 +129,7 @@ void loop() {
 
     // ── Affichage + touch ─────────────────────
     displayMgr.update();
+    displayPlanningDecorDraw(displayMgr);
 
     yield();
 }
