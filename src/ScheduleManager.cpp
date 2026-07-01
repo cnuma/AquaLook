@@ -1,56 +1,48 @@
 #include "ScheduleManager.h"
 #include "EventBus.h"
 
-// ═══════════════════════════════════════════════════════════════
-//  begin() — initialisation RAM uniquement
-//  Le planning réel est chargé par ConfigManager::applyToSchedule()
-// ═══════════════════════════════════════════════════════════════
 void ScheduleManager::begin() {
-    // Initialiser toutes les zones jusqu'à MAX_ZONES
     for (uint8_t z = 0; z < MAX_ZONES; z++) {
         _zones[z]      = ZoneSchedule{};
         _active[z]     = ActiveSlot{};
         _lastReason[z] = "En attente";
     }
     _lastCheckedMinute = 0xFFFFFFFF;
+    _recoveryPending   = true;
     Serial.printf("[Schedule] Initialisé — %d zones max, %d actives\n",
                   MAX_ZONES, _nbZones);
 }
 
-// ─────────────────────────────────────────────────────────────
-//  setNbZones — propager le nombre de zones actives depuis Config
-// ─────────────────────────────────────────────────────────────
 void ScheduleManager::setNbZones(uint8_t nb) {
     _nbZones = constrain(nb, 1, MAX_ZONES);
     Serial.printf("[Schedule] Zones actives : %d\n", _nbZones);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  update() — boucle principale non bloquante
-//  Appelée dans loop() si NTP synced
-// ═══════════════════════════════════════════════════════════════
 void ScheduleManager::update(int hour, int minute, int weekday,
-                              uint32_t epochDay, float rainMm) {
-    if (hour < 0 || minute < 0) return;
+                             uint32_t epochDay, float rainMm) {
+    if (hour < 0 || minute < 0 || weekday < 0 || weekday > 6 || epochDay == 0) return;
 
-    const uint32_t now        = millis();
-    const uint32_t currentMin = (uint32_t)hour * 60 + minute;
+    const uint32_t currentMin = (uint32_t)hour * 60UL + (uint32_t)minute;
 
-    // Vérifier fin de slots actifs
     for (uint8_t z = 0; z < _nbZones; z++) {
         checkSlotEnd(z);
     }
 
-    // Nouvelle minute — vérifier déclenchements
+    // Une seule fois après le boot, dès que l'heure est valide :
+    // rechercher un créneau déjà commencé et encore actif.
+    if (_recoveryPending) {
+        _recoveryPending = false;
+        recoverInterruptedSlots(hour, minute, weekday, epochDay, rainMm);
+    }
+
     if (currentMin == _lastCheckedMinute) return;
     _lastCheckedMinute = currentMin;
 
     const int dayIdx = weekdayToIdx(weekday);
 
     for (uint8_t z = 0; z < _nbZones; z++) {
-        if (_active[z].running) continue;  // déjà actif
+        if (_active[z].running) continue;
 
-        // Itérer sur tous les slots de la zone
         DaySchedule& ds = (_zones[z].mode == SCHEDULE_MODE_DAYS)
                           ? _zones[z].daySlots[dayIdx]
                           : _zones[z].intervalSlots;
@@ -59,22 +51,18 @@ void ScheduleManager::update(int hour, int minute, int weekday,
             const TimeSlot& sl = ds.slots[s];
             if (!sl.enabled) continue;
 
-            const uint32_t slotMin = (uint32_t)sl.hour * 60 + sl.minute;
+            const uint32_t slotMin = (uint32_t)sl.hour * 60UL + sl.minute;
             if (slotMin != currentMin) continue;
 
-            // Heure atteinte — vérifier conditions
             if (shouldWater(z, weekday, epochDay, rainMm)) {
                 activateZone(z, sl.duration, false);
                 _zones[z].lastWateredDay = epochDay;
             }
-            break;  // un seul slot par minute par zone
+            break;
         }
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Getters
-// ═══════════════════════════════════════════════════════════════
 ZoneSchedule ScheduleManager::getZoneSchedule(uint8_t zone) const {
     if (zone >= MAX_ZONES) return ZoneSchedule{};
     return _zones[zone];
@@ -103,9 +91,6 @@ uint32_t ScheduleManager::getRemainingMs(uint8_t zone) const {
            : 0;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Setters planning
-// ═══════════════════════════════════════════════════════════════
 void ScheduleManager::setMode(uint8_t zone, uint8_t mode) {
     if (zone >= MAX_ZONES) return;
     _zones[zone].mode = mode;
@@ -117,21 +102,21 @@ void ScheduleManager::setIntervalDays(uint8_t zone, uint8_t days) {
 }
 
 void ScheduleManager::setDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
-                                   uint8_t h, uint8_t m,
-                                   uint16_t dur, bool enabled) {
+                                 uint8_t h, uint8_t m,
+                                 uint16_t dur, bool enabled) {
     if (zone >= MAX_ZONES || day >= NB_DAYS || slotIdx >= MAX_SLOTS) return;
     _zones[zone].daySlots[day].slots[slotIdx] = TimeSlot(h, m, dur, enabled);
 }
 
 void ScheduleManager::setIntervalSlot(uint8_t zone, uint8_t slotIdx,
-                                       uint8_t h, uint8_t m,
-                                       uint16_t dur, bool enabled) {
+                                      uint8_t h, uint8_t m,
+                                      uint16_t dur, bool enabled) {
     if (zone >= MAX_ZONES || slotIdx >= MAX_SLOTS) return;
     _zones[zone].intervalSlots.slots[slotIdx] = TimeSlot(h, m, dur, enabled);
 }
 
 void ScheduleManager::setRainConfig(uint8_t zone,
-                                     float threshMm, uint8_t hours) {
+                                    float threshMm, uint8_t hours) {
     if (zone >= MAX_ZONES) return;
     _zones[zone].rain = RainConfig(threshMm, hours);
 }
@@ -141,9 +126,6 @@ void ScheduleManager::setManualDuration(uint16_t minutes) {
     _manualDurationMin = minutes;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Arrosage manuel
-// ═══════════════════════════════════════════════════════════════
 void ScheduleManager::startManualWatering(uint8_t zone) {
     if (zone >= MAX_ZONES) return;
     if (_active[zone].running) deactivateZone(zone);
@@ -158,32 +140,24 @@ void ScheduleManager::stopManualWatering(uint8_t zone) {
     Serial.printf("[Schedule] Zone %d — manuel arrêté\n", zone+1);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Callback relais
-// ═══════════════════════════════════════════════════════════════
 void ScheduleManager::setRelayCallback(RelayCallback cb) {
     _relayCallback = cb;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Privé
-// ═══════════════════════════════════════════════════════════════
 int ScheduleManager::weekdayToIdx(int tmWday) {
-    // tm_wday : 0=dim..6=sam → 0=lun..6=dim
     return (tmWday == 0) ? 6 : tmWday - 1;
 }
 
 bool ScheduleManager::shouldWater(uint8_t zone, int weekday,
-                                   uint32_t epochDay, float rainMm) {
+                                  uint32_t epochDay, float rainMm) {
     ZoneSchedule& z   = _zones[zone];
     const int     idx = weekdayToIdx(weekday);
 
-    // ── Jour prévu ? ──────────────────────────
     bool dayOk = false;
     if (z.mode == SCHEDULE_MODE_DAYS) {
-        // Vérifier si au moins un slot est activé ce jour
-        for (uint8_t s = 0; s < MAX_SLOTS && !dayOk; s++)
+        for (uint8_t s = 0; s < MAX_SLOTS && !dayOk; s++) {
             dayOk = z.daySlots[idx].slots[s].enabled;
+        }
     } else {
         dayOk = (z.lastWateredDay == 0)
              || ((epochDay - z.lastWateredDay) >= z.intervalDays);
@@ -194,7 +168,6 @@ bool ScheduleManager::shouldWater(uint8_t zone, int weekday,
         return false;
     }
 
-    // ── Pluie prévue ? ────────────────────────
     if (rainMm >= z.rain.thresholdMm) {
         _lastReason[zone] = String("Pluie ") + String(rainMm, 1) + "mm";
         return false;
@@ -202,6 +175,109 @@ bool ScheduleManager::shouldWater(uint8_t zone, int weekday,
 
     _lastReason[zone] = "Planifie";
     return true;
+}
+
+bool ScheduleManager::shouldRecover(uint8_t zone, int weekday,
+                                    uint32_t scheduledEpochDay, float rainMm) {
+    ZoneSchedule& z = _zones[zone];
+
+    if (z.mode == SCHEDULE_MODE_DAYS) {
+        const int idx = weekdayToIdx(weekday);
+        bool dayOk = false;
+        for (uint8_t s = 0; s < MAX_SLOTS && !dayOk; s++) {
+            dayOk = z.daySlots[idx].slots[s].enabled;
+        }
+        if (!dayOk) return false;
+    } else {
+        // Si lastWateredDay vaut le jour du créneau, celui-ci avait déjà commencé
+        // avant le reboot : sa reprise reste donc autorisée.
+        const bool intervalOk = (z.lastWateredDay == scheduledEpochDay)
+                             || (z.lastWateredDay == 0)
+                             || ((scheduledEpochDay - z.lastWateredDay) >= z.intervalDays);
+        if (!intervalOk) return false;
+    }
+
+    if (rainMm >= z.rain.thresholdMm) {
+        _lastReason[zone] = String("Pluie ") + String(rainMm, 1) + "mm";
+        return false;
+    }
+
+    return true;
+}
+
+void ScheduleManager::recoverInterruptedSlots(int hour, int minute, int weekday,
+                                              uint32_t epochDay, float rainMm) {
+    const uint32_t nowAbsoluteMin = epochDay * 1440UL
+                                  + (uint32_t)hour * 60UL
+                                  + (uint32_t)minute;
+
+    Serial.println("[Schedule] Recherche de créneaux interrompus après reboot");
+
+    for (uint8_t z = 0; z < _nbZones; z++) {
+        if (_active[z].running) continue;
+
+        if (_zones[z].mode == SCHEDULE_MODE_DAYS) {
+            const int todayIdx = weekdayToIdx(weekday);
+            recoverFromSchedule(z, _zones[z].daySlots[todayIdx],
+                                weekday, epochDay, nowAbsoluteMin, rainMm);
+
+            // Un créneau commencé la veille peut encore être actif après minuit.
+            if (!_active[z].running && epochDay > 0) {
+                const int previousWeekday = (weekday + 6) % 7;
+                const int previousIdx = weekdayToIdx(previousWeekday);
+                recoverFromSchedule(z, _zones[z].daySlots[previousIdx],
+                                    previousWeekday, epochDay - 1,
+                                    nowAbsoluteMin, rainMm);
+            }
+        } else {
+            recoverFromSchedule(z, _zones[z].intervalSlots,
+                                weekday, epochDay, nowAbsoluteMin, rainMm);
+
+            if (!_active[z].running && epochDay > 0) {
+                const int previousWeekday = (weekday + 6) % 7;
+                recoverFromSchedule(z, _zones[z].intervalSlots,
+                                    previousWeekday, epochDay - 1,
+                                    nowAbsoluteMin, rainMm);
+            }
+        }
+    }
+}
+
+void ScheduleManager::recoverFromSchedule(uint8_t zone,
+                                          const DaySchedule& schedule,
+                                          int scheduledWeekday,
+                                          uint32_t scheduledEpochDay,
+                                          uint32_t nowAbsoluteMin,
+                                          float rainMm) {
+    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+        const TimeSlot& sl = schedule.slots[s];
+        if (!sl.enabled || sl.duration == 0) continue;
+
+        const uint32_t startAbsoluteMin = scheduledEpochDay * 1440UL
+                                        + (uint32_t)sl.hour * 60UL
+                                        + (uint32_t)sl.minute;
+        const uint32_t endAbsoluteMin = startAbsoluteMin + sl.duration;
+
+        if (nowAbsoluteMin < startAbsoluteMin || nowAbsoluteMin >= endAbsoluteMin) {
+            continue;
+        }
+
+        if (!shouldRecover(zone, scheduledWeekday, scheduledEpochDay, rainMm)) {
+            continue;
+        }
+
+        const uint32_t remainingMin = endAbsoluteMin - nowAbsoluteMin;
+        const uint32_t remainingMs  = remainingMin * 60000UL;
+
+        _lastReason[zone] = "Reprise apres reboot";
+        _zones[zone].lastWateredDay = scheduledEpochDay;
+        activateZoneRemaining(zone, remainingMs);
+
+        Serial.printf("[Schedule] Zone %d — REPRISE slot %02d:%02d, reste %lumin\n",
+                      zone + 1, sl.hour, sl.minute,
+                      (unsigned long)remainingMin);
+        return;
+    }
 }
 
 void ScheduleManager::checkSlotEnd(uint8_t zone) {
@@ -214,7 +290,7 @@ void ScheduleManager::checkSlotEnd(uint8_t zone) {
 }
 
 void ScheduleManager::activateZone(uint8_t zone,
-                                    uint16_t durationMin, bool manual) {
+                                   uint16_t durationMin, bool manual) {
     _active[zone].running    = true;
     _active[zone].startMs    = millis();
     _active[zone].durationMs = (uint32_t)durationMin * 60000UL;
@@ -224,6 +300,18 @@ void ScheduleManager::activateZone(uint8_t zone,
                   zone+1, durationMin,
                   manual ? "manuel" : "planifie",
                   _lastReason[zone].c_str());
+    if (_relayCallback) _relayCallback(zone, true);
+}
+
+void ScheduleManager::activateZoneRemaining(uint8_t zone, uint32_t remainingMs) {
+    if (remainingMs == 0) return;
+
+    _active[zone].running    = true;
+    _active[zone].startMs    = millis();
+    _active[zone].durationMs = remainingMs;
+    _active[zone].isManual   = false;
+    EventBus::displayDirty   = true;
+
     if (_relayCallback) _relayCallback(zone, true);
 }
 
