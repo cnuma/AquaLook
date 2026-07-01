@@ -65,12 +65,29 @@ void drawWeatherIcon(TFT_eSPI& tft, uint16_t x, uint16_t y,
 }
 
 void hatchBullet(TFT_eSPI& tft, int16_t x, int16_t y, int16_t r) {
+    const uint16_t stripe = Theme::BG;
+    const uint16_t outline = Theme::TEXT;
+
+    // Un contour clair différencie immédiatement la pastille intervalle.
+    tft.drawCircle(x, y, r, outline);
+
     if (r <= 2) {
-        tft.drawLine(x - 1, y + 1, x + 1, y - 1, Theme::BG);
+        // Sur les pastilles minuscules, une croix est plus lisible qu'une hachure.
+        tft.drawLine(x - 1, y - 1, x + 1, y + 1, stripe);
+        tft.drawLine(x - 1, y + 1, x + 1, y - 1, stripe);
         return;
     }
-    tft.drawLine(x - r + 1, y + 1, x - 1, y + r - 1, Theme::BG);
-    tft.drawLine(x, y - r + 1, x + r - 1, y - 1, Theme::BG);
+
+    // Trois diagonales épaissies, suffisamment contrastées sans masquer
+    // complètement la couleur d'identité de la zone.
+    tft.drawLine(x - r + 1, y,         x,         y + r - 1, stripe);
+    tft.drawLine(x - r + 1, y - 1,     x,         y + r - 2, stripe);
+    tft.drawLine(x - 1,     y - r + 1, x + r - 1, y + 1,     stripe);
+    tft.drawLine(x - 1,     y - r + 2, x + r - 1, y + 2,     stripe);
+    if (r >= 4) {
+        tft.drawLine(x - r + 2, y + r - 1, x - r + 1, y + r - 2, outline);
+        tft.drawLine(x + r - 2, y - r + 1, x + r - 1, y - r + 2, outline);
+    }
 }
 
 void redrawListWeather(DisplayManager& d) {
@@ -184,7 +201,7 @@ void drawIntervalBulletsList(DisplayManager& d) {
         ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
         const uint16_t rowY = 28 + d._planHdrH + z * d._planZoneH;
-        const int16_t r = max(3, min(5, (int)(d._planZoneH / 2 - 2)));
+        const int16_t r = max(4, min(6, (int)(d._planZoneH / 2 - 1)));
         hatchBullet(d._tft, 11, rowY + d._planZoneH / 2, r);
     }
 }
@@ -202,7 +219,7 @@ void drawIntervalBulletsGrid2(DisplayManager& d) {
         ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
         const uint16_t rowY = destY + hdrH + z * zoneH;
-        const int16_t r = max(2, min(4, (int)(zoneH / 2 - 1)));
+        const int16_t r = max(3, min(5, (int)(zoneH / 2)));
         hatchBullet(d._tft, 6, rowY + zoneH / 2, r);
     }
 }
@@ -221,7 +238,7 @@ void drawIntervalBulletsGrid4(DisplayManager& d) {
         ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
         const uint16_t rowY = 20 + 28 + zi * zoneH;
-        const int16_t r = max(2, min(4, (int)(zoneH / 2 - 1)));
+        const int16_t r = max(3, min(5, (int)(zoneH / 2)));
         hatchBullet(d._tft, 11, rowY + zoneH / 2, r);
     }
 }
