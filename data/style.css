@@ -19,9 +19,7 @@
 .planning-grid>.pg-header:not(.zone-hdr){color:#2f6f7e}
 .planning-grid>.pg-header.today:not(.zone-hdr){color:#174f5d;font-weight:700}
 
-/* Mode intervalle : trame diagonale dans l'entete et derriere le nom.
-   L'entete intervalle est la seule zone-hdr contenant deux spans
-   (nom + cadence /Nj), ce qui évite toute modification du HTML. */
+/* Mode intervalle : trame diagonale dans l'entete. */
 .pg-header.zone-hdr:has(>span:nth-child(2)){
   padding-left:5px;
   border-radius:4px;
@@ -33,16 +31,15 @@
       rgba(102,51,204,.02) 8px);
   box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
 }
+
+/* Le nom reste parfaitement lisible sur un cartouche uni de la meme
+   couleur que le fond general de la page. */
 .pg-header.zone-hdr:has(>span:nth-child(2))>span:first-child{
   display:inline-block;
   padding:1px 5px;
   border-radius:3px;
-  background:
-    repeating-linear-gradient(135deg,
-      rgba(102,51,204,.18) 0,
-      rgba(102,51,204,.18) 3px,
-      rgba(255,255,255,.55) 3px,
-      rgba(255,255,255,.55) 6px);
+  background:var(--bg);
+  box-shadow:0 0 0 1px rgba(102,51,204,.16);
 }
 
 /* Les jours non prevus en mode intervalle restent lisibles mais sont
@@ -57,4 +54,33 @@
   border-color:#c4c4c4!important;
   border-style:solid!important;
   filter:saturate(.35);
+}
+
+/* Fenetre de configuration d'une zone en mode intervalle : reprendre
+   le meme langage visuel autour du bandeau de zone et de la cadence. */
+#modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-header{
+  padding:7px 9px;
+  border-radius:5px;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(102,51,204,.11) 0,
+      rgba(102,51,204,.11) 4px,
+      rgba(102,51,204,.02) 4px,
+      rgba(102,51,204,.02) 8px);
+  box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
+}
+#modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-name{
+  padding:2px 6px;
+  border-radius:3px;
+  background:var(--bg);
+}
+#modal-body:has(#zcfg-mode option[value="1"]:checked) #zcfg-interval-row{
+  padding:8px;
+  border-radius:5px;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(102,51,204,.08) 0,
+      rgba(102,51,204,.08) 5px,
+      rgba(255,255,255,.55) 5px,
+      rgba(255,255,255,.55) 10px);
 }
