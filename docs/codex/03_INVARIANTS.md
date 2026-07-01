@@ -38,6 +38,7 @@ Les numéros ci-dessous reprennent les identifiants réellement présents dans l
 - **F8 — NVS :** la configuration valide est contrôlée par magic, schéma, taille et CRC.
 - **F9 — Migration :** l’ancien JSON n’est supprimé qu’après vérification du bloc NVS migré.
 - **F10 — Contrôleur relais :** le nombre de zones dépend du contrôleur ; une mauvaise logique peut activer les relais au boot.
+- **F11 — Noms de fichiers :** un fichier modifié, corrigé ou rendu à l’utilisateur conserve exactement son nom d’origine. Aucun suffixe, préfixe, renommage ou nom alternatif n’est autorisé sans demande explicite de l’utilisateur. Lorsqu’un fichier doit remplacer un fichier existant, il est fourni sous le nom exact du fichier cible.
 
 ## Modification d’un invariant
 
