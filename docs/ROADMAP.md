@@ -61,6 +61,8 @@ Carte SD
 │   ├── app.js
 │   ├── style.css
 │   └── assets/
+├── /diagnostics
+│   └── messages.json
 ├── /backup
 ├── /exports
 └── /logs
@@ -73,7 +75,21 @@ Contraintes à respecter :
 - les mises à jour doivent utiliser un fichier temporaire puis un renommage atomique ;
 - les écritures fréquentes sur SD doivent être limitées à cause des coupures secteur ;
 - une vérification de taille et d’empreinte doit suivre chaque upload ;
-- le câblage exact du lecteur SD et le partage SPI avec TFT et tactile doivent être validés avant développement.
+- le câblage exact du lecteur SD et le partage SPI avec TFT et tactile doivent être validés avant développement ;
+- un jeu minimal de messages critiques doit rester compilé dans le firmware si la SD est absente.
+
+## Catalogue de diagnostics utilisateur
+
+Statut : **socle minimal intégré, externalisation à prévoir**.
+
+Le firmware doit conserver uniquement les messages indispensables au fonctionnement dégradé :
+
+- erreur LittleFS ;
+- perte Wi-Fi ;
+- absence de synchronisation NTP ;
+- consigne de redémarrage ou de rechargement USB.
+
+À terme, les messages détaillés, recommandations, traductions et procédures devront être chargés depuis un catalogue versionné sur SD, avec repli automatique sur les messages internes minimaux.
 
 ## OTA — rappel pour les prochains runs
 
