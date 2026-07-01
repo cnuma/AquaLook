@@ -11,6 +11,7 @@
 #include "WebManager.h"
 #include "DisplayManager.h"
 #include "DisplayHealthUi.h"
+#include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
 #include "SystemHealth.h"
 
@@ -124,6 +125,7 @@ void loop() {
     webMgr.update();
 
     displayMgr.update();
+    displayPlanningDecorDraw(displayMgr);
     displayHealthHandleTouch(displayMgr);
     displayHealthDraw(displayMgr);
 
