@@ -1,4 +1,5 @@
 #include "ScreenManager.h"
+#include "SystemHealth.h"
 #include <WiFi.h>
 #include <time.h>
 
@@ -128,7 +129,6 @@ void ScreenManager::updateLed(bool relayActive) {
         }
 
         case 3: {
-            // Arc-en-ciel lent et continu : chaque transition dure 2 s.
             constexpr uint32_t STEP_MS = 2000UL;
             constexpr uint32_t CYCLE_MS = STEP_MS * 6UL;
             const uint32_t cyclePos = now % CYCLE_MS;
@@ -180,11 +180,7 @@ void ScreenManager::updateWateringBreath(uint32_t now) {
 }
 
 bool ScreenManager::hasSystemError() const {
-    if (millis() < LED_ERROR_GRACE_MS) return false;
-    if (WiFi.status() != WL_CONNECTED) return true;
-
-    const time_t now = time(nullptr);
-    return now < 1700000000;
+    return SystemHealth::hasAny();
 }
 
 void ScreenManager::ledOff() {
