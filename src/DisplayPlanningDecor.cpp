@@ -20,6 +20,7 @@
 
 namespace {
 uint32_t s_lastDisplayUpdate = UINT32_MAX;
+uint32_t s_lastDecorMs = 0;
 Screen s_lastScreen = Screen::SYSTEM;
 HomeMode s_lastMode = HomeMode::GRID4;
 uint8_t s_lastGrid4View = 255;
@@ -82,18 +83,22 @@ bool intervalDayIsPlanned(const ZoneSchedule& zs,
 
 void hatchRect(TFT_eSPI& tft, int16_t x, int16_t y,
                int16_t w, int16_t h) {
-    if (w < 3 || h < 3) return;
+    if (w < 4 || h < 4) return;
 
-    const int16_t spacing = 5;
+    const int16_t spacing = 6;
     const int16_t maxX = w - 1;
     const int16_t maxY = h - 1;
 
     for (int16_t startX = -maxY; startX <= maxX; startX += spacing) {
         const int16_t x1 = startX < 0 ? 0 : startX;
         const int16_t y1 = startX < 0 ? maxY + startX : maxY;
-        const int16_t x2 = min<int16_t>(maxX, startX + maxY);
+        const int16_t x2 = min(maxX, (int16_t)(startX + maxY));
         const int16_t y2 = maxY - (x2 - startX);
-        tft.drawLine(x + x1, y + y1, x + x2, y + y2, Theme::MUTED);
+
+        tft.drawLine(x + x1, y + y1, x + x2, y + y2, Theme::TEXT2);
+        if (y1 > 0 && y2 > 0) {
+            tft.drawLine(x + x1, y + y1 - 1, x + x2, y + y2 - 1, Theme::TEXT2);
+        }
     }
 }
 
@@ -116,7 +121,6 @@ void redrawListWeather(DisplayManager& d) {
         if (h <= 0) continue;
 
         tft.fillRect(x0, y0, dayW - 2, h, Theme::BG);
-
         tft.drawRect(x0 + dayW - 7, y0 + 2, 4, h - 4, Theme::BLUE);
         const uint8_t barH = rainBarHeight(fd.rainMm, h > 6 ? h - 6 : 0);
         if (barH) tft.fillRect(x0 + dayW - 6, y0 + h - 3 - barH, 2, barH, Theme::BLUE);
@@ -166,7 +170,6 @@ void redrawGrid2Weather(DisplayManager& d) {
         const uint16_t boxY = destY + 10;
         const uint16_t boxH = hdrH - 11;
         tft.fillRect(cx + 1, boxY, colW - 2, boxH, Theme::BG);
-
         tft.drawRect(cx + colW - 6, boxY + 1, 4, boxH - 2, Theme::BLUE);
         const uint8_t barH = rainBarHeight(fd.rainMm, boxH > 4 ? boxH - 4 : 0);
         if (barH) tft.fillRect(cx + colW - 5, boxY + boxH - 2 - barH, 2, barH, Theme::BLUE);
@@ -204,9 +207,6 @@ void redrawGrid2Weather(DisplayManager& d) {
 void hatchIntervalDaysList(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced()) return;
 
-    const uint16_t labelW = 22;
-    const uint16_t dayW = 42;
-    const uint16_t planY = 28;
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
     const uint8_t nbPlan = min(d._nbZones, (uint8_t)4);
 
@@ -214,14 +214,10 @@ void hatchIntervalDaysList(DisplayManager& d) {
         const ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
 
-        const uint16_t rowY = planY + d._planHdrH + z * d._planZoneH;
+        const uint16_t rowY = 28 + d._planHdrH + z * d._planZoneH;
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft,
-                      labelW + col * dayW + 2,
-                      rowY + 2,
-                      dayW - 4,
-                      d._planZoneH - 4);
+            hatchRect(d._tft, 22 + col * 42 + 2, rowY + 1, 38, d._planZoneH - 2);
         }
     }
 }
@@ -229,14 +225,10 @@ void hatchIntervalDaysList(DisplayManager& d) {
 void hatchIntervalDaysGrid2(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced()) return;
 
-    const uint16_t destY = 25;
-    const uint16_t planW = 64;
-    const uint16_t hdrH = 42;
     const uint16_t labelW = 12;
-    const uint16_t colW = (planW - labelW) / 2;
-    const uint16_t zoneAreaH = 215 - hdrH;
+    const uint16_t colW = (64 - labelW) / 2;
     const uint8_t nbPlan = min(d._nbZones, (uint8_t)8);
-    uint16_t zoneH = nbPlan > 0 ? zoneAreaH / nbPlan : zoneAreaH;
+    uint16_t zoneH = nbPlan > 0 ? (215 - 42) / nbPlan : 215 - 42;
     if (zoneH < 4) zoneH = 4;
 
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
@@ -244,14 +236,10 @@ void hatchIntervalDaysGrid2(DisplayManager& d) {
         const ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
 
-        const uint16_t rowY = destY + hdrH + z * zoneH;
+        const uint16_t rowY = 25 + 42 + z * zoneH;
         for (uint8_t col = 0; col < 2; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft,
-                      labelW + col * colW + 2,
-                      rowY + 2,
-                      colW - 4,
-                      zoneH - 4);
+            hatchRect(d._tft, labelW + col * colW + 1, rowY + 1, colW - 2, zoneH - 2);
         }
     }
 }
@@ -259,33 +247,57 @@ void hatchIntervalDaysGrid2(DisplayManager& d) {
 void hatchIntervalDaysGrid4(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced() || d._grid4View > 1) return;
 
-    const uint16_t destY = 20;
-    const uint16_t planH = 198;
-    const uint16_t hdrH = 28;
-    const uint16_t labelW = 22;
-    const uint16_t dayW = (320 - labelW) / 7;
     const uint8_t zStart = d._grid4View == 0 ? 0 : 8;
     const uint8_t zEnd = min(d._nbZones, (uint8_t)(zStart + 8));
     const uint8_t nbZ = zEnd - zStart;
     if (nbZ == 0) return;
 
-    uint16_t zoneH = (planH - hdrH) / nbZ;
+    uint16_t zoneH = (198 - 28) / nbZ;
     if (zoneH < 4) zoneH = 4;
-
+    const uint16_t dayW = (320 - 22) / 7;
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
+
     for (uint8_t zi = 0; zi < nbZ; ++zi) {
         const uint8_t z = zStart + zi;
         const ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
 
-        const uint16_t rowY = destY + hdrH + zi * zoneH;
+        const uint16_t rowY = 20 + 28 + zi * zoneH;
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft,
-                      labelW + col * dayW + 2,
-                      rowY + 2,
-                      dayW - 4,
-                      zoneH - 4);
+            hatchRect(d._tft, 22 + col * dayW + 1, rowY + 1, dayW - 2, zoneH - 2);
+        }
+    }
+}
+
+void simplifyWideButtons(DisplayManager& d) {
+    if (d._homeMode != HomeMode::LIST || d._nbZones == 0 || d._nbZones > 2) return;
+
+    const uint8_t nbPlan = min(d._nbZones, (uint8_t)4);
+    const uint16_t planH = d._planHdrH + nbPlan * d._planZoneH;
+    const uint16_t btnY = DisplayManager::PL_PLAN_Y + planH + d._planGap;
+
+    for (uint8_t z = 0; z < d._nbZones; ++z) {
+        const uint16_t x = z == 0 ? DisplayManager::PL_BTN_Z1_X : DisplayManager::PL_BTN_Z2_X;
+        const bool active = d._relais && d._relais->getState(z);
+        const uint16_t bg = active ? Theme::ACTIVE_BG : Theme::SURFACE;
+
+        if (!active) {
+            // Supprime le message météo redondant présent sous le mode de planification.
+            d._tft.fillRect(x + 5, btnY + 65, DisplayManager::PL_BTN_W - 10, 14, bg);
+        } else {
+            // Efface l'ancien hint trop bas puis le redessine dans la zone visible.
+            const uint16_t clearY = min<uint16_t>(btnY + 77, 239);
+            if (clearY < 240) {
+                d._tft.fillRect(x + 5, clearY, DisplayManager::PL_BTN_W - 10, 240 - clearY, bg);
+            }
+            const uint16_t hintY = min<uint16_t>(btnY + 72, 228);
+            d._tft.setFreeFont(nullptr);
+            d._tft.setTextSize(1);
+            d._tft.setTextColor(Theme::ON_ACTIVE_MUTED, bg);
+            d._tft.setTextDatum(TC_DATUM);
+            d._tft.drawString("Appuyer pour arreter", x + DisplayManager::PL_BTN_W / 2, hintY);
+            d._tft.setTextDatum(TL_DATUM);
         }
     }
 }
@@ -294,25 +306,36 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
 void displayPlanningDecorDraw(DisplayManager& display) {
     if (display._screenMgr.isAsleep() || display._screen != Screen::HOME) return;
 
-    if (s_lastDisplayUpdate == display._lastUpdate &&
-        s_lastScreen == display._screen &&
-        s_lastMode == display._homeMode &&
-        s_lastGrid4View == display._grid4View) {
-        return;
-    }
+    const uint32_t now = millis();
+    const bool displayChanged =
+        s_lastDisplayUpdate != display._lastUpdate ||
+        s_lastScreen != display._screen ||
+        s_lastMode != display._homeMode ||
+        s_lastGrid4View != display._grid4View;
+    const bool periodicRefresh = now - s_lastDecorMs >= 750;
+
+    if (!displayChanged && !periodicRefresh) return;
 
     s_lastDisplayUpdate = display._lastUpdate;
     s_lastScreen = display._screen;
     s_lastMode = display._homeMode;
     s_lastGrid4View = display._grid4View;
+    s_lastDecorMs = now;
+
+    if (displayChanged) {
+        switch (display._homeMode) {
+            case HomeMode::LIST:  redrawListWeather(display);  break;
+            case HomeMode::GRID2: redrawGrid2Weather(display); break;
+            case HomeMode::GRID4: break;
+        }
+    }
 
     switch (display._homeMode) {
         case HomeMode::LIST:
-            redrawListWeather(display);
             hatchIntervalDaysList(display);
+            simplifyWideButtons(display);
             break;
         case HomeMode::GRID2:
-            redrawGrid2Weather(display);
             hatchIntervalDaysGrid2(display);
             break;
         case HomeMode::GRID4:
