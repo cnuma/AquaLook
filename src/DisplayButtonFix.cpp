@@ -35,14 +35,12 @@ void redrawWideButtonLowerArea(DisplayManager& d, uint8_t zone,
 
     if (active) {
         // Effacer toute la partie basse réellement visible du bouton.
-        // Cette zone contenait l'ancien temps écoulé et le hint placé trop bas.
         const uint16_t clearLocalY = 64;
         if (visibleH > clearLocalY) {
             d._tft.fillRect(innerX, btnY + clearLocalY,
                             innerW, visibleH - clearLocalY, bg);
         }
 
-        // Temps écoulé, conservé mais replacé dans la zone visible.
         const uint32_t elapsed = d._schedule ? d._schedule->getElapsedMs(zone) : 0;
         char elapsedBuf[16];
         snprintf(elapsedBuf, sizeof(elapsedBuf), "+%02lu:%02lu",
@@ -51,10 +49,10 @@ void redrawWideButtonLowerArea(DisplayManager& d, uint8_t zone,
         d._tft.setTextDatum(TL_DATUM);
         d._tft.drawString(elapsedBuf, x + 6, btnY + 66);
 
-        // Positionner le hint à 12 px du bas visible, jamais sous l'écran.
-        const uint16_t hintY = btnY + visibleH - 12;
+        // Remonté nettement pour rester visible même lorsque le bouton est tronqué.
+        const uint16_t hintY = btnY + visibleH - 24;
         d._tft.setTextColor(Theme::ON_ACTIVE_MUTED, bg);
-        d._tft.setTextDatum(BC_DATUM);
+        d._tft.setTextDatum(TC_DATUM);
         d._tft.drawString("Appuyer pour arreter",
                           x + DisplayManager::PL_BTN_W / 2,
                           hintY);
@@ -62,15 +60,22 @@ void redrawWideButtonLowerArea(DisplayManager& d, uint8_t zone,
         return;
     }
 
+    // Supprimer explicitement le badge météo placé en haut à droite du bouton.
+    // Cette zone est indépendante du texte "Prochain" situé à gauche.
+    d._tft.fillRect(x + DisplayManager::PL_BTN_W - 48,
+                    btnY + 16,
+                    42,
+                    18,
+                    bg);
+
     // Effacer toute la zone basse du bouton inactif : température, mm de pluie,
     // état pluie et anciens libellés redondants ne doivent plus rester visibles.
-    const uint16_t clearLocalY = 54;
+    const uint16_t clearLocalY = 50;
     if (visibleH > clearLocalY) {
         d._tft.fillRect(innerX, btnY + clearLocalY,
                         innerW, visibleH - clearLocalY, bg);
     }
 
-    // Conserver uniquement le mode de planification.
     if (d._schedule) {
         const ZoneSchedule zs = d._schedule->getZoneSchedule(zone);
         char modeBuf[28];
@@ -82,12 +87,12 @@ void redrawWideButtonLowerArea(DisplayManager& d, uint8_t zone,
         }
         d._tft.setTextColor(Theme::MUTED, bg);
         d._tft.setTextDatum(TL_DATUM);
-        d._tft.drawString(modeBuf, x + 6, btnY + 58);
+        d._tft.drawString(modeBuf, x + 6, btnY + 56);
     }
 
-    const uint16_t hintY = btnY + visibleH - 12;
+    const uint16_t hintY = btnY + visibleH - 20;
     d._tft.setTextColor(Theme::MUTED, bg);
-    d._tft.setTextDatum(BC_DATUM);
+    d._tft.setTextDatum(TC_DATUM);
     d._tft.drawString("Appuyer pour arroser",
                       x + DisplayManager::PL_BTN_W / 2,
                       hintY);
