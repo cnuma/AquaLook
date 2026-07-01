@@ -8,9 +8,12 @@ void ScreenManager::begin(ConfigManager* config) {
     pinMode(PIN_TFT_BL, OUTPUT);
     digitalWrite(PIN_TFT_BL, HIGH);
 
-    pinMode(PIN_LED_RED,   OUTPUT);
-    pinMode(PIN_LED_GREEN, OUTPUT);
-    pinMode(PIN_LED_BLUE,  OUTPUT);
+    ledcSetup(LED_CH_RED, 5000, 8);
+    ledcSetup(LED_CH_GREEN, 5000, 8);
+    ledcSetup(LED_CH_BLUE, 5000, 8);
+    ledcAttachPin(PIN_LED_RED, LED_CH_RED);
+    ledcAttachPin(PIN_LED_GREEN, LED_CH_GREEN);
+    ledcAttachPin(PIN_LED_BLUE, LED_CH_BLUE);
     ledOff();
 
     _lastActivity = millis();
@@ -26,7 +29,6 @@ void ScreenManager::update(bool anyRelayActive) {
         wakeUp();
         _ledTimer = 0;
         _ledPhase = 0;
-        _wateringStep = 0;
     }
     _relayWasActive = anyRelayActive;
 
@@ -37,9 +39,6 @@ void ScreenManager::update(bool anyRelayActive) {
         screenOff();
     }
 
-    // Les états prioritaires (erreur et arrosage) doivent rester visibles
-    // même lorsque l'écran est allumé. Les modes configurables restent,
-    // eux, des signes de vie réservés à la veille.
     updateLed(anyRelayActive);
 }
 
@@ -56,10 +55,9 @@ void ScreenManager::screenOn() {
 }
 
 void ScreenManager::screenOff() {
-    _sleeping     = true;
-    _ledTimer     = 0;
-    _ledPhase     = 0;
-    _wateringStep = 0;
+    _sleeping = true;
+    _ledTimer = 0;
+    _ledPhase = 0;
     digitalWrite(PIN_TFT_BL, LOW);
     Serial.println("[Screen] Veille");
 }
@@ -82,7 +80,6 @@ void ScreenManager::updateLed(bool relayActive) {
     const uint32_t now = millis();
     const uint8_t mode = _config ? _config->system().ledMode : 1;
 
-    // Priorité 1 : rouge réservé aux anomalies.
     if (hasSystemError()) {
         if (now - _ledTimer >= 350UL) {
             _ledTimer = now;
@@ -93,20 +90,16 @@ void ScreenManager::updateLed(bool relayActive) {
         return;
     }
 
-    // Priorité 2 : respiration bleue rapide dès qu'une vanne est ouverte,
-    // que l'écran soit allumé ou en veille.
     if (relayActive) {
         updateWateringBreath(now);
         return;
     }
 
-    // Ecran allumé et aucun état prioritaire : LED éteinte.
     if (!_sleeping) {
         ledOff();
         return;
     }
 
-    // Veille normale : comportement choisi dans la page Web.
     switch (mode) {
         case 0:
             ledOff();
@@ -118,34 +111,19 @@ void ScreenManager::updateLed(bool relayActive) {
                 _ledPhase = 1;
                 ledSet(false, true, false);
             } else if (_ledPhase == 1 && (now - _ledTimer) >= 150UL) {
+                _ledTimer = now;
                 _ledPhase = 0;
                 ledOff();
             }
             break;
 
         case 2: {
-            static uint8_t breathStep = 0;
-            static const uint8_t BREATH_ON[] = {
-                5,10,20,35,55,75,95,110,120,125,
-                125,120,110,95,75,55,35,20,10,5
-            };
-            static const uint8_t BREATH_OFF[] = {
-                120,115,105,90,70,50,30,15,5,0,
-                0,5,15,30,50,70,90,105,115,120
-            };
-            const uint8_t onMs  = BREATH_ON[breathStep];
-            const uint8_t offMs = BREATH_OFF[breathStep];
-
-            if (_ledPhase == 0 && (now - _ledTimer) >= offMs) {
-                _ledTimer = now;
-                _ledPhase = 1;
-                if (onMs > 0) ledSet(false, true, false);
-            } else if (_ledPhase == 1 && (now - _ledTimer) >= onMs) {
-                _ledTimer = now;
-                _ledPhase = 0;
-                ledOff();
-                breathStep = (breathStep + 1) % 20;
-            }
+            const uint32_t phase = now % 4000UL;
+            const uint32_t half  = 2000UL;
+            uint32_t level = phase < half
+                           ? (phase * 180UL) / half
+                           : ((4000UL - phase) * 180UL) / half;
+            ledSetBrightness(0, (uint8_t)(12UL + level), 0);
             break;
         }
 
@@ -176,28 +154,21 @@ void ScreenManager::updateLed(bool relayActive) {
 }
 
 void ScreenManager::updateWateringBreath(uint32_t now) {
-    static const uint8_t BREATH_ON[] = {
-        8,16,28,42,58,74,88,100,108,112,
-        112,108,100,88,74,58,42,28,16,8
-    };
-    static const uint8_t BREATH_OFF[] = {
-        70,62,52,42,32,24,16,10,6,4,
-        4,6,10,16,24,32,42,52,62,70
-    };
+    // Cycle complet de 1,2 s : montée puis descente continues.
+    // Un plancher de luminosité évite que la LED paraisse éteinte.
+    constexpr uint32_t PERIOD_MS = 1200UL;
+    constexpr uint32_t HALF_MS   = PERIOD_MS / 2UL;
+    constexpr uint8_t  MIN_BLUE  = 24;
 
-    const uint8_t onMs  = BREATH_ON[_wateringStep];
-    const uint8_t offMs = BREATH_OFF[_wateringStep];
+    const uint32_t phase = now % PERIOD_MS;
+    uint32_t level = phase < HALF_MS
+                   ? (phase * 255UL) / HALF_MS
+                   : ((PERIOD_MS - phase) * 255UL) / HALF_MS;
 
-    if (_ledPhase == 0 && (now - _ledTimer) >= offMs) {
-        _ledTimer = now;
-        _ledPhase = 1;
-        ledSet(false, false, true);
-    } else if (_ledPhase == 1 && (now - _ledTimer) >= onMs) {
-        _ledTimer = now;
-        _ledPhase = 0;
-        ledOff();
-        _wateringStep = (_wateringStep + 1) % 20;
-    }
+    const uint8_t blue = MIN_BLUE +
+        (uint8_t)((level * (255UL - MIN_BLUE)) / 255UL);
+
+    ledSetBrightness(0, 0, blue);
 }
 
 bool ScreenManager::hasSystemError() const {
@@ -209,13 +180,18 @@ bool ScreenManager::hasSystemError() const {
 }
 
 void ScreenManager::ledOff() {
-    digitalWrite(PIN_LED_RED,   HIGH);
-    digitalWrite(PIN_LED_GREEN, HIGH);
-    digitalWrite(PIN_LED_BLUE,  HIGH);
+    ledSetBrightness(0, 0, 0);
 }
 
 void ScreenManager::ledSet(bool r, bool g, bool b) {
-    digitalWrite(PIN_LED_RED,   r ? LOW : HIGH);
-    digitalWrite(PIN_LED_GREEN, g ? LOW : HIGH);
-    digitalWrite(PIN_LED_BLUE,  b ? LOW : HIGH);
+    ledSetBrightness(r ? 255 : 0,
+                     g ? 255 : 0,
+                     b ? 255 : 0);
+}
+
+void ScreenManager::ledSetBrightness(uint8_t r, uint8_t g, uint8_t b) {
+    // LED active LOW : rapport cyclique inversé.
+    ledcWrite(LED_CH_RED,   255 - r);
+    ledcWrite(LED_CH_GREEN, 255 - g);
+    ledcWrite(LED_CH_BLUE,  255 - b);
 }
