@@ -109,19 +109,19 @@ void WiFiManager::handleConnected() {
 }
 
 void WiFiManager::handleDisconnected(uint32_t now) {
-    if ((now - _lastActionMs) >= RETRY_INTERVAL_MS) {
-        if (_retryCount >= MAX_RETRIES) {
-            if (_retryCount == MAX_RETRIES) {
-                EventLog::log(LOG_ERROR,
-                    "WiFi: %d echecs consecutifs sur '%s' — portail captif requis",
-                    MAX_RETRIES, _ssid);
-                _retryCount++;
-                EventBus::displayDirty = true;
-            }
-        } else {
-            startConnection();
-        }
+    if ((now - _lastActionMs) < RETRY_INTERVAL_MS) return;
+
+    if (_retryCount >= MAX_RETRIES) {
+        EventLog::log(LOG_ERROR,
+            "WiFi: %d echecs consecutifs sur '%s' — redemarrage du module",
+            MAX_RETRIES, _ssid);
+        EventBus::displayDirty = true;
+        delay(250);  // laisse le temps au journal série d'être émis
+        ESP.restart();
+        return;
     }
+
+    startConnection();
 }
 
 void WiFiManager::handleCaptivePortal() {
@@ -207,23 +207,11 @@ const char* WiFiManager::stateStr() const {
 
 // ═══════════════════════════════════════════════════════════════
 //  Scan réseau — non bloquant
-//
-//  WiFi.scanNetworks(async=true) lance le scan et retourne immédiatement.
-//  WiFi.scanComplete() retourne :
-//    WIFI_SCAN_RUNNING (-1)  : scan en cours
-//    WIFI_SCAN_FAILED  (-2)  : échec
-//    N >= 0                  : N réseaux trouvés, résultats disponibles
-//
-//  Contrainte : le scan en mode AP (portail captif) fonctionne sur l'ESP32
-//  car il supporte WIFI_AP_STA. En mode STA pur, idem.
-//  WiFi.scanDelete() libère la mémoire allouée par le driver — à appeler
-//  après avoir lu tous les résultats (fait dans getScanCount() / getScanEntry()).
 // ═══════════════════════════════════════════════════════════════
 
 void WiFiManager::startScan() {
-    if (_scanPending) return;  // scan déjà en cours, ignorer
+    if (_scanPending) return;
 
-    // En mode AP pur, passer temporairement en AP+STA pour pouvoir scanner
     if (_state == State::CAPTIVE_PORTAL) {
         WiFi.mode(WIFI_AP_STA);
     }
