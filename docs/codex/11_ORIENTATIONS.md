@@ -9,6 +9,32 @@
 5. Valider complètement le contrôleur MCP23017.
 6. Préserver la marge LittleFS.
 
+## Gestion de la carte SD et préparation de l’OTA
+
+Créer une branche dédiée :
+
+`feature/sd-web-assets-ota`
+
+Objectifs :
+
+- mettre en place la détection, le montage et le contrôle de disponibilité de la carte SD ;
+- identifier les ressources statiques du serveur Web pouvant être déplacées hors de LittleFS ;
+- servir depuis la carte SD les fichiers Web adaptés, notamment les ressources CSS, JavaScript, images et autres fichiers statiques volumineux ;
+- conserver dans LittleFS uniquement les ressources indispensables au démarrage, au diagnostic et au mode de secours ;
+- prévoir un fonctionnement dégradé explicite lorsque la carte SD est absente, illisible ou corrompue ;
+- mesurer la place réellement libérée dans la flash ;
+- adapter ensuite le partitionnement pour réserver suffisamment d’espace aux mises à jour OTA ;
+- valider que l’OTA ne modifie ni la configuration NVS ni les données présentes sur la carte SD.
+
+Critères de validation :
+
+- la carte SD est initialisée sans bloquer le démarrage ;
+- les ressources Web déplacées sont correctement servies depuis la carte SD ;
+- l’absence de carte SD ne rend pas le contrôleur inutilisable ;
+- la taille de LittleFS et l’espace firmware libéré sont mesurés avant et après migration ;
+- le partitionnement OTA compile et accepte une image complète du firmware ;
+- la sécurité des relais reste inchangée pendant et après une mise à jour OTA.
+
 ## Évolution débitmètres
 
 Orientation envisagée :
