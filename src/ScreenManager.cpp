@@ -24,26 +24,28 @@ void ScreenManager::update(bool anyRelayActive) {
 
     if (anyRelayActive && !_relayWasActive) {
         wakeUp();
+        _ledTimer = 0;
+        _ledPhase = 0;
+        _wateringStep = 0;
     }
     _relayWasActive = anyRelayActive;
 
-    uint8_t timeoutMin = _config ? _config->system().screenTimeoutMin : 5;
+    const uint8_t timeoutMin = _config ? _config->system().screenTimeoutMin : 5;
 
-    if (!_sleeping) {
-        if (timeoutMin > 0 &&
-            (now - _lastActivity) >= (uint32_t)timeoutMin * 60000UL) {
-            screenOff();
-        }
-    } else {
-        updateLed(anyRelayActive);
+    if (!_sleeping && timeoutMin > 0 &&
+        (now - _lastActivity) >= (uint32_t)timeoutMin * 60000UL) {
+        screenOff();
     }
+
+    // Les états prioritaires (erreur et arrosage) doivent rester visibles
+    // même lorsque l'écran est allumé. Les modes configurables restent,
+    // eux, des signes de vie réservés à la veille.
+    updateLed(anyRelayActive);
 }
 
 void ScreenManager::wakeUp() {
     _lastActivity = millis();
-    if (_sleeping) {
-        screenOn();
-    }
+    if (_sleeping) screenOn();
 }
 
 void ScreenManager::screenOn() {
@@ -54,10 +56,10 @@ void ScreenManager::screenOn() {
 }
 
 void ScreenManager::screenOff() {
-    _sleeping       = true;
-    _ledTimer       = 0;
-    _ledPhase       = 0;
-    _wateringStep   = 0;
+    _sleeping     = true;
+    _ledTimer     = 0;
+    _ledPhase     = 0;
+    _wateringStep = 0;
     digitalWrite(PIN_TFT_BL, LOW);
     Serial.println("[Screen] Veille");
 }
@@ -80,7 +82,7 @@ void ScreenManager::updateLed(bool relayActive) {
     const uint32_t now = millis();
     const uint8_t mode = _config ? _config->system().ledMode : 1;
 
-    // Priorité 1 : le rouge est réservé aux anomalies.
+    // Priorité 1 : rouge réservé aux anomalies.
     if (hasSystemError()) {
         if (now - _ledTimer >= 350UL) {
             _ledTimer = now;
@@ -91,13 +93,20 @@ void ScreenManager::updateLed(bool relayActive) {
         return;
     }
 
-    // Priorité 2 : une vanne ouverte produit une respiration bleue rapide.
+    // Priorité 2 : respiration bleue rapide dès qu'une vanne est ouverte,
+    // que l'écran soit allumé ou en veille.
     if (relayActive) {
         updateWateringBreath(now);
         return;
     }
 
-    // Priorité 3 : fonctionnement normal selon le mode choisi sur la page Web.
+    // Ecran allumé et aucun état prioritaire : LED éteinte.
+    if (!_sleeping) {
+        ledOff();
+        return;
+    }
+
+    // Veille normale : comportement choisi dans la page Web.
     switch (mode) {
         case 0:
             ledOff();
@@ -116,7 +125,7 @@ void ScreenManager::updateLed(bool relayActive) {
 
         case 2: {
             static uint8_t breathStep = 0;
-            static const uint8_t BREATH_ON[]  = {
+            static const uint8_t BREATH_ON[] = {
                 5,10,20,35,55,75,95,110,120,125,
                 125,120,110,95,75,55,35,20,10,5
             };
@@ -132,6 +141,7 @@ void ScreenManager::updateLed(bool relayActive) {
                 _ledPhase = 1;
                 if (onMs > 0) ledSet(false, true, false);
             } else if (_ledPhase == 1 && (now - _ledTimer) >= onMs) {
+                _ledTimer = now;
                 _ledPhase = 0;
                 ledOff();
                 breathStep = (breathStep + 1) % 20;
@@ -192,7 +202,6 @@ void ScreenManager::updateWateringBreath(uint32_t now) {
 
 bool ScreenManager::hasSystemError() const {
     if (millis() < LED_ERROR_GRACE_MS) return false;
-
     if (WiFi.status() != WL_CONNECTED) return true;
 
     const time_t now = time(nullptr);
