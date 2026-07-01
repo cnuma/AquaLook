@@ -62,13 +62,13 @@ void ScreenManager::screenOff() {
     Serial.println("[Screen] Veille");
 }
 
-static const bool LED_RAINBOW[6][3] = {
-    {false, true,  false},
-    {false, true,  true },
-    {false, false, true },
-    {true,  false, true },
-    {true,  false, false},
-    {true,  true,  false},
+static const uint8_t LED_RAINBOW[6][3] = {
+    {  0, 255,   0},
+    {  0, 255, 255},
+    {  0,   0, 255},
+    {255,   0, 255},
+    {255,   0,   0},
+    {255, 255,   0},
 };
 
 static const bool LED_BICOLOR[2][3] = {
@@ -127,15 +127,25 @@ void ScreenManager::updateLed(bool relayActive) {
             break;
         }
 
-        case 3:
-            if (now - _ledTimer >= 2000UL) {
-                _ledTimer = now;
-                _ledPhase = (_ledPhase + 1) % 6;
-                ledSet(LED_RAINBOW[_ledPhase][0],
-                       LED_RAINBOW[_ledPhase][1],
-                       LED_RAINBOW[_ledPhase][2]);
-            }
+        case 3: {
+            // Arc-en-ciel lent et continu : chaque transition dure 2 s.
+            constexpr uint32_t STEP_MS = 2000UL;
+            constexpr uint32_t CYCLE_MS = STEP_MS * 6UL;
+            const uint32_t cyclePos = now % CYCLE_MS;
+            const uint8_t from = cyclePos / STEP_MS;
+            const uint8_t to   = (from + 1U) % 6U;
+            const uint32_t local = cyclePos % STEP_MS;
+
+            const uint8_t r = LED_RAINBOW[from][0] +
+                (int32_t)(LED_RAINBOW[to][0] - LED_RAINBOW[from][0]) * (int32_t)local / (int32_t)STEP_MS;
+            const uint8_t g = LED_RAINBOW[from][1] +
+                (int32_t)(LED_RAINBOW[to][1] - LED_RAINBOW[from][1]) * (int32_t)local / (int32_t)STEP_MS;
+            const uint8_t b = LED_RAINBOW[from][2] +
+                (int32_t)(LED_RAINBOW[to][2] - LED_RAINBOW[from][2]) * (int32_t)local / (int32_t)STEP_MS;
+
+            ledSetBrightness(r, g, b);
             break;
+        }
 
         case 4:
             if (now - _ledTimer >= 3000UL) {
@@ -154,8 +164,6 @@ void ScreenManager::updateLed(bool relayActive) {
 }
 
 void ScreenManager::updateWateringBreath(uint32_t now) {
-    // Cycle complet de 1,2 s : montée puis descente continues.
-    // Un plancher de luminosité évite que la LED paraisse éteinte.
     constexpr uint32_t PERIOD_MS = 1200UL;
     constexpr uint32_t HALF_MS   = PERIOD_MS / 2UL;
     constexpr uint8_t  MIN_BLUE  = 24;
@@ -190,7 +198,6 @@ void ScreenManager::ledSet(bool r, bool g, bool b) {
 }
 
 void ScreenManager::ledSetBrightness(uint8_t r, uint8_t g, uint8_t b) {
-    // LED active LOW : rapport cyclique inversé.
     ledcWrite(LED_CH_RED,   255 - r);
     ledcWrite(LED_CH_GREEN, 255 - g);
     ledcWrite(LED_CH_BLUE,  255 - b);
