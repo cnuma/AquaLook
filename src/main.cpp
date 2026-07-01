@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <LittleFS.h>
 #include "config.h"
 #include "EventBus.h"
 #include "WiFiManager.h"
@@ -9,7 +10,9 @@
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
+#include "DisplayHealthUi.h"
 #include "ConfigManager.h"
+#include "SystemHealth.h"
 
 // ── Instances ─────────────────────────────────
 WiFiManager     wifiMgr;
@@ -45,26 +48,26 @@ void setup() {
     Wire.begin(SDA_PIN, SCL_PIN);
 
     // Scan I2C temporaire — à retirer après diagnostic
-Serial.println("[I2C] Scan...");
-for (uint8_t addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0)
-        Serial.printf("[I2C] Device trouve @ 0x%02X\n", addr);
-}
-Serial.println("[I2C] Scan termine");
+    Serial.println("[I2C] Scan...");
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0)
+            Serial.printf("[I2C] Device trouve @ 0x%02X\n", addr);
+    }
+    Serial.println("[I2C] Scan termine");
 
     // ── Boot instrumenté ──────────────────────
     // Invariant I1 : ConfigManager est l'unique propriétaire du montage LittleFS.
-    // Le splash est affiché juste après, lorsque le système de fichiers est prêt.
     configMgr.begin();
+    SystemHealth::setFault(SystemFault::LITTLEFS, LittleFS.totalBytes() == 0);
 
     // ── Splash screen ─────────────────────────
     displayMgr.initTft();
     displayMgr.showSplash(0, "Initialisation...");
-    
+
     Serial.printf("[Debug] SSID='%s' PWD len=%d\n",
-    configMgr.wifi().ssid,
-    strlen(configMgr.wifi().password));
+                  configMgr.wifi().ssid,
+                  strlen(configMgr.wifi().password));
 
     splashStep("Configuration");
 
@@ -76,7 +79,6 @@ Serial.println("[I2C] Scan termine");
     configMgr.applyToSchedule(scheduleMgr);
     splashStep("Planning");
 
-    // Invariant I9 : credentials depuis flash
     wifiMgr.begin(configMgr.wifi().ssid, configMgr.wifi().password);
     splashStep("WiFi");
 
@@ -89,10 +91,8 @@ Serial.println("[I2C] Scan termine");
     weatherMgr.begin(&configMgr);
     splashStep("Meteo");
 
-    // Pause courte pour que l'utilisateur voie "100%" avant le passage à HOME
     delay(800);
 
-    // ── DisplayManager complet (touch, sprites, écran HOME) ──
     displayMgr.begin(&ntpMgr, &weatherMgr, &relaisMgr, &scheduleMgr, &configMgr);
 
     Serial.println("[Main] Setup terminé — boucle démarrée");
@@ -101,7 +101,6 @@ Serial.println("[I2C] Scan termine");
 
 // ─────────────────────────────────────────────
 void loop() {
-    // ── Réseau ────────────────────────────────
     wifiMgr.update();
     const bool connected = wifiMgr.isConnected();
     if (connected) {
@@ -109,7 +108,8 @@ void loop() {
         weatherMgr.update(true);
     }
 
-    // ── Planificateur — nécessite NTP synchronisé ──
+    SystemHealth::updateRuntime(connected, ntpMgr.isSynced());
+
     if (ntpMgr.isSynced()) {
         scheduleMgr.update(
             ntpMgr.getHour(),
@@ -120,14 +120,12 @@ void loop() {
         );
     }
 
-    // ── Sécurité durée max relais (invariant I7) ──
     relaisMgr.update();
-
-    // ── Web — event-driven ────────────────────
     webMgr.update();
 
-    // ── Affichage + touch ─────────────────────
     displayMgr.update();
+    displayHealthHandleTouch(displayMgr);
+    displayHealthDraw(displayMgr);
 
     yield();
 }
