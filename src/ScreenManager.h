@@ -9,21 +9,11 @@
 //  LED RGB arrière : logique inverse (LOW=allumé)
 //    R=4, G=16, B=17
 //
-//  États :
-//    AWAKE  → écran allumé, LED éteinte
-//    SLEEP  → écran éteint, LED animée
-//
-//  Priorités LED en veille :
+//  Priorités LED :
 //    1. Anomalie Wi-Fi / heure non synchronisée → rouge clignotant
-//    2. Vanne ouverte → respiration bleue rapide
-//    3. Fonctionnement normal → mode choisi dans la page Web
-//
-//  Modes LED configurables :
-//    0 = off
-//    1 = flash discret vert
-//    2 = respiration verte
-//    3 = arc-en-ciel lent
-//    4 = alternance vert / bleu
+//    2. Vanne ouverte → respiration bleue rapide, écran allumé ou éteint
+//    3. Fonctionnement normal en veille → mode choisi dans la page Web
+//    4. Fonctionnement normal écran allumé → LED éteinte
 // ═══════════════════════════════════════════════════════════════
 
 #define PIN_TFT_BL    21
@@ -44,12 +34,14 @@ private:
     bool           _sleeping     = false;
     uint32_t       _lastActivity = 0;
 
-    uint32_t _ledTimer      = 0;
-    uint8_t  _ledPhase      = 0;
+    uint32_t _ledTimer       = 0;
+    uint8_t  _ledPhase       = 0;
     bool     _relayWasActive = false;
-    uint8_t  _wateringStep   = 0;
 
     static constexpr uint32_t LED_ERROR_GRACE_MS = 30000UL;
+    static constexpr uint8_t  LED_CH_RED   = 5;
+    static constexpr uint8_t  LED_CH_GREEN = 6;
+    static constexpr uint8_t  LED_CH_BLUE  = 7;
 
     void screenOn();
     void screenOff();
@@ -58,4 +50,5 @@ private:
     bool hasSystemError() const;
     void ledOff();
     void ledSet(bool r, bool g, bool b);
+    void ledSetBrightness(uint8_t r, uint8_t g, uint8_t b);
 };
