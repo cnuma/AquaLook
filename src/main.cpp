@@ -12,8 +12,6 @@
 #include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
 
-void displayButtonFixDraw(DisplayManager& display);
-
 // ── Instances ─────────────────────────────────
 WiFiManager     wifiMgr;
 NTPManager      ntpMgr;
@@ -132,7 +130,6 @@ void loop() {
     // ── Affichage + touch ─────────────────────
     displayMgr.update();
     displayPlanningDecorDraw(displayMgr);
-    displayButtonFixDraw(displayMgr);
 
     yield();
 }
