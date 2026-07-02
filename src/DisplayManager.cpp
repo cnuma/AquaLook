@@ -48,14 +48,11 @@ static bool intervalDayIsPlanned(const ZoneSchedule& zs,
                                  uint8_t daysAhead) {
     const uint32_t targetDay = todayEpochDay + daysAhead;
     const uint32_t interval  = zs.intervalDays > 0 ? zs.intervalDays : 1;
+    const uint32_t anchor    = zs.intervalAnchorDay;
 
-    if (zs.lastWateredDay == 0) {
-        return (daysAhead % interval) == 0;
-    }
-
-    uint32_t nextDay = zs.lastWateredDay + interval;
-    while (nextDay < todayEpochDay) nextDay += interval;
-    return targetDay >= nextDay && ((targetDay - nextDay) % interval) == 0;
+    return anchor > 0 &&
+           targetDay >= anchor &&
+           ((targetDay - anchor) % interval) == 0;
 }
 
 #define SCREEN_W   320
@@ -1170,16 +1167,19 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
                 // Intervalle : déterminer le prochain jour autorisé, puis chercher le
                 // premier créneau encore futur. Si tous les créneaux du jour sont
                 // passés, avancer d'un intervalle complet.
-                uint32_t nextDay = (zs.lastWateredDay > 0)
-                    ? zs.lastWateredDay + zs.intervalDays
-                    : epochNow;
-                while (nextDay < epochNow) nextDay += zs.intervalDays;
+                const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
+                uint32_t nextDay = zs.intervalAnchorDay;
+                if (nextDay == 0) {
+                    nextDay = epochNow;
+                } else {
+                    while (nextDay < epochNow) nextDay += interval;
+                }
 
                 uint8_t hour = 0, minute = 0;
                 int minExclusive = (nextDay == epochNow) ? nowMin : -1;
                 if (!findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute) &&
                     nextDay == epochNow) {
-                    nextDay += zs.intervalDays;
+                    nextDay += interval;
                     minExclusive = -1;
                 }
 

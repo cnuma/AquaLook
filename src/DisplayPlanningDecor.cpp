@@ -69,16 +69,12 @@ bool intervalDayIsPlanned(const ZoneSchedule& zs,
                           uint32_t todayEpochDay,
                           uint8_t daysAhead) {
     const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
-
-    if (zs.lastWateredDay == 0) {
-        return (daysAhead % interval) == 0;
-    }
-
-    uint32_t nextDay = zs.lastWateredDay + interval;
-    while (nextDay < todayEpochDay) nextDay += interval;
-
+    const uint32_t anchor   = zs.intervalAnchorDay;
     const uint32_t targetDay = todayEpochDay + daysAhead;
-    return targetDay >= nextDay && ((targetDay - nextDay) % interval) == 0;
+
+    return anchor > 0 &&
+           targetDay >= anchor &&
+           ((targetDay - anchor) % interval) == 0;
 }
 
 void hatchRect(TFT_eSPI& tft, int16_t x, int16_t y,

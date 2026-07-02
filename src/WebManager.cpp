@@ -430,9 +430,23 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         if (_config) zo["name"] = _config->zone(z).name;
 
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
-        zo["mode"]            = zs.mode;
-        zo["intervalDays"]    = zs.intervalDays;
-        zo["lastWateredDay"]  = zs.lastWateredDay;
+
+        // Migration douce : une ancienne zone intervalle sans ancre est
+        // ancree aujourd'hui une seule fois, dès que l'heure est synchronisée.
+        if (zs.mode == SCHEDULE_MODE_INTERVAL &&
+            zs.intervalAnchorDay == 0 &&
+            _ntp && _ntp->isSynced()) {
+            const uint32_t anchorDay = _ntp->getEpochDay();
+            _schedule->setIntervalAnchorDay(z, anchorDay);
+            if (_config) _config->setZoneMode(z, zs.mode, anchorDay);
+            zs = _schedule->getZoneSchedule(z);
+        }
+
+        zo["mode"]               = zs.mode;
+        zo["intervalDays"]       = zs.intervalDays;
+        zo["intervalAnchorDay"]  = zs.intervalAnchorDay;
+        // Compatibilité avec le JavaScript existant pendant la transition.
+        zo["lastWateredDay"]     = zs.intervalAnchorDay;
 
         JsonObject rain = zo["rain"].to<JsonObject>();
         rain["threshMm"] = zs.rain.thresholdMm;
@@ -534,9 +548,27 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
 void WebManager::handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc) {
     uint8_t zone = doc["zone"] | 255;
     uint8_t mode = doc["mode"] | 255;
-    if (zone >= MAX_ZONES || mode > 1) { sendError(req, "parametres invalides"); return; }
-    _schedule->setMode(zone, mode);                          // RAM
-    if (_config) _config->setZoneMode(zone, mode);          // flash
+    if (zone >= MAX_ZONES || mode > 1) {
+        sendError(req, "parametres invalides");
+        return;
+    }
+
+    const ZoneSchedule previous = _schedule->getZoneSchedule(zone);
+    uint32_t anchorDay = previous.intervalAnchorDay;
+
+    // Le jour de passage en mode intervalle devient l'origine fixe du cycle.
+    if (mode == SCHEDULE_MODE_INTERVAL &&
+        previous.mode != SCHEDULE_MODE_INTERVAL &&
+        _ntp && _ntp->isSynced()) {
+        anchorDay = _ntp->getEpochDay();
+    }
+
+    _schedule->setMode(zone, mode);
+    if (mode == SCHEDULE_MODE_INTERVAL && anchorDay > 0) {
+        _schedule->setIntervalAnchorDay(zone, anchorDay);
+    }
+    if (_config) _config->setZoneMode(zone, mode, anchorDay);
+
     EventBus::displayDirty = true;
     sendOk(req);
 }

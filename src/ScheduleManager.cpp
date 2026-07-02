@@ -65,7 +65,6 @@ void ScheduleManager::update(int hour, int minute, int weekday,
             // Heure atteinte — vérifier conditions
             if (shouldWater(z, weekday, epochDay, rainMm)) {
                 activateZone(z, sl.duration, false);
-                _zones[z].lastWateredDay = epochDay;
             }
             break;  // un seul slot par minute par zone
         }
@@ -113,7 +112,12 @@ void ScheduleManager::setMode(uint8_t zone, uint8_t mode) {
 
 void ScheduleManager::setIntervalDays(uint8_t zone, uint8_t days) {
     if (zone >= MAX_ZONES) return;
-    _zones[zone].intervalDays = days;
+    _zones[zone].intervalDays = constrain(days, (uint8_t)1, (uint8_t)30);
+}
+
+void ScheduleManager::setIntervalAnchorDay(uint8_t zone, uint32_t epochDay) {
+    if (zone >= MAX_ZONES) return;
+    _zones[zone].intervalAnchorDay = epochDay;
 }
 
 void ScheduleManager::setDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
@@ -185,8 +189,11 @@ bool ScheduleManager::shouldWater(uint8_t zone, int weekday,
         for (uint8_t s = 0; s < MAX_SLOTS && !dayOk; s++)
             dayOk = z.daySlots[idx].slots[s].enabled;
     } else {
-        dayOk = (z.lastWateredDay == 0)
-             || ((epochDay - z.lastWateredDay) >= z.intervalDays);
+        const uint32_t anchor = z.intervalAnchorDay;
+        const uint8_t interval = max((uint8_t)1, z.intervalDays);
+        dayOk = (anchor > 0) &&
+                (epochDay >= anchor) &&
+                (((epochDay - anchor) % interval) == 0);
     }
 
     if (!dayOk) {
