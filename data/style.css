@@ -18,3 +18,90 @@
 /* Entetes des jours : bleu petrole pour les distinguer des zones. */
 .planning-grid>.pg-header:not(.zone-hdr){color:#2f6f7e}
 .planning-grid>.pg-header.today:not(.zone-hdr){color:#174f5d;font-weight:700}
+
+/* Mode intervalle : entete du planning hachuree, nom lisible sur fond uni. */
+.interval-zone-hdr{
+  padding-left:5px;
+  border-radius:4px;
+  background:repeating-linear-gradient(135deg,
+    rgba(102,51,204,.10) 0,
+    rgba(102,51,204,.10) 4px,
+    rgba(102,51,204,.02) 4px,
+    rgba(102,51,204,.02) 8px);
+  box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
+}
+.interval-zone-hdr>span:first-child{
+  display:inline-block;
+  padding:1px 5px;
+  border-radius:3px;
+  background:var(--bg);
+  box-shadow:0 0 0 1px rgba(102,51,204,.16);
+}
+
+/* Jours non prevus en mode intervalle. */
+.pg-day.interval-off{
+  background:repeating-linear-gradient(135deg,
+    #f3f3f3 0,
+    #f3f3f3 5px,
+    #e5e5e5 5px,
+    #e5e5e5 10px)!important;
+  border-color:#c4c4c4!important;
+  border-style:solid!important;
+  filter:saturate(.35);
+}
+
+/* Fenetre de configuration : effet immediat selon la valeur courante du select. */
+#modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-header{
+  padding:7px 9px;
+  border-radius:5px;
+  background:repeating-linear-gradient(135deg,
+    rgba(102,51,204,.11) 0,
+    rgba(102,51,204,.11) 4px,
+    rgba(102,51,204,.02) 4px,
+    rgba(102,51,204,.02) 8px);
+  box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
+}
+#modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-name{
+  padding:2px 6px;
+  border-radius:3px;
+  background:var(--bg);
+}
+#modal-body:has(#zcfg-mode option[value="1"]:checked) #zcfg-interval-row{
+  padding:8px;
+  border-radius:5px;
+  background:repeating-linear-gradient(135deg,
+    rgba(102,51,204,.08) 0,
+    rgba(102,51,204,.08) 5px,
+    rgba(255,255,255,.55) 5px,
+    rgba(255,255,255,.55) 10px);
+}
+
+/* Partie haute : hachures sur le bandeau, pas sur toute la carte. */
+.zone-card.zone-interval .zone-card-header{
+  margin:-7px -11px 8px;
+  padding:7px 11px;
+  border-radius:6px 6px 4px 4px;
+  background:repeating-linear-gradient(135deg,
+    rgba(102,51,204,.10) 0,
+    rgba(102,51,204,.10) 4px,
+    rgba(102,51,204,.02) 4px,
+    rgba(102,51,204,.02) 8px);
+}
+.zone-card.zone-interval .zone-name{
+  padding:2px 6px;
+  border-radius:4px;
+  background:var(--bg);
+  box-shadow:0 0 0 1px rgba(102,51,204,.14);
+}
+.zone-card.zone-interval .zone-card-meta{
+  border-top-color:rgba(102,51,204,.22);
+}
+
+/* Vue dense : seule la cellule nom reprend les hachures. */
+.zones-table tr.zone-interval .zt-name{
+  background:repeating-linear-gradient(135deg,
+    rgba(102,51,204,.10) 0,
+    rgba(102,51,204,.10) 4px,
+    rgba(102,51,204,.02) 4px,
+    rgba(102,51,204,.02) 8px);
+}
