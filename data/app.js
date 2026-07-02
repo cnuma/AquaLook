@@ -1,4 +1,4 @@
-// ===============================================
+﻿// ===============================================
 //  app.js -- Arrosage ESP32 v2
 // ===============================================
 
@@ -144,7 +144,7 @@ function renderZonesGrid() {
     const reason   = z.reason || z.lastReason || 'En attente';
 
     return `
-    <div class="zone-card zone-color-${color} ${active ? 'zone-card-active' : ''}"
+    <div class="zone-card zone-color-${color} ${active ? 'zone-card-active' : ''} ${z.mode === 1 ? 'zone-interval' : ''}"
          onclick="openZoneConfigModal(${i})" title="Configurer ${name}">
       <div class="zone-card-header">
         <div class="zone-name">
@@ -185,7 +185,7 @@ function renderZonesTable() {
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
     const reason   = z.reason || z.lastReason || 'En attente';
 
-    return `<tr class="${active ? 'zone-active-'+color : ''}"
+    return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''}"
                 onclick="openZoneConfigModal(${i})"
                 title="Configurer ${name}">
       <td class="zt-name zt-name-${color}">
@@ -338,12 +338,12 @@ function renderPlanning() {
       html += `<div class="pg-weather wx-tooltip-host ${col===0?'today-wx':''}">
         <div class="wx-content">
           <div class="wx-icon">${icon}</div>
-          ${visual && !isNaN(tmin)?`<span class="wx-temp-pill ${weatherTempClass(tmin)}">${tmin.toFixed(0)}°</span>`:''}
-          ${!isNaN(tmax)?`<span class="wx-temp-pill ${weatherTempClass(tmax)}">${tmax.toFixed(0)}°</span>`:''}
+          ${visual && !isNaN(tmin)?`<span class="wx-temp-pill ${weatherTempClass(tmin)}">${tmin.toFixed(0)}Â°</span>`:''}
+          ${!isNaN(tmax)?`<span class="wx-temp-pill ${weatherTempClass(tmax)}">${tmax.toFixed(0)}Â°</span>`:''}
           ${windInfo}
           ${rain>0?`<div class="wx-rain">${rain.toFixed(1)}mm</div>`:""}
         </div>
-        ${visual?`<div class="wx-rain-gauge" title="Pluie prévue : ${rain.toFixed(1)} mm"><span style="height:${rainPct.toFixed(0)}%"></span></div>`:''}
+        ${visual?`<div class="wx-rain-gauge" title="Pluie prÃ©vue : ${rain.toFixed(1)} mm"><span style="height:${rainPct.toFixed(0)}%"></span></div>`:''}
         ${tip}
       </div>`;
     } else {
@@ -404,7 +404,7 @@ function renderPlanning() {
       }
 
       // Header zone avec indicateur intervalle et couleur de zone
-      html += `<div class="pg-header zone-hdr">
+      html += `<div class="pg-header zone-hdr interval-zone-hdr">
         <span class="pg-zone-label-${zoneColor}">${name}</span>
         <span style="font-size:9px;color:var(--muted);margin-left:4px">/${intervalD}j</span>
       </div>`;
@@ -441,7 +441,7 @@ function bindWeatherTooltips() {
     const place = () => {
       const r = host.getBoundingClientRect();
       const margin = 8;
-      // Le tooltip est en position fixed : il échappe au overflow du planning.
+      // Le tooltip est en position fixed : il Ã©chappe au overflow du planning.
       tip.style.display = 'block';
       const tw = tip.offsetWidth;
       const th = tip.offsetHeight;
@@ -483,17 +483,17 @@ function weatherTooltipHtml(fd, dayLabel) {
   if (cfg.weatherTipCondition && desc) lines.push(`<strong>${escapeHtml(desc.charAt(0).toUpperCase()+desc.slice(1))}</strong>`);
   if (cfg.weatherTipTemp) {
     const tmin=n(fd.tempMin), tmax=n(fd.tempMax), feels=n(fd.feelsLikeMax);
-    if (tmin!==null && tmax!==null) lines.push(`Température : ${tmin} à ${tmax} °C`);
-    if (feels!==null && Number(feels) > -90) lines.push(`Ressenti max. : ${feels} °C`);
+    if (tmin!==null && tmax!==null) lines.push(`TempÃ©rature : ${tmin} Ã  ${tmax} Â°C`);
+    if (feels!==null && Number(feels) > -90) lines.push(`Ressenti max. : ${feels} Â°C`);
   }
   if (cfg.weatherTipRain) {
-    const rain=n(fd.rainMm,1); if (rain!==null) lines.push(`Pluie prévue : ${rain} mm`);
+    const rain=n(fd.rainMm,1); if (rain!==null) lines.push(`Pluie prÃ©vue : ${rain} mm`);
   }
   if (cfg.weatherTipPop) {
-    const pop=n(fd.rainProbability); if (pop!==null) lines.push(`Probabilité de pluie : ${pop} %`);
+    const pop=n(fd.rainProbability); if (pop!==null) lines.push(`ProbabilitÃ© de pluie : ${pop} %`);
   }
   if (cfg.weatherTipHumidity) {
-    const hum=n(fd.humidityMax); if (hum!==null) lines.push(`Humidité max. : ${hum} %`);
+    const hum=n(fd.humidityMax); if (hum!==null) lines.push(`HumiditÃ© max. : ${hum} %`);
   }
   if (cfg.weatherTipWind) {
     const wind=n(fd.windMaxKmh); if (wind!==null) lines.push(`Vent max. : ${wind} km/h`);
@@ -658,7 +658,7 @@ function populateDrawer() {
   if (!adminStatus) return;
   const s = adminStatus;
 
-  // Conserver les valeurs appliquées pour détecter les changements nécessitant un reboot.
+  // Conserver les valeurs appliquÃ©es pour dÃ©tecter les changements nÃ©cessitant un reboot.
   if (s.system) {
     const zonesEl = document.getElementById('cfg-nb-zones');
     const ctrlEl  = document.getElementById('cfg-relay-controller');
@@ -720,7 +720,7 @@ function populateDrawer() {
     document.getElementById('cfg-maxwater').value       = s.system.maxWateringMin ?? 60;
     document.getElementById('cfg-screen-timeout').value = s.system.screenTimeout  ?? 5;
     document.getElementById('cfg-led-mode').value       = s.system.ledMode        ?? 1;
-    // Contrôleur puis liste des zones compatible avec ce matériel
+    // ContrÃ´leur puis liste des zones compatible avec ce matÃ©riel
     const nbZ = s.system.nbZones ?? 2;
     const rcSel = document.getElementById('cfg-relay-controller');
     if (rcSel) rcSel.value = s.system.relayController ?? 0;
@@ -746,7 +746,7 @@ function populateDrawer() {
      Ville : <span>${s.owm?.city || s.owm?.lat || '--'}</span><br>
      Veille : <span>${s.system?.screenTimeout===0 ? 'Desactivee' : (s.system?.screenTimeout||5)+'min'}</span><br>
      Zones : <span>${s.system?.nbZones||2}</span><br>
-     Contrôleur relais : <span>${rcLabel}</span><br>
+     ContrÃ´leur relais : <span>${rcLabel}</span><br>
      Logique relais : <span>${rlLabel}</span>`;
 }
 
@@ -829,7 +829,7 @@ async function saveCfgRelaySetup() {
   if (needReboot) {
     const controllerLabel = controller === 1 ? 'MCP23017' : 'XL9535';
     const logicLabel = relayLogic === 0 ? 'inverse' : 'directe';
-    const message = `Appliquer ${controllerLabel}, ${nbZones} zone${nbZones>1?'s':''}, logique ${logicLabel} ? Le module va redémarrer.`;
+    const message = `Appliquer ${controllerLabel}, ${nbZones} zone${nbZones>1?'s':''}, logique ${logicLabel} ? Le module va redÃ©marrer.`;
     if (!confirm(message)) return;
   }
 
@@ -847,10 +847,10 @@ async function saveCfgRelaySetup() {
   }
 
   if (needReboot) {
-    toast('Configuration enregistrée — redémarrage...');
+    toast('Configuration enregistrÃ©e â€” redÃ©marrage...');
     closeDrawer();
   } else {
-    toast('Configuration enregistrée');
+    toast('Configuration enregistrÃ©e');
     fetchAdminStatus();
   }
 }
@@ -1018,7 +1018,7 @@ function populateDisplaySection() {
     if (el && displayConfig[f]) el.value = displayConfig[f];
   });
   DISP_NUMERIC_FIELDS.forEach(function(f) {
-    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traités séparément
+    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traitÃ©s sÃ©parÃ©ment
     var el = document.getElementById('disp-' + f);
     if (el && displayConfig[f] !== undefined) el.value = displayConfig[f];
   });
@@ -1115,7 +1115,7 @@ async function saveCfgDisplay() {
     if (el) body[f] = el.value;
   });
   DISP_NUMERIC_FIELDS.forEach(function(f) {
-    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traités séparément
+    if (BOOL_FIELDS.indexOf(f) >= 0) return;  // traitÃ©s sÃ©parÃ©ment
     var el = document.getElementById('disp-' + f);
     if (el) body[f] = parseInt(el.value, 10) || 0;
   });
