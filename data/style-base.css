@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap');
 
 :root {
   --bg:         #f0f4f1;
@@ -65,7 +65,7 @@ header {
   letter-spacing: .05em;
 }
 .header-logo::before {
-  display: none; /* remplacé par le point animé inline */
+  display: none; /* remplacÃ© par le point animÃ© inline */
 }
 .logo-dot {
   display: inline-block;
@@ -339,7 +339,7 @@ header {
 }
 .drawer-close:hover { border-color: var(--red); color: var(--red); }
 
-/* Accordéon */
+/* AccordÃ©on */
 .cfg-section { border-bottom: 1px solid var(--border); }
 .cfg-section-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -439,7 +439,7 @@ header {
   font-size: 11px;
 }
 
-/* ── Zone cards (vue grille) ─────────────────── */
+/* â”€â”€ Zone cards (vue grille) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .zone-card {
   background: var(--bg1);
   border: 1px solid var(--border);
@@ -497,7 +497,7 @@ header {
 .zone-dot-amber  { background: var(--amber); }
 .zone-dot-purple { background: var(--purple); }
 
-/* ── Tableau compact zones ───────────────────── */
+/* â”€â”€ Tableau compact zones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .zones-table {
   width: 100%;
   border-collapse: collapse;
@@ -521,7 +521,7 @@ header {
   font-size: 11px;
   white-space: nowrap;
 }
-/* Colonne nom : barre colorée via border-left sur la cellule */
+/* Colonne nom : barre colorÃ©e via border-left sur la cellule */
 .zt-name {
   border-left: 4px solid transparent;
   font-family: var(--sans);
@@ -563,7 +563,7 @@ header {
   .zt-edit-hint { display: none; }
 }
 
-/* ── Modal config zone ──────────────────────── */
+/* â”€â”€ Modal config zone â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .zone-cfg-modal-header {
   display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
 }
@@ -594,7 +594,7 @@ header {
   margin: 14px 0;
 }
 
-/* Météo enrichie : teinte thermique + jauge pluie (option utilisateur) */
+/* MÃ©tÃ©o enrichie : teinte thermique + jauge pluie (option utilisateur) */
 .pg-weather { position: relative; overflow: visible; min-height: 48px; }
 .wx-content { position: relative; z-index: 1; }
 .wx-temp-freezing { background: #17324a; }
@@ -610,4 +610,32 @@ header {
 .wx-rain-gauge span {
   position: absolute; left: 0; right: 0; bottom: 0;
   background: #4aa3ff; min-height: 0;
+}
+
+/* Mode intervalle : zébrures cohérentes dans toute l'interface Web */
+.interval-zone-hdr,
+.zone-card.zone-interval,
+.zones-table tbody tr.zone-interval {
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      rgba(179, 157, 219, .20) 0,
+      rgba(179, 157, 219, .20) 6px,
+      rgba(248, 245, 255, .35) 6px,
+      rgba(248, 245, 255, .35) 10px
+    );
+}
+
+.interval-zone-hdr {
+  border-left: 3px solid #b39ddb;
+  border-radius: 4px;
+  padding-left: 5px;
+}
+
+.zone-card.zone-interval {
+  background-color: #fbf9ff;
+}
+
+.zones-table tbody tr.zone-interval td {
+  background-color: transparent;
 }
