@@ -1043,12 +1043,20 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     uint16_t bg      = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border  = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
     uint16_t zColor  = Theme::ZONE_COLORS[zone % 4];
+    // Conserver une marge basse réelle : une carte dont le bord inférieur
+    // coïncide avec SCREEN_H est physiquement tronquée et paraît carrée.
+    static constexpr uint16_t BTN_BOTTOM_MARGIN = 6;
+    const uint16_t availableH = (pushY + BTN_BOTTOM_MARGIN < SCREEN_H)
+        ? (uint16_t)(SCREEN_H - pushY - BTN_BOTTOM_MARGIN)
+        : 0;
+    const uint16_t visibleH = min((uint16_t)PL_BTN_H, availableH);
+    if (visibleH == 0) return;
 
-    // Fond sprite = couleur d'écran réelle, pour que les coins hors du
-    // rectangle arrondi se fondent dans le fond une fois la sprite poussée
+    // Le sprite reste alloué à PL_BTN_H, mais la carte est dessinée selon la
+    // hauteur réellement visible afin de conserver les coins arrondis en bas.
     _sprBtn0.fillSprite(Theme::BG);
-    drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, PL_BTN_H, Theme::R_LG, bg, border, false);
-    drawAccentBar(_sprBtn0, 0, 0, PL_BTN_H, Theme::R_LG, zColor);
+    drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, visibleH, Theme::R_LG, bg, border, false);
+    drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG, zColor);
 
     _sprBtn0.setFreeFont(nullptr);
     _sprBtn0.setTextSize(1);
@@ -1104,12 +1112,13 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         char ebuf[16];
         snprintf(ebuf, sizeof(ebuf), "+%02lu:%02lu",
                  elapsed / 60000UL, (elapsed % 60000UL) / 1000UL);
-        _sprBtn0.drawString(ebuf, 6, 68);
+        _sprBtn0.drawString(ebuf, 6, 64);
 
-        // Hint arrêt
+        // Hint arrêt — position relative à la hauteur réellement visible.
         _sprBtn0.setTextColor(Theme::ON_ACTIVE_MUTED, bg);  // gris clair lisible sur rouge
         _sprBtn0.setTextDatum(TC_DATUM);
-        _sprBtn0.drawString("Appuyer pour arreter", PL_BTN_W / 2, 82);
+        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)76, (uint16_t)(visibleH - 12)) : 4;
+        _sprBtn0.drawString("Appuyer pour arreter", PL_BTN_W / 2, hintY);
         _sprBtn0.setTextDatum(TL_DATUM);
 
     } else {
@@ -1193,7 +1202,8 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.drawString(next.c_str(), 6, next.length() <= 11 ? 32 : 38);
         _sprBtn0.setTextSize(1);
 
-        // Informations propres à la zone : mode et éventuel blocage pluie.
+        // Information propre à la zone : mode de planification uniquement.
+        // La météo reste dans le bandeau planning et n'est plus dupliquée ici.
         if (_schedule) {
             ZoneSchedule zs = _schedule->getZoneSchedule(zone);
             char modeBuf[28];
@@ -1202,23 +1212,22 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
             else
                 snprintf(modeBuf, sizeof(modeBuf), "Intervalle / %uj", (unsigned)zs.intervalDays);
 
-            bool rainBlocked = false;
-            if (_weather && _weather->hasFetched() && _config) {
-                ForecastDay fd = _weather->getForecastDay(0);
-                rainBlocked = fd.valid && fd.rainMm >= _config->zone(zone).rain.thresholdMm;
-            }
-            _sprBtn0.setTextColor(rainBlocked ? Theme::AMBER : Theme::MUTED, bg);
+            _sprBtn0.setTextColor(Theme::MUTED, bg);
             _sprBtn0.drawString(modeBuf, 6, 58);
-            _sprBtn0.drawString(rainBlocked ? "Pluie : arrosage bloque" : "Pluie : aucun blocage", 6, 69);
         }
 
         _sprBtn0.setTextColor(Theme::MUTED, bg);
         _sprBtn0.setTextDatum(TC_DATUM);
-        _sprBtn0.drawString("Appuyer pour arroser", PL_BTN_W / 2, 82);
+        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)76, (uint16_t)(visibleH - 12)) : 4;
+        _sprBtn0.drawString("Appuyer pour arroser", PL_BTN_W / 2, hintY);
         _sprBtn0.setTextDatum(TL_DATUM);
     }
 
-    _sprBtn0.pushSprite((zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X, pushY);
+    // Ne pousser que la portion réellement dessinée du sprite.
+    // Le reste du sprite (alloué à PL_BTN_H) ne doit jamais atteindre le TFT,
+    // sinon il peut laisser une zone rectangulaire sous la carte arrondie.
+    _sprBtn0.pushSprite((zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X,
+                        pushY, 0, 0, PL_BTN_W, visibleH);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1464,7 +1473,7 @@ void DisplayManager::updateHomeDynamic_list() {
             _tft.setTextColor(Theme::ON_ACTIVE_TEXT, bg);
             char ebuf[16];
             snprintf(ebuf, sizeof(ebuf), "+%02lu:%02lu", elapsed / 60000UL, (elapsed % 60000UL) / 1000UL);
-            _tft.drawString(ebuf, x + 6, btnY + 68);
+            _tft.drawString(ebuf, x + 6, btnY + 64);
         } else if (_nbZones <= 4) {
             const uint16_t x = z * (PL_CBTN_W + PL_CBTN_GAP);
             const uint16_t bg = Theme::ACTIVE_BG;
@@ -1473,16 +1482,16 @@ void DisplayManager::updateHomeDynamic_list() {
             const uint8_t pct = total ? (uint8_t)((elapsed * 100UL) / total) : 0;
             const uint16_t barW = (uint16_t)((PL_CBTN_W - 8) * pct / 100);
 
-            _tft.fillRect(x + 5, btnY + 20, PL_CBTN_W - 10, 42, bg);
+            _tft.fillRect(x + 5, btnY + 18, PL_CBTN_W - 10, 36, bg);
             _tft.setFreeFont(nullptr);
             _tft.setTextDatum(TC_DATUM);
             _tft.setTextSize(2);
             _tft.setTextColor(Theme::TEXT, bg);
             char rbuf[10];
             snprintf(rbuf, sizeof(rbuf), "%02lu:%02lu", remainMs / 60000UL, (remainMs % 60000UL) / 1000UL);
-            _tft.drawString(rbuf, x + PL_CBTN_W / 2, btnY + 30);
-            _tft.fillRoundRect(x + 4, btnY + 56, PL_CBTN_W - 8, 5, 2, Theme::BORDER);
-            if (barW) _tft.fillRoundRect(x + 4, btnY + 56, barW, 5, 2, Theme::AMBER);
+            _tft.drawString(rbuf, x + PL_CBTN_W / 2, btnY + 22);
+            _tft.fillRoundRect(x + 4, btnY + 47, PL_CBTN_W - 8, 5, 2, Theme::BORDER);
+            if (barW) _tft.fillRoundRect(x + 4, btnY + 47, barW, 5, 2, Theme::AMBER);
             _tft.setTextDatum(TL_DATUM);
             _tft.setTextSize(1);
         }
@@ -1932,17 +1941,19 @@ void DisplayManager::drawZoneBtnCompact(uint8_t zone, uint16_t x, uint16_t y,
         _tft.setTextSize(2);
         _tft.setTextColor(Theme::TEXT, bg);
         _tft.setTextDatum(TC_DATUM);
-        _tft.drawString(rbuf, x + w / 2, y + 30);
+        _tft.drawString(rbuf, x + w / 2, y + 22);
         _tft.setTextSize(1);
-        // Barre de progression
+        // Barre de progression remontée pour réserver deux lignes au hint.
         uint8_t pct  = (tot > 0) ? (uint8_t)((el * 100UL) / tot) : 0;
         uint16_t bw  = (uint16_t)((w - 8) * pct / 100);
-        _tft.fillRoundRect(x + 4, y + 56, w - 8, 5, 2, Theme::BORDER);
-        if (bw > 0) _tft.fillRoundRect(x + 4, y + 56, bw, 5, 2, Theme::AMBER);
-        // Hint arrêt
+        _tft.fillRoundRect(x + 4, y + 47, w - 8, 5, 2, Theme::BORDER);
+        if (bw > 0) _tft.fillRoundRect(x + 4, y + 47, bw, 5, 2, Theme::AMBER);
+        // Hint arrêt entièrement contenu dans le bouton.
         _tft.setTextColor(Theme::MUTED, bg);
-        _tft.drawString("Appuyer", x + w / 2, y + h - 14);
-        _tft.drawString("pour arreter", x + w / 2, y + h - 5);
+        const uint16_t hint1Y = y + ((h > 24) ? h - 22 : 2);
+        const uint16_t hint2Y = y + ((h > 13) ? h - 11 : 11);
+        _tft.drawString("Appuyer", x + w / 2, hint1Y);
+        _tft.drawString("pour arreter", x + w / 2, hint2Y);
     } else {
         // Prochain slot simplifié
         _tft.setTextColor(Theme::MUTED, bg);
@@ -1950,18 +1961,7 @@ void DisplayManager::drawZoneBtnCompact(uint8_t zone, uint16_t x, uint16_t y,
         _tft.drawString("Appuyer", x + w / 2, y + 45);
         _tft.drawString("pour arroser", x + w / 2, y + 56);
 
-        // Météo du jour en texte compact
-        if (_weather && _weather->hasFetched()) {
-            ForecastDay fd = _weather->getForecastDay(0);
-            char wbuf[16];
-            if (fd.tempMax > -50.0f)
-                snprintf(wbuf, sizeof(wbuf), "%.0fmm %.0fC",
-                         fd.rainMm, fd.tempMax);
-            else
-                snprintf(wbuf, sizeof(wbuf), "%.0fmm", fd.rainMm);
-            _tft.setTextColor(fd.rainMm > 1.0f ? Theme::BLUE : Theme::AMBER, bg);
-            _tft.drawString(wbuf, x + w / 2, y + 75);
-        }
+        // La météo reste exclusivement dans le bandeau planning.
         _tft.setTextDatum(TL_DATUM);
     }
     _tft.setTextDatum(TL_DATUM);

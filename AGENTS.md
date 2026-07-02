@@ -51,6 +51,19 @@ Pour une évolution significative, lire aussi :
 - Ne pas modifier les noms d’API, IDs HTML, routes ou structures persistées sans décision documentée.
 - Ne pas supprimer un comportement existant sous prétexte de simplification.
 
+### Vérification fonctionnelle obligatoire pour tous les développements ESP
+
+Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
+
+- Une modification n’est pas validée par sa seule présence dans le dépôt ni par la réussite de la compilation.
+- Vérifier que le code agit réellement sur l’élément demandé par l’utilisateur.
+- Vérifier toute la chaîne d’exécution : inclusion, instanciation, appel, déclencheur, conditions d’entrée, rafraîchissement et effet observable.
+- Toute nouvelle fonction, classe, tâche, route, callback ou gestionnaire doit être relié à un point d’entrée réellement exécuté (`setup()`, `loop()`, tâche FreeRTOS, événement, route HTTP ou callback matériel).
+- Vérifier qu’aucun autre rendu, cache, sprite, rafraîchissement ou rechargement de configuration ne masque ou n’annule le résultat.
+- Vérifier tous les modes concernés par la demande, et pas seulement un cas particulier.
+- Avant livraison, identifier pour chaque demande le fichier, la fonction, le point d’appel et le résultat attendu.
+- Si la vérification matérielle n’a pas été effectuée, le signaler explicitement.
+
 ### LittleFS
 
 - `data/` contient uniquement les ressources embarquées réellement nécessaires.
@@ -95,11 +108,12 @@ Pour une évolution significative, lire aussi :
 2. Lister les fichiers et fonctions concernés.
 3. Énoncer les invariants à préserver.
 4. Faire la modification minimale.
-5. Exécuter `git diff --check` puis `pio run -e ProgrammeArrosage`.
-6. Si `data/` est modifié, exécuter `pio run -e ProgrammeArrosage -t buildfs`.
-7. Pour une modification matérielle ciblée, utiliser `pio run -e calibration` ou `pio run -e test_relais`.
-8. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-9. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
+5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
+6. Exécuter `git diff --check` puis `pio run -e ProgrammeArrosage`.
+7. Si `data/` est modifié, exécuter `pio run -e ProgrammeArrosage -t buildfs`.
+8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration` ou `pio run -e test_relais`.
+9. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
+10. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
 
 ## Livrables
 
