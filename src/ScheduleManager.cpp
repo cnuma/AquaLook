@@ -120,6 +120,16 @@ void ScheduleManager::setIntervalAnchorDay(uint8_t zone, uint32_t epochDay) {
     _zones[zone].intervalAnchorDay = epochDay;
 }
 
+void ScheduleManager::clearIntervalProgramming(uint8_t zone) {
+    if (zone >= MAX_ZONES) return;
+    _zones[zone].mode = SCHEDULE_MODE_DAYS;
+    _zones[zone].intervalDays = 2;
+    _zones[zone].intervalAnchorDay = 0;
+    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+        _zones[zone].intervalSlots.slots[s] = TimeSlot();
+    }
+}
+
 void ScheduleManager::setDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                                    uint8_t h, uint8_t m,
                                    uint16_t dur, bool enabled) {

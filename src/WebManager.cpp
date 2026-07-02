@@ -340,6 +340,8 @@ void WebManager::setupRoutes() {
 
     POST_JSON("/api/mode",          handleSetMode);
     POST_JSON("/api/interval",      handleSetInterval);
+    POST_JSON("/api/intervalAnchor",handleSetIntervalAnchor);
+    POST_JSON("/api/deleteInterval",handleDeleteIntervalProgramming);
     POST_JSON("/api/dayslot",       handleSetDaySlot);
     POST_JSON("/api/intervalslot",  handleSetIntervalSlot);
     POST_JSON("/api/rain",          handleSetRain);
@@ -430,17 +432,6 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         if (_config) zo["name"] = _config->zone(z).name;
 
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
-
-        // Migration douce : une ancienne zone intervalle sans ancre est
-        // ancree aujourd'hui une seule fois, dès que l'heure est synchronisée.
-        if (zs.mode == SCHEDULE_MODE_INTERVAL &&
-            zs.intervalAnchorDay == 0 &&
-            _ntp && _ntp->isSynced()) {
-            const uint32_t anchorDay = _ntp->getEpochDay();
-            _schedule->setIntervalAnchorDay(z, anchorDay);
-            if (_config) _config->setZoneMode(z, zs.mode, anchorDay);
-            zs = _schedule->getZoneSchedule(z);
-        }
 
         zo["mode"]               = zs.mode;
         zo["intervalDays"]       = zs.intervalDays;
@@ -548,26 +539,14 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
 void WebManager::handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc) {
     uint8_t zone = doc["zone"] | 255;
     uint8_t mode = doc["mode"] | 255;
-    if (zone >= MAX_ZONES || mode > 1) {
+    if (zone >= MAX_ZONES || mode > SCHEDULE_MODE_INTERVAL) {
         sendError(req, "parametres invalides");
         return;
     }
 
-    const ZoneSchedule previous = _schedule->getZoneSchedule(zone);
-    uint32_t anchorDay = previous.intervalAnchorDay;
-
-    // Le jour de passage en mode intervalle devient l'origine fixe du cycle.
-    if (mode == SCHEDULE_MODE_INTERVAL &&
-        previous.mode != SCHEDULE_MODE_INTERVAL &&
-        _ntp && _ntp->isSynced()) {
-        anchorDay = _ntp->getEpochDay();
-    }
-
+    // Le changement de mode ne modifie jamais silencieusement l'ancre.
     _schedule->setMode(zone, mode);
-    if (mode == SCHEDULE_MODE_INTERVAL && anchorDay > 0) {
-        _schedule->setIntervalAnchorDay(zone, anchorDay);
-    }
-    if (_config) _config->setZoneMode(zone, mode, anchorDay);
+    if (_config) _config->setZoneMode(zone, mode);
 
     EventBus::displayDirty = true;
     sendOk(req);
@@ -579,6 +558,36 @@ void WebManager::handleSetInterval(AsyncWebServerRequest* req, JsonDocument& doc
     if (zone >= MAX_ZONES || days < 1 || days > 30) { sendError(req, "parametres invalides"); return; }
     _schedule->setIntervalDays(zone, days);
     if (_config) _config->setZoneIntervalDays(zone, days);
+    sendOk(req);
+}
+
+void WebManager::handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc) {
+    uint8_t zone = doc["zone"] | 255;
+    uint32_t anchorDay = doc["anchorDay"] | 0UL;
+    if (zone >= MAX_ZONES || anchorDay == 0) {
+        sendError(req, "date de debut invalide");
+        return;
+    }
+
+    _schedule->setIntervalAnchorDay(zone, anchorDay);
+    if (_config) _config->setZoneIntervalAnchorDay(zone, anchorDay);
+    EventLog::log(LOG_INFO, "Zone %u: ancre intervalle=%lu",
+                  zone + 1, (unsigned long)anchorDay);
+    EventBus::displayDirty = true;
+    sendOk(req);
+}
+
+void WebManager::handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc) {
+    uint8_t zone = doc["zone"] | 255;
+    if (zone >= MAX_ZONES) {
+        sendError(req, "zone invalide");
+        return;
+    }
+
+    _schedule->clearIntervalProgramming(zone);
+    if (_config) _config->clearZoneIntervalProgramming(zone);
+    EventLog::log(LOG_INFO, "Zone %u: programmation intervalle supprimee", zone + 1);
+    EventBus::displayDirty = true;
     sendOk(req);
 }
 

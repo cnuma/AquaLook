@@ -79,6 +79,7 @@ public:
     void setMode(uint8_t zone, uint8_t mode);
     void setIntervalDays(uint8_t zone, uint8_t days);
     void setIntervalAnchorDay(uint8_t zone, uint32_t epochDay);
+    void clearIntervalProgramming(uint8_t zone);
     void setDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                     uint8_t h, uint8_t m, uint16_t dur, bool enabled);
     void setIntervalSlot(uint8_t zone, uint8_t slotIdx,

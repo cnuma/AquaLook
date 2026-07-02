@@ -61,6 +61,8 @@ private:
     // ── Handlers POST planning ────────────────
     void handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetInterval(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetDaySlot(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetIntervalSlot(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetRain(AsyncWebServerRequest* req, JsonDocument& doc);

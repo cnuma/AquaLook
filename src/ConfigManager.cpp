@@ -645,8 +645,42 @@ void ConfigManager::setZoneMode(uint8_t z, uint8_t mode, uint32_t anchorDay) {
 
 void ConfigManager::setZoneIntervalDays(uint8_t z, uint8_t days) {
     if (z >= MAX_ZONES) return;
-    _zones[z].intervalDays = days;
+    _zones[z].intervalDays = constrain(days, (uint8_t)1, (uint8_t)30);
     save();
+}
+
+void ConfigManager::setZoneIntervalAnchorDay(uint8_t z, uint32_t epochDay) {
+    if (z >= MAX_ZONES) return;
+    _intervalAnchorDays[z] = epochDay;
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                       _intervalAnchorDays,
+                       sizeof(_intervalAnchorDays));
+        prefs.end();
+    }
+}
+
+void ConfigManager::clearZoneIntervalProgramming(uint8_t z) {
+    if (z >= MAX_ZONES) return;
+
+    _zones[z].mode = SCHEDULE_MODE_DAYS;
+    _zones[z].intervalDays = 2;
+    _intervalAnchorDays[z] = 0;
+    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+        _zones[z].intervalSlots.slots[s] = CfgSlot();
+    }
+
+    save();
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                       _intervalAnchorDays,
+                       sizeof(_intervalAnchorDays));
+        prefs.end();
+    }
 }
 
 void ConfigManager::setZoneRain(uint8_t z, float threshMm, uint8_t hours) {

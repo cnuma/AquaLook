@@ -105,3 +105,15 @@
     rgba(102,51,204,.02) 4px,
     rgba(102,51,204,.02) 8px);
 }
+
+/* Correction : ne pas zebrer toute la carte de zone en mode intervalle.
+   Les hachures restent limitees au bandeau d'entete ci-dessus. */
+.zone-card.zone-interval{
+  background-image:none!important;
+  background-color:var(--bg)!important;
+}
+
+/* Vue dense : ne pas zebrer toute la ligne, seulement la cellule nom. */
+.zones-table tbody tr.zone-interval{
+  background-image:none!important;
+}

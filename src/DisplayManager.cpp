@@ -1051,6 +1051,10 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
 
     // Le sprite reste alloué à PL_BTN_H, mais la carte est dessinée selon la
     // hauteur réellement visible afin de conserver les coins arrondis en bas.
+    // Le sprite alloué est plus haut que la carte réellement visible.
+    // Le remplir avec le fond d'écran permet de pousser uniquement les lignes
+    // utiles sans dépendre d'une couleur transparente, dont la comparaison peut
+    // varier selon l'ordre des octets du sprite TFT_eSPI.
     _sprBtn0.fillSprite(Theme::BG);
     drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, visibleH, Theme::R_LG, bg, border, false);
     drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG, zColor);
@@ -1114,7 +1118,7 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         // Hint arrêt — position relative à la hauteur réellement visible.
         _sprBtn0.setTextColor(Theme::ON_ACTIVE_MUTED, bg);  // gris clair lisible sur rouge
         _sprBtn0.setTextDatum(TC_DATUM);
-        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)76, (uint16_t)(visibleH - 12)) : 4;
+        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)84, (uint16_t)(visibleH - 12)) : 4;
         _sprBtn0.drawString("Appuyer pour arreter", PL_BTN_W / 2, hintY);
         _sprBtn0.setTextDatum(TL_DATUM);
 
@@ -1223,11 +1227,14 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.setTextDatum(TL_DATUM);
     }
 
-    // Ne pousser que la portion réellement dessinée du sprite.
-    // Le reste du sprite (alloué à PL_BTN_H) ne doit jamais atteindre le TFT,
-    // sinon il peut laisser une zone rectangulaire sous la carte arrondie.
-    _sprBtn0.pushSprite((zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X,
-                        pushY, 0, 0, PL_BTN_W, visibleH);
+    const uint16_t pushX = (zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X;
+
+    // Nettoyer toute la colonne, puis transférer uniquement la hauteur utile.
+    // Ne jamais pousser PL_BTN_H complet ici : la partie basse inutilisée du
+    // sprite était la source du rectangle coloré visible sous les boutons.
+    _tft.fillRect(pushX, pushY, PL_BTN_W, SCREEN_H - pushY, Theme::BG);
+    _tft.pushImage(pushX, pushY, PL_BTN_W, visibleH,
+                   static_cast<uint16_t*>(_sprBtn0.getPointer()));
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -265,6 +265,8 @@ public:
     // Planning
     void setZoneMode(uint8_t zone, uint8_t mode, uint32_t anchorDay = 0);
     void setZoneIntervalDays(uint8_t zone, uint8_t days);
+    void setZoneIntervalAnchorDay(uint8_t zone, uint32_t epochDay);
+    void clearZoneIntervalProgramming(uint8_t zone);
     void setZoneRain(uint8_t zone, float threshMm, uint8_t hours);
     void setZoneDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                         uint8_t h, uint8_t m, uint16_t dur, bool enabled);
