@@ -11,7 +11,7 @@
 //
 //  États :
 //    AWAKE  → écran allumé, LED éteinte
-//    SLEEP  → écran éteint, LED anime en signe de vie
+//    SLEEP  → écran éteint, LED animée en signe de vie
 //
 //  Réveil sur :
 //    - touch (appelé par DisplayManager::handleTouch)
@@ -19,10 +19,12 @@
 //    - appel explicite wakeUp()
 //
 //  Modes LED (config) :
-//    0 = off        → LED toujours éteinte en veille
-//    1 = pulse      → battement lent vert, 1 cycle/4s
-//    2 = flash      → flash court 100ms toutes les 5s
-//    Relais actif   → override LED rouge clignotant quelle que soit config
+//    0 = off
+//    1 = flash discret vert
+//    2 = respiration verte
+//    3 = arc-en-ciel progressif
+//    4 = alternance vert / bleu
+//    Relais actif → override LED rouge clignotant quelle que soit config
 // ═══════════════════════════════════════════════════════════════
 
 // Pins CYD ESP32-2432S028
@@ -42,18 +44,23 @@ public:
     bool isAsleep() const { return _sleeping; }
 
 private:
-    ConfigManager* _config    = nullptr;
-    bool           _sleeping  = false;
-    uint32_t       _lastActivity = 0;  // millis() du dernier événement
+    ConfigManager* _config       = nullptr;
+    bool           _sleeping     = false;
+    uint32_t       _lastActivity = 0;
 
     // LED
-    uint32_t _ledTimer   = 0;
-    uint8_t  _ledPhase   = 0;    // phase pour pulse/flash
-    bool     _relayWasActive = false;
+    uint32_t _ledTimer        = 0;
+    uint8_t  _ledPhase        = 0;
+    bool     _relayWasActive  = false;
+
+    static constexpr uint8_t LED_CH_RED   = 5;
+    static constexpr uint8_t LED_CH_GREEN = 6;
+    static constexpr uint8_t LED_CH_BLUE  = 7;
 
     void screenOn();
     void screenOff();
     void updateLed(bool relayActive);
     void ledOff();
     void ledSet(bool r, bool g, bool b);
+    void ledSetBrightness(uint8_t r, uint8_t g, uint8_t b);
 };
