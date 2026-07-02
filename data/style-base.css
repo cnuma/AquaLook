@@ -212,8 +212,23 @@ header {
 .pg-day.off  { background: var(--bg); }
 .pg-day.on   { background: var(--green-dim); border-color: var(--green-mid); }
 .pg-day.rain { background: #fff3cd; border-color: #ffc107; }
-.pg-day.interval-on  { background: #ede0ff; border-color: #b39ddb; }
-.pg-day.interval-off { background: #f8f5ff; border-color: #d8ccf0; border-style: dashed; }
+.pg-day.interval-on {
+  background: #ede0ff;
+  border-color: #b39ddb;
+}
+
+.pg-day.interval-off {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      #f8f5ff 0,
+      #f8f5ff 6px,
+      #e5dcf3 6px,
+      #e5dcf3 9px
+    );
+  border-color: #d8ccf0;
+  border-style: dashed;
+}
 .pg-cross { margin: auto; font-size: 11px; color: var(--border2); font-family: var(--mono); }
 .mini-slot {
   border-radius: 3px; padding: 2px 3px; font-family: var(--mono);
