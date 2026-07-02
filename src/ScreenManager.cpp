@@ -8,10 +8,13 @@ void ScreenManager::begin(ConfigManager* config) {
     pinMode(PIN_TFT_BL, OUTPUT);
     digitalWrite(PIN_TFT_BL, HIGH);  // allumé au boot
 
-    // Pins LED RGB (logique inverse)
-    pinMode(PIN_LED_RED,   OUTPUT);
-    pinMode(PIN_LED_GREEN, OUTPUT);
-    pinMode(PIN_LED_BLUE,  OUTPUT);
+    // LED RGB active LOW, pilotée en PWM 8 bits
+    ledcSetup(LED_CH_RED,   5000, 8);
+    ledcSetup(LED_CH_GREEN, 5000, 8);
+    ledcSetup(LED_CH_BLUE,  5000, 8);
+    ledcAttachPin(PIN_LED_RED,   LED_CH_RED);
+    ledcAttachPin(PIN_LED_GREEN, LED_CH_GREEN);
+    ledcAttachPin(PIN_LED_BLUE,  LED_CH_BLUE);
     ledOff();
 
     _lastActivity = millis();
@@ -76,39 +79,32 @@ void ScreenManager::screenOff() {
 
 // ─────────────────────────────────────────────────────────────
 //  LED signe de vie
-//
-//  Mode 0 — off : rien
-//  Mode 1 — pulse : vert monte/descend sur 4s via PWM simulé
-//             (pas de PWM sur ces pins → on fait une succession
-//              de ON/OFF courts pour créer l'illusion)
-//  Mode 2 — flash : vert allumé 100ms toutes les 5s
-//  Relay actif → rouge clignotant 500ms, override tout
 // ─────────────────────────────────────────────────────────────
-// Séquence arc-en-ciel : 6 couleurs RVB pures
-static const bool LED_RAINBOW[6][3] = {
-    {false, true,  false},  // vert
-    {false, true,  true },  // cyan
-    {false, false, true },  // bleu
-    {true,  false, true },  // violet
-    {true,  false, false},  // rouge
-    {true,  true,  false},  // jaune
+// Séquence arc-en-ciel : 6 couleurs RVB pures, interpolées entre elles
+static const uint8_t LED_RAINBOW[6][3] = {
+    {  0, 255,   0},  // vert
+    {  0, 255, 255},  // cyan
+    {  0,   0, 255},  // bleu
+    {255,   0, 255},  // violet
+    {255,   0,   0},  // rouge
+    {255, 255,   0},  // jaune
 };
 
 // Séquence bicolore : vert + bleu
 static const bool LED_BICOLOR[2][3] = {
-    {false, true,  false},  // vert
-    {false, false, true },  // bleu
+    {false, true,  false},
+    {false, false, true },
 };
 
 void ScreenManager::updateLed(bool relayActive) {
     const uint32_t now = millis();
     uint8_t mode = _config ? _config->system().ledMode : 1;
 
-    // Override relais actif : LED rouge clignote toutes les 500ms — quel que soit le mode
+    // Override relais actif : LED rouge clignote toutes les 500ms
     if (relayActive) {
-        if (now - _ledTimer >= 500) {
+        if (now - _ledTimer >= 500UL) {
             _ledTimer = now;
-            _ledPhase ^= 1;
+            _ledPhase ^= 1U;
             if (_ledPhase) ledSet(true, false, false);
             else           ledOff();
         }
@@ -117,59 +113,62 @@ void ScreenManager::updateLed(bool relayActive) {
 
     switch (mode) {
         case 0:
-            // Off total
             ledOff();
             break;
 
         case 1:
             // Flash discret vert — 150ms allumé toutes les 4s
-            if (_ledPhase == 0 && (now - _ledTimer) >= 4000) {
-                _ledTimer = now; _ledPhase = 1;
-                ledSet(false, true, false);
-            } else if (_ledPhase == 1 && (now - _ledTimer) >= 150) {
-                _ledPhase = 0; ledOff();
-            }
-            break;
-
-        case 2:
-            // Respiration verte — pseudo-PWM logiciel
-            // Cycle 2s : 20 paliers ON/OFF de durée croissante puis décroissante
-            {
-                static uint8_t breathStep = 0;
-                // Durées ON pour chaque palier (ms) — simule une courbe sinusoïdale
-                static const uint8_t BREATH_ON[]  = {5,10,20,35,55,75,95,110,120,125,
-                                                     125,120,110,95,75,55,35,20,10,5};
-                static const uint8_t BREATH_OFF[] = {120,115,105,90,70,50,30,15,5,0,
-                                                      0,5,15,30,50,70,90,105,115,120};
-                uint8_t onMs  = BREATH_ON[breathStep];
-                uint8_t offMs = BREATH_OFF[breathStep];
-
-                if (_ledPhase == 0 && (now - _ledTimer) >= offMs) {
-                    _ledTimer = now; _ledPhase = 1;
-                    if (onMs > 0) ledSet(false, true, false);
-                } else if (_ledPhase == 1 && (now - _ledTimer) >= onMs) {
-                    _ledPhase = 0; ledOff();
-                    breathStep = (breathStep + 1) % 20;
-                }
-            }
-            break;
-
-        case 3:
-            // Arc-en-ciel lent — change de couleur toutes les 2s
-            if (now - _ledTimer >= 2000) {
+            if (_ledPhase == 0 && (now - _ledTimer) >= 4000UL) {
                 _ledTimer = now;
-                _ledPhase = (_ledPhase + 1) % 6;
-                ledSet(LED_RAINBOW[_ledPhase][0],
-                       LED_RAINBOW[_ledPhase][1],
-                       LED_RAINBOW[_ledPhase][2]);
+                _ledPhase = 1;
+                ledSet(false, true, false);
+            } else if (_ledPhase == 1 && (now - _ledTimer) >= 150UL) {
+                _ledTimer = now;
+                _ledPhase = 0;
+                ledOff();
             }
             break;
+
+        case 2: {
+            // Respiration verte progressive sur 4 secondes
+            constexpr uint32_t PERIOD_MS = 4000UL;
+            constexpr uint32_t HALF_MS   = PERIOD_MS / 2UL;
+            const uint32_t phase = now % PERIOD_MS;
+            const uint32_t level = phase < HALF_MS
+                ? (phase * 180UL) / HALF_MS
+                : ((PERIOD_MS - phase) * 180UL) / HALF_MS;
+            ledSetBrightness(0, (uint8_t)(12UL + level), 0);
+            break;
+        }
+
+        case 3: {
+            // Arc-en-ciel lent et continu : chaque transition dure 2 secondes
+            constexpr uint32_t STEP_MS  = 2000UL;
+            constexpr uint32_t CYCLE_MS = STEP_MS * 6UL;
+            const uint32_t cyclePos = now % CYCLE_MS;
+            const uint8_t from = cyclePos / STEP_MS;
+            const uint8_t to   = (from + 1U) % 6U;
+            const uint32_t local = cyclePos % STEP_MS;
+
+            const uint8_t r = LED_RAINBOW[from][0] +
+                (int32_t)(LED_RAINBOW[to][0] - LED_RAINBOW[from][0]) *
+                (int32_t)local / (int32_t)STEP_MS;
+            const uint8_t g = LED_RAINBOW[from][1] +
+                (int32_t)(LED_RAINBOW[to][1] - LED_RAINBOW[from][1]) *
+                (int32_t)local / (int32_t)STEP_MS;
+            const uint8_t b = LED_RAINBOW[from][2] +
+                (int32_t)(LED_RAINBOW[to][2] - LED_RAINBOW[from][2]) *
+                (int32_t)local / (int32_t)STEP_MS;
+
+            ledSetBrightness(r, g, b);
+            break;
+        }
 
         case 4:
             // Bicolore séquence — alterne vert/bleu toutes les 3s
-            if (now - _ledTimer >= 3000) {
+            if (now - _ledTimer >= 3000UL) {
                 _ledTimer = now;
-                _ledPhase ^= 1;
+                _ledPhase ^= 1U;
                 ledSet(LED_BICOLOR[_ledPhase][0],
                        LED_BICOLOR[_ledPhase][1],
                        LED_BICOLOR[_ledPhase][2]);
@@ -183,16 +182,20 @@ void ScreenManager::updateLed(bool relayActive) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Helpers LED (logique inverse : LOW = allumé)
+//  Helpers LED — LED active LOW, PWM inversé
 // ─────────────────────────────────────────────────────────────
 void ScreenManager::ledOff() {
-    digitalWrite(PIN_LED_RED,   HIGH);
-    digitalWrite(PIN_LED_GREEN, HIGH);
-    digitalWrite(PIN_LED_BLUE,  HIGH);
+    ledSetBrightness(0, 0, 0);
 }
 
 void ScreenManager::ledSet(bool r, bool g, bool b) {
-    digitalWrite(PIN_LED_RED,   r ? LOW : HIGH);
-    digitalWrite(PIN_LED_GREEN, g ? LOW : HIGH);
-    digitalWrite(PIN_LED_BLUE,  b ? LOW : HIGH);
+    ledSetBrightness(r ? 255 : 0,
+                     g ? 255 : 0,
+                     b ? 255 : 0);
+}
+
+void ScreenManager::ledSetBrightness(uint8_t r, uint8_t g, uint8_t b) {
+    ledcWrite(LED_CH_RED,   255 - r);
+    ledcWrite(LED_CH_GREEN, 255 - g);
+    ledcWrite(LED_CH_BLUE,  255 - b);
 }
