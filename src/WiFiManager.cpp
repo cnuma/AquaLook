@@ -60,13 +60,19 @@ void WiFiManager::handleConnecting(uint32_t now) {
     wl_status_t s = WiFi.status();
 
     if (s == WL_CONNECTED) {
+        WiFi.setSleep(false);
+
         _state      = State::CONNECTED;
         _retryCount = 0;
-        EventLog::log(LOG_INFO, "WiFi: connecte IP=%s RSSI=%ddBm",
-                      WiFi.localIP().toString().c_str(), WiFi.RSSI());
+
+        EventLog::log(LOG_INFO,
+                    "WiFi: connecte IP=%s RSSI=%ddBm — veille WiFi desactivee",
+                    WiFi.localIP().toString().c_str(),
+                    WiFi.RSSI());
+
         EventBus::displayDirty = true;
         return;
-    }
+}
 
     // Détecter la cause précise de l'échec — uniquement sur événement, pas en polling
     bool timedOut  = (now - _lastActionMs) > CONNECT_TIMEOUT_MS;
