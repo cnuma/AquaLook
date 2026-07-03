@@ -57,18 +57,19 @@ private:
     // ── Handlers GET ──────────────────────────
     void handleStatus(AsyncWebServerRequest* request);
     void handleAdminStatus(AsyncWebServerRequest* request);
+    void handleDiagnostics(AsyncWebServerRequest* request);
 
     // ── Handlers POST planning ────────────────
     void handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetInterval(AsyncWebServerRequest* req, JsonDocument& doc);
-    void handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc);
-    void handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetDaySlot(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetIntervalSlot(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetRain(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleManual(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetManualDuration(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSaveSchedule(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc);
 
     // ── Handlers POST config (nouveau v2) ─────
     void handleSetWifi(AsyncWebServerRequest* req, JsonDocument& doc);

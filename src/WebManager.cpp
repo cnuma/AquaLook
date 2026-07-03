@@ -1,6 +1,7 @@
 #include "WebManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "SystemDiagnostics.h"
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -298,6 +299,9 @@ void WebManager::setupRoutes() {
     _server.on("/api/adminStatus", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleAdminStatus(req);
     });
+    _server.on("/api/diagnostics", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleDiagnostics(req);
+    });
     // Slots d une zone en particulier (demande a la demande depuis le modal)
     // Route query param : /api/zone?z=N — evite les problemes de regex AsyncWebServer
     _server.on("/api/zone", HTTP_GET, [this](AsyncWebServerRequest* req) {
@@ -529,6 +533,15 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         }
     }
 
+    sendJson(req, doc);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GET /api/diagnostics — instrumentation système légère
+// ═══════════════════════════════════════════════════════════════
+void WebManager::handleDiagnostics(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    SystemDiagnostics::fillJson(doc, _wifi);
     sendJson(req, doc);
 }
 
@@ -1112,21 +1125,34 @@ void WebManager::handleGetLogs(AsyncWebServerRequest* req) {
 
 void WebManager::sendJson(AsyncWebServerRequest* req,
                            const JsonDocument& doc, int code) {
-    // Mesurer d'abord pour éviter la double allocation
-    size_t len = measureJson(doc);
+    const uint32_t startedUs = micros();
+
+    // Mesurer d'abord pour éviter la double allocation.
+    const size_t len = measureJson(doc);
     AsyncResponseStream* resp = req->beginResponseStream("application/json", len + 1);
+    resp->setCode(code);
     serializeJson(doc, *resp);
     req->send(resp);
+
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), code, len, micros() - startedUs);
 }
 
 void WebManager::sendOk(AsyncWebServerRequest* req) {
-    req->send(200, "application/json", "{\"ok\":true}");
+    const uint32_t startedUs = micros();
+    static constexpr char BODY[] = "{\"ok\":true}";
+    req->send(200, "application/json", BODY);
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), 200, sizeof(BODY) - 1, micros() - startedUs);
 }
 
 void WebManager::sendError(AsyncWebServerRequest* req,
                             const char* msg, int code) {
+    const uint32_t startedUs = micros();
     String body = String("{\"error\":\"") + msg + "\"}";
     req->send(code, "application/json", body);
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), code, body.length(), micros() - startedUs);
 }
 
 void WebManager::addJsonHandler(const char* uri,

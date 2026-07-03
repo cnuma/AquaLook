@@ -11,6 +11,7 @@
 #include "DisplayManager.h"
 #include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
+#include "SystemDiagnostics.h"
 
 // ── Instances ─────────────────────────────────
 WiFiManager     wifiMgr;
@@ -42,17 +43,18 @@ void setup() {
     Serial.begin(115200);
     delay(300);
     Serial.println("\n=== AquaLook v2.0 ===");
+    SystemDiagnostics::begin();
 
     Wire.begin(SDA_PIN, SCL_PIN);
 
     // Scan I2C temporaire — à retirer après diagnostic
-Serial.println("[I2C] Scan...");
-for (uint8_t addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0)
-        Serial.printf("[I2C] Device trouve @ 0x%02X\n", addr);
-}
-Serial.println("[I2C] Scan termine");
+    Serial.println("[I2C] Scan...");
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0)
+            Serial.printf("[I2C] Device trouve @ 0x%02X\n", addr);
+    }
+    Serial.println("[I2C] Scan termine");
 
     // ── Boot instrumenté ──────────────────────
     // Invariant I1 : ConfigManager est l'unique propriétaire du montage LittleFS.
@@ -62,10 +64,10 @@ Serial.println("[I2C] Scan termine");
     // ── Splash screen ─────────────────────────
     displayMgr.initTft();
     displayMgr.showSplash(0, "Initialisation...");
-    
+
     Serial.printf("[Debug] SSID='%s' PWD len=%d\n",
-    configMgr.wifi().ssid,
-    strlen(configMgr.wifi().password));
+                  configMgr.wifi().ssid,
+                  strlen(configMgr.wifi().password));
 
     splashStep("Configuration");
 
@@ -102,6 +104,8 @@ Serial.println("[I2C] Scan termine");
 
 // ─────────────────────────────────────────────
 void loop() {
+    SystemDiagnostics::loopEnter();
+
     // ── Réseau ────────────────────────────────
     wifiMgr.update();
     const bool connected = wifiMgr.isConnected();
@@ -132,4 +136,5 @@ void loop() {
     displayPlanningDecorDraw(displayMgr);
 
     yield();
+    SystemDiagnostics::loopExit();
 }
