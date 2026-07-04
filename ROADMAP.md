@@ -58,3 +58,34 @@ Points d’architecture à étudier :
 - définition des seuils d’alerte selon les caractéristiques de chaque voie.
 
 Invariant impératif : une panne d’un débitmètre ou du module de comptage ne doit pas provoquer l’activation intempestive d’une vanne ni bloquer le fonctionnement de base du programmateur. La mesure doit rester découplée de la sécurité de commande des relais.
+
+### Mesure de l’humidité du sol par zone
+
+Ajouter la possibilité de mesurer l’humidité du sol à l’aide de sondes associées aux zones d’arrosage concernées.
+
+Objectifs fonctionnels :
+
+- associer une ou plusieurs sondes d’humidité à une zone précise ;
+- afficher la valeur actuelle et l’état de fraîcheur de la mesure ;
+- conserver un historique des mesures par zone ;
+- définir des seuils propres à chaque zone selon le type de sol, les plantations et la profondeur de mesure ;
+- signaler une sonde absente, déconnectée, incohérente ou dont la valeur reste figée ;
+- utiliser, après validation, l’humidité mesurée pour éviter, reporter ou ajuster un arrosage devenu inutile ;
+- comparer l’évolution de l’humidité avant et après un cycle afin d’évaluer son efficacité ;
+- rendre les mesures consultables dans l’interface locale et, à terme, dans le cloud.
+
+Points d’architecture à étudier :
+
+- choix de sondes adaptées à une installation durable, de préférence capacitives ou numériques et résistantes à la corrosion ;
+- nombre maximal de sondes et possibilité d’associer plusieurs sondes à une même zone ;
+- implantation, profondeur et représentativité de chaque point de mesure ;
+- calibration individuelle en sol sec et en sol humide ;
+- alimentation intermittente des sondes afin de réduire la corrosion et la consommation ;
+- transmission filaire ou déportée des mesures vers le module principal ;
+- utilisation éventuelle d’un microcontrôleur secondaire pour l’acquisition de plusieurs sondes ;
+- filtrage, moyenne temporelle, fréquence de mesure et détection des valeurs aberrantes ;
+- stockage de la dernière mesure valide avec son horodatage ;
+- stratégie explicite lorsque la mesure est indisponible ou trop ancienne ;
+- définition de l’autorité de la sonde : information seule, blocage d’un cycle, report ou adaptation de durée.
+
+Invariant impératif : une sonde absente, en défaut ou non calibrée ne doit jamais provoquer une décision silencieuse ou imprévisible. Le comportement de repli doit être configurable, visible dans l’interface et conserver la sécurité ainsi que l’autonomie du planificateur local.
