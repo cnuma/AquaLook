@@ -30,3 +30,31 @@ Points d’architecture à étudier :
 - traçabilité des commandes distantes et confirmation de leur exécution réelle.
 
 Invariant impératif : le cloud doit rester une extension du système. Le planificateur, la sécurité des relais et les cycles d’arrosage doivent continuer à fonctionner localement et de manière autonome en cas de perte du cloud ou d’Internet.
+
+### Mesure de la consommation d’eau par voie
+
+Ajouter la possibilité de mesurer et d’historiser la quantité d’eau réellement consommée par chaque voie d’arrosage.
+
+Objectifs fonctionnels :
+
+- mesurer le débit instantané et le volume cumulé pour chaque voie ;
+- associer la consommation à chaque cycle, programme et zone ;
+- afficher les volumes consommés sur l’interface locale et, à terme, dans le cloud ;
+- conserver des historiques journaliers, mensuels et saisonniers ;
+- détecter un débit anormalement faible, nul ou excessif pendant l’ouverture d’une vanne ;
+- détecter une circulation d’eau alors qu’aucune voie n’est commandée ;
+- permettre une calibration propre à chaque débitmètre.
+
+Points d’architecture à étudier :
+
+- choix et plage de mesure des débitmètres ;
+- nombre de capteurs nécessaires et implantation hydraulique par voie ;
+- acquisition fiable des impulsions sans perturber le planificateur ni l’interface Web ;
+- utilisation éventuelle d’un microcontrôleur secondaire, par exemple un Lolin S2 Mini, pour compter les impulsions puis transmettre les mesures au module principal ;
+- protocole d’échange entre le module principal et le module de comptage, notamment I²C, UART ou autre liaison robuste ;
+- stockage des index cumulés et reprise correcte après redémarrage ou coupure de courant ;
+- gestion du débordement des compteurs, du bruit électrique et des impulsions parasites ;
+- fréquence de remontée, précision attendue et impact sur la mémoire et la charge CPU ;
+- définition des seuils d’alerte selon les caractéristiques de chaque voie.
+
+Invariant impératif : une panne d’un débitmètre ou du module de comptage ne doit pas provoquer l’activation intempestive d’une vanne ni bloquer le fonctionnement de base du programmateur. La mesure doit rester découplée de la sécurité de commande des relais.
