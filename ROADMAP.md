@@ -89,3 +89,35 @@ Points d’architecture à étudier :
 - définition de l’autorité de la sonde : information seule, blocage d’un cycle, report ou adaptation de durée.
 
 Invariant impératif : une sonde absente, en défaut ou non calibrée ne doit jamais provoquer une décision silencieuse ou imprévisible. Le comportement de repli doit être configurable, visible dans l’interface et conserver la sécurité ainsi que l’autonomie du planificateur local.
+
+### Recommandations d’arrosage intelligent
+
+Ajouter un moteur d’aide à la décision capable d’analyser les mesures de consommation d’eau et d’humidité du sol afin de proposer des ajustements d’arrosage adaptés à chaque zone.
+
+Objectifs fonctionnels :
+
+- comparer la quantité d’eau réellement distribuée avec l’évolution mesurée de l’humidité du sol ;
+- détecter les zones sur-arrosées, sous-arrosées ou dont l’eau semble mal absorbée ;
+- proposer une modification de durée, de fréquence, d’intervalle ou de volume cible ;
+- recommander le report ou l’annulation d’un cycle lorsque le sol reste suffisamment humide ;
+- recommander un fractionnement des cycles lorsque l’apport d’eau est trop rapide par rapport à la capacité d’absorption du sol ;
+- tenir compte des caractéristiques propres à chaque zone, notamment le type de sol, les plantations, la profondeur des racines et le débit mesuré ;
+- apprendre progressivement la réponse habituelle de chaque zone après un arrosage ;
+- afficher pour chaque recommandation les mesures utilisées, le raisonnement appliqué, le gain d’eau estimé et le niveau de confiance ;
+- permettre à l’utilisateur d’accepter, de modifier ou de refuser chaque proposition ;
+- conserver l’historique des recommandations et des décisions prises afin d’évaluer leur efficacité.
+
+Points d’architecture à étudier :
+
+- démarrage par un moteur de règles explicites et paramétrables avant toute approche statistique ou apprentissage automatique ;
+- distinction entre données valides, données anciennes, valeurs aberrantes et capteurs en défaut ;
+- période minimale d’observation avant de formuler une recommandation fiable ;
+- calcul de la réponse hydrique d’une zone à partir du volume apporté et de la variation d’humidité observée ;
+- prise en compte éventuelle des prévisions météo, de la pluie mesurée et de l’évapotranspiration ;
+- exécution locale des règles essentielles et possibilité d’une analyse plus avancée dans le cloud ;
+- limitation stricte des ajustements proposés afin d’éviter les variations excessives ;
+- mécanisme de retour arrière vers les paramètres précédents ;
+- traçabilité complète de la version de l’algorithme, des données d’entrée et de la décision proposée ;
+- définition progressive de plusieurs niveaux de fonctionnement : observation seule, recommandation, application après validation et automatisation encadrée.
+
+Invariant impératif : aucune modification de programme ou de durée ne doit être appliquée silencieusement. Le mode par défaut doit rester la recommandation soumise à validation de l’utilisateur. Toute automatisation future devra être explicitement activée, bornée par des limites de sécurité, réversible et désactivée automatiquement en cas de données insuffisantes ou de capteur défaillant.
