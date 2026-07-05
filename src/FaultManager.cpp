@@ -5,7 +5,13 @@ bool FaultManager::_unacknowledged = false;
 bool FaultManager::_started = false;
 
 namespace {
-constexpr uint32_t ERROR_BLINK_HALF_PERIOD_MS = 500;
+constexpr uint32_t ERROR_DARK_BEFORE_MS = 500;
+constexpr uint32_t ERROR_FLASH_ON_MS = 120;
+constexpr uint32_t ERROR_FLASH_OFF_MS = 120;
+constexpr uint32_t ERROR_FLASH_1_START_MS = ERROR_DARK_BEFORE_MS;
+constexpr uint32_t ERROR_FLASH_2_START_MS = ERROR_FLASH_1_START_MS + ERROR_FLASH_ON_MS + ERROR_FLASH_OFF_MS;
+constexpr uint32_t ERROR_FLASH_3_START_MS = ERROR_FLASH_2_START_MS + ERROR_FLASH_ON_MS + ERROR_FLASH_OFF_MS;
+constexpr uint32_t ERROR_PATTERN_PERIOD_MS = ERROR_FLASH_3_START_MS + ERROR_FLASH_ON_MS + 500;
 constexpr uint32_t ACK_REMINDER_PERIOD_MS = 5000;
 constexpr uint32_t ACK_REMINDER_RED_MS = 300;
 }
@@ -69,10 +75,15 @@ void FaultManager::resolveColor(uint8_t normalRed,
     const uint32_t now = millis();
 
     if (_unacknowledged) {
-        const bool redOn =
-            ((now / ERROR_BLINK_HALF_PERIOD_MS) % 2U) == 0U;
+        const uint32_t phase = now % ERROR_PATTERN_PERIOD_MS;
+        const bool flash1 = phase >= ERROR_FLASH_1_START_MS &&
+                            phase < ERROR_FLASH_1_START_MS + ERROR_FLASH_ON_MS;
+        const bool flash2 = phase >= ERROR_FLASH_2_START_MS &&
+                            phase < ERROR_FLASH_2_START_MS + ERROR_FLASH_ON_MS;
+        const bool flash3 = phase >= ERROR_FLASH_3_START_MS &&
+                            phase < ERROR_FLASH_3_START_MS + ERROR_FLASH_ON_MS;
 
-        outRed = redOn ? 255 : 0;
+        outRed = (flash1 || flash2 || flash3) ? 255 : 0;
         outGreen = 0;
         outBlue = 0;
         return;
