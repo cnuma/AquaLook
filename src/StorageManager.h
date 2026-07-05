@@ -20,7 +20,9 @@ public:
     const char* cardTypeName() const;
 
 private:
-    SPIClass _sdSpi{HSPI};
+    // Le TFT utilise deja HSPI. Le lecteur microSD integre est cable
+    // sur le bus VSPI standard : SCLK 18, MISO 19, MOSI 23, CS 5.
+    SPIClass _sdSpi{VSPI};
     bool _sdAvailable = false;
     uint8_t _cardType = 0;
     uint64_t _cardSizeBytes = 0;
