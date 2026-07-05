@@ -1,6 +1,8 @@
 #include "SystemDiagnostics.h"
 #include <WiFi.h>
 
+void storageHealthUpdate();
+
 portMUX_TYPE SystemDiagnostics::_mux = portMUX_INITIALIZER_UNLOCKED;
 
 uint32_t SystemDiagnostics::_bootMs = 0;
@@ -44,6 +46,8 @@ void SystemDiagnostics::begin() {
 }
 
 void SystemDiagnostics::loopEnter() {
+    storageHealthUpdate();
+
     const uint32_t nowUs = micros();
     const uint32_t nowMs = millis();
 
