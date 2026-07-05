@@ -138,6 +138,7 @@ void loop() {
     SystemDiagnostics::loopEnter();
 
     FaultManager::update();
+    storageMgr.update();
 
     wifiMgr.update();
     const bool connected = wifiMgr.isConnected();
