@@ -13,6 +13,7 @@
 #include "DisplayManager.h"
 #include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
+#include "StorageManager.h"
 #include "SystemDiagnostics.h"
 
 WiFiManager wifiMgr;
@@ -23,6 +24,7 @@ ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
 ConfigManager configMgr;
+StorageManager storageMgr;
 
 static void onRelayRequest(uint8_t zone, bool state) {
     relaisMgr.setRelay(zone, state);
@@ -69,6 +71,9 @@ void setup() {
 
     displayMgr.initTft();
     displayMgr.showSplash(0, "Initialisation...");
+
+    storageMgr.begin();
+    splashStep(storageMgr.isSdAvailable() ? "Carte SD" : "SD indisponible");
 
     EventLog::log(
         LOG_INFO,
@@ -120,7 +125,7 @@ void setup() {
         &configMgr
     );
 
-    EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
+    EventLog::log("Main: setup termine, boucle demarree");
     EventLog::log(
         LOG_INFO,
         "HW: PSRAM %u octets",
