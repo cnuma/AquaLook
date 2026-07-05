@@ -5,7 +5,8 @@ enum class FaultId : uint8_t {
     RELAY_I2C = 0,
     WIFI = 1,
     FILESYSTEM = 2,
-    SOFTWARE = 3
+    SOFTWARE = 3,
+    STORAGE_SD = 4
 };
 
 class FaultManager {
