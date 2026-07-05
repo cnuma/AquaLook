@@ -1,7 +1,5 @@
 #include "StorageManager.h"
 
-#include <SD.h>
-#include "config.h"
 #include "EventLog.h"
 
 void StorageManager::begin() {
@@ -10,62 +8,76 @@ void StorageManager::begin() {
     pinMode(SD_CS_PIN, OUTPUT);
     digitalWrite(SD_CS_PIN, HIGH);
 
-    _sdSpi.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+    const SdSpiConfig sdConfig(
+        SD_CS_PIN,
+        SHARED_SPI,
+        SD_SCK_MHZ(0),
+        &_softSpi
+    );
 
-    if (!SD.begin(SD_CS_PIN, _sdSpi, SD_SPI_FREQUENCY)) {
-        _sdSpi.end();
-        EventLog::log(LOG_WARN, "Stockage: carte SD absente ou montage impossible");
+    if (!_sd.begin(sdConfig)) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: carte SD absente ou montage logiciel impossible"
+        );
         return;
     }
 
-    _cardType = SD.cardType();
-    if (_cardType == CARD_NONE) {
-        EventLog::log(LOG_WARN, "Stockage: lecteur SD detecte sans carte exploitable");
-        SD.end();
-        _sdSpi.end();
+    if (!_sd.card() || !_sd.vol()) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: carte detectee sans volume exploitable"
+        );
+        _sd.end();
         return;
     }
 
-    _cardSizeBytes = SD.cardSize();
-    _totalBytes = SD.totalBytes();
-    _usedBytes = SD.usedBytes();
+    _cardType = _sd.card()->type();
+    _cardSizeBytes =
+        static_cast<uint64_t>(_sd.card()->sectorCount()) * 512ULL;
+
+    const uint64_t bytesPerCluster = _sd.vol()->bytesPerCluster();
+    const uint64_t clusterCount = _sd.vol()->clusterCount();
+    _totalBytes = clusterCount * bytesPerCluster;
+
+    // Ne pas appeler freeClusterCount() au demarrage : sur une carte de
+    // grande capacite en SPI logiciel, le parcours complet de la FAT peut
+    // bloquer le boot pendant une duree excessive.
+    _usedBytes = 0;
+
     _sdAvailable = true;
 
     EventLog::log(
         LOG_INFO,
-        "Stockage: SD montee type=%s capacite=%llu Mo total=%llu Mo utilise=%llu Mo",
+        "Stockage: SD montee en SPI logiciel type=%s capacite=%llu Mo total=%llu Mo",
         cardTypeName(),
         static_cast<unsigned long long>(_cardSizeBytes / (1024ULL * 1024ULL)),
-        static_cast<unsigned long long>(_totalBytes / (1024ULL * 1024ULL)),
-        static_cast<unsigned long long>(_usedBytes / (1024ULL * 1024ULL))
+        static_cast<unsigned long long>(_totalBytes / (1024ULL * 1024ULL))
     );
 }
 
 void StorageManager::end() {
-    SD.end();
-    _sdSpi.end();
+    _sd.end();
 
     _sdAvailable = false;
-    _cardType = CARD_NONE;
+    _cardType = 0;
     _cardSizeBytes = 0;
     _totalBytes = 0;
     _usedBytes = 0;
 }
 
-bool StorageManager::existsOnSd(const char* path) const {
-    return _sdAvailable && path && path[0] == '/' && SD.exists(path);
-}
-
-File StorageManager::openOnSd(const char* path, const char* mode) const {
-    if (!_sdAvailable || !path || path[0] != '/') return File();
-    return SD.open(path, mode);
+bool StorageManager::existsOnSd(const char* path) {
+    return _sdAvailable &&
+           path &&
+           path[0] == '/' &&
+           _sd.exists(path);
 }
 
 const char* StorageManager::cardTypeName() const {
     switch (_cardType) {
-        case CARD_MMC:  return "MMC";
-        case CARD_SD:   return "SDSC";
-        case CARD_SDHC: return "SDHC/SDXC";
-        default:        return "inconnue";
+        case SD_CARD_TYPE_SD1:  return "SD1";
+        case SD_CARD_TYPE_SD2:  return "SD2";
+        case SD_CARD_TYPE_SDHC: return "SDHC/SDXC";
+        default:                return "inconnue";
     }
 }

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <Arduino.h>
-#include <FS.h>
-#include <SPI.h>
+#include <SdFat.h>
+#include "config.h"
 
 class StorageManager {
 public:
@@ -15,14 +15,12 @@ public:
     uint64_t totalBytes() const { return _totalBytes; }
     uint64_t usedBytes() const { return _usedBytes; }
 
-    bool existsOnSd(const char* path) const;
-    File openOnSd(const char* path, const char* mode = FILE_READ) const;
+    bool existsOnSd(const char* path);
     const char* cardTypeName() const;
 
 private:
-    // Le TFT utilise deja HSPI. Le lecteur microSD integre est cable
-    // sur le bus VSPI standard : SCLK 18, MISO 19, MOSI 23, CS 5.
-    SPIClass _sdSpi{VSPI};
+    SoftSpiDriver<SD_MISO_PIN, SD_MOSI_PIN, SD_SCLK_PIN> _softSpi;
+    SdFs _sd;
     bool _sdAvailable = false;
     uint8_t _cardType = 0;
     uint64_t _cardSizeBytes = 0;
