@@ -56,9 +56,16 @@ void ConfigManager::begin() {
     }
 
     {
+        memset(_intervalAnchorDays, 0, sizeof(_intervalAnchorDays));
         Preferences prefs;
         if (prefs.begin(CFG_NVS_NAMESPACE, true)) {
             _weatherVisualsEnabled = prefs.getBool("wxVisual", false);
+            if (prefs.getBytesLength(CFG_NVS_INTERVAL_ANCHORS_KEY) ==
+                sizeof(_intervalAnchorDays)) {
+                prefs.getBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                               _intervalAnchorDays,
+                               sizeof(_intervalAnchorDays));
+            }
             prefs.end();
         }
     }
@@ -421,6 +428,7 @@ void ConfigManager::applyToSchedule(ScheduleManager& sched) const {
         const CfgZone& cz = _zones[z];
         sched.setMode(z, cz.mode);
         sched.setIntervalDays(z, cz.intervalDays);
+        sched.setIntervalAnchorDay(z, _intervalAnchorDays[z]);
         sched.setRainConfig(z, cz.rain.thresholdMm, cz.rain.forecastHours);
 
         for (uint8_t d = 0; d < NB_DAYS; d++) {
@@ -446,6 +454,11 @@ const CfgZone& ConfigManager::zone(uint8_t z) const {
     static const CfgZone empty{};
     if (z >= MAX_ZONES) return empty;
     return _zones[z];
+}
+
+uint32_t ConfigManager::intervalAnchorDay(uint8_t z) const {
+    if (z >= MAX_ZONES) return 0;
+    return _intervalAnchorDays[z];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -599,16 +612,75 @@ void ConfigManager::setDisplay(const CfgDisplay& d) {
     EventBus::displayDirty = true;  // DisplayManager relira au prochain update()
 }
 
-void ConfigManager::setZoneMode(uint8_t z, uint8_t mode) {
-    if (z >= MAX_ZONES) return;
-    _zones[z].mode = mode;
-    save();
+void ConfigManager::setZoneMode(uint8_t z, uint8_t mode, uint32_t anchorDay) {
+    if (z >= MAX_ZONES || mode > SCHEDULE_MODE_INTERVAL) return;
+
+    const bool modeChanged = (_zones[z].mode != mode);
+    bool anchorChanged = false;
+
+    // Une entrée en mode intervalle crée une origine fixe du cycle.
+    // Une zone intervalle migrée avec ancre absente est initialisée une seule fois.
+    if (mode == SCHEDULE_MODE_INTERVAL && anchorDay > 0 &&
+        (modeChanged || _intervalAnchorDays[z] == 0)) {
+        _intervalAnchorDays[z] = anchorDay;
+        anchorChanged = true;
+    }
+
+    if (anchorChanged) {
+        Preferences prefs;
+        if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+            prefs.putBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                           _intervalAnchorDays,
+                           sizeof(_intervalAnchorDays));
+            prefs.end();
+        }
+    }
+
+    // Ne pas reecrire le gros bloc de configuration si seul l'ancrage manquait.
+    if (modeChanged) {
+        _zones[z].mode = mode;
+        save();
+    }
 }
 
 void ConfigManager::setZoneIntervalDays(uint8_t z, uint8_t days) {
     if (z >= MAX_ZONES) return;
-    _zones[z].intervalDays = days;
+    _zones[z].intervalDays = constrain(days, (uint8_t)1, (uint8_t)30);
     save();
+}
+
+void ConfigManager::setZoneIntervalAnchorDay(uint8_t z, uint32_t epochDay) {
+    if (z >= MAX_ZONES) return;
+    _intervalAnchorDays[z] = epochDay;
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                       _intervalAnchorDays,
+                       sizeof(_intervalAnchorDays));
+        prefs.end();
+    }
+}
+
+void ConfigManager::clearZoneIntervalProgramming(uint8_t z) {
+    if (z >= MAX_ZONES) return;
+
+    _zones[z].mode = SCHEDULE_MODE_DAYS;
+    _zones[z].intervalDays = 2;
+    _intervalAnchorDays[z] = 0;
+    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+        _zones[z].intervalSlots.slots[s] = CfgSlot();
+    }
+
+    save();
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_INTERVAL_ANCHORS_KEY,
+                       _intervalAnchorDays,
+                       sizeof(_intervalAnchorDays));
+        prefs.end();
+    }
 }
 
 void ConfigManager::setZoneRain(uint8_t z, float threshMm, uint8_t hours) {

@@ -39,11 +39,11 @@ struct RainConfig {
 struct ZoneSchedule {
     uint8_t     mode         = 0;         // SCHEDULE_MODE_DAYS / INTERVAL
     uint8_t     intervalDays = 2;
-    uint32_t    lastWateredDay = 0;        // epoch/86400 dernier arrosage
+    uint32_t    intervalAnchorDay = 0;     // epoch/86400, origine fixe du cycle
     RainConfig  rain;
     DaySchedule daySlots[NB_DAYS];         // slots par jour
     DaySchedule intervalSlots;            // slots mode intervalle
-    ZoneSchedule() : mode(0), intervalDays(2), lastWateredDay(0) {}
+    ZoneSchedule() : mode(0), intervalDays(2), intervalAnchorDay(0) {}
 };
 
 // ── Slot actif ────────────────────────────────
@@ -78,6 +78,8 @@ public:
     // ── Setters planning ──────────────────────
     void setMode(uint8_t zone, uint8_t mode);
     void setIntervalDays(uint8_t zone, uint8_t days);
+    void setIntervalAnchorDay(uint8_t zone, uint32_t epochDay);
+    void clearIntervalProgramming(uint8_t zone);
     void setDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                     uint8_t h, uint8_t m, uint16_t dur, bool enabled);
     void setIntervalSlot(uint8_t zone, uint8_t slotIdx,

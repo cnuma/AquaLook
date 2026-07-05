@@ -69,16 +69,12 @@ bool intervalDayIsPlanned(const ZoneSchedule& zs,
                           uint32_t todayEpochDay,
                           uint8_t daysAhead) {
     const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
-
-    if (zs.lastWateredDay == 0) {
-        return (daysAhead % interval) == 0;
-    }
-
-    uint32_t nextDay = zs.lastWateredDay + interval;
-    while (nextDay < todayEpochDay) nextDay += interval;
-
+    const uint32_t anchor   = zs.intervalAnchorDay;
     const uint32_t targetDay = todayEpochDay + daysAhead;
-    return targetDay >= nextDay && ((targetDay - nextDay) % interval) == 0;
+
+    return anchor > 0 &&
+           targetDay >= anchor &&
+           ((targetDay - anchor) % interval) == 0;
 }
 
 void hatchRect(TFT_eSPI& tft, int16_t x, int16_t y,
@@ -271,35 +267,10 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
 }
 
 void simplifyWideButtons(DisplayManager& d) {
-    if (d._homeMode != HomeMode::LIST || d._nbZones == 0 || d._nbZones > 2) return;
-
-    const uint8_t nbPlan = min(d._nbZones, (uint8_t)4);
-    const uint16_t planH = d._planHdrH + nbPlan * d._planZoneH;
-    const uint16_t btnY = DisplayManager::PL_PLAN_Y + planH + d._planGap;
-
-    for (uint8_t z = 0; z < d._nbZones; ++z) {
-        const uint16_t x = z == 0 ? DisplayManager::PL_BTN_Z1_X : DisplayManager::PL_BTN_Z2_X;
-        const bool active = d._relais && d._relais->getState(z);
-        const uint16_t bg = active ? Theme::ACTIVE_BG : Theme::SURFACE;
-
-        if (!active) {
-            // Supprime le message météo redondant présent sous le mode de planification.
-            d._tft.fillRect(x + 5, btnY + 65, DisplayManager::PL_BTN_W - 10, 14, bg);
-        } else {
-            // Efface l'ancien hint trop bas puis le redessine dans la zone visible.
-            const uint16_t clearY = min<uint16_t>(btnY + 77, 239);
-            if (clearY < 240) {
-                d._tft.fillRect(x + 5, clearY, DisplayManager::PL_BTN_W - 10, 240 - clearY, bg);
-            }
-            const uint16_t hintY = min<uint16_t>(btnY + 72, 228);
-            d._tft.setFreeFont(nullptr);
-            d._tft.setTextSize(1);
-            d._tft.setTextColor(Theme::ON_ACTIVE_MUTED, bg);
-            d._tft.setTextDatum(TC_DATUM);
-            d._tft.drawString("Appuyer pour arreter", x + DisplayManager::PL_BTN_W / 2, hintY);
-            d._tft.setTextDatum(TL_DATUM);
-        }
-    }
+    // Les cartes LIST 1/2 zones sont entièrement rendues par renderBtnSprite().
+    // Aucun nettoyage périodique ne doit être appliqué ici : l'ancienne bande
+    // y+65..y+79 coupait le texte "Appuyer pour arroser" après la fin d'un cycle.
+    (void)d;
 }
 }
 
