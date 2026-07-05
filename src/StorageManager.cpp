@@ -5,9 +5,15 @@
 
 namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000;
+StorageManager* g_registeredStorage = nullptr;
+}
+
+void storageHealthUpdate() {
+    if (g_registeredStorage) g_registeredStorage->update();
 }
 
 void StorageManager::begin() {
+    g_registeredStorage = this;
     end();
 
     pinMode(SD_CS_PIN, OUTPUT);
