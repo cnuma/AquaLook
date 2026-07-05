@@ -13,6 +13,7 @@
 #include "WiFiManager.h"
 #include "EventLog.h"
 #include "FaultManager.h"
+#include "SdStaticHandler.h"
 
 class WebManager {
 public:
@@ -21,6 +22,13 @@ public:
                ConfigManager* config, WiFiManager* wifi = nullptr);
 
     void update();
+
+    // A appeler avant begin(), donc avant _server.begin().
+    void registerSdStaticHandler(StorageManager* storage) {
+        if (_sdStaticHandlerRegistered || !storage) return;
+        _sdStaticHandlerRegistered = true;
+        _server.addHandler(new SdStaticHandler(storage));
+    }
 
     // A appeler avant begin(), donc avant _server.begin().
     void registerFaultRoutes() {
@@ -172,6 +180,7 @@ private:
     ScheduleManager* _schedule = nullptr;
     ConfigManager* _config = nullptr;
     WiFiManager* _wifi = nullptr;
+    bool _sdStaticHandlerRegistered = false;
     bool _faultRoutesRegistered = false;
 
     portMUX_TYPE _pendingMux = portMUX_INITIALIZER_UNLOCKED;
