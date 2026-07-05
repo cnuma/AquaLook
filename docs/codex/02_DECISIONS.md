@@ -47,3 +47,16 @@ Les paramètres d’affichage prennent effet sans reboot via `EventBus::displayD
 ## D012 — Sécurité avant ergonomie
 
 La logique relais, la durée maximale et la réponse HTTP avant reboot sont prioritaires sur les simplifications visuelles.
+
+## D013 — Traçabilité du firmware par version Git
+
+Chaque firmware AquaLook doit embarquer une identité de build issue de Git ou générée au moment de la compilation. Une source compile-time unique fournit au minimum le SHA Git court et la date/heure de compilation ; elle expose également la branche ou l’origine de build lorsqu’elle peut être déterminée de manière fiable.
+
+Cette identité est réutilisée sans duplication manuelle par :
+
+- la page Système du LCD ;
+- la vue Web « À propos » ;
+- les diagnostics système et les journaux de démarrage ;
+- les futurs exports de diagnostic.
+
+La vue Web « À propos » doit être facilement accessible depuis l’interface principale. Elle fait partie des ressources complètes servies prioritairement depuis la SD, mais une information de version minimale doit rester consultable lorsque l’interface de secours LittleFS est utilisée.
