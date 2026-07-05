@@ -16,17 +16,19 @@ void StorageManager::begin() {
     );
 
     if (!_sd.begin(sdConfig)) {
+        _status = StorageStatus::SD_UNAVAILABLE;
         EventLog::log(
             LOG_WARN,
-            "Stockage: carte SD absente ou montage logiciel impossible"
+            "Stockage: carte SD absente, illisible ou corrompue"
         );
         return;
     }
 
     if (!_sd.card() || !_sd.vol()) {
+        _status = StorageStatus::SD_UNAVAILABLE;
         EventLog::log(
             LOG_WARN,
-            "Stockage: carte detectee sans volume exploitable"
+            "Stockage: carte detectee sans volume exploitable (format ou corruption possible)"
         );
         _sd.end();
         return;
@@ -44,8 +46,21 @@ void StorageManager::begin() {
     // grande capacite en SPI logiciel, le parcours complet de la FAT peut
     // bloquer le boot pendant une duree excessive.
     _usedBytes = 0;
-
     _sdAvailable = true;
+
+    if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
+        _status = StorageStatus::WEB_ASSETS_MISSING;
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: SD montee mais ressources Web absentes (/www/index.html introuvable)"
+        );
+    } else {
+        _status = StorageStatus::READY;
+        EventLog::log(
+            LOG_INFO,
+            "Stockage: ressources Web SD validees dans /www"
+        );
+    }
 
     EventLog::log(
         LOG_INFO,
@@ -60,6 +75,7 @@ void StorageManager::end() {
     _sd.end();
 
     _sdAvailable = false;
+    _status = StorageStatus::NOT_INITIALIZED;
     _cardType = 0;
     _cardSizeBytes = 0;
     _totalBytes = 0;
@@ -79,6 +95,40 @@ bool StorageManager::openRead(const char* path, FsFile& file) {
     if (file.isOpen()) file.close();
     file = _sd.open(path, O_RDONLY);
     return file.isOpen();
+}
+
+void StorageManager::reportReadError(const char* path) {
+    _status = StorageStatus::READ_ERROR;
+    EventLog::log(
+        LOG_ERROR,
+        "Stockage: erreur de lecture SD sur %s (carte illisible ou corrompue possible)",
+        path ? path : "chemin inconnu"
+    );
+}
+
+const char* StorageManager::statusCode() const {
+    switch (_status) {
+        case StorageStatus::READY:              return "ready";
+        case StorageStatus::SD_UNAVAILABLE:     return "sd-unavailable";
+        case StorageStatus::WEB_ASSETS_MISSING: return "web-assets-missing";
+        case StorageStatus::READ_ERROR:         return "read-error";
+        default:                                return "not-initialized";
+    }
+}
+
+const char* StorageManager::statusMessage() const {
+    switch (_status) {
+        case StorageStatus::READY:
+            return "Carte SD operationnelle, ressources Web disponibles.";
+        case StorageStatus::SD_UNAVAILABLE:
+            return "Carte SD absente, illisible ou corrompue. Interface de secours LittleFS utilisee.";
+        case StorageStatus::WEB_ASSETS_MISSING:
+            return "Carte SD montee, mais /www/index.html est absent. Interface de secours LittleFS utilisee.";
+        case StorageStatus::READ_ERROR:
+            return "Erreur de lecture sur la carte SD. Carte illisible ou corrompue possible; interface de secours recommandee.";
+        default:
+            return "Stockage SD non initialise.";
+    }
 }
 
 const char* StorageManager::cardTypeName() const {
