@@ -15,7 +15,7 @@ def git_value(args, fallback):
         return fallback
 
 
-version = "5.8.0-dev"
+version = "5.8.0-rc1"
 build_number = git_value(["rev-list", "--count", "HEAD"], "local")
 git_sha = git_value(["rev-parse", "--short=7", "HEAD"], "unknown")
 git_branch = git_value(["rev-parse", "--abbrev-ref", "HEAD"], "unknown")
