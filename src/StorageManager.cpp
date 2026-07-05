@@ -13,6 +13,7 @@ void StorageManager::begin() {
     _sdSpi.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
     if (!SD.begin(SD_CS_PIN, _sdSpi, SD_SPI_FREQUENCY)) {
+        _sdSpi.end();
         EventLog::log(LOG_WARN, "Stockage: carte SD absente ou montage impossible");
         return;
     }
@@ -41,10 +42,8 @@ void StorageManager::begin() {
 }
 
 void StorageManager::end() {
-    if (_sdAvailable) {
-        SD.end();
-        _sdSpi.end();
-    }
+    SD.end();
+    _sdSpi.end();
 
     _sdAvailable = false;
     _cardType = CARD_NONE;
