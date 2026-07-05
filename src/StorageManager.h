@@ -16,6 +16,7 @@ public:
     uint64_t usedBytes() const { return _usedBytes; }
 
     bool existsOnSd(const char* path);
+    bool openRead(const char* path, FsFile& file);
     const char* cardTypeName() const;
 
 private:
