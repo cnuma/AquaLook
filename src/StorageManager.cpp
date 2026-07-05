@@ -73,6 +73,14 @@ bool StorageManager::existsOnSd(const char* path) {
            _sd.exists(path);
 }
 
+bool StorageManager::openRead(const char* path, FsFile& file) {
+    if (!_sdAvailable || !path || path[0] != '/') return false;
+
+    if (file.isOpen()) file.close();
+    file = _sd.open(path, O_RDONLY);
+    return file.isOpen();
+}
+
 const char* StorageManager::cardTypeName() const {
     switch (_cardType) {
         case SD_CARD_TYPE_SD1:  return "SD1";
