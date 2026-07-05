@@ -27,6 +27,7 @@ Cette règle est obligatoire pour AquaLook et doit être reprise dans tout nouve
 - Lorsque le produit possède plusieurs interfaces, réutiliser la même source de version sur toutes les interfaces pertinentes.
 - Proposer explicitement une nouvelle version lors d’un palier fonctionnel, d’une release, d’une évolution significative ou d’une correction publiée.
 - Inclure la version et le SHA dans les checkpoints, archives, releases et procédures de reprise.
+- Tout écran d’accueil, splash ou page de démarrage contenant une identité ou une version doit rester visible assez longtemps pour être lu. Prévoir un temps minimal explicite, configurable et documenté ; valeur de référence : 1,5 seconde sur un écran embarqué, sans ralentir inutilement les redémarrages critiques.
 
 ## Persistance
 
