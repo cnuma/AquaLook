@@ -12,6 +12,22 @@
 - Toute constante matérielle compile-time va dans `config.h`.
 - Toute valeur modifiable en production va dans ConfigManager.
 
+## Versionnement et identité du produit
+
+Cette règle est obligatoire pour AquaLook et doit être reprise dans tout nouveau projet développé.
+
+- Proposer un numéro de version dès qu’un projet devient exécutable ou publiable.
+- Utiliser une version fonctionnelle lisible, de préférence compatible avec le versionnement sémantique : `MAJEUR.MINEUR.CORRECTIF`, avec suffixe éventuel `-dev`, `-beta` ou `-rc`.
+- Ne pas déduire automatiquement la version fonctionnelle du seul nombre de commits ou d’une estimation subjective de l’avancement.
+- Compléter la version fonctionnelle par une identité de build automatique lorsque Git est disponible : numéro de build, SHA court, branche ou origine et date de compilation.
+- Centraliser ces informations dans une source unique du code, par exemple `BuildInfo.h`, un fichier généré ou des constantes de compilation.
+- Ne jamais dupliquer manuellement des numéros de version différents dans plusieurs fichiers.
+- Prévoir dans chaque projet un espace durable de type `À propos`, `Système`, `Version`, écran de démarrage, commande CLI ou endpoint de diagnostic.
+- Cet espace doit afficher au minimum le nom du produit, la version fonctionnelle et l’identifiant exact du build.
+- Lorsque le produit possède plusieurs interfaces, réutiliser la même source de version sur toutes les interfaces pertinentes.
+- Proposer explicitement une nouvelle version lors d’un palier fonctionnel, d’une release, d’une évolution significative ou d’une correction publiée.
+- Inclure la version et le SHA dans les checkpoints, archives, releases et procédures de reprise.
+
 ## Persistance
 
 Avant de modifier une struct persistée :
