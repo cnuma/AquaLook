@@ -71,7 +71,7 @@ public:
                ConfigManager* config);
     void update();
 
-    static constexpr uint8_t SPLASH_STEPS = 7;
+    static constexpr uint8_t SPLASH_STEPS = 8;
 
 private:
     // ── Hardware ──────────────────────────────
