@@ -43,6 +43,17 @@ Pour une évolution significative, lire aussi :
 
 ## Règles impératives
 
+### Versionnement et espace À propos
+
+- Tout projet exécutable ou publiable doit posséder un numéro de version proposé et maintenu.
+- La version fonctionnelle doit être lisible et, de préférence, suivre `MAJEUR.MINEUR.CORRECTIF` avec suffixe éventuel `-dev`, `-beta` ou `-rc`.
+- La version fonctionnelle ne doit pas être calculée uniquement depuis le nombre de commits ou une appréciation subjective de l’avancement.
+- Lorsque Git est disponible, compléter la version par un numéro de build, un SHA court, la branche ou l’origine et la date de compilation.
+- Ces informations doivent provenir d’une source unique du code et ne jamais être dupliquées manuellement dans plusieurs fichiers.
+- Chaque projet doit toujours prévoir un espace visible de type `À propos`, `Système`, `Version`, splash, commande CLI ou endpoint de diagnostic.
+- Cet espace affiche au minimum le nom du produit, la version fonctionnelle et l’identifiant exact du build.
+- Proposer une évolution du numéro de version à chaque palier fonctionnel, release, correction publiée ou évolution significative.
+- Réutiliser cette identité dans les checkpoints, archives, releases et procédures de reprise.
 
 ## Déclencheur permanent : checkpoint
 
