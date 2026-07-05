@@ -125,7 +125,7 @@ void setup() {
         &configMgr
     );
 
-    EventLog::log("Main: setup termine, boucle demarree");
+    EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     EventLog::log(
         LOG_INFO,
         "HW: PSRAM %u octets",
