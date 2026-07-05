@@ -30,6 +30,14 @@
 #define TOUCH_CLK               25
 #define TOUCH_CS                33
 
+// Lecteur microSD integre a la CYD ESP32-2432S028R.
+// Bus SPI dedie, distinct des broches TFT et tactile configurees plus haut.
+#define SD_CS_PIN               5
+#define SD_SCLK_PIN             18
+#define SD_MISO_PIN             19
+#define SD_MOSI_PIN             23
+#define SD_SPI_FREQUENCY        10000000UL
+
 #define TOUCH_X_MIN             300
 #define TOUCH_X_MAX             3758
 #define TOUCH_Y_MIN             324
