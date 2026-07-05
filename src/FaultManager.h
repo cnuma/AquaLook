@@ -22,19 +22,15 @@ public:
     static bool isAcknowledged();
     static uint32_t activeMask();
 
-    // Fonction normale de la LED. Elle est temporairement masquee par
-    // la priorite rouge lorsqu'une erreur doit etre signalee.
-    static void setNormalColor(bool red, bool green, bool blue);
-    static void normalOff();
+    static void resolveColor(uint8_t normalRed,
+                             uint8_t normalGreen,
+                             uint8_t normalBlue,
+                             uint8_t& outRed,
+                             uint8_t& outGreen,
+                             uint8_t& outBlue);
 
 private:
-    static void writeRgb(bool red, bool green, bool blue);
-    static void applyNormalColor();
-
     static uint32_t _activeMask;
     static bool _unacknowledged;
     static bool _started;
-    static bool _normalRed;
-    static bool _normalGreen;
-    static bool _normalBlue;
 };
