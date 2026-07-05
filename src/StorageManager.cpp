@@ -1,6 +1,11 @@
 #include "StorageManager.h"
 
 #include "EventLog.h"
+#include "FaultManager.h"
+
+namespace {
+constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000;
+}
 
 void StorageManager::begin() {
     end();
@@ -17,6 +22,7 @@ void StorageManager::begin() {
 
     if (!_sd.begin(sdConfig)) {
         _status = StorageStatus::SD_UNAVAILABLE;
+        FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
             LOG_WARN,
             "Stockage: carte SD absente, illisible ou corrompue"
@@ -26,6 +32,7 @@ void StorageManager::begin() {
 
     if (!_sd.card() || !_sd.vol()) {
         _status = StorageStatus::SD_UNAVAILABLE;
+        FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
             LOG_WARN,
             "Stockage: carte detectee sans volume exploitable (format ou corruption possible)"
@@ -47,15 +54,18 @@ void StorageManager::begin() {
     // bloquer le boot pendant une duree excessive.
     _usedBytes = 0;
     _sdAvailable = true;
+    _lastHealthCheckMs = millis();
 
     if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
         _status = StorageStatus::WEB_ASSETS_MISSING;
+        FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
             LOG_WARN,
             "Stockage: SD montee mais ressources Web absentes (/www/index.html introuvable)"
         );
     } else {
         _status = StorageStatus::READY;
+        FaultManager::setActive(FaultId::STORAGE_SD, false);
         EventLog::log(
             LOG_INFO,
             "Stockage: ressources Web SD validees dans /www"
@@ -80,6 +90,28 @@ void StorageManager::end() {
     _cardSizeBytes = 0;
     _totalBytes = 0;
     _usedBytes = 0;
+    _lastHealthCheckMs = 0;
+}
+
+void StorageManager::update() {
+    if (!_sdAvailable || _status != StorageStatus::READY) return;
+
+    const uint32_t now = millis();
+    if (now - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
+    _lastHealthCheckMs = now;
+
+    // index.html est la sentinelle minimale : il a ete valide au boot.
+    // S'il disparait ensuite, la carte a ete retiree ou est devenue illisible.
+    if (_sd.exists("/www/index.html")) return;
+
+    _status = StorageStatus::READ_ERROR;
+    _sdAvailable = false;
+    FaultManager::setActive(FaultId::STORAGE_SD, true);
+    EventLog::log(
+        LOG_ERROR,
+        "Stockage: carte SD retiree ou devenue illisible pendant le fonctionnement"
+    );
+    _sd.end();
 }
 
 bool StorageManager::existsOnSd(const char* path) {
@@ -99,11 +131,14 @@ bool StorageManager::openRead(const char* path, FsFile& file) {
 
 void StorageManager::reportReadError(const char* path) {
     _status = StorageStatus::READ_ERROR;
+    _sdAvailable = false;
+    FaultManager::setActive(FaultId::STORAGE_SD, true);
     EventLog::log(
         LOG_ERROR,
         "Stockage: erreur de lecture SD sur %s (carte illisible ou corrompue possible)",
         path ? path : "chemin inconnu"
     );
+    _sd.end();
 }
 
 const char* StorageManager::statusCode() const {
@@ -125,7 +160,7 @@ const char* StorageManager::statusMessage() const {
         case StorageStatus::WEB_ASSETS_MISSING:
             return "Carte SD montee, mais /www/index.html est absent. Interface de secours LittleFS utilisee.";
         case StorageStatus::READ_ERROR:
-            return "Erreur de lecture sur la carte SD. Carte illisible ou corrompue possible; interface de secours recommandee.";
+            return "Erreur de lecture sur la carte SD. Carte retiree, illisible ou corrompue possible; interface de secours utilisee.";
         default:
             return "Stockage SD non initialise.";
     }
