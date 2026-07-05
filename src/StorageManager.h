@@ -16,6 +16,7 @@ class StorageManager {
 public:
     void begin();
     void end();
+    void update();
 
     bool isSdAvailable() const { return _sdAvailable; }
     bool areWebAssetsAvailable() const {
@@ -44,4 +45,5 @@ private:
     uint64_t _cardSizeBytes = 0;
     uint64_t _totalBytes = 0;
     uint64_t _usedBytes = 0;
+    uint32_t _lastHealthCheckMs = 0;
 };
