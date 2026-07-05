@@ -74,87 +74,13 @@ public:
             }
         );
 
-
         _server.on("/logs", HTTP_GET,
             [](AsyncWebServerRequest* req) {
+                // Fallback minimal conserve dans le firmware. La version
+                // complete est servie par SdStaticHandler depuis
+                // /www/logs.html lorsque la carte SD est disponible.
                 static const char PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html lang="fr"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AquaLook - Journal</title>
-<style>
-body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}
-header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}
-button{border:1px solid #ef5350;border-radius:6px;padding:.65rem 1rem;background:#b71c1c;color:white;font-weight:700;cursor:pointer}
-button.acked{cursor:default;color:#d7ffd9;border-color:#43a047;background:repeating-linear-gradient(135deg,#1b5e20 0,#1b5e20 7px,#263238 7px,#263238 14px)}
-button:disabled{opacity:1}
-#state{font-size:.9rem;color:#aaa}
-#state.active{color:#ff6b6b;font-weight:700}
-#state.acked{color:#81c784;font-weight:700}
-iframe{width:100%;height:calc(100vh - 72px);border:0}
-</style></head><body>
-<header>
-<button id="ack-btn" onclick="ack()">Acquitter les erreurs</button>
-<span id="state">Lecture...</span>
-<a href="/index.html" style="margin-left:auto;color:#4fc3f7;text-decoration:none">Retour</a>
-</header>
-<iframe id="journal" src="/api/logs"></iframe>
-<script>
-async function refreshState(){
-  const btn=document.getElementById('ack-btn');
-  const state=document.getElementById('state');
-
-  try{
-    const r=await fetch('/api/faults',{cache:'no-store'});
-    const d=await r.json();
-
-    btn.classList.remove('acked');
-    state.classList.remove('active','acked');
-
-    if(d.unacknowledged){
-      btn.disabled=false;
-      btn.textContent='Acquitter les erreurs';
-      state.textContent=d.active
-        ? 'Erreur active non acquittee'
-        : 'Erreur memorisee non acquittee';
-      state.classList.add('active');
-    }else{
-      btn.disabled=true;
-      btn.textContent='Erreurs acquittees';
-      btn.classList.add('acked');
-
-      if(d.active){
-        state.textContent=
-          'Defaut toujours present - rappel rouge toutes les 5 s';
-        state.classList.add('acked');
-      }else{
-        state.textContent='Aucune alarme non acquittee';
-        state.classList.add('acked');
-      }
-    }
-  }catch(e){
-    state.textContent='Etat indisponible';
-  }
-}
-
-async function ack(){
-  const btn=document.getElementById('ack-btn');
-  if(btn.disabled) return;
-
-  await fetch(
-    '/api/logs/ack',
-    {method:'POST',cache:'no-store'}
-  );
-
-  document.getElementById('journal')
-    .contentWindow.location.reload();
-
-  await refreshState();
-}
-
-refreshState();
-setInterval(refreshState,2000);
-</script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Journal</title><style>body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}header{display:flex;gap:.7rem;align-items:center;padding:.7rem;background:#151515}button{padding:.6rem;border:0;border-radius:5px;background:#b71c1c;color:#fff;font-weight:700}a{margin-left:auto;color:#4fc3f7}iframe{width:100%;height:calc(100vh - 58px);border:0}</style></head><body><header><button onclick="fetch('/api/logs/ack',{method:'POST'}).then(()=>location.reload())">Acquitter</button><a href="/index.html">Retour</a></header><iframe src="/api/logs"></iframe></body></html>
 )rawliteral";
 
                 AsyncWebServerResponse* response =
@@ -166,6 +92,10 @@ setInterval(refreshState,2000);
                 response->addHeader(
                     "Cache-Control",
                     "no-store, no-cache, must-revalidate"
+                );
+                response->addHeader(
+                    "X-AquaLook-Storage",
+                    "Firmware-Fallback"
                 );
                 req->send(response);
             }
