@@ -1,7 +1,7 @@
 #pragma once
 
 #ifndef AQUALOOK_VERSION
-#define AQUALOOK_VERSION "5.8.0-rc1"
+#define AQUALOOK_VERSION "5.8.0-rc2"
 #endif
 
 #ifndef AQUALOOK_BUILD_NUMBER
