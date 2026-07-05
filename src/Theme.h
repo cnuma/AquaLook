@@ -90,6 +90,8 @@ namespace Theme {
     #define THEME_FONT_TITLE     &FreeSansBold9pt7b
     #define THEME_FONT_BODY      &FreeSans9pt7b
     #define THEME_FONT_HEADLINE  &FreeSansBold12pt7b
-    #define THEME_FONT_SPLASH    &FreeSansBold18pt7b
+    // Le splash réutilise la 12pt déjà liée au firmware afin de ne pas
+    // embarquer uniquement pour le fallback la table Bold18 (~5,6 Kio).
+    #define THEME_FONT_SPLASH    &FreeSansBold12pt7b
 
 } // namespace Theme
