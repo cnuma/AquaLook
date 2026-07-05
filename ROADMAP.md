@@ -61,6 +61,54 @@ Ordre de réalisation imposé :
 
 Invariant impératif : l’absence, le retrait ou la corruption de la carte SD ne doit jamais empêcher le démarrage du programmateur, l’exécution locale des cycles, l’accès à la première configuration ni l’utilisation d’une interface minimale de diagnostic et de récupération.
 
+### Mode autonome sans Internet avec point d’accès Wi-Fi
+
+Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
+
+Objectifs fonctionnels :
+
+- permettre une utilisation complète du programmateur dans un site dépourvu d’accès Internet ou de réseau local ;
+- activer un point d’accès Wi-Fi propre au module ;
+- permettre à l’utilisateur de se connecter au réseau Wi-Fi AquaLook depuis un téléphone, une tablette ou un ordinateur ;
+- ouvrir une interface Web locale pour consulter l’état du module, configurer les zones et les programmes, lancer ou arrêter un arrosage et modifier les paramètres autorisés ;
+- conserver les programmes, l’heure locale et les paramètres nécessaires au fonctionnement autonome ;
+- rendre le mode autonome utilisable aussi bien lors de la première mise en service qu’après une perte durable du réseau configuré ;
+- permettre le retour vers un fonctionnement connecté sans réinitialisation complète du module.
+
+Modes de fonctionnement à prévoir :
+
+- mode station normal : le module rejoint le réseau Wi-Fi configuré ;
+- mode point d’accès de secours : le module crée automatiquement son réseau après un nombre défini d’échecs de connexion ;
+- mode point d’accès forcé : activation manuelle depuis l’écran, un bouton matériel ou une commande locale ;
+- mode simultané AP + station à étudier pour conserver l’accès local direct tout en restant connecté au réseau existant.
+
+Fonctions disponibles en mode autonome :
+
+- consultation de l’état des voies et des cycles ;
+- création, modification, activation et suppression des programmes ;
+- commande manuelle des zones dans les limites de sécurité existantes ;
+- consultation des diagnostics essentiels ;
+- configuration du Wi-Fi principal pour préparer un retour en mode connecté ;
+- accès aux pages Web stockées en flash, LittleFS ou sur la carte SD selon leur disponibilité ;
+- conservation du portail captif ou d’un mécanisme équivalent pour faciliter l’ouverture de l’interface locale.
+
+Points d’architecture à étudier :
+
+- définition du SSID, du mot de passe et de la méthode de génération d’identifiants propres à chaque module ;
+- protection contre un point d’accès ouvert ou conservant un mot de passe par défaut connu ;
+- déclenchement automatique du mode AP et délai avant bascule ;
+- signalisation claire du mode actif sur l’écran et dans l’interface Web ;
+- maintien fiable de l’horloge sans NTP, avec RTC éventuelle, dérive acceptable et méthode de remise à l’heure depuis le navigateur ;
+- comportement des fonctions météo, cloud et autres services Internet lorsqu’ils sont indisponibles ;
+- résolution DNS locale et portail captif pour diriger l’utilisateur vers l’interface AquaLook ;
+- coexistence entre serveur Web, DNS captif, planificateur, écran et acquisition des capteurs ;
+- procédure sécurisée pour quitter le mode AP et tester une nouvelle configuration Wi-Fi sans perdre l’accès de secours ;
+- temporisation ou maintien permanent du point d’accès selon le mode choisi ;
+- limites du nombre de clients simultanés et prévention des commandes concurrentes ;
+- compatibilité avec le mode dégradé sans carte SD.
+
+Invariant impératif : l’absence d’Internet ou de réseau Wi-Fi externe ne doit jamais empêcher l’exécution des programmes déjà enregistrés ni l’accès local aux fonctions essentielles. Le passage en point d’accès ne doit provoquer ni redémarrages répétés, ni perte de configuration, ni interruption intempestive d’un cycle d’arrosage en cours.
+
 ### Connexion à un cloud externe
 
 Permettre au module AquaLook de se connecter de manière sécurisée à un service cloud externe afin de rendre le système accessible sans connexion directe au réseau local du module.
