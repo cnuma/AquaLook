@@ -39,6 +39,9 @@ Les numéros ci-dessous reprennent les identifiants réellement présents dans l
 - **F9 — Migration :** l’ancien JSON n’est supprimé qu’après vérification du bloc NVS migré.
 - **F10 — Contrôleur relais :** le nombre de zones dépend du contrôleur ; une mauvaise logique peut activer les relais au boot.
 - **F11 — Noms de fichiers :** un fichier modifié, corrigé ou rendu à l’utilisateur conserve exactement son nom d’origine. Aucun suffixe, préfixe, renommage ou nom alternatif n’est autorisé sans demande explicite de l’utilisateur. Lorsqu’un fichier doit remplacer un fichier existant, il est fourni sous le nom exact du fichier cible.
+- **F12 — Version Git sur LCD :** la page Système de l’écran LCD permet de consulter sans outil externe l’identifiant de version Git intégré au firmware. L’information affichée doit permettre d’identifier sans ambiguïté le build réellement exécuté, au minimum par le SHA Git court ; la branche ou l’origine de build et la date de compilation sont affichées si l’espace le permet.
+- **F13 — À propos Web :** l’interface Web dispose d’un accès simple et visible à une page ou un panneau « À propos ». Cette vue affiche au minimum le SHA Git court du firmware, l’origine ou la branche de build lorsqu’elle est disponible, la date et l’heure de compilation, ainsi que la version applicative. Elle reste consultable lorsque l’interface complète est servie depuis la SD et doit conserver un mode de consultation minimal dans l’interface de secours.
+- **F14 — Source unique de version :** les informations de version affichées sur le LCD, la page Web « À propos », les diagnostics et les journaux proviennent d’une même source compile-time générée ou centralisée. Ne jamais maintenir manuellement plusieurs valeurs de version susceptibles de diverger.
 
 ## Modification d’un invariant
 
