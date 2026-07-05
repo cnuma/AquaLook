@@ -6,6 +6,7 @@
   <title>AquaLook - Irrigation Controller</title>
   <link rel="icon" type="image/png" href="/logo.png">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/alarm.css?v=3">
   <style>
     /* Affichage LCD -- tokens de design */
     .cfg-color {
@@ -403,16 +404,25 @@
   </div>
 </div>
 <div id="toast"></div>
-<a href="/api/logs" target="_blank"
+<a href="/logs" target="_blank"
    style="position:fixed;bottom:6px;left:8px;width:6px;height:6px;
           border-radius:50%;background:#ffffff18;display:block;
-          text-decoration:none" title="Logs"></a>
+          text-decoration:none" title="Journal et acquittement"></a>
 <script>
 const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","relay-admin"];
 function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Admin : déverrouillé":"Admin : verrouillé")}
 function adminToggle(){let v=sessionStorage.getItem(K)==="1";if(v){sessionStorage.removeItem(K);adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem(K,"1");adminApply(1)}
 document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem(K)==="1"));
 </script>
+<a id="fault-panel"
+   class="fault-panel fault-hidden"
+   href="/logs"
+   aria-live="assertive"
+   title="Ouvrir le journal et acquitter les alarmes">
+  <span class="fault-triangle">&#9888;</span>
+  <span id="fault-panel-text">Alarme</span>
+</a>
 <script src="/app.js"></script>
+<script src="/alarm.js?v=3"></script>
 </body>
 </html>

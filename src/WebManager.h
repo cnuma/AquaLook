@@ -55,9 +55,17 @@ public:
                 body += F(",\"mask\":");
                 body += FaultManager::activeMask();
                 body += '}';
-                req->send(200, "application/json", body);
+
+                AsyncWebServerResponse* response =
+                    req->beginResponse(200, "application/json", body);
+                response->addHeader(
+                    "Cache-Control",
+                    "no-store, no-cache, must-revalidate"
+                );
+                req->send(response);
             }
         );
+
 
         _server.on("/logs", HTTP_GET,
             [](AsyncWebServerRequest* req) {
@@ -68,43 +76,90 @@ public:
 <title>AquaLook - Journal</title>
 <style>
 body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}
-header{display:flex;gap:.7rem;align-items:center;padding:.8rem 1rem;background:#151515}
-button{border:0;border-radius:6px;padding:.6rem .9rem;background:#b71c1c;color:white;font-weight:600;cursor:pointer}
+header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}
+button{border:1px solid #ef5350;border-radius:6px;padding:.65rem 1rem;background:#b71c1c;color:white;font-weight:700;cursor:pointer}
+button.acked{cursor:default;color:#d7ffd9;border-color:#43a047;background:repeating-linear-gradient(135deg,#1b5e20 0,#1b5e20 7px,#263238 7px,#263238 14px)}
+button:disabled{opacity:1}
 #state{font-size:.9rem;color:#aaa}
-iframe{width:100%;height:calc(100vh - 65px);border:0}
+#state.active{color:#ff6b6b;font-weight:700}
+#state.acked{color:#81c784;font-weight:700}
+iframe{width:100%;height:calc(100vh - 72px);border:0}
 </style></head><body>
 <header>
-<button onclick="ack()">Acquitter les erreurs</button>
+<button id="ack-btn" onclick="ack()">Acquitter les erreurs</button>
 <span id="state">Lecture...</span>
+<a href="/index.html" style="margin-left:auto;color:#4fc3f7;text-decoration:none">Retour</a>
 </header>
 <iframe id="journal" src="/api/logs"></iframe>
 <script>
 async function refreshState(){
+  const btn=document.getElementById('ack-btn');
+  const state=document.getElementById('state');
+
   try{
     const r=await fetch('/api/faults',{cache:'no-store'});
     const d=await r.json();
-    document.getElementById('state').textContent=
-      d.active
-      ? (d.unacknowledged
-         ? 'Probleme actif non acquitte'
-         : 'Probleme actif acquitte, rappel rouge toutes les 5 s')
-      : (d.unacknowledged
-         ? 'Erreur memorisee non acquittee'
-         : 'Aucune alarme');
+
+    btn.classList.remove('acked');
+    state.classList.remove('active','acked');
+
+    if(d.unacknowledged){
+      btn.disabled=false;
+      btn.textContent='Acquitter les erreurs';
+      state.textContent=d.active
+        ? 'Erreur active non acquittee'
+        : 'Erreur memorisee non acquittee';
+      state.classList.add('active');
+    }else{
+      btn.disabled=true;
+      btn.textContent='Erreurs acquittees';
+      btn.classList.add('acked');
+
+      if(d.active){
+        state.textContent=
+          'Defaut toujours present - rappel rouge toutes les 5 s';
+        state.classList.add('acked');
+      }else{
+        state.textContent='Aucune alarme non acquittee';
+        state.classList.add('acked');
+      }
+    }
   }catch(e){
-    document.getElementById('state').textContent='Etat indisponible';
+    state.textContent='Etat indisponible';
   }
 }
+
 async function ack(){
-  await fetch('/api/logs/ack',{method:'POST'});
-  document.getElementById('journal').contentWindow.location.reload();
-  refreshState();
+  const btn=document.getElementById('ack-btn');
+  if(btn.disabled) return;
+
+  await fetch(
+    '/api/logs/ack',
+    {method:'POST',cache:'no-store'}
+  );
+
+  document.getElementById('journal')
+    .contentWindow.location.reload();
+
+  await refreshState();
 }
+
 refreshState();
 setInterval(refreshState,2000);
 </script></body></html>
 )rawliteral";
-                req->send(200, "text/html; charset=utf-8", PAGE);
+
+                AsyncWebServerResponse* response =
+                    req->beginResponse(
+                        200,
+                        "text/html; charset=utf-8",
+                        PAGE
+                    );
+                response->addHeader(
+                    "Cache-Control",
+                    "no-store, no-cache, must-revalidate"
+                );
+                req->send(response);
             }
         );
     }
