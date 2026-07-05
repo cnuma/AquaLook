@@ -1,6 +1,7 @@
 #include "WebManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "SystemDiagnostics.h"
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -298,6 +299,9 @@ void WebManager::setupRoutes() {
     _server.on("/api/adminStatus", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleAdminStatus(req);
     });
+    _server.on("/api/diagnostics", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleDiagnostics(req);
+    });
     // Slots d une zone en particulier (demande a la demande depuis le modal)
     // Route query param : /api/zone?z=N — evite les problemes de regex AsyncWebServer
     _server.on("/api/zone", HTTP_GET, [this](AsyncWebServerRequest* req) {
@@ -340,6 +344,8 @@ void WebManager::setupRoutes() {
 
     POST_JSON("/api/mode",          handleSetMode);
     POST_JSON("/api/interval",      handleSetInterval);
+    POST_JSON("/api/intervalAnchor",handleSetIntervalAnchor);
+    POST_JSON("/api/deleteInterval",handleDeleteIntervalProgramming);
     POST_JSON("/api/dayslot",       handleSetDaySlot);
     POST_JSON("/api/intervalslot",  handleSetIntervalSlot);
     POST_JSON("/api/rain",          handleSetRain);
@@ -430,9 +436,12 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         if (_config) zo["name"] = _config->zone(z).name;
 
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
-        zo["mode"]            = zs.mode;
-        zo["intervalDays"]    = zs.intervalDays;
-        zo["lastWateredDay"]  = zs.lastWateredDay;
+
+        zo["mode"]               = zs.mode;
+        zo["intervalDays"]       = zs.intervalDays;
+        zo["intervalAnchorDay"]  = zs.intervalAnchorDay;
+        // Compatibilité avec le JavaScript existant pendant la transition.
+        zo["lastWateredDay"]     = zs.intervalAnchorDay;
 
         JsonObject rain = zo["rain"].to<JsonObject>();
         rain["threshMm"] = zs.rain.thresholdMm;
@@ -528,15 +537,30 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  GET /api/diagnostics — instrumentation système légère
+// ═══════════════════════════════════════════════════════════════
+void WebManager::handleDiagnostics(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    SystemDiagnostics::fillJson(doc, _wifi);
+    sendJson(req, doc);
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  POST planning
 // ═══════════════════════════════════════════════════════════════
 
 void WebManager::handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc) {
     uint8_t zone = doc["zone"] | 255;
     uint8_t mode = doc["mode"] | 255;
-    if (zone >= MAX_ZONES || mode > 1) { sendError(req, "parametres invalides"); return; }
-    _schedule->setMode(zone, mode);                          // RAM
-    if (_config) _config->setZoneMode(zone, mode);          // flash
+    if (zone >= MAX_ZONES || mode > SCHEDULE_MODE_INTERVAL) {
+        sendError(req, "parametres invalides");
+        return;
+    }
+
+    // Le changement de mode ne modifie jamais silencieusement l'ancre.
+    _schedule->setMode(zone, mode);
+    if (_config) _config->setZoneMode(zone, mode);
+
     EventBus::displayDirty = true;
     sendOk(req);
 }
@@ -547,6 +571,36 @@ void WebManager::handleSetInterval(AsyncWebServerRequest* req, JsonDocument& doc
     if (zone >= MAX_ZONES || days < 1 || days > 30) { sendError(req, "parametres invalides"); return; }
     _schedule->setIntervalDays(zone, days);
     if (_config) _config->setZoneIntervalDays(zone, days);
+    sendOk(req);
+}
+
+void WebManager::handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc) {
+    uint8_t zone = doc["zone"] | 255;
+    uint32_t anchorDay = doc["anchorDay"] | 0UL;
+    if (zone >= MAX_ZONES || anchorDay == 0) {
+        sendError(req, "date de debut invalide");
+        return;
+    }
+
+    _schedule->setIntervalAnchorDay(zone, anchorDay);
+    if (_config) _config->setZoneIntervalAnchorDay(zone, anchorDay);
+    EventLog::log(LOG_INFO, "Zone %u: ancre intervalle=%lu",
+                  zone + 1, (unsigned long)anchorDay);
+    EventBus::displayDirty = true;
+    sendOk(req);
+}
+
+void WebManager::handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc) {
+    uint8_t zone = doc["zone"] | 255;
+    if (zone >= MAX_ZONES) {
+        sendError(req, "zone invalide");
+        return;
+    }
+
+    _schedule->clearIntervalProgramming(zone);
+    if (_config) _config->clearZoneIntervalProgramming(zone);
+    EventLog::log(LOG_INFO, "Zone %u: programmation intervalle supprimee", zone + 1);
+    EventBus::displayDirty = true;
     sendOk(req);
 }
 
@@ -1071,21 +1125,34 @@ void WebManager::handleGetLogs(AsyncWebServerRequest* req) {
 
 void WebManager::sendJson(AsyncWebServerRequest* req,
                            const JsonDocument& doc, int code) {
-    // Mesurer d'abord pour éviter la double allocation
-    size_t len = measureJson(doc);
+    const uint32_t startedUs = micros();
+
+    // Mesurer d'abord pour éviter la double allocation.
+    const size_t len = measureJson(doc);
     AsyncResponseStream* resp = req->beginResponseStream("application/json", len + 1);
+    resp->setCode(code);
     serializeJson(doc, *resp);
     req->send(resp);
+
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), code, len, micros() - startedUs);
 }
 
 void WebManager::sendOk(AsyncWebServerRequest* req) {
-    req->send(200, "application/json", "{\"ok\":true}");
+    const uint32_t startedUs = micros();
+    static constexpr char BODY[] = "{\"ok\":true}";
+    req->send(200, "application/json", BODY);
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), 200, sizeof(BODY) - 1, micros() - startedUs);
 }
 
 void WebManager::sendError(AsyncWebServerRequest* req,
                             const char* msg, int code) {
+    const uint32_t startedUs = micros();
     String body = String("{\"error\":\"") + msg + "\"}";
     req->send(code, "application/json", body);
+    SystemDiagnostics::noteWebResponse(
+        req->url().c_str(), code, body.length(), micros() - startedUs);
 }
 
 void WebManager::addJsonHandler(const char* uri,

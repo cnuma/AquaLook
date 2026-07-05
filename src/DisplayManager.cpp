@@ -48,14 +48,11 @@ static bool intervalDayIsPlanned(const ZoneSchedule& zs,
                                  uint8_t daysAhead) {
     const uint32_t targetDay = todayEpochDay + daysAhead;
     const uint32_t interval  = zs.intervalDays > 0 ? zs.intervalDays : 1;
+    const uint32_t anchor    = zs.intervalAnchorDay;
 
-    if (zs.lastWateredDay == 0) {
-        return (daysAhead % interval) == 0;
-    }
-
-    uint32_t nextDay = zs.lastWateredDay + interval;
-    while (nextDay < todayEpochDay) nextDay += interval;
-    return targetDay >= nextDay && ((targetDay - nextDay) % interval) == 0;
+    return anchor > 0 &&
+           targetDay >= anchor &&
+           ((targetDay - anchor) % interval) == 0;
 }
 
 #define SCREEN_W   320
@@ -1054,6 +1051,10 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
 
     // Le sprite reste alloué à PL_BTN_H, mais la carte est dessinée selon la
     // hauteur réellement visible afin de conserver les coins arrondis en bas.
+    // Le sprite alloué est plus haut que la carte réellement visible.
+    // Le remplir avec le fond d'écran permet de pousser uniquement les lignes
+    // utiles sans dépendre d'une couleur transparente, dont la comparaison peut
+    // varier selon l'ordre des octets du sprite TFT_eSPI.
     _sprBtn0.fillSprite(Theme::BG);
     drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, visibleH, Theme::R_LG, bg, border, false);
     drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG, zColor);
@@ -1117,7 +1118,7 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         // Hint arrêt — position relative à la hauteur réellement visible.
         _sprBtn0.setTextColor(Theme::ON_ACTIVE_MUTED, bg);  // gris clair lisible sur rouge
         _sprBtn0.setTextDatum(TC_DATUM);
-        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)76, (uint16_t)(visibleH - 12)) : 4;
+        const uint16_t hintY = (visibleH > 16) ? min((uint16_t)84, (uint16_t)(visibleH - 12)) : 4;
         _sprBtn0.drawString("Appuyer pour arreter", PL_BTN_W / 2, hintY);
         _sprBtn0.setTextDatum(TL_DATUM);
 
@@ -1170,16 +1171,19 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
                 // Intervalle : déterminer le prochain jour autorisé, puis chercher le
                 // premier créneau encore futur. Si tous les créneaux du jour sont
                 // passés, avancer d'un intervalle complet.
-                uint32_t nextDay = (zs.lastWateredDay > 0)
-                    ? zs.lastWateredDay + zs.intervalDays
-                    : epochNow;
-                while (nextDay < epochNow) nextDay += zs.intervalDays;
+                const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
+                uint32_t nextDay = zs.intervalAnchorDay;
+                if (nextDay == 0) {
+                    nextDay = epochNow;
+                } else {
+                    while (nextDay < epochNow) nextDay += interval;
+                }
 
                 uint8_t hour = 0, minute = 0;
                 int minExclusive = (nextDay == epochNow) ? nowMin : -1;
                 if (!findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute) &&
                     nextDay == epochNow) {
-                    nextDay += zs.intervalDays;
+                    nextDay += interval;
                     minExclusive = -1;
                 }
 
@@ -1223,11 +1227,14 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.setTextDatum(TL_DATUM);
     }
 
-    // Ne pousser que la portion réellement dessinée du sprite.
-    // Le reste du sprite (alloué à PL_BTN_H) ne doit jamais atteindre le TFT,
-    // sinon il peut laisser une zone rectangulaire sous la carte arrondie.
-    _sprBtn0.pushSprite((zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X,
-                        pushY, 0, 0, PL_BTN_W, visibleH);
+    const uint16_t pushX = (zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X;
+
+    // Nettoyer toute la colonne, puis transférer uniquement la hauteur utile.
+    // Ne jamais pousser PL_BTN_H complet ici : la partie basse inutilisée du
+    // sprite était la source du rectangle coloré visible sous les boutons.
+    _tft.fillRect(pushX, pushY, PL_BTN_W, SCREEN_H - pushY, Theme::BG);
+    _tft.pushImage(pushX, pushY, PL_BTN_W, visibleH,
+                   static_cast<uint16_t*>(_sprBtn0.getPointer()));
 }
 
 // ═══════════════════════════════════════════════════════════════

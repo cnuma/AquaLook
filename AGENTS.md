@@ -43,6 +43,36 @@ Pour une évolution significative, lire aussi :
 
 ## Règles impératives
 
+
+## Déclencheur permanent : checkpoint
+
+Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiquement la procédure suivante sans attendre de demande complémentaire :
+
+1. Identifier la branche active, le commit courant et l’état Git.
+2. Vérifier que le code validé est compilé, que buildfs est validé si data/ a changé, et que le dépôt ne contient aucune modification non validée.
+3. Créer le document :
+   docs/checkpoints/CHECKPOINT_YYYY-MM-DD_<sha-court>.md
+4. Le document doit être autonome et inclure :
+   - dépôt, branche et commit fonctionnel ;
+   - source de vérité ;
+   - résumé des fonctionnalités validées ;
+   - fichiers et fonctions modifiés ;
+   - invariants préservés ;
+   - état compilation, buildfs, Web, LCD et matériel ;
+   - risques et limites ;
+   - procédure exacte de reprise ;
+   - commandes Git utiles.
+5. Ajouter, committer et pousser ce document.
+6. Utiliser le nouveau commit documentaire comme commit officiel de reprise.
+7. Générer ensuite un checkpoint complet nommé :
+   AquaLook_YYYY-MM-DD_<branche>_checkpoint_complet_<sha-court>.zip
+8. Inclure dans le ZIP les sources, data, documentation, AGENTS.md, platformio.ini et le document de reprise.
+9. Exclure .git, .pio, sauvegardes, logs, secrets et fichiers temporaires.
+10. Calculer et fournir le SHA-256.
+11. Fournir enfin un bloc minimal de reprise prêt à copier dans un nouveau chat.
+
+Ne jamais annoncer qu’un document de reprise est dans le dépôt avant d’avoir vérifié qu’il a réellement été committé et poussé.
+
 ### Périmètre minimal
 
 - Modifier le minimum nécessaire.

@@ -11,6 +11,7 @@
 
 #define CFG_NVS_NAMESPACE "aqualook"
 #define CFG_NVS_KEY       "config"
+#define CFG_NVS_INTERVAL_ANCHORS_KEY "intAnchors"
 #define CFG_NVS_SCHEMA    1
 
 // ═══════════════════════════════════════════════════════════════
@@ -214,6 +215,7 @@ public:
     const CfgOwm&    owm()    const { return _owm;    }
     const CfgSystem& system() const { return _system; }
     const CfgZone&   zone(uint8_t z) const;
+    uint32_t          intervalAnchorDay(uint8_t z) const;
     const CfgDisplay& display() const { return _display; }
     bool weatherVisualsEnabled() const { return _weatherVisualsEnabled; }
     uint8_t          nbZones()        const { return _system.nbZones; }
@@ -261,8 +263,10 @@ public:
     void setWeatherVisualsEnabled(bool enabled);
 
     // Planning
-    void setZoneMode(uint8_t zone, uint8_t mode);
+    void setZoneMode(uint8_t zone, uint8_t mode, uint32_t anchorDay = 0);
     void setZoneIntervalDays(uint8_t zone, uint8_t days);
+    void setZoneIntervalAnchorDay(uint8_t zone, uint32_t epochDay);
+    void clearZoneIntervalProgramming(uint8_t zone);
     void setZoneRain(uint8_t zone, float threshMm, uint8_t hours);
     void setZoneDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                         uint8_t h, uint8_t m, uint16_t dur, bool enabled);
@@ -281,6 +285,7 @@ private:
     CfgSystem _system;
     CfgDisplay _display;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
+    uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
     bool      _loaded = false;
     bool      _weatherVisualsEnabled = false;
 

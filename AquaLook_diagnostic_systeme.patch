@@ -1,0 +1,105 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index 24e8f54..DIAG000 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@
+ #include "ConfigManager.h"
++#include "SystemDiagnostics.h"
+@@
+ void setup() {
+     Serial.begin(115200);
+     delay(300);
+     Serial.println("\n=== AquaLook v2.0 ===");
++    SystemDiagnostics::begin();
+@@
+ void loop() {
++    SystemDiagnostics::loopEnter();
+@@
+     displayPlanningDecorDraw(displayMgr);
+
+     yield();
++    SystemDiagnostics::loopExit();
+ }
+
+diff --git a/src/WebManager.h b/src/WebManager.h
+index 8f3f73e..DIAG001 100644
+--- a/src/WebManager.h
++++ b/src/WebManager.h
+@@
+     void handleStatus(AsyncWebServerRequest* request);
+     void handleAdminStatus(AsyncWebServerRequest* request);
++    void handleDiagnostics(AsyncWebServerRequest* request);
+
+diff --git a/src/WebManager.cpp b/src/WebManager.cpp
+index 8e84a95..DIAG002 100644
+--- a/src/WebManager.cpp
++++ b/src/WebManager.cpp
+@@
+ #include "EventBus.h"
+ #include "EventLog.h"
++#include "SystemDiagnostics.h"
+@@
+     _server.on("/api/adminStatus", HTTP_GET, [this](AsyncWebServerRequest* req) {
+         handleAdminStatus(req);
+     });
++    _server.on("/api/diagnostics", HTTP_GET, [this](AsyncWebServerRequest* req) {
++        handleDiagnostics(req);
++    });
+@@
+ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
+@@
+     sendJson(req, doc);
+ }
++
++// ═══════════════════════════════════════════════════════════════
++//  GET /api/diagnostics — instrumentation légère système
++// ═══════════════════════════════════════════════════════════════
++void WebManager::handleDiagnostics(AsyncWebServerRequest* req) {
++    JsonDocument doc;
++    SystemDiagnostics::fillJson(doc, _wifi);
++    sendJson(req, doc);
++}
+@@
+ void WebManager::sendJson(AsyncWebServerRequest* req,
+                            const JsonDocument& doc, int code) {
++    const uint32_t startedUs = micros();
+     // Mesurer d'abord pour éviter la double allocation
+     size_t len = measureJson(doc);
+     AsyncResponseStream* resp = req->beginResponseStream("application/json", len + 1);
+     serializeJson(doc, *resp);
+     req->send(resp);
++    SystemDiagnostics::noteWebResponse(
++        req->url().c_str(), code, len, micros() - startedUs);
+ }
+
+ void WebManager::sendOk(AsyncWebServerRequest* req) {
++    const uint32_t startedUs = micros();
+     req->send(200, "application/json", "{\"ok\":true}");
++    SystemDiagnostics::noteWebResponse(
++        req->url().c_str(), 200, 11, micros() - startedUs);
+ }
+
+ void WebManager::sendError(AsyncWebServerRequest* req,
+                             const char* msg, int code) {
++    const uint32_t startedUs = micros();
+     String body = String("{\"error\":\"") + msg + "\"}";
+     req->send(code, "application/json", body);
++    SystemDiagnostics::noteWebResponse(
++        req->url().c_str(), code, body.length(), micros() - startedUs);
+ }
+
+diff --git a/data/index.html b/data/index.html
+index 422a2cf..DIAG003 100644
+--- a/data/index.html
++++ b/data/index.html
+@@
+       <button class="btn-cfg danger" onclick="resetConfig()" style="margin-top:14px">
+         Reset configuration (reboot)
+       </button>
++      <a class="btn-cfg"
++         href="/diagnostic.html"
++         style="display:block;text-align:center;text-decoration:none;margin-top:8px">
++        Diagnostic système
++      </a>
+     </div>
+   </div>
