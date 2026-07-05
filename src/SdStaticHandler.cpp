@@ -148,13 +148,17 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
 bool SdStaticHandler::mapRequestPath(const String& requestPath, String& sdPath) {
     if (requestPath.length() == 0 || requestPath[0] != '/') return false;
     if (requestPath.indexOf("..") >= 0 || requestPath.indexOf('\\') >= 0) return false;
-    if (requestPath.startsWith("/api/") || requestPath == "/logs") return false;
+    if (requestPath.startsWith("/api/")) return false;
 
-    // Portail captif hybride : /setup est servi depuis la SD quand le fichier
-    // complet est present. Si la SD est absente ou le fichier manque, ce
-    // handler decline la requete et WebManager sert son fallback embarque.
+    // Pages hybrides : la version complete est servie depuis la SD quand le
+    // fichier est present. Sinon, le handler decline la requete pour laisser
+    // WebManager fournir le fallback embarque correspondant.
     if (requestPath == "/setup") {
         sdPath = "/www/setup.html";
+        return true;
+    }
+    if (requestPath == "/logs") {
+        sdPath = "/www/logs.html";
         return true;
     }
 
