@@ -132,6 +132,16 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 - Préserver le fonctionnement hot-reload des paramètres d’affichage.
 - Ne pas ajouter de polices GFXFF par includes séparés si elles sont déjà fournies par TFT_eSPI.
 
+### Validation obligatoire des fichiers livrés
+
+- Tout patch, diff, script, archive, fichier de configuration ou fichier de transformation destiné à être appliqué par l’utilisateur doit être testé avant livraison avec l’outil exact prévu.
+- Pour un patch Git, exécuter obligatoirement `git apply --check <fichier.patch>` sur une copie fidèle de la base ciblée avant de le fournir.
+- Vérifier ensuite que l’application réelle du patch réussit, que `git diff --check` reste propre et que le résultat ne contient ni duplication ni modification hors périmètre.
+- Pour une archive, vérifier son ouverture, son contenu attendu, l’absence de fichiers parasites et, si pertinent, son extraction dans un répertoire temporaire.
+- Pour un script, exécuter au minimum un test syntaxique ou un mode non destructif lorsque l’environnement le permet.
+- Ne jamais demander à l’utilisateur de valider en premier un fichier que l’agent pouvait vérifier lui-même.
+- Si la validation complète est impossible dans l’environnement disponible, l’indiquer avant livraison et fournir une méthode de contrôle locale minimale.
+
 ## Procédure obligatoire avant livraison
 
 1. Identifier la branche et le commit de base.
@@ -143,7 +153,8 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 7. Si `data/` est modifié, exécuter `pio run -e ProgrammeArrosage -t buildfs`.
 8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration` ou `pio run -e test_relais`.
 9. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-10. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
+10. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
+11. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
 
 ## Livrables
 
