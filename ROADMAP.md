@@ -4,6 +4,63 @@ Ce document regroupe les évolutions envisagées pour AquaLook. Il ne constitue 
 
 ## Évolutions futures
 
+### Migration des ressources Web vers la carte SD — préalable à l’OTA
+
+Utiliser la carte SD pour stocker les pages et ressources Web qui se trouvent actuellement en flash ou dans LittleFS et qui peuvent être déplacées sans compromettre le démarrage, la configuration initiale ou la récupération du module.
+
+Cette activité doit être réalisée et validée avant la mise en place de la mise à jour OTA.
+
+Objectifs fonctionnels :
+
+- réduire l’occupation de la flash et de la partition LittleFS ;
+- déplacer vers la carte SD les pages HTML, feuilles de style, scripts, images et autres ressources non indispensables au démarrage minimal ;
+- conserver en flash ou dans LittleFS les ressources nécessaires à la première configuration, au portail captif, au diagnostic minimal et aux fonctions de récupération ;
+- permettre au serveur Web de servir les ressources depuis la carte SD de manière transparente ;
+- disposer d’un mode dégradé clair lorsque la carte SD est absente, non montée ou illisible ;
+- préparer une architecture de stockage stable avant de définir le périmètre et les partitions nécessaires à l’OTA.
+
+Ressources à conserver impérativement en flash ou dans LittleFS :
+
+- portail captif et pages de première configuration Wi-Fi ;
+- page ou interface minimale de diagnostic et de récupération ;
+- ressources nécessaires au démarrage du serveur Web en mode secours ;
+- pages permettant de détecter, signaler ou corriger une carte SD absente ou défaillante ;
+- toute ressource indispensable à une future procédure OTA ou de restauration ;
+- fichiers dont l’absence empêcherait l’accès administratif minimal au module.
+
+Ressources candidates à la migration vers la carte SD :
+
+- pages d’état et de supervision détaillées ;
+- pages de programmation et de paramétrage non nécessaires à la première mise en service ;
+- feuilles CSS et scripts JavaScript associés à ces pages ;
+- images, icônes, historiques, aides et contenus volumineux ;
+- ressources futures liées aux graphiques, consommations, sondes et statistiques.
+
+Points d’architecture à étudier :
+
+- inventaire précis des fichiers actuellement embarqués dans LittleFS et de leurs dépendances ;
+- classement de chaque ressource selon trois niveaux : indispensable au démarrage, nécessaire au secours, déplaçable sur SD ;
+- gestion centralisée du montage, de la disponibilité et des erreurs de la carte SD ;
+- résolution des chemins et priorité de recherche entre flash, LittleFS et carte SD ;
+- stratégie de repli lorsqu’un fichier attendu sur SD est absent ou corrompu ;
+- vérification de l’intégrité et de la version des ressources présentes sur la carte ;
+- mécanisme de déploiement et de mise à jour du contenu de la carte SD ;
+- compatibilité avec le bus matériel existant, notamment l’écran tactile et les autres périphériques SPI ;
+- performances de lecture, concurrence d’accès et absence de blocage du planificateur ;
+- impacts sur le partitionnement flash avant l’introduction de l’OTA ;
+- définition du comportement lors d’un retrait ou d’une défaillance de la carte pendant le fonctionnement.
+
+Ordre de réalisation imposé :
+
+1. inventorier et classifier les ressources actuelles ;
+2. mettre en place l’accès SD et le mode de repli ;
+3. migrer progressivement les ressources éligibles ;
+4. valider le démarrage, le portail captif et le mode secours sans carte SD ;
+5. mesurer l’espace flash et LittleFS libéré ;
+6. seulement ensuite concevoir et intégrer la mise à jour OTA.
+
+Invariant impératif : l’absence, le retrait ou la corruption de la carte SD ne doit jamais empêcher le démarrage du programmateur, l’exécution locale des cycles, l’accès à la première configuration ni l’utilisation d’une interface minimale de diagnostic et de récupération.
+
 ### Connexion à un cloud externe
 
 Permettre au module AquaLook de se connecter de manière sécurisée à un service cloud externe afin de rendre le système accessible sans connexion directe au réseau local du module.
