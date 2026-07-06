@@ -10,6 +10,18 @@ const char* controllerName(uint8_t controller) {
     }
 }
 
+const char* roleName(uint8_t role) {
+    switch (role) {
+        case ROLE_UNUSED: return "unused";
+        case ROLE_ZONE_VALVE: return "zone_valve";
+        case ROLE_PUMP: return "pump";
+        case ROLE_AUX: return "aux";
+        case ROLE_GREENHOUSE_VENT: return "greenhouse_vent";
+        case ROLE_LIGHTING: return "lighting";
+        default: return "unknown";
+    }
+}
+
 bool isSupportedController(uint8_t controller) {
     return controller == CONTROLLER_XL9535 ||
            controller == CONTROLLER_MCP23017;
@@ -18,6 +30,15 @@ bool isSupportedController(uint8_t controller) {
 bool isSupportedChannelCount(uint8_t channelCount) {
     return channelCount == 1 || channelCount == 2 ||
            channelCount == 4 || channelCount == 8;
+}
+
+bool isSupportedRole(uint8_t role) {
+    return role == ROLE_UNUSED ||
+           role == ROLE_ZONE_VALVE ||
+           role == ROLE_PUMP ||
+           role == ROLE_AUX ||
+           role == ROLE_GREENHOUSE_VENT ||
+           role == ROLE_LIGHTING;
 }
 
 uint8_t normalizeChannelCount(uint8_t channelCount) {
@@ -41,8 +62,8 @@ void clear(RelayTopologyConfig& topology) {
     for (uint8_t b = 0; b < MAX_RELAY_BOARDS; b++) {
         topology.boards[b] = RelayBoardConfig{};
     }
-    for (uint8_t z = 0; z < MAX_ZONES; z++) {
-        topology.mappings[z] = ZoneRelayMapping{};
+    for (uint8_t a = 0; a < MAX_RELAY_ASSIGNMENTS; a++) {
+        topology.assignments[a] = RelayAssignment{};
     }
 }
 
@@ -68,9 +89,12 @@ void buildLegacyCompatibleTopology(
     board0.logic = logic;
 
     for (uint8_t z = 0; z < nbZones && z < board0.channelCount; z++) {
-        topology.mappings[z].enabled = true;
-        topology.mappings[z].boardIndex = 0;
-        topology.mappings[z].channelIndex = z;
+        RelayAssignment& a = topology.assignments[z];
+        a.enabled = true;
+        a.role = ROLE_ZONE_VALVE;
+        a.targetIndex = z;
+        a.boardIndex = 0;
+        a.channelIndex = z;
     }
 }
 
@@ -87,41 +111,63 @@ bool validateBoard(const RelayBoardConfig& board) {
     return true;
 }
 
-bool validateMapping(
+bool validateAssignment(
     const RelayTopologyConfig& topology,
-    uint8_t zone,
-    uint8_t nbZones
+    uint8_t assignmentIndex
 ) {
-    if (zone >= nbZones || zone >= MAX_ZONES) return false;
+    if (assignmentIndex >= MAX_RELAY_ASSIGNMENTS) return false;
 
-    const ZoneRelayMapping& mapping = topology.mappings[zone];
-    if (!mapping.enabled) return false;
-    if (mapping.boardIndex >= MAX_RELAY_BOARDS) return false;
+    const RelayAssignment& assignment = topology.assignments[assignmentIndex];
+    if (!assignment.enabled) return false;
+    if (!isSupportedRole(assignment.role)) return false;
+    if (assignment.role == ROLE_UNUSED) return false;
+    if (assignment.boardIndex >= MAX_RELAY_BOARDS) return false;
 
-    const RelayBoardConfig& board = topology.boards[mapping.boardIndex];
+    const RelayBoardConfig& board = topology.boards[assignment.boardIndex];
     if (!validateBoard(board)) return false;
-    if (mapping.channelIndex >= board.channelCount) return false;
+    if (assignment.channelIndex >= board.channelCount) return false;
 
     return true;
 }
 
-MappingResolution resolveMapping(
+MappingResolution resolveAssignment(
+    const RelayTopologyConfig& topology,
+    uint8_t assignmentIndex
+) {
+    MappingResolution result;
+    if (!validateAssignment(topology, assignmentIndex)) return result;
+
+    const RelayAssignment& assignment = topology.assignments[assignmentIndex];
+    const RelayBoardConfig& board = topology.boards[assignment.boardIndex];
+
+    result.valid = true;
+    result.role = assignment.role;
+    result.targetIndex = assignment.targetIndex;
+    result.boardIndex = assignment.boardIndex;
+    result.channelIndex = assignment.channelIndex;
+    result.controller = board.controller;
+    result.i2cAddress = board.i2cAddress;
+    result.logic = board.logic;
+    return result;
+}
+
+MappingResolution resolveZoneValve(
     const RelayTopologyConfig& topology,
     uint8_t zone,
     uint8_t nbZones
 ) {
     MappingResolution result;
-    if (!validateMapping(topology, zone, nbZones)) return result;
+    if (zone >= nbZones || zone >= MAX_ZONES) return result;
 
-    const ZoneRelayMapping& mapping = topology.mappings[zone];
-    const RelayBoardConfig& board = topology.boards[mapping.boardIndex];
+    for (uint8_t a = 0; a < MAX_RELAY_ASSIGNMENTS; a++) {
+        if (!validateAssignment(topology, a)) continue;
+        const RelayAssignment& assignment = topology.assignments[a];
+        if (assignment.role == ROLE_ZONE_VALVE &&
+            assignment.targetIndex == zone) {
+            return resolveAssignment(topology, a);
+        }
+    }
 
-    result.valid = true;
-    result.boardIndex = mapping.boardIndex;
-    result.channelIndex = mapping.channelIndex;
-    result.controller = board.controller;
-    result.i2cAddress = board.i2cAddress;
-    result.logic = board.logic;
     return result;
 }
 
@@ -135,25 +181,44 @@ uint8_t totalEnabledChannels(const RelayTopologyConfig& topology) {
     return total;
 }
 
-bool hasDuplicateMappings(const RelayTopologyConfig& topology, uint8_t nbZones) {
-    nbZones = constrain(nbZones, (uint8_t)0, (uint8_t)MAX_ZONES);
+bool hasDuplicateAssignments(const RelayTopologyConfig& topology) {
+    for (uint8_t a = 0; a < MAX_RELAY_ASSIGNMENTS; a++) {
+        if (!validateAssignment(topology, a)) continue;
+        const RelayAssignment& aa = topology.assignments[a];
 
-    for (uint8_t a = 0; a < nbZones; a++) {
-        if (!validateMapping(topology, a, nbZones)) continue;
-        const ZoneRelayMapping& ma = topology.mappings[a];
+        for (uint8_t b = a + 1; b < MAX_RELAY_ASSIGNMENTS; b++) {
+            if (!validateAssignment(topology, b)) continue;
+            const RelayAssignment& ab = topology.assignments[b];
 
-        for (uint8_t b = a + 1; b < nbZones; b++) {
-            if (!validateMapping(topology, b, nbZones)) continue;
-            const ZoneRelayMapping& mb = topology.mappings[b];
-
-            if (ma.boardIndex == mb.boardIndex &&
-                ma.channelIndex == mb.channelIndex) {
+            if (aa.boardIndex == ab.boardIndex &&
+                aa.channelIndex == ab.channelIndex) {
                 return true;
             }
         }
     }
 
     return false;
+}
+
+bool validateMapping(
+    const RelayTopologyConfig& topology,
+    uint8_t zone,
+    uint8_t nbZones
+) {
+    return resolveZoneValve(topology, zone, nbZones).valid;
+}
+
+MappingResolution resolveMapping(
+    const RelayTopologyConfig& topology,
+    uint8_t zone,
+    uint8_t nbZones
+) {
+    return resolveZoneValve(topology, zone, nbZones);
+}
+
+bool hasDuplicateMappings(const RelayTopologyConfig& topology, uint8_t nbZones) {
+    (void)nbZones;
+    return hasDuplicateAssignments(topology);
 }
 
 } // namespace RelayTopology
