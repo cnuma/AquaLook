@@ -13,6 +13,16 @@ EquipmentConfig::EquipmentConfig()
       minOnSec(0),
       minOffSec(0) {}
 
+ZoneEquipmentLink::ZoneEquipmentLink()
+    : enabled(false),
+      zoneIndex(0),
+      valveEquipmentIndex(INVALID_INDEX),
+      pumpEquipmentIndex(INVALID_INDEX) {}
+
+bool ZoneEquipmentLink::requiresPump() const {
+    return pumpEquipmentIndex != INVALID_INDEX;
+}
+
 const char* typeName(uint8_t type) {
     switch (type) {
         case EQUIP_UNUSED: return "unused";
@@ -55,6 +65,9 @@ void clear(EquipmentConfigSet& model) {
     for (uint8_t i = 0; i < MAX_EQUIPMENTS; ++i) {
         model.equipments[i] = EquipmentConfig{};
     }
+    for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+        model.zoneLinks[z] = ZoneEquipmentLink{};
+    }
 }
 
 bool validateEquipment(const EquipmentConfigSet& model, uint8_t equipmentIndex) {
@@ -67,6 +80,30 @@ bool validateEquipment(const EquipmentConfigSet& model, uint8_t equipmentIndex) 
     if (equipment.name[EQUIPMENT_NAME_LENGTH - 1] != '\0') return false;
 
     return true;
+}
+
+bool validateZoneLink(
+    const EquipmentConfigSet& model,
+    uint8_t linkIndex,
+    uint8_t nbZones
+) {
+    if (linkIndex >= MAX_ZONES) return false;
+
+    const ZoneEquipmentLink& link = model.zoneLinks[linkIndex];
+    if (!link.enabled) return false;
+    if (link.zoneIndex >= nbZones || link.zoneIndex >= MAX_ZONES) return false;
+    if (!validateEquipment(model, link.valveEquipmentIndex)) return false;
+
+    const EquipmentConfig& valve = model.equipments[link.valveEquipmentIndex];
+    if (valve.type != EQUIP_ZONE_VALVE || valve.targetIndex != link.zoneIndex) {
+        return false;
+    }
+
+    if (!link.requiresPump()) return true;
+    if (!validateEquipment(model, link.pumpEquipmentIndex)) return false;
+
+    const EquipmentConfig& pump = model.equipments[link.pumpEquipmentIndex];
+    return pump.type == EQUIP_PUMP;
 }
 
 int16_t findByTypeAndTarget(
@@ -83,6 +120,21 @@ int16_t findByTypeAndTarget(
         if (equipment.type == type && equipment.targetIndex == targetIndex) {
             return i;
         }
+    }
+
+    return -1;
+}
+
+int16_t findZoneLink(
+    const EquipmentConfigSet& model,
+    uint8_t zoneIndex,
+    uint8_t nbZones
+) {
+    if (zoneIndex >= nbZones || zoneIndex >= MAX_ZONES) return -1;
+
+    for (uint8_t i = 0; i < MAX_ZONES; ++i) {
+        if (!validateZoneLink(model, i, nbZones)) continue;
+        if (model.zoneLinks[i].zoneIndex == zoneIndex) return i;
     }
 
     return -1;
