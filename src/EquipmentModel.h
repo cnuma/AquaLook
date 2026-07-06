@@ -37,8 +37,22 @@ struct EquipmentConfig {
     EquipmentConfig();
 };
 
+// Dépendance métier d'une zone d'arrosage.
+// pumpEquipmentIndex == INVALID_INDEX signifie que la zone fonctionne
+// sans pompe pilotée par AquaLook.
+struct ZoneEquipmentLink {
+    bool enabled;
+    uint8_t zoneIndex;
+    uint8_t valveEquipmentIndex;
+    uint8_t pumpEquipmentIndex;
+
+    ZoneEquipmentLink();
+    bool requiresPump() const;
+};
+
 struct EquipmentConfigSet {
     EquipmentConfig equipments[MAX_EQUIPMENTS];
+    ZoneEquipmentLink zoneLinks[MAX_ZONES];
 };
 
 const char* typeName(uint8_t type);
@@ -48,10 +62,20 @@ uint8_t expectedRelayRole(uint8_t type);
 
 void clear(EquipmentConfigSet& model);
 bool validateEquipment(const EquipmentConfigSet& model, uint8_t equipmentIndex);
+bool validateZoneLink(
+    const EquipmentConfigSet& model,
+    uint8_t linkIndex,
+    uint8_t nbZones
+);
 int16_t findByTypeAndTarget(
     const EquipmentConfigSet& model,
     uint8_t type,
     uint8_t targetIndex
+);
+int16_t findZoneLink(
+    const EquipmentConfigSet& model,
+    uint8_t zoneIndex,
+    uint8_t nbZones
 );
 
 } // namespace EquipmentModel
