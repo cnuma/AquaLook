@@ -21,13 +21,21 @@ class RelaisManager {
 public:
     void begin(ConfigManager* config = nullptr);
     void update();
+
+    // API historique conservée : l'index reste un index de zone.
     void setRelay(uint8_t relay, bool state);
     bool getState(uint8_t relay) const;
+
+    // API matérielle générique : exécute une RelayAssignment validée.
+    bool setAssignment(uint8_t assignmentIndex, bool state);
+    bool getAssignmentState(uint8_t assignmentIndex) const;
+    const RelayTopology::RelayTopologyConfig& topology() const;
 
 private:
     ConfigManager* _config = nullptr;
     bool _state[MAX_ZONES] = {};
     uint32_t _startMs[MAX_ZONES] = {};
+    bool _assignmentState[RelayTopology::MAX_RELAY_ASSIGNMENTS] = {};
 
     RelayTopology::RelayTopologyConfig _topology;
     uint8_t _regP0[RelayTopology::MAX_RELAY_BOARDS] = {};
@@ -41,6 +49,7 @@ private:
     bool applyBoard(uint8_t boardIndex);
     bool writeReg(uint8_t addr, uint8_t reg, uint8_t val);
     uint8_t readReg(uint8_t addr, uint8_t reg);
+    int16_t findZoneAssignment(uint8_t zone, uint8_t nbZones) const;
     uint8_t nbRelaisPhysical() const;
     uint32_t maxWateringMs() const;
 };
