@@ -1,4 +1,5 @@
 #include "EquipmentManager.h"
+#include "RelaisManager.h"
 
 EquipmentManager::ZoneResolution::ZoneResolution()
     : result(ACTION_NOT_INITIALIZED),
@@ -13,15 +14,25 @@ bool EquipmentManager::ZoneResolution::valid() const {
 void EquipmentManager::begin(
     const EquipmentModel::EquipmentConfigSet* equipmentModel,
     const RelayTopology::RelayTopologyConfig* relayTopology,
-    uint8_t nbZones
+    uint8_t nbZones,
+    RelaisManager* relayExecutor
 ) {
     _equipmentModel = equipmentModel;
     _relayTopology = relayTopology;
+    _relayExecutor = relayExecutor;
     _nbZones = constrain(nbZones, (uint8_t)0, (uint8_t)MAX_ZONES);
+}
+
+void EquipmentManager::setRelayExecutor(RelaisManager* relayExecutor) {
+    _relayExecutor = relayExecutor;
 }
 
 bool EquipmentManager::isInitialized() const {
     return _equipmentModel != nullptr && _relayTopology != nullptr;
+}
+
+bool EquipmentManager::hasRelayExecutor() const {
+    return _relayExecutor != nullptr;
 }
 
 EquipmentManager::ActionResult EquipmentManager::validateZoneRequest(
@@ -68,18 +79,21 @@ EquipmentManager::ZoneResolution EquipmentManager::resolveZone(uint8_t zone) con
     return resolution;
 }
 
-EquipmentManager::ActionResult EquipmentManager::startZone(uint8_t zone) {
+EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool state) {
     ZoneResolution resolution;
     const ActionResult validation = validateZoneRequest(zone, resolution);
     if (validation != ACTION_OK) return validation;
+    if (!hasRelayExecutor()) return ACTION_EXECUTOR_NOT_CONNECTED;
 
-    return ACTION_EXECUTOR_NOT_CONNECTED;
+    return _relayExecutor->setAssignment(resolution.relayAssignmentIndex, state)
+        ? ACTION_OK
+        : ACTION_EXECUTION_FAILED;
+}
+
+EquipmentManager::ActionResult EquipmentManager::startZone(uint8_t zone) {
+    return executeZone(zone, true);
 }
 
 EquipmentManager::ActionResult EquipmentManager::stopZone(uint8_t zone) {
-    ZoneResolution resolution;
-    const ActionResult validation = validateZoneRequest(zone, resolution);
-    if (validation != ACTION_OK) return validation;
-
-    return ACTION_EXECUTOR_NOT_CONNECTED;
+    return executeZone(zone, false);
 }
