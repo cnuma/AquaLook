@@ -6,53 +6,116 @@
 
 void RelaisManager::begin(ConfigManager* config) {
     _config = config;
-    const bool inv = (_config && _config->relayLogic() == 0);
-    _regP0 = inv ? 0xFF : 0x00;
-    _regP1 = inv ? 0xFF : 0x00;
+    buildRuntimeTopology();
 
     for (uint8_t i = 0; i < MAX_ZONES; i++) {
         _state[i] = false;
         _startMs[i] = 0;
     }
 
+    for (uint8_t b = 0; b < RelayTopology::MAX_RELAY_BOARDS; b++) {
+        const RelayTopology::RelayBoardConfig& board = _topology.boards[b];
+        const bool inv = (board.logic == RelayTopology::LOGIC_INVERTED);
+        _regP0[b] = inv ? 0xFF : 0x00;
+        _regP1[b] = inv ? 0xFF : 0x00;
+        _boardReady[b] = false;
+    }
+
     _hardwareReady = initHardware();
     FaultManager::setActive(FaultId::RELAY_I2C, !_hardwareReady);
-
-    const char* name =
-        controller() == RELAY_CONTROLLER_MCP23017 ? "MCP23017" : "XL9535";
 
     if (_hardwareReady) {
         EventLog::log(
             LOG_INFO,
-            "Relais: %s 0x%02X, %u relais, logique=%s, init OK",
-            name, i2cAddress(), nbRelaisPhysical(),
-            inv ? "inverse" : "directe"
+            "Relais: topologie init OK, cartes=%u, canaux=%u",
+            RelayTopology::MAX_RELAY_BOARDS,
+            RelayTopology::totalEnabledChannels(_topology)
         );
     } else {
         EventLog::log(
             LOG_ERROR,
-            "Relais: %s 0x%02X absent ou en erreur",
-            name, i2cAddress()
+            "Relais: aucune carte relais I2C initialisee"
         );
     }
 }
 
-bool RelaisManager::initHardware() {
-    if (controller() == RELAY_CONTROLLER_MCP23017) {
-        if (!writeReg(MCP23017_REG_OLATA, _regP0)) return false;
-        if (!writeReg(MCP23017_REG_OLATB, _regP1)) return false;
-        if (!writeReg(MCP23017_REG_IODIRA, 0x00)) return false;
-        if (!writeReg(MCP23017_REG_IODIRB, 0x00)) return false;
-        return writeReg(MCP23017_REG_OLATA, _regP0) &&
-               writeReg(MCP23017_REG_OLATB, _regP1);
+void RelaisManager::buildRuntimeTopology() {
+    const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+    const uint8_t nbR = _config ? _config->nbRelais() : NB_ZONES;
+    const uint8_t controller = _config
+        ? _config->relayController()
+        : RelayTopology::CONTROLLER_XL9535;
+    const uint8_t logic = _config
+        ? _config->relayLogic()
+        : RelayTopology::LOGIC_DIRECT;
+
+    RelayTopology::buildLegacyCompatibleTopology(
+        _topology,
+        nbZ,
+        nbR,
+        controller,
+        logic
+    );
+
+    if (RelayTopology::hasDuplicateMappings(_topology, nbZ)) {
+        EventLog::log(LOG_ERROR, "Relais: topologie invalide, doublon de mapping");
     }
 
-    if (!writeReg(XL9535_REG_OUTPUT_P0, _regP0)) return false;
-    if (!writeReg(XL9535_REG_OUTPUT_P1, _regP1)) return false;
-    if (!writeReg(XL9535_REG_CONFIG_P0, 0x00)) return false;
-    if (!writeReg(XL9535_REG_CONFIG_P1, 0x00)) return false;
-    return writeReg(XL9535_REG_OUTPUT_P0, _regP0) &&
-           writeReg(XL9535_REG_OUTPUT_P1, _regP1);
+    const RelayTopology::RelayBoardConfig& b0 = _topology.boards[0];
+    EventLog::log(
+        LOG_INFO,
+        "Relais: topologie legacy, carte0=%s 0x%02X, voies=%u, logique=%s",
+        RelayTopology::controllerName(b0.controller),
+        b0.i2cAddress,
+        b0.channelCount,
+        b0.logic == RelayTopology::LOGIC_INVERTED ? "inverse" : "directe"
+    );
+}
+
+bool RelaisManager::initHardware() {
+    bool anyReady = false;
+
+    for (uint8_t b = 0; b < RelayTopology::MAX_RELAY_BOARDS; b++) {
+        if (!RelayTopology::validateBoard(_topology.boards[b])) continue;
+
+        _boardReady[b] = initBoard(b);
+        anyReady = anyReady || _boardReady[b];
+
+        const RelayTopology::RelayBoardConfig& board = _topology.boards[b];
+        EventLog::log(
+            _boardReady[b] ? LOG_INFO : LOG_ERROR,
+            "Relais: carte %u %s 0x%02X voies=%u %s",
+            b,
+            RelayTopology::controllerName(board.controller),
+            board.i2cAddress,
+            board.channelCount,
+            _boardReady[b] ? "OK" : "absente ou erreur"
+        );
+    }
+
+    return anyReady;
+}
+
+bool RelaisManager::initBoard(uint8_t boardIndex) {
+    if (boardIndex >= RelayTopology::MAX_RELAY_BOARDS) return false;
+    const RelayTopology::RelayBoardConfig& board = _topology.boards[boardIndex];
+    if (!RelayTopology::validateBoard(board)) return false;
+
+    if (board.controller == RelayTopology::CONTROLLER_MCP23017) {
+        if (!writeReg(board.i2cAddress, MCP23017_REG_OLATA, _regP0[boardIndex])) return false;
+        if (!writeReg(board.i2cAddress, MCP23017_REG_OLATB, _regP1[boardIndex])) return false;
+        if (!writeReg(board.i2cAddress, MCP23017_REG_IODIRA, 0x00)) return false;
+        if (!writeReg(board.i2cAddress, MCP23017_REG_IODIRB, 0x00)) return false;
+        return writeReg(board.i2cAddress, MCP23017_REG_OLATA, _regP0[boardIndex]) &&
+               writeReg(board.i2cAddress, MCP23017_REG_OLATB, _regP1[boardIndex]);
+    }
+
+    if (!writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P0, _regP0[boardIndex])) return false;
+    if (!writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P1, _regP1[boardIndex])) return false;
+    if (!writeReg(board.i2cAddress, XL9535_REG_CONFIG_P0, 0x00)) return false;
+    if (!writeReg(board.i2cAddress, XL9535_REG_CONFIG_P1, 0x00)) return false;
+    return writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P0, _regP0[boardIndex]) &&
+           writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P1, _regP1[boardIndex]);
 }
 
 void RelaisManager::update() {
@@ -82,45 +145,61 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
     _state[relay] = state;
     _startMs[relay] = state ? millis() : 0;
 
-    if (relay < nbRelaisPhysical()) {
-        const bool inv = (_config && _config->relayLogic() == 0);
-        uint8_t& reg = relay < 8 ? _regP0 : _regP1;
-        const uint8_t bit = relay < 8 ? relay : relay - 8;
-        const bool physicalHigh = inv ? !state : state;
+    const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+    const RelayTopology::MappingResolution mapping =
+        RelayTopology::resolveMapping(_topology, relay, nbZ);
 
-        if (physicalHigh) reg |= (uint8_t)(1U << bit);
-        else reg &= (uint8_t)~(1U << bit);
-
-        if (_hardwareReady) {
-            _hardwareReady = applyHardware();
-            FaultManager::setActive(
-                FaultId::RELAY_I2C,
-                !_hardwareReady
-            );
-        } else {
-            EventLog::log(
-                LOG_ERROR,
-                "Relais: commande zone %u impossible, controleur absent",
-                relay + 1
-            );
-        }
-
+    if (!mapping.valid) {
         EventLog::log(
-            LOG_INFO,
-            "Relais: zone %u HW %s, controleur=%s, logique=%s",
+            LOG_ERROR,
+            "Relais: zone %u sans mapping materiel valide (%s logique)",
             relay + 1,
-            state ? "ON" : "OFF",
-            controller() == RELAY_CONTROLLER_MCP23017
-                ? "MCP23017" : "XL9535",
-            inv ? "inverse" : "directe"
+            state ? "ON" : "OFF"
         );
-    } else {
-        EventLog::log(
-            LOG_INFO,
-            "Relais: zone logique %u %s",
-            relay + 1, state ? "ON" : "OFF"
-        );
+        EventBus::displayDirty = true;
+        return;
     }
+
+    if (!_boardReady[mapping.boardIndex]) {
+        EventLog::log(
+            LOG_ERROR,
+            "Relais: commande zone %u impossible, carte %u absente",
+            relay + 1,
+            mapping.boardIndex
+        );
+        FaultManager::setActive(FaultId::RELAY_I2C, true);
+        EventBus::displayDirty = true;
+        return;
+    }
+
+    uint8_t& reg = mapping.channelIndex < 8
+        ? _regP0[mapping.boardIndex]
+        : _regP1[mapping.boardIndex];
+    const uint8_t bit = mapping.channelIndex < 8
+        ? mapping.channelIndex
+        : mapping.channelIndex - 8;
+    const bool inv = (mapping.logic == RelayTopology::LOGIC_INVERTED);
+    const bool physicalHigh = inv ? !state : state;
+
+    if (physicalHigh) reg |= (uint8_t)(1U << bit);
+    else reg &= (uint8_t)~(1U << bit);
+
+    const bool ok = applyBoard(mapping.boardIndex);
+    _boardReady[mapping.boardIndex] = ok;
+    _hardwareReady = ok;
+    FaultManager::setActive(FaultId::RELAY_I2C, !ok);
+
+    EventLog::log(
+        ok ? LOG_INFO : LOG_ERROR,
+        "Relais: zone %u %s -> carte %u %s 0x%02X voie %u logique=%s",
+        relay + 1,
+        state ? "ON" : "OFF",
+        mapping.boardIndex,
+        RelayTopology::controllerName(mapping.controller),
+        mapping.i2cAddress,
+        mapping.channelIndex + 1,
+        inv ? "inverse" : "directe"
+    );
 
     EventBus::displayDirty = true;
 }
@@ -129,24 +208,28 @@ bool RelaisManager::getState(uint8_t relay) const {
     return relay < MAX_ZONES ? _state[relay] : false;
 }
 
-bool RelaisManager::applyHardware() {
+bool RelaisManager::applyBoard(uint8_t boardIndex) {
+    if (boardIndex >= RelayTopology::MAX_RELAY_BOARDS) return false;
+    const RelayTopology::RelayBoardConfig& board = _topology.boards[boardIndex];
+    if (!RelayTopology::validateBoard(board)) return false;
+
     bool ok = true;
 
-    if (controller() == RELAY_CONTROLLER_MCP23017) {
-        ok = writeReg(MCP23017_REG_OLATA, _regP0);
-        if (ok && nbRelaisPhysical() > 8)
-            ok = writeReg(MCP23017_REG_OLATB, _regP1);
+    if (board.controller == RelayTopology::CONTROLLER_MCP23017) {
+        ok = writeReg(board.i2cAddress, MCP23017_REG_OLATA, _regP0[boardIndex]);
+        if (ok && board.channelCount > 8)
+            ok = writeReg(board.i2cAddress, MCP23017_REG_OLATB, _regP1[boardIndex]);
     } else {
-        ok = writeReg(XL9535_REG_OUTPUT_P0, _regP0);
-        if (ok && nbRelaisPhysical() > 8)
-            ok = writeReg(XL9535_REG_OUTPUT_P1, _regP1);
+        ok = writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P0, _regP0[boardIndex]);
+        if (ok && board.channelCount > 8)
+            ok = writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P1, _regP1[boardIndex]);
     }
 
     return ok;
 }
 
-bool RelaisManager::writeReg(uint8_t reg, uint8_t val) {
-    Wire.beginTransmission(i2cAddress());
+bool RelaisManager::writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
+    Wire.beginTransmission(addr);
     Wire.write(reg);
     Wire.write(val);
     const uint8_t err = Wire.endTransmission();
@@ -156,15 +239,15 @@ bool RelaisManager::writeReg(uint8_t reg, uint8_t val) {
         EventLog::log(
             LOG_ERROR,
             "Relais: erreur I2C addr=0x%02X reg=0x%02X err=%u",
-            i2cAddress(), reg, err
+            addr, reg, err
         );
     }
 
     return err == 0;
 }
 
-uint8_t RelaisManager::readReg(uint8_t reg) {
-    Wire.beginTransmission(i2cAddress());
+uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
+    Wire.beginTransmission(addr);
     Wire.write(reg);
 
     const uint8_t err = Wire.endTransmission(false);
@@ -172,25 +255,14 @@ uint8_t RelaisManager::readReg(uint8_t reg) {
         FaultManager::setActive(FaultId::RELAY_I2C, true);
         EventLog::log(
             LOG_ERROR,
-            "Relais: lecture I2C impossible reg=0x%02X err=%u",
-            reg, err
+            "Relais: lecture I2C impossible addr=0x%02X reg=0x%02X err=%u",
+            addr, reg, err
         );
         return 0xFF;
     }
 
-    Wire.requestFrom(i2cAddress(), (uint8_t)1);
+    Wire.requestFrom(addr, (uint8_t)1);
     return Wire.available() ? Wire.read() : 0xFF;
-}
-
-uint8_t RelaisManager::controller() const {
-    return _config
-        ? _config->relayController()
-        : RELAY_CONTROLLER_XL9535;
-}
-
-uint8_t RelaisManager::i2cAddress() const {
-    return controller() == RELAY_CONTROLLER_MCP23017
-        ? MCP23017_ADDR : XL9535_ADDR;
 }
 
 uint8_t RelaisManager::nbRelaisPhysical() const {
