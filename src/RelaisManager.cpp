@@ -13,6 +13,10 @@ void RelaisManager::begin(ConfigManager* config) {
         _startMs[i] = 0;
     }
 
+    for (uint8_t a = 0; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; a++) {
+        _assignmentState[a] = false;
+    }
+
     for (uint8_t b = 0; b < RelayTopology::MAX_RELAY_BOARDS; b++) {
         const RelayTopology::RelayBoardConfig& board = _topology.boards[b];
         const bool inv = (board.logic == RelayTopology::LOGIC_INVERTED);
@@ -136,6 +140,21 @@ void RelaisManager::update() {
     }
 }
 
+int16_t RelaisManager::findZoneAssignment(uint8_t zone, uint8_t nbZones) const {
+    if (zone >= nbZones || zone >= MAX_ZONES) return -1;
+
+    for (uint8_t a = 0; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; a++) {
+        if (!RelayTopology::validateAssignment(_topology, a)) continue;
+        const RelayTopology::RelayAssignment& assignment = _topology.assignments[a];
+        if (assignment.role == RelayTopology::ROLE_ZONE_VALVE &&
+            assignment.targetIndex == zone) {
+            return a;
+        }
+    }
+
+    return -1;
+}
+
 void RelaisManager::setRelay(uint8_t relay, bool state) {
     if (relay >= MAX_ZONES) {
         EventLog::log(LOG_ERROR, "Relais: index zone invalide %u", relay);
@@ -146,10 +165,9 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
     _startMs[relay] = state ? millis() : 0;
 
     const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
-    const RelayTopology::MappingResolution mapping =
-        RelayTopology::resolveMapping(_topology, relay, nbZ);
+    const int16_t assignmentIndex = findZoneAssignment(relay, nbZ);
 
-    if (!mapping.valid) {
+    if (assignmentIndex < 0) {
         EventLog::log(
             LOG_ERROR,
             "Relais: zone %u sans mapping materiel valide (%s logique)",
@@ -160,16 +178,35 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
         return;
     }
 
+    setAssignment(static_cast<uint8_t>(assignmentIndex), state);
+}
+
+bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
+    const RelayTopology::MappingResolution mapping =
+        RelayTopology::resolveAssignment(_topology, assignmentIndex);
+
+    if (!mapping.valid) {
+        EventLog::log(
+            LOG_ERROR,
+            "Relais: affectation %u invalide (%s logique)",
+            assignmentIndex,
+            state ? "ON" : "OFF"
+        );
+        EventBus::displayDirty = true;
+        return false;
+    }
+
     if (!_boardReady[mapping.boardIndex]) {
         EventLog::log(
             LOG_ERROR,
-            "Relais: commande zone %u impossible, carte %u absente",
-            relay + 1,
+            "Relais: commande %s[%u] impossible, carte %u absente",
+            RelayTopology::roleName(mapping.role),
+            mapping.targetIndex,
             mapping.boardIndex
         );
         FaultManager::setActive(FaultId::RELAY_I2C, true);
         EventBus::displayDirty = true;
-        return;
+        return false;
     }
 
     uint8_t& reg = mapping.channelIndex < 8
@@ -189,10 +226,15 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
     _hardwareReady = ok;
     FaultManager::setActive(FaultId::RELAY_I2C, !ok);
 
+    if (ok) {
+        _assignmentState[assignmentIndex] = state;
+    }
+
     EventLog::log(
         ok ? LOG_INFO : LOG_ERROR,
-        "Relais: zone %u %s -> carte %u %s 0x%02X voie %u logique=%s",
-        relay + 1,
+        "Relais: %s[%u] %s -> carte %u %s 0x%02X voie %u logique=%s",
+        RelayTopology::roleName(mapping.role),
+        mapping.targetIndex,
         state ? "ON" : "OFF",
         mapping.boardIndex,
         RelayTopology::controllerName(mapping.controller),
@@ -202,10 +244,21 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
     );
 
     EventBus::displayDirty = true;
+    return ok;
 }
 
 bool RelaisManager::getState(uint8_t relay) const {
     return relay < MAX_ZONES ? _state[relay] : false;
+}
+
+bool RelaisManager::getAssignmentState(uint8_t assignmentIndex) const {
+    return assignmentIndex < RelayTopology::MAX_RELAY_ASSIGNMENTS
+        ? _assignmentState[assignmentIndex]
+        : false;
+}
+
+const RelayTopology::RelayTopologyConfig& RelaisManager::topology() const {
+    return _topology;
 }
 
 bool RelaisManager::applyBoard(uint8_t boardIndex) {
