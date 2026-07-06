@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "config.h"
+#include "RelayTopology.h"
 
 class ConfigManager;
 
@@ -27,16 +28,19 @@ private:
     ConfigManager* _config = nullptr;
     bool _state[MAX_ZONES] = {};
     uint32_t _startMs[MAX_ZONES] = {};
-    uint8_t _regP0 = 0xFF;
-    uint8_t _regP1 = 0xFF;
+
+    RelayTopology::RelayTopologyConfig _topology;
+    uint8_t _regP0[RelayTopology::MAX_RELAY_BOARDS] = {};
+    uint8_t _regP1[RelayTopology::MAX_RELAY_BOARDS] = {};
+    bool _boardReady[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _hardwareReady = false;
 
-    uint8_t controller() const;
-    uint8_t i2cAddress() const;
+    void buildRuntimeTopology();
     bool initHardware();
-    bool applyHardware();
-    bool writeReg(uint8_t reg, uint8_t val);
-    uint8_t readReg(uint8_t reg);
+    bool initBoard(uint8_t boardIndex);
+    bool applyBoard(uint8_t boardIndex);
+    bool writeReg(uint8_t addr, uint8_t reg, uint8_t val);
+    uint8_t readReg(uint8_t addr, uint8_t reg);
     uint8_t nbRelaisPhysical() const;
     uint32_t maxWateringMs() const;
 };
