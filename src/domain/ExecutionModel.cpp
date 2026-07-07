@@ -126,6 +126,17 @@ bool requestCancellation(EquipmentExecution& execution) {
     return true;
 }
 
+bool markExecutionCancelled(EquipmentExecution& execution, uint32_t nowMs) {
+    if ((execution.flags & EXECUTION_FLAG_CANCELLATION_REQUESTED) == 0U ||
+        !canTransitionTo(execution, ExecutionStatus::CANCELLED)) return false;
+    execution.status = ExecutionStatus::CANCELLED;
+    execution.completedAtMs = nowMs;
+    execution.error = OperationError::NONE;
+    execution.flags |= EXECUTION_FLAG_RESULT_READY;
+    incrementRevision(execution);
+    return true;
+}
+
 bool markExecutionSucceeded(EquipmentExecution& execution, uint32_t nowMs) {
     if (!canTransitionTo(execution, ExecutionStatus::SUCCEEDED)) return false;
     execution.status = ExecutionStatus::SUCCEEDED;
