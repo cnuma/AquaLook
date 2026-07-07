@@ -2,7 +2,7 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Dernière mise à jour :** Phase 1 — Run 1.5, 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.6, 7 juillet 2026
 
 ## 1. Rôle
 
@@ -15,86 +15,80 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 - **P2 :** décision nécessaire avant une phase future ;
 - **P3 :** orientation différée.
 
-## 3. Backlog
+## 3. Backlog principal
 
-| ID | Priorité | Sujet | Phase | Livrable | Statut |
-|---|---:|---|---:|---|---|
-| ARCH-001 | P0 | Identifiants stables | 1 | ADR-0001 | **Décidé** |
-| ARCH-002 | P0 | Capacité dynamique bornée | 1/7 | ADR-0002 | **Principe décidé, budgets à mesurer** |
-| ARCH-003 | P0 | Paramètres spécifiques des équipements | 1 | ADR-0005 | **Décidé** |
-| ARCH-004 | P0 | Type d’équipement et capacités | 1 | ADR-0004 | **Décidé** |
-| ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | ADR-0006 + modèle | **Décidé et prototypé** |
-| ARCH-006 | P1 | Intentions et priorités | 1 | ADR-0008 + modèle | **Décidé et prototypé** |
-| ARCH-007 | P1 | Exécutions | 1 | ADR-0009 + modèle | **Décidé et prototypé** |
-| ARCH-008 | P1 | Dépendances | 1 | ADR + validation | Ouvert |
-| ARCH-009 | P1 | Cycles interdits | 1 | stratégie | Ouvert |
-| ARCH-010 | P2 | Inventaire générique des bus | 2 | ADR-0003 | Orientation décidée |
-| ARCH-011 | P2 | Cartes et ports génériques | 2 | ADR-0003 | Orientation décidée |
-| ARCH-012 | P2 | Adresses de bus dupliquées | 2 | règle | En attente |
-| ARCH-013 | P2 | Actionneur binaire | 3 | ADR | En attente |
-| ARCH-014 | P2 | État sûr par port/actionneur | 3 | ADR | En attente |
-| ARCH-015 | P2 | Compatibilité `RelayAssignment` | 3 | transition | En attente |
-| ARCH-016 | P2 | Commandes idempotentes | 3 | contrat | En attente |
-| ARCH-017 | P2 | Reprise après reboot | 4 | ADR | En attente |
-| ARCH-018 | P2 | Durées maximales | 4 | politique | En attente |
-| ARCH-019 | P2 | Compensation d’échec | 4 | machine d’états | **Primitive décidée, politique par type ouverte** |
-| ARCH-020 | P2 | Pompe partagée | 5 | ADR | En attente |
-| ARCH-021 | P2 | Précharge/post-fonctionnement | 5 | politique | En attente |
-| ARCH-022 | P2 | Simultanéité | 5 | ADR | En attente |
-| ARCH-023 | P2 | Qualité des observations | 6 | modèle | En attente |
-| ARCH-024 | P2 | Comptage débitmètres | 6/11 | ADR | En attente |
-| ARCH-025 | P2 | Défauts débit/fuite | 6 | politique | En attente |
-| ARCH-026 | P2 | Format persistant indépendant | 7 | ADR | En attente |
-| ARCH-027 | P2 | Candidate et activation atomique | 7 | ADR + prototype | Architecture définie |
-| ARCH-028 | P2 | Migration V3 vers V4 | 7 | spécification | En attente |
-| ARCH-029 | P2 | Import/export et modèles | 7 | spécification | En attente |
-| ARCH-030 | P2 | Révision et concurrence | 8 | contrat API | En attente |
-| ARCH-031 | P2 | Erreurs API V4 | 8 | spécification | En attente |
-| ARCH-032 | P2 | Authentification locale | 8 | ADR | En attente |
-| ARCH-033 | P3 | Équipements impulsionnels | 10 | extension | Différé |
-| ARCH-034 | P3 | Équipements bidirectionnels | 10 | extension | Différé |
-| ARCH-035 | P3 | Nœud distant | 11 | protocole | Différé |
-| ARCH-036 | P3 | Mise à jour nœud distant | 11 | stratégie | Différé |
-| ARCH-037 | P3 | Historique long | 12 | ADR | Différé |
-| ARCH-038 | P3 | CI et tests hôte | 1/12 | plan de tests | Ouvert |
-| ARCH-039 | P1 | API minimale de l’arène bornée | 1 | `BoundedArena.h` + test | **Prototype isolé réalisé** |
-| ARCH-040 | P2 | Versionnement des modèles de cartes | 2/7 | ADR | Ouvert |
-| ARCH-041 | P2 | Suppression d’une carte liée | 2/7 | ADR | Ouvert |
-| ARCH-042 | P2 | Activation pendant une exécution | 4/7 | ADR | Ouvert |
-| ARCH-043 | P1 | Catalogue de types d’équipements | 1/7 | registre + validation | Ouvert |
-| ARCH-044 | P1 | Validateurs spécifiques des blocs de paramètres | 1 | interface | Ouvert |
-| ARCH-045 | P1 | Registre borné des états runtime | 1/4 | structure + recherche | Ouvert |
-| ARCH-046 | P1 | Registre et politique des défauts | 1/4 | structure + politique | Ouvert |
-| ARCH-047 | P1 | Comparaison analogique et tolérances de convergence | 1/4 | stratégie par type | Ouvert |
-| ARCH-048 | P1 | Calcul synthétique de santé | 1/4 | règles | Ouvert |
-| ARCH-049 | P1 | File bornée d’intentions | 1/4 | structure + politique de saturation | Ouvert |
-| ARCH-050 | P1 | Politique complète d’arbitrage des intentions | 1/4 | ADR + arbitre | Ouvert |
-| ARCH-051 | P1 | Politique des groupes de corrélation | 1/5 | ADR | Ouvert |
-| ARCH-052 | P1 | Registre borné des exécutions | 1/4 | structure + politique de saturation | Ouvert |
-| ARCH-053 | P1 | Retry et backoff des exécutions | 4 | ADR | Ouvert |
-| ARCH-054 | P1 | Politique de clôture après compensation | 4 | ADR | Ouvert |
+| ID | Sujet | Statut |
+|---|---|---|
+| ARCH-001 | Identifiants stables | **Décidé** |
+| ARCH-002 | Capacité dynamique bornée | **Principe décidé, budgets à mesurer** |
+| ARCH-003 | Paramètres spécifiques | **Décidé** |
+| ARCH-004 | Types et capacités | **Décidé** |
+| ARCH-005 | États runtime | **Décidé et prototypé** |
+| ARCH-006 | Intentions et priorités | **Décidé et prototypé** |
+| ARCH-007 | Exécutions | **Décidé et prototypé** |
+| ARCH-008 | Dépendances | **Décidé et prototypé** |
+| ARCH-009 | Cycles interdits | **Décidé et prototypé** |
+| ARCH-010 | Inventaire générique des bus | Orientation décidée |
+| ARCH-011 | Cartes et ports génériques | Orientation décidée |
+| ARCH-012 | Adresses de bus dupliquées | En attente |
+| ARCH-013 | Actionneur binaire | En attente |
+| ARCH-014 | État sûr par port/actionneur | En attente |
+| ARCH-015 | Compatibilité `RelayAssignment` | En attente |
+| ARCH-016 | Commandes idempotentes | En attente |
+| ARCH-017 | Reprise après reboot | En attente |
+| ARCH-018 | Durées maximales | En attente |
+| ARCH-019 | Compensation d’échec | Primitive décidée, politique ouverte |
+| ARCH-020 | Pompe partagée | En attente |
+| ARCH-021 | Précharge et post-fonctionnement | En attente |
+| ARCH-022 | Simultanéité | En attente |
+| ARCH-023 | Qualité des observations | En attente |
+| ARCH-024 | Comptage débitmètres | En attente |
+| ARCH-025 | Défauts débit et fuite | En attente |
+| ARCH-026 | Format persistant indépendant | En attente |
+| ARCH-027 | Candidate et activation atomique | Architecture définie |
+| ARCH-028 | Migration V3 vers V4 | En attente |
+| ARCH-029 | Import, export et modèles | En attente |
+| ARCH-030 | Révision et concurrence | En attente |
+| ARCH-031 | Erreurs API V4 | En attente |
+| ARCH-032 | Authentification locale | En attente |
+| ARCH-038 | CI et tests hôte | Ouvert |
+| ARCH-039 | API minimale de l’arène | Prototype isolé réalisé |
+| ARCH-040 | Versionnement des modèles de cartes | Ouvert |
+| ARCH-041 | Suppression d’une carte liée | Ouvert |
+| ARCH-042 | Activation pendant une exécution | Ouvert |
+| ARCH-043 | Catalogue de types | Ouvert |
+| ARCH-044 | Validateurs spécifiques | Ouvert |
+| ARCH-045 | Registre borné des états | Ouvert |
+| ARCH-046 | Registre et politique des défauts | Ouvert |
+| ARCH-047 | Tolérances de convergence | Ouvert |
+| ARCH-048 | Calcul de santé | Ouvert |
+| ARCH-049 | File bornée d’intentions | Ouvert |
+| ARCH-050 | Arbitre complet | Ouvert |
+| ARCH-051 | Groupes de corrélation | Ouvert |
+| ARCH-052 | Registre borné des exécutions | Ouvert |
+| ARCH-053 | Retry et backoff | Ouvert |
+| ARCH-054 | Clôture après compensation | Ouvert |
+| ARCH-055 | Résolution runtime des dépendances | Ouvert |
+| ARCH-056 | Groupes d’exclusivité | Ouvert |
+| ARCH-057 | Optimisation de l’index du graphe | Différé après mesures |
 
 ## 4. Décisions acquises
 
-- identifiants forts sur 16 bits ;
-- configuration construite dans une arène bornée ;
-- `Equipment`, état runtime, intention et exécution sont séparés ;
-- une exécution provient d’une intention et cible un `EquipmentId` ;
-- machine d’états explicite ;
-- étapes PREPARE, AUTHORIZE, APPLY, OBSERVE, FINALIZE et COMPENSATE ;
-- demande d’annulation distincte de l’annulation confirmée ;
-- timeout monotone ;
-- compensation distincte du succès initial ;
-- génération d’un `OperationResult` compact ;
-- taille de `EquipmentExecution` verrouillée à 40 octets ;
-- aucune chaîne, pointeur ou allocation dynamique ;
+- `Equipment`, état runtime, intention, exécution et dépendance sont séparés ;
+- une dépendance relie uniquement deux `EquipmentId` ;
+- `sourceId` désigne l’équipement dépendant et `targetId` sa contrainte ;
+- les relations d’ordre sont validées comme graphe acyclique ;
+- les relations symétriques restent hors du tri topologique ;
+- les références orphelines, auto-références et doublons sont refusés ;
+- le workspace de validation est fourni par l’appelant ;
+- `EquipmentDependency` occupe 16 octets ;
+- aucune allocation dynamique ni liaison matérielle ;
 - runtime historique inchangé.
 
 ## 5. Backlog immédiat de la Phase 1
 
-1. ARCH-008 et ARCH-009 — dépendances et cycles ;
-2. ARCH-050 — arbitre complet ;
-3. ARCH-049 — file bornée d’intentions ;
-4. ARCH-052 — registre borné d’exécutions ;
-5. ARCH-044 — validateurs spécifiques ;
-6. ARCH-043 — catalogue de types.
+1. consolidation du catalogue de types et des validateurs spécifiques ;
+2. registres bornés des états, intentions, exécutions et défauts ;
+3. budget mémoire global de Phase 1 ;
+4. arbitre complet et résolution runtime des dépendances ;
+5. décision de clôture de Phase 1 avant Phase 2.
