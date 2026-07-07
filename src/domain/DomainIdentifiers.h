@@ -28,6 +28,8 @@ struct BoardIdTag;
 struct SensorIdTag;
 struct AutomationIdTag;
 struct ExecutionIdTag;
+struct IntentIdTag;
+struct CorrelationIdTag;
 struct ZoneIdTag;
 
 using EquipmentId = StrongId<EquipmentIdTag>;
@@ -36,8 +38,11 @@ using BoardId = StrongId<BoardIdTag>;
 using SensorId = StrongId<SensorIdTag>;
 using AutomationId = StrongId<AutomationIdTag>;
 using ExecutionId = StrongId<ExecutionIdTag>;
+using IntentId = StrongId<IntentIdTag>;
+using CorrelationId = StrongId<CorrelationIdTag>;
 using ZoneId = StrongId<ZoneIdTag>;
 
 static_assert(sizeof(EquipmentId) == sizeof(uint16_t), "Strong IDs must remain compact");
+static_assert(sizeof(IntentId) == sizeof(uint16_t), "Intent IDs must remain compact");
 
 }} // namespace AquaLook::Domain
