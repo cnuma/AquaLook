@@ -2,17 +2,13 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Date :** 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.1, 7 juillet 2026
 
 ## 1. Rôle
 
 Ce document recense les décisions encore ouvertes. Il évite de surcharger l’architecture cible avec des détails prématurés.
 
-Une entrée est retirée du backlog uniquement lorsqu’elle est :
-
-- décidée par une ADR ;
-- explicitement abandonnée ;
-- ou remplacée par une décision plus récente.
+Une entrée est retirée du backlog uniquement lorsqu’elle est décidée par une ADR, explicitement abandonnée ou remplacée par une décision plus récente.
 
 ## 2. Priorités
 
@@ -25,8 +21,8 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est :
 
 | ID | Priorité | Sujet | Phase cible | Livrable attendu | Statut |
 |---|---:|---|---:|---|---|
-| ARCH-001 | P0 | Format des identifiants stables | 1 | ADR | Ouvert |
-| ARCH-002 | P0 | Limites `MAX_*` du domaine | 1 | ADR + budget mémoire | Ouvert |
+| ARCH-001 | P0 | Format des identifiants stables | 1 | ADR-0001 | **Décidé** |
+| ARCH-002 | P0 | Limites `MAX_*` du domaine | 1 | ADR-0002 + budget mémoire | **Décidé, à mesurer** |
 | ARCH-003 | P0 | Représentation des paramètres spécifiques par type d’équipement | 1 | ADR | Ouvert |
 | ARCH-004 | P0 | Distinction type d’équipement / capacités | 1 | ADR courte | Ouvert |
 | ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | modèle d’état | Ouvert |
@@ -34,11 +30,11 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est :
 | ARCH-007 | P1 | Modèle d’exécution | 1 | modèle + machine d’états | Ouvert |
 | ARCH-008 | P1 | Représentation des dépendances | 1 | ADR + règles de validation | Ouvert |
 | ARCH-009 | P1 | Détection des cycles et dépendances interdites | 1 | stratégie de validation | Ouvert |
-| ARCH-010 | P2 | Inventaire générique des bus | 2 | ADR | En attente |
-| ARCH-011 | P2 | Identité et capacités des cartes matérielles | 2 | modèle matériel | En attente |
+| ARCH-010 | P2 | Inventaire générique des bus | 2 | ADR-0003 partielle | **Orientation décidée** |
+| ARCH-011 | P2 | Identité et capacités des cartes matérielles | 2 | ADR-0003 + modèle matériel | **Orientation décidée** |
 | ARCH-012 | P2 | Politique adresse I²C dupliquée | 2 | règle de validation | En attente |
 | ARCH-013 | P2 | Actionneur binaire et contrat d’erreur | 3 | ADR | En attente |
-| ARCH-014 | P2 | État sûr global ou par canal | 3 | ADR | En attente |
+| ARCH-014 | P2 | État sûr global ou par port | 3 | ADR | En attente |
 | ARCH-015 | P2 | Compatibilité de `RelayAssignment role + targetIndex` | 3 | décision de transition | En attente |
 | ARCH-016 | P2 | Politique de commande idempotente | 3 | contrat actionneur | En attente |
 | ARCH-017 | P2 | Politique de reprise après reboot | 4 | ADR | En attente |
@@ -64,40 +60,32 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est :
 | ARCH-037 | P3 | Historique long et rotation SD | 12 | ADR stockage | Différé |
 | ARCH-038 | P3 | CI et tests hôte du domaine | 1/12 | plan de tests | Ouvert |
 
-## 4. Décisions déjà acquises
+## 4. Décisions acquises
 
-Les sujets suivants ne sont plus ouverts :
-
+- identifiants stables sur 16 bits, distincts des index runtime ;
+- types d’identifiants séparés par famille ;
+- un port est référencé par `BoardId + portIndex` ;
+- limites initiales : 16 zones, 32 équipements, 32 capteurs, 32 automatismes, 64 dépendances, 16 exécutions actives, 8 cartes, 16 ports par carte, 64 bindings ;
+- budget fixe initial du domaine V4 limité à 12 Kio ;
 - l’équipement est l’objet métier piloté ;
-- le relais reste un moyen matériel ;
-- une zone ne connaît ni carte ni adresse I²C ;
+- le modèle matériel supérieur est générique : carte, port, binding ;
+- le relais reste une technologie de sortie et un adaptateur transitoire ;
+- une zone ne connaît ni carte ni adresse ;
 - un automatisme produit une intention ;
-- `RelaisManager` reste une couche matérielle ;
-- le format NVS n’est pas modifié avant stabilisation du domaine ;
-- le profil de compatibilité reste `Zone N -> carte 0 -> voie N` ;
-- la segmentation des chats, le checkpoint et la synchronisation Git font partie de la gouvernance.
+- le NVS n’est pas modifié avant stabilisation du domaine ;
+- le profil de compatibilité reste `Zone N -> carte 0 -> voie N` pendant la transition.
 
 ## 5. Backlog immédiat de la Phase 1
 
-L’ordre de résolution recommandé est :
+Les prochaines décisions bloquantes sont :
 
-1. ARCH-001 — identifiants ;
-2. ARCH-002 — limites et budget mémoire ;
-3. ARCH-003 — paramètres spécifiques ;
-4. ARCH-004 — types et capacités ;
-5. ARCH-005 — états ;
-6. ARCH-006 — intentions ;
-7. ARCH-007 — exécutions ;
-8. ARCH-008 et ARCH-009 — dépendances.
-
-Aucun autre sujet ne doit retarder le démarrage du modèle de domaine.
+1. ARCH-003 — paramètres spécifiques des équipements ;
+2. ARCH-004 — distinction type / capacités ;
+3. ARCH-005 — états demandé, autorisé, appliqué et observé ;
+4. ARCH-006 — intentions ;
+5. ARCH-007 — exécutions ;
+6. ARCH-008 et ARCH-009 — dépendances.
 
 ## 6. Règle d’utilisation
 
-Avant chaque run :
-
-- sélectionner un nombre limité d’entrées ;
-- préciser lesquelles bloquent le code ;
-- créer les ADR nécessaires ;
-- mettre à jour leur statut dans ce document ;
-- reporter les sujets hors phase au lieu de les résoudre par anticipation.
+Avant chaque run : sélectionner peu d’entrées, créer les ADR nécessaires, mettre à jour leur statut et reporter les sujets hors phase au lieu de les résoudre par anticipation.
