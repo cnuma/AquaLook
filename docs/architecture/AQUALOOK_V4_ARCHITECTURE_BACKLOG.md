@@ -2,7 +2,7 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Dernière mise à jour :** Phase 1 — Run 1.1, 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.1 corrigé, 7 juillet 2026
 
 ## 1. Rôle
 
@@ -22,7 +22,7 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est décidée par u
 | ID | Priorité | Sujet | Phase cible | Livrable attendu | Statut |
 |---|---:|---|---:|---|---|
 | ARCH-001 | P0 | Format des identifiants stables | 1 | ADR-0001 | **Décidé** |
-| ARCH-002 | P0 | Limites `MAX_*` du domaine | 1 | ADR-0002 + budget mémoire | **Décidé, à mesurer** |
+| ARCH-002 | P0 | Capacité dynamique bornée et budgets d’arènes | 1/7 | ADR-0002 + budget mémoire | **Principe décidé, valeurs à mesurer** |
 | ARCH-003 | P0 | Représentation des paramètres spécifiques par type d’équipement | 1 | ADR | Ouvert |
 | ARCH-004 | P0 | Distinction type d’équipement / capacités | 1 | ADR courte | Ouvert |
 | ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | modèle d’état | Ouvert |
@@ -46,11 +46,11 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est décidée par u
 | ARCH-023 | P2 | Qualité et fraîcheur des observations | 6 | modèle capteur | En attente |
 | ARCH-024 | P2 | Architecture de comptage des débitmètres | 6/11 | ADR | En attente |
 | ARCH-025 | P2 | Politique absence de débit / fuite | 6 | politique de sécurité | En attente |
-| ARCH-026 | P2 | Format persistant V4 | 7 | ADR | En attente |
-| ARCH-027 | P2 | Double copie et génération de configuration | 7 | ADR | En attente |
+| ARCH-026 | P2 | Format persistant V4 indépendant de l’image mémoire | 7 | ADR | En attente |
+| ARCH-027 | P2 | Construction candidate et activation atomique | 7 | ADR détaillée + prototype | **Architecture définie, mécanisme à choisir** |
 | ARCH-028 | P2 | Migration V3 vers V4 | 7 | spécification de migration | En attente |
-| ARCH-029 | P2 | Format d’import/export | 7 | spécification | En attente |
-| ARCH-030 | P2 | Révision et concurrence de configuration | 8 | contrat API | En attente |
+| ARCH-029 | P2 | Format d’import/export et modèles de cartes | 7 | spécification | En attente |
+| ARCH-030 | P2 | Révision, génération et concurrence de configuration | 8 | contrat API | En attente |
 | ARCH-031 | P2 | Contrat des erreurs API V4 | 8 | spécification API | En attente |
 | ARCH-032 | P2 | Authentification locale | 8 | ADR sécurité | En attente |
 | ARCH-033 | P3 | Équipements impulsionnels | 10 | extension du modèle | Différé |
@@ -59,20 +59,28 @@ Une entrée est retirée du backlog uniquement lorsqu’elle est décidée par u
 | ARCH-036 | P3 | Mise à jour d’un nœud distant | 11 | stratégie | Différé |
 | ARCH-037 | P3 | Historique long et rotation SD | 12 | ADR stockage | Différé |
 | ARCH-038 | P3 | CI et tests hôte du domaine | 1/12 | plan de tests | Ouvert |
+| ARCH-039 | P1 | API interne de l’arène mémoire bornée | 1 | prototype isolé + tests | Ouvert |
+| ARCH-040 | P2 | Versionnement et chargement de `BoardModelDescriptor` | 2/7 | ADR | Ouvert |
+| ARCH-041 | P2 | Politique de suppression d’une carte avec bindings actifs | 2/7 | ADR | Ouvert |
+| ARCH-042 | P2 | Politique d’activation pendant une exécution active | 4/7 | ADR | Ouvert |
 
 ## 4. Décisions acquises
 
 - identifiants stables sur 16 bits, distincts des index runtime ;
 - types d’identifiants séparés par famille ;
 - un port est référencé par `BoardId + portIndex` ;
-- limites initiales : 16 zones, 32 équipements, 32 capteurs, 32 automatismes, 64 dépendances, 16 exécutions actives, 8 cartes, 16 ports par carte, 64 bindings ;
-- budget fixe initial du domaine V4 limité à 12 Kio ;
-- l’équipement est l’objet métier piloté ;
+- la capacité réelle vient du contenu de la configuration, pas de tableaux fonctionnels préalloués ;
+- la configuration candidate est construite dans une arène mémoire bornée ;
+- la configuration active reste immuable ;
+- une candidate invalide ne remplace jamais l’active ;
+- les plafonds fonctionnels `MAX_*_V4` précédemment proposés sont abandonnés ;
+- seules des limites absolues de protection du parseur et des budgets en octets restent admises ;
 - le modèle matériel supérieur est générique : carte, port, binding ;
+- le nombre et la nature des ports viennent des descripteurs de modèles de cartes ;
 - le relais reste une technologie de sortie et un adaptateur transitoire ;
 - une zone ne connaît ni carte ni adresse ;
 - un automatisme produit une intention ;
-- le NVS n’est pas modifié avant stabilisation du domaine ;
+- le format NVS actuel reste inchangé avant la Phase 7 ;
 - le profil de compatibilité reste `Zone N -> carte 0 -> voie N` pendant la transition.
 
 ## 5. Backlog immédiat de la Phase 1
@@ -81,10 +89,11 @@ Les prochaines décisions bloquantes sont :
 
 1. ARCH-003 — paramètres spécifiques des équipements ;
 2. ARCH-004 — distinction type / capacités ;
-3. ARCH-005 — états demandé, autorisé, appliqué et observé ;
-4. ARCH-006 — intentions ;
-5. ARCH-007 — exécutions ;
-6. ARCH-008 et ARCH-009 — dépendances.
+3. ARCH-039 — forme minimale de l’arène bornée utilisable par les modèles isolés ;
+4. ARCH-005 — états demandé, autorisé, appliqué et observé ;
+5. ARCH-006 — intentions ;
+6. ARCH-007 — exécutions ;
+7. ARCH-008 et ARCH-009 — dépendances.
 
 ## 6. Règle d’utilisation
 
