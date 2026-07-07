@@ -95,6 +95,7 @@ bool canTransitionTo(const EquipmentExecution& execution, ExecutionStatus nextSt
 bool startExecution(EquipmentExecution& execution, uint32_t nowMs);
 bool advanceExecutionStep(EquipmentExecution& execution, ExecutionStep nextStep);
 bool requestCancellation(EquipmentExecution& execution);
+bool markExecutionCancelled(EquipmentExecution& execution, uint32_t nowMs);
 bool markExecutionSucceeded(EquipmentExecution& execution, uint32_t nowMs);
 bool markExecutionFailed(EquipmentExecution& execution, OperationError error, uint32_t nowMs);
 bool markExecutionTimedOut(EquipmentExecution& execution, uint32_t nowMs);
