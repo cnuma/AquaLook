@@ -39,11 +39,11 @@ bool isInverted(const PortDefinition& port) {
 GpioLevel levelForState(const PortDefinition& port, BinaryActuatorState state) {
     const bool active = state == BinaryActuatorState::ACTIVE;
     const bool high = active != isInverted(port);
-    return high ? GpioLevel::HIGH : GpioLevel::LOW;
+    return high ? GpioLevel::LEVEL_HIGH : GpioLevel::LEVEL_LOW;
 }
 
 BinaryActuatorState stateForLevel(const PortDefinition& port, GpioLevel level) {
-    const bool high = level == GpioLevel::HIGH;
+    const bool high = level == GpioLevel::LEVEL_HIGH;
     const bool active = high != isInverted(port);
     return active ? BinaryActuatorState::ACTIVE : BinaryActuatorState::INACTIVE;
 }
@@ -99,7 +99,7 @@ BinaryActuatorDriverResult configureGpio(
         return makeFailed(BinaryActuatorDriverError::UNSUPPORTED_PORT);
     }
     if (!context->platform->setMode(
-            context->platformContext, port.channel, GpioPinMode::OUTPUT)) {
+            context->platformContext, port.channel, GpioPinMode::MODE_OUTPUT)) {
         context->health = BinaryActuatorHealth::FAULTED;
         return makeFailed(BinaryActuatorDriverError::COMMUNICATION_ERROR);
     }
@@ -143,7 +143,7 @@ BinaryActuatorDriverResult readGpio(
         return makeFailed(BinaryActuatorDriverError::NOT_CONFIGURED);
     }
 
-    GpioLevel level = GpioLevel::LOW;
+    GpioLevel level = GpioLevel::LEVEL_LOW;
     if (!context->platform->readLevel(
             context->platformContext, port.channel, level)) {
         context->health = BinaryActuatorHealth::FAULTED;
