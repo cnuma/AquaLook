@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 3 — Run 3.1, 7 juillet 2026
+**Dernière mise à jour :** Phase 3 — Run 3.2, 7 juillet 2026
 
 ## État général
 
@@ -22,43 +22,43 @@ heap libre et minimum observé
 |---|---|---|
 | ARCH-001 à ARCH-012 | Domaine et inventaire matériel | **Clôturé architecturalement** |
 | ARCH-013 | Actionneur binaire | **Contrat réalisé** |
-| ARCH-014 | État sûr par port/actionneur | **Règle réalisée** |
+| ARCH-014 | État sûr par port/actionneur | **Règle réalisée et simulée** |
 | ARCH-015 | Compatibilité `RelayAssignment` | Binding réalisé, intégration différée |
-| ARCH-016 | Commandes idempotentes | **Règle réalisée** |
+| ARCH-016 | Commandes idempotentes | **Règle validée par simulation** |
 | ARCH-038 | CI et tests hôte | Ouvert |
 | ARCH-058 | Mesure PlatformIO | Bloquant avant intégration |
 | ARCH-059 | Mesure heap | Bloquant avant intégration runtime |
 | ARCH-068 | Migration effective de RelayTopology | Phase 7 ou intégration dédiée |
-| ARCH-070 | Drivers matériels conditionnels | Contrat réalisé, drivers concrets à venir |
+| ARCH-070 | Drivers matériels conditionnels | Contrat réalisé, premiers drivers concrets à venir |
 | ARCH-071 | Dépendances PlatformIO conditionnelles | Phase 3 |
 | ARCH-072 | Mesure du gain flash par profil | Avant validation de Phase 3 |
 | ARCH-075 | Registre borné de drivers | **Réalisé** |
-| ARCH-076 | Driver binaire simulé | Run 3.2 |
-| ARCH-077 | Driver GPIO conditionnel | Run ultérieur |
+| ARCH-076 | Driver binaire simulé | **Réalisé et validé** |
+| ARCH-077 | Driver GPIO conditionnel | Run 3.3 |
 | ARCH-078 | Driver XL9535 conditionnel | Run ultérieur |
 | ARCH-079 | Synchronisation et concurrence des drivers | Ouvert |
-| ARCH-080 | Politique de readback | Ouvert, lecture explicite disponible |
+| ARCH-080 | Politique de readback | Lecture explicite et mismatch simulé validés |
+| ARCH-081 | Injection de fautes driver | **Réalisée sur driver simulé** |
 
-## Décisions du Run 3.1
+## Décisions du Run 3.2
 
-- `BinaryActuatorDriverOps` définit `configure`, `write`, `read`, `applySafeState` et `health` ;
-- le contrat ne dépend d’aucun objet Arduino ;
-- `BinaryActuatorSession` conserve le dernier état appliqué ;
-- une commande répétée retourne `ALREADY_APPLIED` sans nouvelle écriture ;
-- l’état sûr provient de `PortDefinition::safeState` ;
-- les états sûrs binaires directement supportés sont `INACTIVE` et `ACTIVE` ;
-- un registre borné associe un driver à un `ControllerTypeId` ;
-- un driver incomplet, dupliqué ou hors capacité est refusé ;
-- les erreurs sont traduisibles vers `OperationError` ;
-- aucun driver concret ni raccord à `RelaisManager` n’est introduit.
+- un driver binaire entièrement en mémoire implémente le contrat du Run 3.1 ;
+- son contexte occupe 24 octets ;
+- six familles de pannes sont injectables par masque ;
+- les compteurs d’appels permettent de contrôler l’idempotence ;
+- une panne d’écriture ne modifie pas l’état mémorisé dans la session ;
+- un readback incohérent produit une santé `DEGRADED` ;
+- une indisponibilité produit `UNAVAILABLE` ;
+- l’état sûr est appliqué selon le port ;
+- aucun accès matériel ni raccord au runtime historique n’est introduit.
 
-## Tailles verrouillées
+## Validation hôte
 
 ```text
-BinaryActuatorDriverResult  8 octets
-BinaryActuatorSession       6 octets
+Compilation hôte OK
+ok 2 2 3 1
 ```
 
 ## Prochaine étape
 
-Démarrer **AquaLook V4 — Phase 3 — Run 3.2 — Driver binaire simulé et validation complète du contrat**.
+Démarrer **AquaLook V4 — Phase 3 — Run 3.3 — Driver GPIO binaire conditionnel et isolé**.
