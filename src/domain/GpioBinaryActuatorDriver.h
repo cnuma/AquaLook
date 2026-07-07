@@ -10,15 +10,15 @@ namespace AquaLook { namespace Domain {
 #if AQUALOOK_V4_ENABLE_GPIO
 
 enum class GpioPinMode : uint8_t {
-    INPUT = 0,
-    OUTPUT = 1,
-    INPUT_PULLUP = 2,
-    INPUT_PULLDOWN = 3
+    MODE_INPUT = 0,
+    MODE_OUTPUT = 1,
+    MODE_INPUT_PULLUP = 2,
+    MODE_INPUT_PULLDOWN = 3
 };
 
 enum class GpioLevel : uint8_t {
-    LOW = 0,
-    HIGH = 1
+    LEVEL_LOW = 0,
+    LEVEL_HIGH = 1
 };
 
 struct GpioPlatformOps {
