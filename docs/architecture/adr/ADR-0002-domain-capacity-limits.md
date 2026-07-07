@@ -1,108 +1,237 @@
-# ADR-0002 — Capacités maximales initiales du domaine V4
+# ADR-0002 — Capacité dynamique bornée de la configuration V4
 
-- **Statut :** Acceptée pour la Phase 1, révisable après mesures réelles
-- **Date :** 7 juillet 2026
-- **Phase :** V4 Phase 1 — Run 1.1
+- **Statut :** Acceptée — remplace la première version de l’ADR
+- **Date initiale :** 7 juillet 2026
+- **Révision :** 7 juillet 2026
+- **Phase :** V4 Phase 1 — Run 1.1 corrigé
 
 ## Contexte
 
-AquaLook fonctionne sur ESP32 et doit utiliser des tableaux bornés. Les limites historiques sont centrées sur les zones et relais :
+La première version de cette ADR proposait des plafonds fonctionnels fixes tels que :
 
 ```text
-MAX_ZONES = 16
-MAX_ACTIVE_ZONES = 8
-MAX_RELAY_ASSIGNMENTS = 16
+MAX_EQUIPMENTS_V4
+MAX_SENSORS_V4
+MAX_HARDWARE_BOARDS
+MAX_PORTS_PER_BOARD
+MAX_PORT_BINDINGS
 ```
 
-La V4 doit représenter des cartes génériques, ports, équipements, capteurs, automatismes, dépendances et exécutions.
+Cette approche rendait la capacité du produit trop dépendante de tableaux préalloués et de valeurs arbitraires.
+
+Or la configuration réelle doit être déduite des éléments effectivement déclarés : modèles de cartes, cartes installées, ports exposés, équipements, capteurs, automatismes, dépendances et bindings.
+
+Exemple :
+
+```text
+1 carte de 4 sorties TOR
++ 1 carte de 2 sorties TOR
++ 1 carte de 4 entrées
+=
+3 cartes
+6 sorties
+4 entrées
+10 ports physiques
+```
+
+La configuration runtime ne doit réserver que les objets nécessaires à cette installation.
 
 ## Décision
 
-Les plafonds initiaux suivants sont retenus pour le modèle isolé de Phase 1 :
+AquaLook V4 utilise une **construction dynamique dans une mémoire bornée**, appelée ici option C.
 
 ```text
-MAX_ZONES_V4            = 16
-MAX_EQUIPMENTS_V4       = 32
-MAX_SENSORS_V4          = 32
-MAX_AUTOMATIONS_V4      = 32
-MAX_DEPENDENCIES_V4     = 64
-MAX_ACTIVE_EXECUTIONS   = 16
-MAX_HARDWARE_BOARDS     = 8
-MAX_PORTS_PER_BOARD     = 16
-MAX_PORT_BINDINGS       = 64
+Configuration déclarée
+    -> ConfigurationBuilder
+    -> calcul des besoins
+    -> allocation séquentielle dans une arène candidate bornée
+    -> validation complète
+    -> activation atomique
 ```
 
-Ces limites sont des capacités de représentation, pas des promesses de simultanéité.
+La capacité fonctionnelle n’est plus définie par une liste de constantes `MAX_*` correspondant aux différentes catégories métier.
 
-## Justification
+Elle est déterminée par :
 
-### Zones : 16
+1. les objets réellement présents dans la configuration ;
+2. leur taille sérialisée et runtime ;
+3. le budget mémoire disponible ;
+4. la compatibilité des références et capacités ;
+5. des gardes absolues de sécurité contre les configurations manifestement invalides.
 
-Conserve la capacité interne historique et permet une migration sans réduction.
+## Arènes mémoire
 
-### Équipements : 32
+Le modèle cible distingue au minimum :
 
-Permet 16 vannes plus pompes, vanne maîtresse, éclairages, ventilations et auxiliaires sans dépendre du nombre de zones.
+```text
+ActiveConfigurationArena
+CandidateConfigurationArena
+RuntimeExecutionArena
+```
 
-### Capteurs : 32
+### ActiveConfigurationArena
 
-Permet plusieurs mesures par zone et des capteurs globaux : débit, pression, niveau, pluie, humidité du sol, température.
+Contient la configuration actuellement validée et utilisée par le système.
 
-### Automatismes : 32
+Elle n’est jamais modifiée partiellement.
 
-Couvre les programmes d’arrosage et des automatismes climatiques futurs sans créer une capacité excessive.
+### CandidateConfigurationArena
 
-### Dépendances : 64
+Reçoit une nouvelle configuration lors d’un import, d’une modification ou d’une migration.
 
-Autorise en moyenne deux relations par équipement, avec marge pour pompe partagée et exclusions.
+Elle est construite indépendamment de la configuration active.
 
-### Exécutions simultanées : 16
+### RuntimeExecutionArena
 
-Plafond de suivi runtime. La politique de simultanéité réelle sera probablement bien inférieure et définie séparément.
+Contient les objets temporaires de fonctionnement : intentions en attente, exécutions actives, résultats courts et états d’orchestration.
 
-### Cartes : 8
+Elle est séparée de la configuration durable.
 
-Correspond à une capacité raisonnable d’inventaire local et aux huit adresses courantes permises par trois bits d’adressage, sans supposer que toutes les cartes utilisent I²C.
+## Allocation
 
-### Ports par carte : 16
+L’allocation dans une arène est :
 
-Couvre les expandeurs 16 bits comme XL9535 et MCP23017 et les cartes plus petites de 1, 2, 4 ou 8 ports.
+- séquentielle ;
+- alignée ;
+- bornée ;
+- sans libération individuelle ;
+- réinitialisée globalement lors de l’abandon ou du remplacement de la configuration.
 
-### Affectations de ports : 64
+Cette stratégie évite la fragmentation du heap tout en adaptant la consommation au contenu réel.
 
-Permet de lier des sorties, entrées, compteurs et signaux analogiques sans limiter le système au nombre d’équipements.
+Le constructeur doit pouvoir répondre avant activation :
 
-## Règles
+```text
+mémoire requise
+mémoire disponible
+nombre de cartes
+nombre total de ports
+nombre d’entrées et de sorties par nature
+nombre d’équipements
+nombre de capteurs
+nombre d’automatismes
+nombre de dépendances
+nombre de bindings
+```
 
-1. Une carte peut déclarer moins de ports que `MAX_PORTS_PER_BOARD`.
-2. Un port non exposé physiquement n’est pas déclaré comme utilisable.
-3. Les limites ne doivent pas conduire à réserver des structures lourdes pour chaque emplacement.
-4. Les descripteurs de modèles de cartes doivent être partagés ou placés en mémoire programme lorsque possible.
-5. Les structures runtime doivent rester compactes et sans `String` durable.
-6. Toute hausse d’une limite exige une mesure RAM et flash.
+## Budgets, pas capacités fonctionnelles
+
+Les constantes structurantes deviennent des budgets techniques, par exemple :
+
+```text
+CONFIGURATION_ARENA_BYTES
+CANDIDATE_CONFIGURATION_ARENA_BYTES
+RUNTIME_EXECUTION_ARENA_BYTES
+```
+
+Leur valeur exacte sera fixée après mesure sur la cible.
+
+Les deux arènes de configuration peuvent être :
+
+- simultanément présentes en RAM si la marge le permet ;
+- ou construites dans une mémoire temporaire différente, puis activées selon une stratégie à préciser en Phase 7.
+
+## Gardes absolues
+
+Quelques limites très larges restent autorisées pour protéger les parseurs et algorithmes :
+
+```text
+ABSOLUTE_MAX_OBJECTS
+ABSOLUTE_MAX_RELATIONS
+ABSOLUTE_MAX_PORTS_PER_DECLARATION
+MAX_CONFIGURATION_DEPTH
+MAX_CONFIGURATION_INPUT_BYTES
+```
+
+Ces limites :
+
+- ne décrivent pas une installation normale ;
+- ne conduisent pas à préallouer les objets correspondants ;
+- servent uniquement à rejeter rapidement une entrée corrompue ou hostile ;
+- doivent être nettement supérieures aux besoins réalistes tout en restant calculables.
+
+## Modèles de cartes
+
+Le nombre de ports d’une carte vient de son `BoardModelDescriptor`, pas d’un `MAX_PORTS_PER_BOARD` métier.
+
+Une définition peut exposer :
+
+```text
+1, 2, 4, 8, 16 ou davantage de ports
+```
+
+à condition que :
+
+- le descripteur soit valide ;
+- le driver sache les gérer ;
+- la configuration candidate respecte son budget ;
+- les temps de validation et d’exécution restent compatibles avec le système.
+
+## Validation avant activation
+
+Une configuration candidate n’est activée que si :
+
+1. sa construction est complète ;
+2. toutes les références sont résolues ;
+3. les ports existent ;
+4. les directions et capacités sont compatibles ;
+5. les identifiants sont uniques ;
+6. les dépendances sont valides et sans cycle interdit ;
+7. aucun binding exclusif n’est dupliqué ;
+8. le budget mémoire est respecté ;
+9. les limites absolues ne sont pas dépassées ;
+10. la configuration active peut être remplacée atomiquement.
+
+En cas d’échec, la configuration active reste inchangée.
+
+## Évolution de la configuration
+
+Les opérations supportées conceptuellement sont :
+
+```text
+ajouter une carte
+retirer une carte
+remplacer un modèle
+mettre à niveau une définition
+ajouter ou retirer des équipements
+ajouter ou retirer des capteurs
+modifier les bindings
+modifier les automatismes
+```
+
+Toute opération produit une nouvelle configuration candidate complète. Il n’existe pas de modification partielle directe de l’arène active.
 
 ## Options rejetées
 
-### 64 équipements parce que 8 cartes × 8 voies
+### Tableaux fixes par famille
 
-Rejeté : la capacité physique théorique ne doit pas dicter directement le nombre d’objets métier.
+Rejeté comme fondation V4 : gaspillage de RAM, plafonds arbitraires et difficulté à faire évoluer les catégories.
 
-### Une capacité dynamique sans plafond
+### Allocation générale par `new`, `malloc` ou `std::vector`
 
-Rejeté : imprévisible sur microcontrôleur et incompatible avec les exigences de sûreté.
+Rejetée pour la configuration active : fragmentation et échecs moins prévisibles.
 
-### Conserver `MAX_RELAY_ASSIGNMENTS = MAX_ZONES`
+### Absence totale de borne
 
-Rejeté : les affectations concernent aussi pompes, entrées, capteurs et auxiliaires.
+Rejetée : un microcontrôleur doit pouvoir refuser une configuration avant épuisement mémoire.
 
 ## Conséquences
 
-- les noms de constantes deviennent génériques ;
-- `RelayTopology` devient un adaptateur transitoire spécialisé ;
-- le futur inventaire matériel accepte jusqu’à 8 cartes de 16 ports ;
-- la capacité physique maximale descriptible est 128 ports, mais seulement 64 bindings actifs sont retenus initialement ;
-- les tailles devront être vérifiées à chaque run d’introduction de structure.
+- les anciens plafonds `MAX_*_V4` ne sont plus des décisions d’architecture ;
+- la configuration réelle définit automatiquement ses propres compteurs ;
+- l’inventaire est proportionnel aux cartes et ports déclarés ;
+- la mémoire est calculée avant activation ;
+- le système peut évoluer par ajout, suppression ou remplacement de définitions génériques ;
+- la persistance devra permettre une configuration candidate, une validation puis une activation atomique ;
+- des diagnostics de budget deviennent obligatoires.
 
-## Condition de révision
+## Invariants
 
-Cette ADR devra être revue si le budget fixe du domaine V4 dépasse 12 Kio de RAM, hors buffers réseau, affichage et historique.
+1. La configuration active n’est jamais modifiée partiellement.
+2. Une configuration invalide ne remplace jamais la configuration active.
+3. La consommation mémoire est calculable avant activation.
+4. Aucun objet n’est créé uniquement parce qu’un plafond théorique le permet.
+5. Les ports disponibles proviennent des modèles de cartes réellement déclarés.
+6. Les limites absolues de sécurité ne sont pas des capacités commerciales ou fonctionnelles.
+7. L’arène ne réalise aucune libération individuelle.
+8. Le runtime d’exécution est séparé de la configuration durable.
