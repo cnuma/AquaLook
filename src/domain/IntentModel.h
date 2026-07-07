@@ -68,24 +68,25 @@ struct IntentSourceRef {
 };
 
 struct EquipmentIntent {
-    IntentId id;
-    EquipmentId targetId;
-    CorrelationId correlationId;
-    IntentSourceRef source;
     EquipmentStateValue requestedState;
     uint32_t createdAtMs;
     uint32_t validUntilMs;
+    IntentSourceRef source;
+    IntentId id;
+    EquipmentId targetId;
+    CorrelationId correlationId;
+    IntentRejectionReason rejectionReason;
     IntentPriority priority;
     IntentStatus status;
     uint8_t flags;
     uint8_t revision;
-    IntentRejectionReason rejectionReason;
 
     constexpr EquipmentIntent()
-        : id(), targetId(), correlationId(), source(), requestedState(),
-          createdAtMs(0U), validUntilMs(0U), priority(IntentPriority::NORMAL),
-          status(IntentStatus::PENDING), flags(INTENT_FLAG_NONE), revision(0U),
-          rejectionReason(IntentRejectionReason::NONE) {}
+        : requestedState(), createdAtMs(0U), validUntilMs(0U), source(),
+          id(), targetId(), correlationId(),
+          rejectionReason(IntentRejectionReason::NONE),
+          priority(IntentPriority::NORMAL), status(IntentStatus::PENDING),
+          flags(INTENT_FLAG_NONE), revision(0U) {}
 };
 
 enum class IntentValidationError : uint8_t {
@@ -118,6 +119,6 @@ void expireIntent(EquipmentIntent& intent);
 void cancelIntent(EquipmentIntent& intent);
 
 static_assert(sizeof(IntentSourceRef) == 4U, "IntentSourceRef layout changed");
-static_assert(sizeof(EquipmentIntent) <= 32U, "EquipmentIntent must remain compact");
+static_assert(sizeof(EquipmentIntent) == 32U, "EquipmentIntent layout changed");
 
 }} // namespace AquaLook::Domain
