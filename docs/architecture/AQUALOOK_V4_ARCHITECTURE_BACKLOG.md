@@ -2,7 +2,7 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Dernière mise à jour :** Phase 1 — Run 1.4, 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.5, 7 juillet 2026
 
 ## 1. Rôle
 
@@ -25,7 +25,7 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-004 | P0 | Type d’équipement et capacités | 1 | ADR-0004 | **Décidé** |
 | ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | ADR-0006 + modèle | **Décidé et prototypé** |
 | ARCH-006 | P1 | Intentions et priorités | 1 | ADR-0008 + modèle | **Décidé et prototypé** |
-| ARCH-007 | P1 | Exécutions | 1 | modèle + machine d’états | Ouvert |
+| ARCH-007 | P1 | Exécutions | 1 | ADR-0009 + modèle | **Décidé et prototypé** |
 | ARCH-008 | P1 | Dépendances | 1 | ADR + validation | Ouvert |
 | ARCH-009 | P1 | Cycles interdits | 1 | stratégie | Ouvert |
 | ARCH-010 | P2 | Inventaire générique des bus | 2 | ADR-0003 | Orientation décidée |
@@ -37,7 +37,7 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-016 | P2 | Commandes idempotentes | 3 | contrat | En attente |
 | ARCH-017 | P2 | Reprise après reboot | 4 | ADR | En attente |
 | ARCH-018 | P2 | Durées maximales | 4 | politique | En attente |
-| ARCH-019 | P2 | Compensation d’échec | 4 | machine d’états | En attente |
+| ARCH-019 | P2 | Compensation d’échec | 4 | machine d’états | **Primitive décidée, politique par type ouverte** |
 | ARCH-020 | P2 | Pompe partagée | 5 | ADR | En attente |
 | ARCH-021 | P2 | Précharge/post-fonctionnement | 5 | politique | En attente |
 | ARCH-022 | P2 | Simultanéité | 5 | ADR | En attente |
@@ -70,28 +70,31 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-049 | P1 | File bornée d’intentions | 1/4 | structure + politique de saturation | Ouvert |
 | ARCH-050 | P1 | Politique complète d’arbitrage des intentions | 1/4 | ADR + arbitre | Ouvert |
 | ARCH-051 | P1 | Politique des groupes de corrélation | 1/5 | ADR | Ouvert |
+| ARCH-052 | P1 | Registre borné des exécutions | 1/4 | structure + politique de saturation | Ouvert |
+| ARCH-053 | P1 | Retry et backoff des exécutions | 4 | ADR | Ouvert |
+| ARCH-054 | P1 | Politique de clôture après compensation | 4 | ADR | Ouvert |
 
 ## 4. Décisions acquises
 
 - identifiants forts sur 16 bits ;
 - configuration construite dans une arène bornée ;
-- `Equipment` immuable ;
-- états runtime requested, authorized, applied et observed séparés ;
-- défaut durable et résultat ponctuel séparés ;
-- `EquipmentIntent` séparé de l’exécution et du matériel ;
-- une intention cible toujours un `EquipmentId` ;
-- origine, priorité, validité et motif de refus sont structurés ;
-- arbitrage primitif déterministe : priorité, récence, identifiant ;
-- expiration monotone compatible avec le rebouclage de `millis()` ;
-- taille de `EquipmentIntent` verrouillée à 32 octets ;
-- aucune chaîne ou allocation dynamique ;
+- `Equipment`, état runtime, intention et exécution sont séparés ;
+- une exécution provient d’une intention et cible un `EquipmentId` ;
+- machine d’états explicite ;
+- étapes PREPARE, AUTHORIZE, APPLY, OBSERVE, FINALIZE et COMPENSATE ;
+- demande d’annulation distincte de l’annulation confirmée ;
+- timeout monotone ;
+- compensation distincte du succès initial ;
+- génération d’un `OperationResult` compact ;
+- taille de `EquipmentExecution` verrouillée à 40 octets ;
+- aucune chaîne, pointeur ou allocation dynamique ;
 - runtime historique inchangé.
 
 ## 5. Backlog immédiat de la Phase 1
 
-1. ARCH-007 — modèle Execution ;
-2. ARCH-008 et ARCH-009 — dépendances et cycles ;
-3. ARCH-050 — arbitre complet ;
-4. ARCH-049 — file bornée d’intentions ;
+1. ARCH-008 et ARCH-009 — dépendances et cycles ;
+2. ARCH-050 — arbitre complet ;
+3. ARCH-049 — file bornée d’intentions ;
+4. ARCH-052 — registre borné d’exécutions ;
 5. ARCH-044 — validateurs spécifiques ;
 6. ARCH-043 — catalogue de types.
