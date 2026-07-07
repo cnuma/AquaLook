@@ -2,7 +2,7 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Dernière mise à jour :** Phase 1 — Run 1.3, 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.4, 7 juillet 2026
 
 ## 1. Rôle
 
@@ -24,7 +24,7 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-003 | P0 | Paramètres spécifiques des équipements | 1 | ADR-0005 | **Décidé** |
 | ARCH-004 | P0 | Type d’équipement et capacités | 1 | ADR-0004 | **Décidé** |
 | ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | ADR-0006 + modèle | **Décidé et prototypé** |
-| ARCH-006 | P1 | Intentions et priorités | 1 | ADR + modèle | Ouvert |
+| ARCH-006 | P1 | Intentions et priorités | 1 | ADR-0008 + modèle | **Décidé et prototypé** |
 | ARCH-007 | P1 | Exécutions | 1 | modèle + machine d’états | Ouvert |
 | ARCH-008 | P1 | Dépendances | 1 | ADR + validation | Ouvert |
 | ARCH-009 | P1 | Cycles interdits | 1 | stratégie | Ouvert |
@@ -67,26 +67,31 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-046 | P1 | Registre et politique des défauts | 1/4 | structure + politique | Ouvert |
 | ARCH-047 | P1 | Comparaison analogique et tolérances de convergence | 1/4 | stratégie par type | Ouvert |
 | ARCH-048 | P1 | Calcul synthétique de santé | 1/4 | règles | Ouvert |
+| ARCH-049 | P1 | File bornée d’intentions | 1/4 | structure + politique de saturation | Ouvert |
+| ARCH-050 | P1 | Politique complète d’arbitrage des intentions | 1/4 | ADR + arbitre | Ouvert |
+| ARCH-051 | P1 | Politique des groupes de corrélation | 1/5 | ADR | Ouvert |
 
 ## 4. Décisions acquises
 
 - identifiants forts sur 16 bits ;
 - configuration construite dans une arène bornée ;
-- `Equipment` immuable et séparé de tout état runtime ;
-- `EquipmentRuntimeState` distingue requested, authorized, applied et observed ;
-- chaque valeur possède un type et une validité explicites ;
-- un équipement sans feedback utilise `NOT_SUPPORTED` ;
-- défaut durable et résultat ponctuel sont séparés ;
-- les timestamps runtime sont monotones ;
-- aucune chaîne ni allocation dynamique n’est introduite ;
-- les structures runtime restent indépendantes du matériel et du runtime historique ;
-- NVS, planning, Web, LCD et relais actuels restent inchangés.
+- `Equipment` immuable ;
+- états runtime requested, authorized, applied et observed séparés ;
+- défaut durable et résultat ponctuel séparés ;
+- `EquipmentIntent` séparé de l’exécution et du matériel ;
+- une intention cible toujours un `EquipmentId` ;
+- origine, priorité, validité et motif de refus sont structurés ;
+- arbitrage primitif déterministe : priorité, récence, identifiant ;
+- expiration monotone compatible avec le rebouclage de `millis()` ;
+- taille de `EquipmentIntent` verrouillée à 32 octets ;
+- aucune chaîne ou allocation dynamique ;
+- runtime historique inchangé.
 
 ## 5. Backlog immédiat de la Phase 1
 
-1. ARCH-006 — intentions et priorités ;
-2. ARCH-007 — exécutions ;
-3. ARCH-008 et ARCH-009 — dépendances et cycles ;
-4. ARCH-044 — validateurs spécifiques ;
-5. ARCH-043 — catalogue de types ;
-6. ARCH-045 et ARCH-046 — registres bornés avant intégration runtime.
+1. ARCH-007 — modèle Execution ;
+2. ARCH-008 et ARCH-009 — dépendances et cycles ;
+3. ARCH-050 — arbitre complet ;
+4. ARCH-049 — file bornée d’intentions ;
+5. ARCH-044 — validateurs spécifiques ;
+6. ARCH-043 — catalogue de types.
