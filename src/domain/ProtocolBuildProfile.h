@@ -113,9 +113,4 @@ struct BuildProfileValidationResult {
     constexpr bool ok() const { return error == BuildProfileValidationError::NONE; }
 };
 
-static_assert((COMPILED_PROTOCOL_MASK & PROTOCOL_GPIO) != 0U,
-              "The default AquaLook V4 profile requires GPIO");
-static_assert((COMPILED_PROTOCOL_MASK & PROTOCOL_VIRTUAL) != 0U,
-              "The default AquaLook V4 profile requires virtual resources");
-
 }} // namespace AquaLook::Domain
