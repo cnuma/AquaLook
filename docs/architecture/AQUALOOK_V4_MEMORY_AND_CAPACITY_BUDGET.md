@@ -1,16 +1,20 @@
-# AquaLook V4 — Budget mémoire et capacités
+# AquaLook V4 — Budget mémoire et capacité dynamique
 
-**Phase :** V4 Phase 1 — Run 1.1  
+**Phase :** V4 Phase 1 — Run 1.1 corrigé  
 **Date :** 7 juillet 2026  
 **Base inspectée :** `1ba0256fafab0242b254241ac9957f0a21e5f2c9`
 
 ## 1. Objet
 
-Ce document établit un premier budget pour éviter que le modèle V4 ne duplique excessivement les données existantes.
+Ce document établit le budget mémoire de la V4 sans imposer une configuration fonctionnelle figée.
 
-Les mesures ci-dessous sont calculées à partir des structures courantes et d’un alignement 32 bits comparable à celui de l’ESP32. Elles devront être confirmées par compilation PlatformIO avec `sizeof()` dès que l’environnement local sera disponible.
+La capacité réelle est construite à partir des cartes, ports, équipements, capteurs, automatismes, relations et bindings réellement déclarés.
+
+Le firmware contrôle un budget mémoire, pas un nombre commercial ou fonctionnel arbitraire d’objets.
 
 ## 2. Tailles structurelles actuelles estimées
+
+Les estimations reposent sur un alignement 32 bits comparable à l’ESP32 et devront être confirmées par compilation PlatformIO.
 
 | Structure | Taille estimée |
 |---|---:|
@@ -21,143 +25,245 @@ Les mesures ci-dessous sont calculées à partir des structures courantes et d�
 | `ZoneSchedule` | 256 octets |
 | `ActiveSlot` | 16 octets |
 
-## 3. Coût des tableaux de zones
-
-### Configuration
+## 3. Coût actuel des tableaux de zones
 
 ```text
-16 × 276 = 4 416 octets
+16 × CfgZone      = 4 416 octets
+16 × ZoneSchedule = 4 096 octets
+16 × ActiveSlot   =   256 octets
+Sous-total        = 8 768 octets
 ```
 
-### Planning runtime
-
-```text
-16 × 256 = 4 096 octets
-```
-
-### États actifs
-
-```text
-16 × 16 = 256 octets
-```
-
-### Sous-total minimal
-
-```text
-4 416 + 4 096 + 256 = 8 768 octets
-```
-
-Ce sous-total n’inclut pas :
+Ce total n’inclut pas :
 
 - les 16 objets `String` de raisons ;
-- les autres champs de `ConfigManager` ;
+- les autres champs des managers ;
 - la topologie relais ;
 - les buffers Web, météo et affichage ;
-- l’allocation temporaire du blob NVS ;
-- les surcoûts des objets C++.
+- le blob NVS temporaire ;
+- les surcoûts des bibliothèques.
 
 ## 4. Risque principal
 
-Créer un troisième tableau V4 contenant planning, nom, pluie et état pour 16 zones ajouterait facilement 4 à 8 Kio supplémentaires.
+Une troisième copie complète des zones et plannings ajouterait plusieurs kilo-octets inutiles.
 
-Cette approche est interdite.
+Le domaine V4 initial doit uniquement ajouter les identités, relations et métadonnées qui n’existent pas dans le modèle historique.
 
-Le modèle V4 doit représenter uniquement les nouvelles identités, relations et métadonnées nécessaires, puis référencer temporairement les données historiques via un adaptateur.
+## 5. Principe retenu
 
-## 5. Budget fixe initial V4
-
-Objectif :
+La mémoire de configuration suit l’option C : allocation proportionnelle au contenu dans une arène bornée.
 
 ```text
-RAM fixe du domaine V4 initial <= 12 Kio
+Déclaration
+-> calcul des tailles
+-> construction dans CandidateConfigurationArena
+-> validation
+-> activation atomique comme ActiveConfiguration
 ```
 
-Cible recommandée pour la Phase 1 :
+Une installation composée de :
 
 ```text
-identités et registres       <= 2 Kio
-équipements et capteurs      <= 3 Kio
-intentions et exécutions     <= 2 Kio
-dépendances                  <= 1 Kio
-inventaire matériel compact  <= 3 Kio
-marge                        >= 1 Kio
+1 carte 4 sorties
+1 carte 2 sorties
+1 carte 4 entrées
 ```
 
-Ce budget exclut :
-
-- copies historiques déjà existantes ;
-- buffers réseau ;
-- historique long ;
-- ressources Web ;
-- descripteurs constants placés en flash.
-
-## 6. Capacités retenues
+construit seulement :
 
 ```text
-MAX_ZONES_V4            = 16
-MAX_EQUIPMENTS_V4       = 32
-MAX_SENSORS_V4          = 32
-MAX_AUTOMATIONS_V4      = 32
-MAX_DEPENDENCIES_V4     = 64
-MAX_ACTIVE_EXECUTIONS   = 16
-MAX_HARDWARE_BOARDS     = 8
-MAX_PORTS_PER_BOARD     = 16
-MAX_PORT_BINDINGS       = 64
+3 instances de cartes
+10 ports exposés ou décrits par références compactes
+les bindings réellement présents
+les équipements et capteurs réellement déclarés
 ```
 
-## 7. Taille cible des futures entrées
+Elle ne réserve pas automatiquement huit cartes, seize ports par carte ou soixante-quatre bindings.
 
-Ces valeurs sont des plafonds de conception, pas encore des structures figées.
+## 6. Budgets mémoire à définir
 
-| Élément | Taille cible par entrée | Coût maximal visé |
-|---|---:|---:|
-| registre d’équipement | 24 à 32 octets | 1 024 octets |
-| registre de capteur | 20 à 24 octets | 768 octets |
-| dépendance | 8 octets | 512 octets |
-| exécution active | 24 à 32 octets | 512 octets |
-| carte installée | 24 à 32 octets | 256 octets |
-| binding de port | 8 à 12 octets | 768 octets |
+Les valeurs exactes seront mesurées avant intégration runtime. Les catégories sont néanmoins fixées :
 
-Les ports ne doivent pas nécessairement être matérialisés par 128 structures lourdes. Les ports fixes peuvent être décrits par un descripteur de modèle partagé en flash.
+```text
+CONFIGURATION_ARENA_BYTES
+CANDIDATE_CONFIGURATION_ARENA_BYTES
+RUNTIME_EXECUTION_ARENA_BYTES
+CONFIGURATION_INPUT_BYTES
+```
 
-## 8. Règles de réduction mémoire
+### Budget de configuration active
 
-1. identifiants sur 16 bits ;
-2. index runtime sur 8 bits ;
-3. enums et masques sur 8 ou 16 bits ;
-4. noms dans des tables séparées ou buffers bornés ;
-5. aucun `String` dans les registres du domaine ;
-6. aucune allocation dynamique dans les chemins réguliers ;
-7. descripteurs de modèles de cartes constants en flash ;
-8. relations par identifiants, pas par pointeurs persistants ;
-9. pas de copie des 40 créneaux par zone dans le domaine V4 initial ;
-10. mesure `sizeof()` obligatoire à chaque ajout de structure.
+Contient :
 
-## 9. Mesure à intégrer ultérieurement
+- registres d’identités ;
+- cartes installées ;
+- références vers les descripteurs de modèles ;
+- bindings ;
+- équipements ;
+- capteurs ;
+- automatismes ;
+- dépendances ;
+- chaînes ou paramètres compacts nécessaires.
 
-Un outil ou environnement de diagnostic devra afficher à la compilation :
+### Budget candidat
+
+Permet de construire une configuration sans altérer l’active.
+
+La stratégie finale pourra utiliser :
+
+- deux arènes simultanées en RAM ;
+- une arène active et une candidate temporaire en PSRAM si disponible ;
+- une construction candidate dans un stockage intermédiaire avec validation progressive ;
+- ou un basculement contrôlé après sérialisation validée.
+
+Cette décision détaillée appartient à la Phase 7.
+
+### Budget runtime
+
+Séparé de la configuration, il couvre :
+
+- intentions ;
+- exécutions actives ;
+- états d’orchestration ;
+- résultats temporaires ;
+- files bornées.
+
+## 7. Estimation avant activation
+
+`ConfigurationBuilder` doit calculer au minimum :
+
+```text
+bytesRequired
+boardCount
+totalPortCount
+digitalInputCount
+digitalOutputCount
+analogInputCount
+analogOutputCount
+pulseCounterCount
+bindingCount
+equipmentCount
+sensorCount
+automationCount
+dependencyCount
+```
+
+L’estimation doit inclure l’alignement mémoire et les tables auxiliaires nécessaires à la résolution des identifiants.
+
+## 8. Gardes absolues
+
+Des gardes techniques peuvent rester compilées en dur, mais elles ne préallouent rien et ne décrivent pas la configuration normale.
+
+Exemples :
+
+```text
+MAX_CONFIGURATION_INPUT_BYTES
+ABSOLUTE_MAX_OBJECTS
+ABSOLUTE_MAX_RELATIONS
+ABSOLUTE_MAX_PORTS_IN_ONE_BOARD_DESCRIPTOR
+MAX_NESTING_DEPTH
+```
+
+Leur rôle est de :
+
+- protéger le parseur ;
+- empêcher les boucles excessives ;
+- détecter une configuration corrompue ;
+- garantir que les compteurs et tailles ne débordent pas.
+
+## 9. Descripteurs de modèles de cartes
+
+Les propriétés fixes d’un modèle de carte doivent être partagées et, lorsque possible, placées en flash :
+
+```text
+nom du modèle
+bus supporté
+nombre et description des ports
+capacités électriques et logiques
+driver associé
+version du descripteur
+```
+
+Une instance de carte ne stocke que les propriétés variables :
+
+```text
+BoardId
+modelId
+adresse ou emplacement
+enabled
+état de présence
+paramètres d’instance
+```
+
+Cette séparation réduit fortement le coût des installations contenant plusieurs cartes identiques.
+
+## 10. Règles de réduction mémoire
+
+1. identifiants stables sur 16 bits ;
+2. index runtime compacts lorsque nécessaires ;
+3. enums et masques bornés ;
+4. chaînes regroupées ou bornées ;
+5. aucun `String` durable ;
+6. aucune allocation générale dans les chemins réguliers ;
+7. descripteurs fixes partagés en flash ;
+8. relations par identifiants ;
+9. aucune copie des 40 créneaux dans le nouveau domaine ;
+10. allocation séquentielle dans l’arène ;
+11. abandon global de la candidate en cas d’erreur ;
+12. mesure exacte obligatoire avant activation.
+
+## 11. Mesures à intégrer
+
+La compilation devra afficher :
 
 ```cpp
 sizeof(CfgZone)
 sizeof(ZoneSchedule)
 sizeof(PersistedConfig)
-sizeof(Equipment)
-sizeof(Sensor)
-sizeof(Execution)
-sizeof(HardwareBoard)
+sizeof(EquipmentHeader)
+sizeof(SensorHeader)
+sizeof(HardwareBoardInstance)
 sizeof(PortBinding)
+sizeof(Dependency)
+sizeof(Execution)
 ```
 
-La compilation devra également relever :
+Le diagnostic runtime devra relever :
 
-- RAM globale utilisée ;
-- flash utilisée ;
-- plus grande allocation dynamique ;
+- taille totale de la configuration active ;
+- taille demandée par la candidate ;
+- marge restante dans chaque arène ;
 - heap libre après boot ;
-- heap minimum observé.
+- heap minimum observé ;
+- plus grande allocation extérieure aux arènes ;
+- durée de construction et de validation.
 
-## 10. Conclusion
+## 12. Critères d’acceptation d’une configuration
 
-La V4 peut rester très largement dans les capacités de l’ESP32 si elle évite de recopier la configuration historique et si les modèles sont compacts.
+La candidate est refusée si :
 
-La contrainte structurante n’est pas le nombre théorique de ports physiques, mais la quantité de métadonnées réservée pour chaque objet et relation.
+- le budget est dépassé ;
+- une taille déborde ;
+- un descripteur est inconnu ou incompatible ;
+- une référence est orpheline ;
+- un binding cible un port absent ;
+- les capacités du port ne couvrent pas la fonction ;
+- un identifiant est dupliqué ;
+- une dépendance interdite ou cyclique est détectée.
+
+Le refus ne modifie jamais la configuration active.
+
+## 13. Conclusion
+
+La V4 n’est pas dimensionnée par une liste de nombres fixes de zones, cartes, capteurs ou équipements.
+
+Elle est dimensionnée par :
+
+```text
+contenu réel de la configuration
++ coût mémoire calculé
++ budget borné
++ validation complète
+```
+
+Cette approche permet des configurations génériques, modifiables et extensibles tout en conservant un comportement prévisible sur ESP32.
