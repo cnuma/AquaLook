@@ -81,9 +81,9 @@ constexpr ProtocolMask protocolFeatureForBusType(BusType type) {
 }
 
 constexpr bool isProtocolCompiled(BusType type) {
-    const ProtocolMask feature = protocolFeatureForBusType(type);
-    return feature != PROTOCOL_NONE &&
-           (COMPILED_PROTOCOL_MASK & feature) == feature;
+    return protocolFeatureForBusType(type) != PROTOCOL_NONE &&
+           (COMPILED_PROTOCOL_MASK & protocolFeatureForBusType(type)) ==
+               protocolFeatureForBusType(type);
 }
 
 enum class BuildProfileValidationError : uint8_t {
