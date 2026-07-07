@@ -1,29 +1,32 @@
-# AquaLook V4 — Checkpoint Phase 1 Run 1.1 — Identités et capacités maximales
+# AquaLook V4 — Checkpoint Phase 1 Run 1.1 corrigé — Identités et capacité dynamique bornée
 
 **Date :** 7 juillet 2026  
 **Dépôt :** `cnuma/AquaLook`  
 **Branche :** `feature/relay-board-mapping`  
 **Base de départ :** `1ba0256fafab0242b254241ac9957f0a21e5f2c9`  
-**HEAD de clôture :** commit contenant ce checkpoint
+**Correction :** abandon des plafonds fonctionnels fixes au profit de l’option C  
+**HEAD de clôture :** commit contenant ce checkpoint corrigé
 
 ## 1. Objet
 
-Décider les identifiants stables, les limites embarquées initiales et le modèle supérieur de l’inventaire matériel, sans modifier le runtime.
+Décider :
 
-## 2. Décisions prises
+- les identifiants stables ;
+- le modèle supérieur de l’inventaire matériel ;
+- la manière de dimensionner une configuration générique sur ESP32.
 
-### Identifiants
+La première version du checkpoint retenait des constantes fonctionnelles fixes. Cette décision est corrigée.
+
+## 2. Identifiants validés
 
 - identifiants stables sur `uint16_t` ;
 - `0x0000` invalide, `0xFFFF` réservé ;
-- types forts distincts : ZoneId, EquipmentId, SensorId, BoardId, AutomationId, ExecutionId ;
-- index runtime sur `uint8_t` ;
-- identifiant et index ne sont jamais supposés égaux ;
-- un port est identifié par `BoardId + portIndex`.
+- types distincts : ZoneId, EquipmentId, SensorId, BoardId, AutomationId, ExecutionId ;
+- index runtime compacts ;
+- identifiant et index jamais supposés égaux ;
+- un port référencé par `BoardId + portIndex`.
 
-### Inventaire matériel
-
-Le modèle supérieur devient :
+## 3. Inventaire matériel validé
 
 ```text
 HardwareInventory
@@ -32,44 +35,87 @@ HardwareInventory
 └── PortBinding
 ```
 
+Les modèles de cartes décrivent leur nombre réel de ports et leurs capacités.
+
 Les cartes relais deviennent un cas spécialisé et transitoire.
 
-Les ports décrivent :
+## 4. Correction de capacité
 
-- direction INPUT, OUTPUT ou BIDIRECTIONAL ;
-- nature DIGITAL ou ANALOG ;
-- capacités complémentaires : compteur, interruption, PWM, impulsion, fréquence, etc.
-
-### Capacités initiales
+Les plafonds suivants sont abandonnés comme décisions d’architecture :
 
 ```text
-MAX_ZONES_V4            = 16
-MAX_EQUIPMENTS_V4       = 32
-MAX_SENSORS_V4          = 32
-MAX_AUTOMATIONS_V4      = 32
-MAX_DEPENDENCIES_V4     = 64
-MAX_ACTIVE_EXECUTIONS   = 16
-MAX_HARDWARE_BOARDS     = 8
-MAX_PORTS_PER_BOARD     = 16
-MAX_PORT_BINDINGS       = 64
+MAX_ZONES_V4
+MAX_EQUIPMENTS_V4
+MAX_SENSORS_V4
+MAX_AUTOMATIONS_V4
+MAX_DEPENDENCIES_V4
+MAX_ACTIVE_EXECUTIONS
+MAX_HARDWARE_BOARDS
+MAX_PORTS_PER_BOARD
+MAX_PORT_BINDINGS
 ```
 
-Ces plafonds sont des capacités de représentation, pas des garanties de simultanéité.
+Ils ne doivent pas servir à préallouer les catégories métier.
 
-## 3. Budget mémoire
-
-Tailles structurelles estimées avec alignement 32 bits :
+La configuration réelle est dérivée des éléments déclarés :
 
 ```text
-CfgSlot       ≈ 6 octets
-CfgDaySchedule≈ 30 octets
-CfgRain       ≈ 8 octets
+modèles de cartes
+cartes installées
+ports exposés
+équipements
+capteurs
+automatismes
+dépendances
+bindings
+```
+
+## 5. Option C retenue
+
+La configuration est construite dynamiquement dans une mémoire bornée :
+
+```text
+source de configuration
+-> ConfigurationBuilder
+-> CandidateConfigurationArena
+-> validation complète
+-> activation atomique
+-> ActiveConfiguration
+```
+
+L’allocation dans l’arène est séquentielle, alignée et sans libération individuelle.
+
+Une candidate refusée est abandonnée globalement et ne modifie pas l’active.
+
+## 6. Budgets techniques
+
+Les constantes futures décrivent des budgets en octets et des gardes absolues :
+
+```text
+CONFIGURATION_ARENA_BYTES
+CANDIDATE_CONFIGURATION_ARENA_BYTES
+RUNTIME_EXECUTION_ARENA_BYTES
+MAX_CONFIGURATION_INPUT_BYTES
+ABSOLUTE_MAX_OBJECTS
+ABSOLUTE_MAX_RELATIONS
+MAX_CONFIGURATION_DEPTH
+```
+
+Leur valeur exacte n’est pas encore fixée.
+
+Elles seront définies après mesures réelles de RAM, heap, PSRAM éventuelle et temps de validation.
+
+## 7. Budget mémoire actuel observé
+
+Estimations structurelles :
+
+```text
 CfgZone       ≈ 276 octets
 ZoneSchedule  ≈ 256 octets
 ActiveSlot    ≈ 16 octets
 ```
 
-Coût minimal des tableaux existants :
+Coût minimal des tableaux historiques :
 
 ```text
 16 CfgZone       = 4 416 octets
@@ -78,77 +124,95 @@ Coût minimal des tableaux existants :
 Total minimal    = 8 768 octets
 ```
 
-Ce total exclut les `String`, autres managers et buffers.
+Le domaine V4 ne doit pas créer une troisième copie complète des plannings.
 
-Budget fixe retenu pour le nouveau domaine V4 :
+## 8. Cycle de configuration défini
+
+Le document suivant devient la référence dédiée :
 
 ```text
-<= 12 Kio de RAM fixe
+docs/architecture/AQUALOOK_V4_CONFIGURATION_LIFECYCLE.md
 ```
 
-## 4. Règles mémoire
+Il définit :
 
-- aucune troisième copie complète des plannings ;
-- aucun `String` durable dans les registres V4 ;
-- descripteurs de modèles de cartes partagés et placés en flash lorsque possible ;
-- identifiants et relations compacts ;
-- aucune allocation dynamique régulière ;
-- mesure `sizeof()` obligatoire lors de l’introduction du code.
+- catalogue de modèles de cartes ;
+- source de configuration ;
+- builder ;
+- candidate ;
+- validations structurelle, matérielle, métier et mémoire ;
+- activation atomique ;
+- ajout, suppression, remplacement et upgrade ;
+- diagnostics ;
+- compatibilité avec le runtime actuel.
 
-## 5. Documents produits
+## 9. Documents produits ou corrigés
 
 - `docs/architecture/adr/ADR-0001-stable-identifiers.md`
-- `docs/architecture/adr/ADR-0002-domain-capacity-limits.md`
+- `docs/architecture/adr/ADR-0002-domain-capacity-limits.md` — corrigée option C
 - `docs/architecture/adr/ADR-0003-generic-hardware-inventory.md`
-- `docs/architecture/AQUALOOK_V4_MEMORY_AND_CAPACITY_BUDGET.md`
-- mise à jour de `docs/architecture/AQUALOOK_V4_ARCHITECTURE_BACKLOG.md`
-- présent checkpoint
+- `docs/architecture/AQUALOOK_V4_MEMORY_AND_CAPACITY_BUDGET.md` — corrigé
+- `docs/architecture/AQUALOOK_V4_CONFIGURATION_LIFECYCLE.md` — nouveau
+- `docs/architecture/AQUALOOK_V4_ARCHITECTURE_BACKLOG.md` — corrigé
+- présent checkpoint corrigé
 
-## 6. Fichiers source modifiés
+## 10. Fichiers source modifiés
 
 Aucun.
 
-## 7. Fichiers volontairement non modifiés
+## 11. Fichiers volontairement non modifiés
 
 - tout `src/` ;
 - tout `include/` ;
 - `platformio.ini` ;
 - `data/` ;
-- NVS ;
+- format NVS actuel ;
 - Web ;
 - LCD ;
 - moteur d’arrosage ;
 - `RelayTopology` runtime.
 
-## 8. Compilation et tests
+## 12. Compilation et tests
 
-Aucune compilation requise : run documentaire.
+Aucune compilation requise : corrections documentaires uniquement.
 
-Les tailles sont des estimations structurelles à confirmer par compilation PlatformIO sur ESP32 avant acceptation définitive du premier code V4.
+Les valeurs `sizeof()` restent à confirmer sur la cible avant le premier code V4.
 
-## 9. Points ouverts suivants
+## 13. Invariants
+
+1. La configuration active est immuable.
+2. Toute modification construit une candidate complète.
+3. Une candidate invalide ne remplace jamais l’active.
+4. La mémoire nécessaire est évaluée avant activation.
+5. Le nombre de ports vient du modèle de chaque carte.
+6. Aucun objet n’est préalloué uniquement à cause d’un plafond fonctionnel.
+7. Les gardes absolues ne décrivent pas une capacité commerciale.
+8. Le runtime d’exécution est séparé de la configuration.
+9. Le NVS actuel reste inchangé pendant la Phase 1.
+10. Aucune troisième copie complète des plannings n’est autorisée.
+
+## 14. Points ouverts immédiats
 
 - ARCH-003 — paramètres spécifiques des équipements ;
-- ARCH-004 — distinction type d’équipement / capacités ;
-- ARCH-005 — états demandé, autorisé, appliqué et observé.
+- ARCH-004 — distinction type / capacités ;
+- ARCH-039 — API interne minimale de l’arène bornée ;
+- mesure réelle des budgets ;
+- stratégie future de coexistence active/candidate ;
+- politique de bascule pendant une exécution active.
 
-## 10. Prochaine action unique
+## 15. Prochaine action unique
 
 Démarrer **Phase 1 — Run 1.2 — Modèle Equipment minimal**.
 
-Avant le code, ce run doit décider ARCH-003 et ARCH-004, puis introduire uniquement les types isolés nécessaires :
+Le run devra :
 
-- identité ;
-- type ;
-- capacités ;
-- activation ;
-- mode ;
-- état sûr ;
-- paramètres spécifiques compacts.
+1. décider ARCH-003 et ARCH-004 ;
+2. définir l’interface minimale d’allocation dans une arène sans implémenter la persistance ;
+3. introduire les types Equipment isolés ;
+4. vérifier leur taille ;
+5. ne connecter ni planning, ni Web, ni NVS, ni matériel.
 
-Aucune liaison au planning, au NVS, au Web ou au matériel ne doit être ajoutée.
-
-## 11. Message de reprise recommandé
+## 16. Message de reprise recommandé
 
 ```text
 Projet AquaLook V4 — Phase 1 — Run 1.2 — Modèle Equipment minimal
@@ -156,12 +220,13 @@ Projet AquaLook V4 — Phase 1 — Run 1.2 — Modèle Equipment minimal
 Base de travail :
 - Dépôt : cnuma/AquaLook
 - Branche : feature/relay-board-mapping
-- HEAD distant : utiliser le commit exact du checkpoint Run 1.1
+- HEAD distant : utiliser le commit exact du checkpoint Run 1.1 corrigé
 - Working tree local : à synchroniser ultérieurement
 
 Documents de référence :
 - docs/architecture/AQUALOOK_V4_TARGET_ARCHITECTURE.md
 - docs/architecture/AQUALOOK_V4_CURRENT_TO_TARGET_MAPPING.md
+- docs/architecture/AQUALOOK_V4_CONFIGURATION_LIFECYCLE.md
 - docs/architecture/AQUALOOK_V4_MEMORY_AND_CAPACITY_BUDGET.md
 - docs/architecture/adr/ADR-0001-stable-identifiers.md
 - docs/architecture/adr/ADR-0002-domain-capacity-limits.md
@@ -171,10 +236,11 @@ Documents de référence :
 État validé à préserver :
 - identifiants 16 bits distincts des index ;
 - inventaire générique carte/port/binding ;
-- budget fixe V4 <= 12 Kio ;
-- aucune troisième copie des plannings ;
+- option C : construction dynamique dans une arène bornée ;
+- aucun plafond fonctionnel fixe retenu ;
+- configuration active immuable ;
 - NVS et runtime inchangés.
 
 Objectif unique :
-Décider la représentation des types, capacités et paramètres spécifiques, puis créer le modèle Equipment minimal isolé.
+Décider la représentation des types, capacités et paramètres spécifiques, puis créer le modèle Equipment minimal isolé et compatible avec une arène bornée.
 ```
