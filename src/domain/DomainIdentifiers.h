@@ -24,6 +24,9 @@ struct StrongId {
 
 struct EquipmentIdTag;
 struct EquipmentTypeIdTag;
+struct BusIdTag;
+struct ControllerIdTag;
+struct ControllerTypeIdTag;
 struct BoardIdTag;
 struct SensorIdTag;
 struct AutomationIdTag;
@@ -34,6 +37,9 @@ struct ZoneIdTag;
 
 using EquipmentId = StrongId<EquipmentIdTag>;
 using EquipmentTypeId = StrongId<EquipmentTypeIdTag>;
+using BusId = StrongId<BusIdTag>;
+using ControllerId = StrongId<ControllerIdTag>;
+using ControllerTypeId = StrongId<ControllerTypeIdTag>;
 using BoardId = StrongId<BoardIdTag>;
 using SensorId = StrongId<SensorIdTag>;
 using AutomationId = StrongId<AutomationIdTag>;
@@ -44,5 +50,7 @@ using ZoneId = StrongId<ZoneIdTag>;
 
 static_assert(sizeof(EquipmentId) == sizeof(uint16_t), "Strong IDs must remain compact");
 static_assert(sizeof(IntentId) == sizeof(uint16_t), "Intent IDs must remain compact");
+static_assert(sizeof(BusId) == sizeof(uint16_t), "Bus IDs must remain compact");
+static_assert(sizeof(ControllerId) == sizeof(uint16_t), "Controller IDs must remain compact");
 
 }} // namespace AquaLook::Domain
