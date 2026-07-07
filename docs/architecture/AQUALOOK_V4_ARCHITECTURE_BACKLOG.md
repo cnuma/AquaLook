@@ -2,7 +2,7 @@
 
 **Statut :** backlog vivant  
 **Run d’origine :** Phase 0 — Run 0  
-**Dernière mise à jour :** Phase 1 — Run 1.2, 7 juillet 2026
+**Dernière mise à jour :** Phase 1 — Run 1.3, 7 juillet 2026
 
 ## 1. Rôle
 
@@ -23,7 +23,7 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-002 | P0 | Capacité dynamique bornée | 1/7 | ADR-0002 | **Principe décidé, budgets à mesurer** |
 | ARCH-003 | P0 | Paramètres spécifiques des équipements | 1 | ADR-0005 | **Décidé** |
 | ARCH-004 | P0 | Type d’équipement et capacités | 1 | ADR-0004 | **Décidé** |
-| ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | modèle d’état | Ouvert |
+| ARCH-005 | P1 | États demandé, autorisé, appliqué, observé | 1 | ADR-0006 + modèle | **Décidé et prototypé** |
 | ARCH-006 | P1 | Intentions et priorités | 1 | ADR + modèle | Ouvert |
 | ARCH-007 | P1 | Exécutions | 1 | modèle + machine d’états | Ouvert |
 | ARCH-008 | P1 | Dépendances | 1 | ADR + validation | Ouvert |
@@ -63,27 +63,30 @@ Ce document recense les décisions encore ouvertes. Une entrée est close lorsqu
 | ARCH-042 | P2 | Activation pendant une exécution | 4/7 | ADR | Ouvert |
 | ARCH-043 | P1 | Catalogue de types d’équipements | 1/7 | registre + validation | Ouvert |
 | ARCH-044 | P1 | Validateurs spécifiques des blocs de paramètres | 1 | interface | Ouvert |
+| ARCH-045 | P1 | Registre borné des états runtime | 1/4 | structure + recherche | Ouvert |
+| ARCH-046 | P1 | Registre et politique des défauts | 1/4 | structure + politique | Ouvert |
+| ARCH-047 | P1 | Comparaison analogique et tolérances de convergence | 1/4 | stratégie par type | Ouvert |
+| ARCH-048 | P1 | Calcul synthétique de santé | 1/4 | règles | Ouvert |
 
 ## 4. Décisions acquises
 
 - identifiants forts sur 16 bits ;
 - configuration construite dans une arène bornée ;
-- aucune capacité fonctionnelle imposée par des tableaux `MAX_*_V4` ;
-- inventaire générique carte/port/binding ;
-- `Equipment` compact et indépendant du matériel ;
-- type référencé par `EquipmentTypeId` et descripteur partagé ;
-- capacités portées par un masque de 32 bits ;
-- paramètres spécifiques stockés dans un bloc versionné de l’arène ;
-- nom stocké par offset et longueur ;
-- aucune chaîne dynamique durable ;
-- taille actuelle de `Equipment` : 28 octets sur test hôte C++11 ;
-- NVS, planning, Web, LCD et runtime historique inchangés.
+- `Equipment` immuable et séparé de tout état runtime ;
+- `EquipmentRuntimeState` distingue requested, authorized, applied et observed ;
+- chaque valeur possède un type et une validité explicites ;
+- un équipement sans feedback utilise `NOT_SUPPORTED` ;
+- défaut durable et résultat ponctuel sont séparés ;
+- les timestamps runtime sont monotones ;
+- aucune chaîne ni allocation dynamique n’est introduite ;
+- les structures runtime restent indépendantes du matériel et du runtime historique ;
+- NVS, planning, Web, LCD et relais actuels restent inchangés.
 
 ## 5. Backlog immédiat de la Phase 1
 
-1. ARCH-005 — états demandé, autorisé, appliqué et observé ;
-2. ARCH-044 — interface des validateurs spécifiques ;
-3. ARCH-006 — intentions ;
-4. ARCH-007 — exécutions ;
-5. ARCH-008 et ARCH-009 — dépendances et cycles ;
-6. ARCH-043 — catalogue de types avant construction complète de configuration.
+1. ARCH-006 — intentions et priorités ;
+2. ARCH-007 — exécutions ;
+3. ARCH-008 et ARCH-009 — dépendances et cycles ;
+4. ARCH-044 — validateurs spécifiques ;
+5. ARCH-043 — catalogue de types ;
+6. ARCH-045 et ARCH-046 — registres bornés avant intégration runtime.
