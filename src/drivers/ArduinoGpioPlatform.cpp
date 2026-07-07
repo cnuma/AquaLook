@@ -15,16 +15,16 @@ bool setMode(
     Domain::GpioPinMode mode
 ) {
     switch (mode) {
-        case Domain::GpioPinMode::INPUT:
+        case Domain::GpioPinMode::MODE_INPUT:
             pinMode(pin, INPUT);
             return true;
-        case Domain::GpioPinMode::OUTPUT:
+        case Domain::GpioPinMode::MODE_OUTPUT:
             pinMode(pin, OUTPUT);
             return true;
-        case Domain::GpioPinMode::INPUT_PULLUP:
+        case Domain::GpioPinMode::MODE_INPUT_PULLUP:
             pinMode(pin, INPUT_PULLUP);
             return true;
-        case Domain::GpioPinMode::INPUT_PULLDOWN:
+        case Domain::GpioPinMode::MODE_INPUT_PULLDOWN:
             pinMode(pin, INPUT_PULLDOWN);
             return true;
         default:
@@ -37,7 +37,10 @@ bool writeLevel(
     uint16_t pin,
     Domain::GpioLevel level
 ) {
-    digitalWrite(pin, level == Domain::GpioLevel::HIGH ? HIGH : LOW);
+    digitalWrite(
+        pin,
+        level == Domain::GpioLevel::LEVEL_HIGH ? HIGH : LOW
+    );
     return true;
 }
 
@@ -47,8 +50,8 @@ bool readLevel(
     Domain::GpioLevel& level
 ) {
     level = digitalRead(pin) == HIGH
-        ? Domain::GpioLevel::HIGH
-        : Domain::GpioLevel::LOW;
+        ? Domain::GpioLevel::LEVEL_HIGH
+        : Domain::GpioLevel::LEVEL_LOW;
     return true;
 }
 
