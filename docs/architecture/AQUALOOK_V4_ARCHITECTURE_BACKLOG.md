@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.5 stratégie lecture d’état, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.6 injection passive WebManager, 8 juillet 2026
 
 ## État général
 
@@ -16,6 +16,8 @@ Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Ru
 Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction. Les tests rapides utilisateur confirment que Web et LCD semblent encore fonctionner correctement.
 
 Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`, sans modifier encore les écrans.
+
+Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore.
 
 ## Validation PlatformIO complète Run 4.4
 
@@ -89,6 +91,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté et compilé** |
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 | ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
+| ARCH-093 | Injection passive `WebManager` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 3.6
 
@@ -152,6 +155,17 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - le fallback vers `RelaisManager` restera obligatoire dans les premiers runs actifs ;
 - aucune modification Web/LCD active n’est introduite dans Run 4.5.
 
+## Décisions du Run 4.6
+
+- `WebManager.h` déclare `EquipmentOutputRuntimeAdapter` par forward declaration ;
+- `WebManager` expose `setOutputAdapter(...)` ;
+- `WebManager` stocke un pointeur optionnel `_outputs` ;
+- `main.cpp` appelle `webMgr.setOutputAdapter(&outputAdapter)` avant `webMgr.begin(...)` ;
+- aucune route Web n’utilise encore `_outputs` ;
+- `/api/status` reste inchangé ;
+- aucune modification NVS n’est introduite ;
+- aucune modification LCD n’est introduite.
+
 Documents de référence :
 
 ```text
@@ -160,10 +174,11 @@ docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_STATE_READ_STRATEGY.md
+docs/architecture/AQUALOOK_V4_WEBMANAGER_OUTPUT_ADAPTER_INJECTION.md
 ```
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.6 — injection passive de l’adaptateur dans WebManager**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.7 — lecture Web via helper EquipmentOutput avec fallback**.
 
-Objectif immédiat : préparer `WebManager` à recevoir `EquipmentOutputRuntimeAdapter`, sans modifier le JSON `/api/status`, sans modifier NVS et avec fallback intact vers `RelaisManager`.
+Objectif immédiat : modifier uniquement `WebManager::handleStatus()` et ajouter un helper privé `zoneValveActive(uint8_t zone) const`, avec fallback strict vers `RelaisManager::getState(zone)`.
