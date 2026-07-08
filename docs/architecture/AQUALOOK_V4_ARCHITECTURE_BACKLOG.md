@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.4 micro-correction compilation, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.4 compilation validée, 8 juillet 2026
 
 ## État général
 
@@ -13,7 +13,35 @@ La cartographie de `RelaisManager` a confirmé que le point d’insertion le moi
 
 Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
 
-Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`.
+Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction.
+
+## Validation PlatformIO complète Run 4.4
+
+```text
+Environment        Status    Duration
+ProgrammeArrosage  SUCCESS   00:02:20.491
+```
+
+```text
+RAM:   20.6% — 67,384 / 327,680 octets
+Flash: 62.6% — 1,272,369 / 2,031,616 octets
+```
+
+Capacité restante :
+
+```text
+RAM:   260,296 octets
+Flash: 759,247 octets
+```
+
+Delta depuis Run 3.6 :
+
+```text
+RAM:   +0 octet
+Flash: +308 octets
+```
+
+Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien avec les drivers V4.
 
 ## Validation PlatformIO complète Run 3.6
 
@@ -26,22 +54,6 @@ ProgrammeArrosage  SUCCESS   00:02:36.328
 RAM:   20.6% — 67,384 / 327,680 octets
 Flash: 62.6% — 1,272,061 / 2,031,616 octets
 ```
-
-Capacité restante :
-
-```text
-RAM:   260,296 octets
-Flash: 759,555 octets
-```
-
-Delta depuis Run 3.5 :
-
-```text
-RAM:   +0 octet
-Flash: +64 octets
-```
-
-Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien avec les drivers V4.
 
 ## Décisions principales
 
@@ -72,7 +84,7 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 | ARCH-087 | Cartographie runtime `RelaisManager` | **Documentée** |
 | ARCH-088 | Types domaine `EquipmentOutput` | **Ajoutés** |
 | ARCH-089 | Adaptateur runtime `EquipmentOutput` passif | **Ajouté** |
-| ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté, compilation à revalider** |
+| ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté et compilé** |
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 
 ## Décisions du Run 3.6
@@ -124,7 +136,7 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 - aucune valeur numérique de l’énumération n’est déplacée ;
 - aucune logique runtime n’est modifiée ;
 - aucune modification NVS n’est introduite ;
-- la compilation PlatformIO doit être relancée localement.
+- la compilation PlatformIO complète réussit après correction.
 
 Documents de référence :
 
@@ -135,15 +147,8 @@ docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
 ```
 
-## Validation hôte Run 3.6
-
-```text
-Compilation hôte OK
-registered=3 requested=3 failures-ok
-```
-
 ## Prochaine étape
 
-Relancer **AquaLook V4 — Phase 4 — Run 4.4 — Validation compilation**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.5 — stratégie de lecture d’état Web/LCD**.
 
-Objectif immédiat : exécuter `pio run -e ProgrammeArrosage` après la micro-correction `TARGET_DISABLED`, puis corriger uniquement les éventuelles erreurs restantes liées au branchement Run 4.3.
+Objectif immédiat : préparer la migration progressive des lectures `RelaisManager::getState(zone)` vers l’état logique `EquipmentOutput`, sans modifier NVS et sans changer encore les écrans Web/LCD tant que la stratégie n’est pas validée.
