@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.6 injection passive WebManager, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.6 compilation validée, 8 juillet 2026
 
 ## État général
 
@@ -17,7 +17,33 @@ Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation :
 
 Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`, sans modifier encore les écrans.
 
-Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore.
+Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore. La compilation PlatformIO complète est validée.
+
+## Validation PlatformIO complète Run 4.6
+
+```text
+Environment        Status    Duration
+ProgrammeArrosage  SUCCESS   00:00:20.060
+```
+
+```text
+RAM:   20.6% — 67,392 / 327,680 octets
+Flash: 62.6% — 1,272,377 / 2,031,616 octets
+```
+
+Capacité restante :
+
+```text
+RAM:   260,288 octets
+Flash: 759,239 octets
+```
+
+Delta depuis Run 4.4 :
+
+```text
+RAM:   +8 octets
+Flash: +8 octets
+```
 
 ## Validation PlatformIO complète Run 4.4
 
@@ -29,20 +55,6 @@ ProgrammeArrosage  SUCCESS   00:02:20.491
 ```text
 RAM:   20.6% — 67,384 / 327,680 octets
 Flash: 62.6% — 1,272,369 / 2,031,616 octets
-```
-
-Capacité restante :
-
-```text
-RAM:   260,296 octets
-Flash: 759,247 octets
-```
-
-Delta depuis Run 3.6 :
-
-```text
-RAM:   +0 octet
-Flash: +308 octets
 ```
 
 Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien avec les drivers V4.
@@ -91,7 +103,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté et compilé** |
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 | ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
-| ARCH-093 | Injection passive `WebManager` | **Ajoutée, compilation à valider** |
+| ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
 
 ## Décisions du Run 3.6
 
@@ -164,7 +176,8 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - aucune route Web n’utilise encore `_outputs` ;
 - `/api/status` reste inchangé ;
 - aucune modification NVS n’est introduite ;
-- aucune modification LCD n’est introduite.
+- aucune modification LCD n’est introduite ;
+- la compilation PlatformIO complète réussit.
 
 Documents de référence :
 
