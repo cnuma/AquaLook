@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.3 callback EquipmentOutput, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.4 micro-correction compilation, 8 juillet 2026
 
 ## État général
 
@@ -12,6 +12,8 @@ La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La n
 La cartographie de `RelaisManager` a confirmé que le point d’insertion le moins risqué est le callback runtime `onRelayRequest(zone, state)` dans `main.cpp`.
 
 Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
+
+Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`.
 
 ## Validation PlatformIO complète Run 3.6
 
@@ -70,7 +72,8 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 | ARCH-087 | Cartographie runtime `RelaisManager` | **Documentée** |
 | ARCH-088 | Types domaine `EquipmentOutput` | **Ajoutés** |
 | ARCH-089 | Adaptateur runtime `EquipmentOutput` passif | **Ajouté** |
-| ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté, compilation à valider** |
+| ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté, compilation à revalider** |
+| ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 
 ## Décisions du Run 3.6
 
@@ -112,8 +115,16 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 - `onRelayRequest(zone, state)` appelle désormais `outputAdapter.setZoneValve(zone, state, millis())` ;
 - l’adaptateur délègue encore à `RelaisManager::setRelay(zone, state)` ;
 - aucun changement NVS n’est introduit ;
-- aucun driver V4 Phase 3 n’est activé directement ;
-- la compilation PlatformIO reste à valider localement.
+- aucun driver V4 Phase 3 n’est activé directement.
+
+## Décisions du Run 4.4
+
+- la compilation locale a révélé une collision entre la macro Arduino `DISABLED` et `OperationError::DISABLED` ;
+- `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED` ;
+- aucune valeur numérique de l’énumération n’est déplacée ;
+- aucune logique runtime n’est modifiée ;
+- aucune modification NVS n’est introduite ;
+- la compilation PlatformIO doit être relancée localement.
 
 Documents de référence :
 
@@ -133,6 +144,6 @@ registered=3 requested=3 failures-ok
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.4 — Validation compilation et micro-correction**.
+Relancer **AquaLook V4 — Phase 4 — Run 4.4 — Validation compilation**.
 
-Objectif immédiat : exécuter `pio run -e ProgrammeArrosage`, corriger uniquement les erreurs éventuelles liées au branchement Run 4.3, puis figer un checkpoint.
+Objectif immédiat : exécuter `pio run -e ProgrammeArrosage` après la micro-correction `TARGET_DISABLED`, puis corriger uniquement les éventuelles erreurs restantes liées au branchement Run 4.3.
