@@ -146,7 +146,7 @@ enum class OperationError : uint16_t {
     NONE = 0,
     INVALID_TARGET = 1,
     INVALID_STATE = 2,
-    DISABLED = 3,
+    TARGET_DISABLED = 3,
     INTERLOCKED = 4,
     DEPENDENCY_UNAVAILABLE = 5,
     CAPABILITY_NOT_SUPPORTED = 6,
