@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.4 compilation validée, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.5 stratégie lecture d’état, 8 juillet 2026
 
 ## État général
 
@@ -13,7 +13,9 @@ La cartographie de `RelaisManager` a confirmé que le point d’insertion le moi
 
 Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
 
-Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction.
+Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction. Les tests rapides utilisateur confirment que Web et LCD semblent encore fonctionner correctement.
+
+Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`, sans modifier encore les écrans.
 
 ## Validation PlatformIO complète Run 4.4
 
@@ -86,6 +88,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-089 | Adaptateur runtime `EquipmentOutput` passif | **Ajouté** |
 | ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté et compilé** |
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
+| ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
 
 ## Décisions du Run 3.6
 
@@ -136,7 +139,18 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - aucune valeur numérique de l’énumération n’est déplacée ;
 - aucune logique runtime n’est modifiée ;
 - aucune modification NVS n’est introduite ;
-- la compilation PlatformIO complète réussit après correction.
+- la compilation PlatformIO complète réussit après correction ;
+- Web et LCD semblent encore fonctionner correctement après test utilisateur rapide.
+
+## Décisions du Run 4.5
+
+- les lectures Web/LCD de `RelaisManager::getState(zone)` sont cartographiées ;
+- `WebManager::handleStatus()` publie encore `zones[].active` depuis `RelaisManager` ;
+- `DisplayManager::update()` utilise encore `RelaisManager` pour `anyActive` ;
+- `DisplayManager::handleTouchZone()` utilise encore `RelaisManager` pour choisir marche/arrêt manuel ;
+- la cible de migration est `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
+- le fallback vers `RelaisManager` restera obligatoire dans les premiers runs actifs ;
+- aucune modification Web/LCD active n’est introduite dans Run 4.5.
 
 Documents de référence :
 
@@ -145,10 +159,11 @@ docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
+docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_STATE_READ_STRATEGY.md
 ```
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.5 — stratégie de lecture d’état Web/LCD**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.6 — injection passive de l’adaptateur dans WebManager**.
 
-Objectif immédiat : préparer la migration progressive des lectures `RelaisManager::getState(zone)` vers l’état logique `EquipmentOutput`, sans modifier NVS et sans changer encore les écrans Web/LCD tant que la stratégie n’est pas validée.
+Objectif immédiat : préparer `WebManager` à recevoir `EquipmentOutputRuntimeAdapter`, sans modifier le JSON `/api/status`, sans modifier NVS et avec fallback intact vers `RelaisManager`.
