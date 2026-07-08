@@ -1,13 +1,15 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.1 engagé, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.1 cartographie runtime, 8 juillet 2026
 
 ## État général
 
 Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase 3 dispose maintenant d’un contrat binaire, d’un driver simulé, d’un driver GPIO concret isolé, d’un driver XL9535 conditionnel isolé, d’un bootstrap non-runtime du registre de drivers et d’une validation PlatformIO complète réussie après ajout du bootstrap.
 
 La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La notion générique retenue côté domaine/runtime est `EquipmentOutput`. La terminologie `Relay` reste réservée au backend physique relais.
+
+La cartographie de `RelaisManager` confirme que le point d’insertion le moins risqué est le callback runtime `onRelayRequest(zone, state)` dans `main.cpp`, avec délégation initiale inchangée vers `RelaisManager::setRelay(zone, state)`.
 
 ## Validation PlatformIO complète Run 3.6
 
@@ -62,7 +64,8 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 | ARCH-083 | Collisions de macros Arduino | **Corrigées** |
 | ARCH-084 | Adaptateur Arduino I²C/Wire | **Isolé et compilé** |
 | ARCH-085 | Bootstrap non-runtime des drivers | **Réalisé, testé hôte et compilé ESP32** |
-| ARCH-086 | Frontière `EquipmentOutput` / `Relay` | **Documentée, validation Run 4.1 en cours** |
+| ARCH-086 | Frontière `EquipmentOutput` / `Relay` | **Documentée** |
+| ARCH-087 | Cartographie runtime `RelaisManager` | **Documentée** |
 
 ## Décisions du Run 3.6
 
@@ -82,13 +85,16 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 - la terminologie `Relay` reste limitée à la couche physique relais ;
 - les relais restent le premier backend matériel, mais ne sont pas la notion centrale du runtime V4 ;
 - `RelaisManager` reste en place tant que la stratégie de transition n’est pas validée ;
+- le point d’insertion futur recommandé est `onRelayRequest(zone, state)` dans `main.cpp` ;
+- les lectures Web/LCD de `RelaisManager::getState(zone)` devront être traitées séparément d’un premier adaptateur de commande ;
 - aucune modification NVS n’est introduite ;
 - aucun changement runtime n’est introduit.
 
-Document de référence :
+Documents de référence :
 
 ```text
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
+docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 ```
 
 ## Validation hôte Run 3.6
@@ -100,6 +106,6 @@ registered=3 requested=3 failures-ok
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.1 — Stratégie d’intégration runtime des sorties**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.2 — Adaptateur `EquipmentOutput` non intrusif**.
 
-Objectif immédiat : analyser `RelaisManager` et cartographier ses points d’entrée runtime, sans modifier NVS ni comportement matériel.
+Objectif immédiat : préparer un adaptateur passif qui délègue encore à `RelaisManager`, sans modifier NVS, sans activer les drivers V4 et sans changer le comportement matériel.
