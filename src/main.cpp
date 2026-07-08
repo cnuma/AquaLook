@@ -104,6 +104,7 @@ void setup() {
     ntpMgr.begin(&configMgr);
     splashStep("NTP");
 
+    webMgr.setOutputAdapter(&outputAdapter);
     webMgr.registerSdStaticHandler(&storageMgr);
     webMgr.registerFaultRoutes();
     webMgr.begin(
