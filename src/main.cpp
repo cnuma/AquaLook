@@ -15,6 +15,7 @@
 #include "ConfigManager.h"
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"
+#include "EquipmentOutputRuntimeAdapter.h"
 
 WiFiManager wifiMgr;
 NTPManager ntpMgr;
@@ -25,9 +26,10 @@ WebManager webMgr;
 DisplayManager displayMgr;
 ConfigManager configMgr;
 StorageManager storageMgr;
+AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 
 static void onRelayRequest(uint8_t zone, bool state) {
-    relaisMgr.setRelay(zone, state);
+    outputAdapter.setZoneValve(zone, state, millis());
     EventBus::displayDirty = true;
 }
 
@@ -85,6 +87,7 @@ void setup() {
     splashStep("Configuration");
 
     relaisMgr.begin(&configMgr);
+    outputAdapter.bind(&relaisMgr);
     splashStep("Relais");
 
     scheduleMgr.begin();
