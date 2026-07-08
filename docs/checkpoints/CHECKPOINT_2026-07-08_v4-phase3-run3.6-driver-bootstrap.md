@@ -64,6 +64,43 @@ Validated:
 - duplicate controller type failure;
 - propagation of registry errors.
 
+## PlatformIO validation
+
+Command executed locally:
+
+```powershell
+pio run -e ProgrammeArrosage
+```
+
+Result:
+
+```text
+ProgrammeArrosage  SUCCESS
+1 succeeded, 0 failed
+Duration: 00:02:36.328
+```
+
+## Memory usage after bootstrap
+
+```text
+RAM:   20.6% — 67,384 bytes used of 327,680 bytes
+Flash: 62.6% — 1,272,061 bytes used of 2,031,616 bytes
+```
+
+Remaining capacity:
+
+```text
+RAM available:   260,296 bytes
+Flash available: 759,555 bytes
+```
+
+Delta from Run 3.5:
+
+```text
+RAM:   +0 bytes
+Flash: +64 bytes
+```
+
 ## Runtime impact
 
 No runtime component was modified:
@@ -81,12 +118,13 @@ LCD
 
 The bootstrap is compiled as an available helper but is not called by the firmware.
 
-## Validation remaining
+## Decision
 
-Run locally:
+Run 3.6 is complete.
 
-```powershell
-pio run -e ProgrammeArrosage
-```
-
-Record RAM and flash usage after success.
+- bootstrap plan: created;
+- registry strategy: consolidated;
+- host validation: successful;
+- PlatformIO validation: successful;
+- RAM/flash: recorded;
+- runtime behavior: unchanged.
