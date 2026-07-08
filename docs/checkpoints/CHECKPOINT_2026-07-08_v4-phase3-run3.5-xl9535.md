@@ -1,0 +1,103 @@
+# AquaLook V4 — Phase 3 — Run 3.5
+
+Date: 8 juillet 2026
+
+Branch: `feature/aqualook-v4-domain`
+
+Base: `9b9b4811ead2ac53d0d2af15089133eac8aa9293`
+
+## Objective
+
+Add an isolated conditional binary driver for XL9535 relay boards.
+
+## Created files
+
+```text
+src/domain/Xl9535BinaryActuatorDriver.h
+src/domain/Xl9535BinaryActuatorDriver.cpp
+src/drivers/ArduinoI2cPlatform.h
+src/drivers/ArduinoI2cPlatform.cpp
+```
+
+## Architecture
+
+```text
+BinaryActuator contract
+-> Xl9535BinaryActuatorDriver
+-> Xl9535I2cOps
+-> ArduinoI2cPlatform
+-> Wire
+```
+
+The domain layer does not include Wire.
+
+## Compilation condition
+
+```text
+AQUALOOK_V4_ENABLE_I2C
+```
+
+## Register model
+
+```text
+INPUT_PORT          0x00
+OUTPUT_PORT         0x02
+POLARITY_INVERSION  0x04
+CONFIGURATION       0x06
+```
+
+The driver reads and writes 16-bit registers, low byte first.
+
+## Safe configuration
+
+For a port configuration, the driver:
+
+1. probes the I2C address;
+2. writes the safe logical state into the output latch;
+3. writes the output latch register;
+4. clears only the target channel bit in the configuration mask.
+
+This keeps other channels unchanged and reduces output glitches.
+
+## Validation host
+
+```text
+Compilation hôte OK
+normalWrites=2 invertedWrites=2 reads=2 probes=3
+```
+
+Validated:
+
+- normal output mapping;
+- inverted output mapping;
+- logical readback;
+- absent device path;
+- safe state before output enable;
+- target channel only.
+
+## Runtime impact
+
+No runtime component was modified:
+
+```text
+main.cpp
+RelayTopology
+RelaisManager
+ConfigManager
+ScheduleManager
+NVS
+Web
+LCD
+```
+
+The XL9535 driver is not instantiated by the active firmware.
+
+## Validation remaining
+
+Run locally:
+
+```powershell
+pio run -e ProgrammeArrosage
+```
+
+Record RAM and flash usage after success.
