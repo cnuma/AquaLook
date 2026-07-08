@@ -15,6 +15,10 @@
 #include "FaultManager.h"
 #include "SdStaticHandler.h"
 
+namespace AquaLook { namespace Runtime {
+class EquipmentOutputRuntimeAdapter;
+}} // namespace AquaLook::Runtime
+
 class WebManager {
 public:
     void begin(NTPManager* ntp, WeatherManager* weather,
@@ -22,6 +26,10 @@ public:
                ConfigManager* config, WiFiManager* wifi = nullptr);
 
     void update();
+
+    void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs) {
+        _outputs = outputs;
+    }
 
     // A appeler avant begin(), donc avant _server.begin().
     void registerSdStaticHandler(StorageManager* storage) {
@@ -110,6 +118,7 @@ private:
     ScheduleManager* _schedule = nullptr;
     ConfigManager* _config = nullptr;
     WiFiManager* _wifi = nullptr;
+    AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     bool _sdStaticHandlerRegistered = false;
     bool _faultRoutesRegistered = false;
 
