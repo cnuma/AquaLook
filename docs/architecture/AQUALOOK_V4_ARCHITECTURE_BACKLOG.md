@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.2 adaptateur passif, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.3 callback EquipmentOutput, 8 juillet 2026
 
 ## État général
 
@@ -9,9 +9,9 @@ Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase
 
 La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La notion générique retenue côté domaine/runtime est `EquipmentOutput`. La terminologie `Relay` reste réservée au backend physique relais.
 
-La cartographie de `RelaisManager` confirme que le point d’insertion le moins risqué est le callback runtime `onRelayRequest(zone, state)` dans `main.cpp`, avec délégation initiale inchangée vers `RelaisManager::setRelay(zone, state)`.
+La cartographie de `RelaisManager` a confirmé que le point d’insertion le moins risqué est le callback runtime `onRelayRequest(zone, state)` dans `main.cpp`.
 
-Le Run 4.2 ajoute un adaptateur `EquipmentOutputRuntimeAdapter` passif. Il n’est pas instancié dans `main.cpp` et ne modifie donc pas le chemin runtime actif.
+Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
 
 ## Validation PlatformIO complète Run 3.6
 
@@ -69,7 +69,8 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 | ARCH-086 | Frontière `EquipmentOutput` / `Relay` | **Documentée** |
 | ARCH-087 | Cartographie runtime `RelaisManager` | **Documentée** |
 | ARCH-088 | Types domaine `EquipmentOutput` | **Ajoutés** |
-| ARCH-089 | Adaptateur runtime `EquipmentOutput` passif | **Ajouté, non branché** |
+| ARCH-089 | Adaptateur runtime `EquipmentOutput` passif | **Ajouté** |
+| ARCH-090 | Branchement callback `onRelayRequest` | **Ajouté, compilation à valider** |
 
 ## Décisions du Run 3.6
 
@@ -100,9 +101,19 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 - l’adaptateur runtime est placé hors de `src/domain`, car il connaît `RelaisManager` ;
 - l’adaptateur délègue encore les vannes de zone à `RelaisManager::setRelay(zone, state)` ;
 - l’adaptateur expose une lecture d’état logique via `RelaisManager::getState(zone)` ;
-- l’adaptateur n’est pas instancié dans `main.cpp` ;
 - aucune modification NVS n’est introduite ;
 - aucun changement matériel ou runtime actif n’est introduit.
+
+## Décisions du Run 4.3
+
+- `main.cpp` inclut désormais `EquipmentOutputRuntimeAdapter.h` ;
+- une instance globale `outputAdapter` est ajoutée ;
+- `outputAdapter.bind(&relaisMgr)` est appelé juste après `relaisMgr.begin(&configMgr)` ;
+- `onRelayRequest(zone, state)` appelle désormais `outputAdapter.setZoneValve(zone, state, millis())` ;
+- l’adaptateur délègue encore à `RelaisManager::setRelay(zone, state)` ;
+- aucun changement NVS n’est introduit ;
+- aucun driver V4 Phase 3 n’est activé directement ;
+- la compilation PlatformIO reste à valider localement.
 
 Documents de référence :
 
@@ -110,6 +121,7 @@ Documents de référence :
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
+docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
 ```
 
 ## Validation hôte Run 3.6
@@ -121,6 +133,6 @@ registered=3 requested=3 failures-ok
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.3 — Branchement contrôlé du callback `onRelayRequest`**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.4 — Validation compilation et micro-correction**.
 
-Objectif immédiat : instancier l’adaptateur et remplacer uniquement le corps du callback `onRelayRequest(zone, state)` pour déléguer via `EquipmentOutputRuntimeAdapter`, avec compilation PlatformIO obligatoire.
+Objectif immédiat : exécuter `pio run -e ProgrammeArrosage`, corriger uniquement les erreurs éventuelles liées au branchement Run 4.3, puis figer un checkpoint.
