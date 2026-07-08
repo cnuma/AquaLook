@@ -75,6 +75,43 @@ Validated:
 - safe state before output enable;
 - target channel only.
 
+## PlatformIO validation
+
+Command executed locally:
+
+```powershell
+pio run -e ProgrammeArrosage
+```
+
+Result:
+
+```text
+ProgrammeArrosage  SUCCESS
+1 succeeded, 0 failed
+Duration: 00:02:54.294
+```
+
+## Memory usage after XL9535 driver
+
+```text
+RAM:   20.6% — 67,384 bytes used of 327,680 bytes
+Flash: 62.6% — 1,271,997 bytes used of 2,031,616 bytes
+```
+
+Remaining capacity:
+
+```text
+RAM available:   260,296 bytes
+Flash available: 759,619 bytes
+```
+
+Delta from Run 3.4:
+
+```text
+RAM:   +0 bytes
+Flash: +248 bytes
+```
+
 ## Runtime impact
 
 No runtime component was modified:
@@ -90,14 +127,15 @@ Web
 LCD
 ```
 
-The XL9535 driver is not instantiated by the active firmware.
+The XL9535 driver is compiled but not instantiated by the active firmware.
 
-## Validation remaining
+## Decision
 
-Run locally:
+Run 3.5 is complete.
 
-```powershell
-pio run -e ProgrammeArrosage
-```
-
-Record RAM and flash usage after success.
+- XL9535 driver: created;
+- Arduino/Wire adapter: created and isolated;
+- host validation: successful;
+- PlatformIO validation: successful;
+- RAM/flash: recorded;
+- runtime behavior: unchanged.
