@@ -1,11 +1,13 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 3 — Run 3.6 clôturé, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.1 engagé, 8 juillet 2026
 
 ## État général
 
 Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase 3 dispose maintenant d’un contrat binaire, d’un driver simulé, d’un driver GPIO concret isolé, d’un driver XL9535 conditionnel isolé, d’un bootstrap non-runtime du registre de drivers et d’une validation PlatformIO complète réussie après ajout du bootstrap.
+
+La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La notion générique retenue côté domaine/runtime est `EquipmentOutput`. La terminologie `Relay` reste réservée au backend physique relais.
 
 ## Validation PlatformIO complète Run 3.6
 
@@ -60,6 +62,7 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 | ARCH-083 | Collisions de macros Arduino | **Corrigées** |
 | ARCH-084 | Adaptateur Arduino I²C/Wire | **Isolé et compilé** |
 | ARCH-085 | Bootstrap non-runtime des drivers | **Réalisé, testé hôte et compilé ESP32** |
+| ARCH-086 | Frontière `EquipmentOutput` / `Relay` | **Documentée, validation Run 4.1 en cours** |
 
 ## Décisions du Run 3.6
 
@@ -73,6 +76,21 @@ Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien
 - la compilation PlatformIO complète réussit ;
 - aucun raccord à `RelaisManager` ou au runtime actif n’est introduit.
 
+## Décisions du Run 4.1
+
+- la couche domaine/runtime doit parler de `EquipmentOutput` plutôt que de relais ;
+- la terminologie `Relay` reste limitée à la couche physique relais ;
+- les relais restent le premier backend matériel, mais ne sont pas la notion centrale du runtime V4 ;
+- `RelaisManager` reste en place tant que la stratégie de transition n’est pas validée ;
+- aucune modification NVS n’est introduite ;
+- aucun changement runtime n’est introduit.
+
+Document de référence :
+
+```text
+docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
+```
+
 ## Validation hôte Run 3.6
 
 ```text
@@ -82,4 +100,6 @@ registered=3 requested=3 failures-ok
 
 ## Prochaine étape
 
-Démarrer **AquaLook V4 — Phase 3 — Run 3.7 — Point d’instanciation expérimental désactivé par défaut** ou figer un checkpoint de fin de Phase 3 avant intégration runtime.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.1 — Stratégie d’intégration runtime des sorties**.
+
+Objectif immédiat : analyser `RelaisManager` et cartographier ses points d’entrée runtime, sans modifier NVS ni comportement matériel.
