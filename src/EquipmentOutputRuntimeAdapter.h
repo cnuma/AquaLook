@@ -9,9 +9,12 @@ class RelaisManager;
 
 namespace AquaLook { namespace Runtime {
 
+class RelayPhysicalBackend;
+
 class EquipmentOutputRuntimeAdapter {
 public:
     void bind(RelaisManager* relayManager);
+    void setPhysicalBackend(RelayPhysicalBackend* physicalBackend);
     bool isBound() const;
 
     Domain::OperationResult command(
@@ -29,6 +32,7 @@ public:
 
 private:
     RelaisManager* _relayManager = nullptr;
+    RelayPhysicalBackend* _physicalBackend = nullptr;
     uint16_t _nextExecutionValue = 1U;
 
     Domain::ExecutionId nextExecutionId();
