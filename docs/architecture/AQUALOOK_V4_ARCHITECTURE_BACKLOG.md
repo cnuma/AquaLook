@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.10 plan du prochain raccord runtime, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.11 interface passive RelayPhysicalBackend, 9 juillet 2026
 
 ## État général
 
@@ -12,6 +12,8 @@ La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La n
 Le Run 4.9 fige la migration des lectures d’état Web/LCD via `EquipmentOutputRuntimeAdapter`, avec fallback `RelaisManager`, compilation validée et test rapide Web/LCD validé.
 
 Le Run 4.10 documente le prochain raccord runtime recommandé : ne pas brancher les drivers V4 réels immédiatement, mais préparer d’abord une frontière passive `RelayPhysicalBackend`, avec `RelaisManager` comme implémentation active.
+
+Le Run 4.11 ajoute l’interface passive `RelayPhysicalBackend` et l’adaptateur `RelaisManagerBackend`. Aucun fichier runtime existant n’est modifié et aucun branchement actif n’est introduit.
 
 ## Validation PlatformIO complète Run 4.9
 
@@ -26,38 +28,6 @@ Capacité restante :
 RAM:   260,280 octets
 Flash: 758,911 octets
 ```
-
-Delta depuis Run 4.7 :
-
-```text
-RAM:   +8 octets
-Flash: +200 octets
-```
-
-## Validation fonctionnelle Run 4.9
-
-Test rapide validé par l’utilisateur :
-
-```text
-/api/status OK
-/api/storage OK
-page principale OK après réinsertion SD
-LCD veille/réveil OK
-état zone active LCD/Web OK
-```
-
-Observation SD : un appel de page a retourné temporairement `Not found`. `/api/storage` indiquait ensuite :
-
-```text
-status              ready
-message             Carte SD operationnelle, ressources Web disponibles.
-sdAvailable         true
-webAssetsAvailable  true
-cardType            SDHC/SDXC
-capacityBytes       31914983424
-```
-
-Après retrait/remise de la carte SD, la page a de nouveau fonctionné. Aucun correctif code n’est appliqué à ce stade ; conserver comme point de vigilance matériel/runtime SD.
 
 ## Décisions principales
 
@@ -96,21 +66,7 @@ Après retrait/remise de la carte SD, la page a de nouveau fonctionné. Aucun co
 | ARCH-095 | Injection passive `DisplayManager` | **Ajoutée, compilation à valider** |
 | ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée et compilée** |
 | ARCH-097 | Plan prochain raccord runtime | **Documenté** |
-
-## Décisions du Run 4.9
-
-- `DisplayManager.h` inclut désormais `EquipmentOutputRuntimeAdapter.h` ;
-- le membre `_relais` de `DisplayManager` devient une façade `OutputAwareRelayState` ;
-- `OutputAwareRelayState::getState(zone)` lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
-- si l’état est `VALID`, `BINARY`, la valeur binaire est utilisée ;
-- sinon, fallback vers `RelaisManager::getState(zone)` ;
-- `DisplayManager.cpp` n’est pas modifié ;
-- les appels LCD existants à `_relais->getState(zone)` passent désormais par la façade ;
-- la portée réelle est plus large que le seul `anyActive`, mais le comportement reste équivalent tant que l’adaptateur délègue à `RelaisManager` ;
-- aucune modification NVS n’est introduite ;
-- aucune modification Web n’est introduite ;
-- la compilation PlatformIO est validée ;
-- le test rapide Web/LCD est validé.
+| ARCH-098 | Interface passive `RelayPhysicalBackend` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 4.10
 
@@ -121,11 +77,25 @@ Après retrait/remise de la carte SD, la page a de nouveau fonctionné. Aucun co
 - conserver les drivers V4 réels hors runtime actif jusqu’à validation de cette frontière ;
 - ne pas toucher NVS.
 
+## Décisions du Run 4.11
+
+- ajout de `src/RelayPhysicalBackend.h` ;
+- ajout de `src/RelaisManagerBackend.h` ;
+- ajout de `src/RelaisManagerBackend.cpp` ;
+- `RelayPhysicalBackend` expose `setZoneValve(...)` et `getZoneValveState(...)` ;
+- `RelaisManagerBackend` adapte `RelaisManager::setRelay(...)` et `RelaisManager::getState(...)` ;
+- aucun fichier runtime existant n’est modifié ;
+- `EquipmentOutputRuntimeAdapter` n’est pas encore modifié ;
+- `main.cpp` n’est pas modifié ;
+- aucun driver V4 réel n’est activé ;
+- les fallbacks Web/LCD restent en place.
+
 Documents de référence :
 
 ```text
 docs/checkpoints/CHECKPOINT_2026-07-09_v4-phase4-run4-9-web-lcd-state-read-validated.md
 docs/architecture/AQUALOOK_V4_RUNTIME_BRIDGE_NEXT_STEP_PLAN.md
+docs/architecture/AQUALOOK_V4_RELAY_PHYSICAL_BACKEND.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
@@ -139,17 +109,27 @@ docs/architecture/AQUALOOK_V4_LCD_OUTPUT_STATE_READ.md
 
 ## Prochaine étape
 
-```text
-AquaLook V4 — Phase 4 — Run 4.11
-Interface passive RelayPhysicalBackend + adaptateur RelaisManagerBackend
+Valider **AquaLook V4 — Phase 4 — Run 4.11 — compilation**.
+
+Commande :
+
+```powershell
+pio run -e ProgrammeArrosage
 ```
 
-Invariants du Run 4.11 :
+Après compilation OK :
+
+```text
+AquaLook V4 — Phase 4 — Run 4.12
+Injection passive RelayPhysicalBackend dans EquipmentOutputRuntimeAdapter
+```
+
+Invariants du Run 4.12 :
 
 - aucun changement NVS ;
 - aucun changement Web ;
 - aucun changement LCD ;
 - aucun changement JSON ;
 - aucun driver V4 réel activé ;
-- `RelaisManager` reste l’implémentation active ;
+- fallback direct `RelaisManager` conservé ;
 - compilation PlatformIO obligatoire.
