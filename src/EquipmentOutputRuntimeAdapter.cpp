@@ -1,6 +1,7 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 
 #include "RelaisManager.h"
+#include "RelayPhysicalBackend.h"
 #include "config.h"
 
 namespace AquaLook { namespace Runtime {
@@ -9,8 +10,14 @@ void EquipmentOutputRuntimeAdapter::bind(RelaisManager* relayManager) {
     _relayManager = relayManager;
 }
 
+void EquipmentOutputRuntimeAdapter::setPhysicalBackend(
+    RelayPhysicalBackend* physicalBackend
+) {
+    _physicalBackend = physicalBackend;
+}
+
 bool EquipmentOutputRuntimeAdapter::isBound() const {
-    return _relayManager != nullptr;
+    return _relayManager != nullptr || _physicalBackend != nullptr;
 }
 
 Domain::ExecutionId EquipmentOutputRuntimeAdapter::nextExecutionId() {
@@ -73,15 +80,24 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
         return rejected(equipmentId, Domain::OperationError::INVALID_TARGET, nowMs);
     }
 
-    if (!_relayManager) {
+    bool applied = false;
+
+    if (_physicalBackend) {
+        applied = _physicalBackend->setZoneValve(zoneIndex, active, nowMs);
+    }
+
+    if (!applied && _relayManager) {
+        _relayManager->setRelay(zoneIndex, active);
+        applied = true;
+    }
+
+    if (!applied) {
         return rejected(
             equipmentId,
             Domain::OperationError::DEPENDENCY_UNAVAILABLE,
             nowMs
         );
     }
-
-    _relayManager->setRelay(zoneIndex, active);
 
     Domain::OperationResult result;
     result.executionId = nextExecutionId();
@@ -104,18 +120,28 @@ Domain::EquipmentStateValue EquipmentOutputRuntimeAdapter::getZoneValveState(
         );
     }
 
-    if (!_relayManager) {
+    bool active = false;
+
+    if (_physicalBackend && _physicalBackend->getZoneValveState(zoneIndex, active)) {
         return Domain::EquipmentStateValue(
-            0,
+            active ? 1 : 0,
             Domain::StateValueKind::BINARY,
-            Domain::StateValidity::UNKNOWN
+            Domain::StateValidity::VALID
+        );
+    }
+
+    if (_relayManager) {
+        return Domain::EquipmentStateValue(
+            _relayManager->getState(zoneIndex) ? 1 : 0,
+            Domain::StateValueKind::BINARY,
+            Domain::StateValidity::VALID
         );
     }
 
     return Domain::EquipmentStateValue(
-        _relayManager->getState(zoneIndex) ? 1 : 0,
+        0,
         Domain::StateValueKind::BINARY,
-        Domain::StateValidity::VALID
+        Domain::StateValidity::UNKNOWN
     );
 }
 
