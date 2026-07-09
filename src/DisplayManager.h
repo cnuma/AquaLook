@@ -12,6 +12,10 @@
 #include "ConfigManager.h"
 #include "ScreenManager.h"
 
+namespace AquaLook { namespace Runtime {
+class EquipmentOutputRuntimeAdapter;
+}} // namespace AquaLook::Runtime
+
 // ═══════════════════════════════════════════════════════════════
 //  Layout HOME 320×240 (rotation 1)
 //
@@ -71,6 +75,10 @@ public:
                ConfigManager* config);
     void update();
 
+    void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs) {
+        _outputs = outputs;
+    }
+
     static constexpr uint8_t SPLASH_STEPS = 8;
 
 private:
@@ -93,6 +101,7 @@ private:
     NTPManager*      _ntp      = nullptr;
     WeatherManager*  _weather  = nullptr;
     RelaisManager*   _relais   = nullptr;
+    AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     ScheduleManager* _schedule = nullptr;
     ConfigManager*   _config   = nullptr;
     ScreenManager    _screenMgr;  // veille + LED
