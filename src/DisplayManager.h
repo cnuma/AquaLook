@@ -11,10 +11,7 @@
 #include "ScheduleManager.h"
 #include "ConfigManager.h"
 #include "ScreenManager.h"
-
-namespace AquaLook { namespace Runtime {
-class EquipmentOutputRuntimeAdapter;
-}} // namespace AquaLook::Runtime
+#include "EquipmentOutputRuntimeAdapter.h"
 
 // ═══════════════════════════════════════════════════════════════
 //  Layout HOME 320×240 (rotation 1)
@@ -77,11 +74,48 @@ public:
 
     void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs) {
         _outputs = outputs;
+        _relais.outputs = outputs;
     }
 
     static constexpr uint8_t SPLASH_STEPS = 8;
 
 private:
+    struct OutputAwareRelayState {
+        RelaisManager* relay = nullptr;
+        AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs = nullptr;
+
+        OutputAwareRelayState& operator=(RelaisManager* value) {
+            relay = value;
+            return *this;
+        }
+
+        explicit operator bool() const {
+            return relay != nullptr;
+        }
+
+        OutputAwareRelayState* operator->() {
+            return this;
+        }
+
+        const OutputAwareRelayState* operator->() const {
+            return this;
+        }
+
+        bool getState(uint8_t zone) const {
+            if (outputs) {
+                const AquaLook::Domain::EquipmentStateValue state =
+                    outputs->getZoneValveState(zone);
+
+                if (state.validity == AquaLook::Domain::StateValidity::VALID &&
+                    state.kind == AquaLook::Domain::StateValueKind::BINARY) {
+                    return state.value != 0;
+                }
+            }
+
+            return relay ? relay->getState(zone) : false;
+        }
+    };
+
     // ── Hardware ──────────────────────────────
     TFT_eSPI            _tft;
     SPIClass            _touchSPI { VSPI };
@@ -100,7 +134,7 @@ private:
     // ── Managers ──────────────────────────────
     NTPManager*      _ntp      = nullptr;
     WeatherManager*  _weather  = nullptr;
-    RelaisManager*   _relais   = nullptr;
+    OutputAwareRelayState _relais;
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     ScheduleManager* _schedule = nullptr;
     ConfigManager*   _config   = nullptr;
