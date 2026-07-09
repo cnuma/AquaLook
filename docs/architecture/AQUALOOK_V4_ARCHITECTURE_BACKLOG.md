@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.7 lecture état Web via EquipmentOutput, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.7 compilation validée, 9 juillet 2026
 
 ## État général
 
@@ -19,7 +19,33 @@ Le Run 4.5 documente la stratégie de migration progressive des lectures d’ét
 
 Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore. La compilation PlatformIO complète est validée.
 
-Le Run 4.7 fait passer les lectures d’état Web existantes via une façade de lecture `OutputAwareRelayState`. Cette façade lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)`, puis retombe sur `RelaisManager::getState(zone)` si l’état EquipmentOutput n’est pas exploitable. Le JSON `/api/status` reste inchangé.
+Le Run 4.7 fait passer les lectures d’état Web existantes via une façade de lecture `OutputAwareRelayState`. Cette façade lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)`, puis retombe sur `RelaisManager::getState(zone)` si l’état EquipmentOutput n’est pas exploitable. Le JSON `/api/status` reste inchangé. La compilation PlatformIO complète est validée.
+
+## Validation PlatformIO complète Run 4.7
+
+```text
+Environment        Status    Duration
+ProgrammeArrosage  SUCCESS   00:03:07.759
+```
+
+```text
+RAM:   20.6% — 67,392 / 327,680 octets
+Flash: 62.6% — 1,272,505 / 2,031,616 octets
+```
+
+Capacité restante :
+
+```text
+RAM:   260,288 octets
+Flash: 759,111 octets
+```
+
+Delta depuis Run 4.6 :
+
+```text
+RAM:   +0 octet
+Flash: +128 octets
+```
 
 ## Validation PlatformIO complète Run 4.6
 
@@ -31,20 +57,6 @@ ProgrammeArrosage  SUCCESS   00:00:20.060
 ```text
 RAM:   20.6% — 67,392 / 327,680 octets
 Flash: 62.6% — 1,272,377 / 2,031,616 octets
-```
-
-Capacité restante :
-
-```text
-RAM:   260,288 octets
-Flash: 759,239 octets
-```
-
-Delta depuis Run 4.4 :
-
-```text
-RAM:   +8 octets
-Flash: +8 octets
 ```
 
 ## Validation PlatformIO complète Run 4.4
@@ -106,7 +118,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 | ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
 | ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
-| ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée, compilation à valider** |
+| ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée et compilée** |
 
 ## Décisions du Run 3.6
 
@@ -192,7 +204,8 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - la ligne existante de `WebManager::handleStatus()` conserve le même format JSON ;
 - `/api/status` conserve `zones[].active` en booléen ;
 - aucune modification NVS n’est introduite ;
-- aucune modification LCD n’est introduite.
+- aucune modification LCD n’est introduite ;
+- la compilation PlatformIO complète réussit.
 
 Documents de référence :
 
@@ -208,12 +221,6 @@ docs/architecture/AQUALOOK_V4_WEB_STATUS_OUTPUT_STATE_READ.md
 
 ## Prochaine étape
 
-Valider **AquaLook V4 — Phase 4 — Run 4.7 — compilation**.
+Poursuivre **AquaLook V4 — Phase 4 — Run 4.8 — injection passive de `EquipmentOutputRuntimeAdapter` dans `DisplayManager`**.
 
-Commande :
-
-```powershell
-pio run -e ProgrammeArrosage
-```
-
-Objectif immédiat : confirmer que la façade `OutputAwareRelayState` compile correctement, puis vérifier que `/api/status` expose toujours `zones[].active` comme avant.
+Objectif immédiat : préparer la migration des lectures LCD, sans modifier encore `DisplayManager::update()`, `DisplayManager::handleTouchZone()`, les écrans, le tactile ou la veille.
