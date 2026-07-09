@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.11 interface passive RelayPhysicalBackend, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.12 injection passive RelayPhysicalBackend, 9 juillet 2026
 
 ## État général
 
@@ -13,21 +13,20 @@ Le Run 4.9 fige la migration des lectures d’état Web/LCD via `EquipmentOutput
 
 Le Run 4.10 documente le prochain raccord runtime recommandé : ne pas brancher les drivers V4 réels immédiatement, mais préparer d’abord une frontière passive `RelayPhysicalBackend`, avec `RelaisManager` comme implémentation active.
 
-Le Run 4.11 ajoute l’interface passive `RelayPhysicalBackend` et l’adaptateur `RelaisManagerBackend`. Aucun fichier runtime existant n’est modifié et aucun branchement actif n’est introduit.
+Le Run 4.11 ajoute l’interface passive `RelayPhysicalBackend` et l’adaptateur `RelaisManagerBackend`. Aucun branchement actif n’est introduit.
 
-## Validation PlatformIO complète Run 4.9
+Le Run 4.12 injecte passivement `RelayPhysicalBackend` dans `EquipmentOutputRuntimeAdapter`. Le backend physique optionnel est consulté en premier s’il est renseigné, puis le fallback direct `RelaisManager` est conservé. `main.cpp` n’est pas modifié, donc le runtime actif reste inchangé tant que `setPhysicalBackend(...)` n’est pas appelé.
+
+## Dernière validation PlatformIO complète connue
+
+Run 4.9 :
 
 ```text
 RAM:   20.6% — 67,400 / 327,680 octets
 Flash: 62.6% — 1,272,705 / 2,031,616 octets
 ```
 
-Capacité restante :
-
-```text
-RAM:   260,280 octets
-Flash: 758,911 octets
-```
+Run 4.11 et Run 4.12 ont été enchaînés sans compilation intermédiaire. La prochaine compilation validera les deux runs.
 
 ## Décisions principales
 
@@ -67,15 +66,7 @@ Flash: 758,911 octets
 | ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée et compilée** |
 | ARCH-097 | Plan prochain raccord runtime | **Documenté** |
 | ARCH-098 | Interface passive `RelayPhysicalBackend` | **Ajoutée, compilation à valider** |
-
-## Décisions du Run 4.10
-
-- ne pas brancher directement les drivers V4 Phase 3 dans le runtime actif ;
-- différer la factorisation des façades Web/LCD pour éviter de toucher une séquence fraîchement validée ;
-- préparer d’abord une frontière runtime passive `RelayPhysicalBackend` ;
-- garder `RelaisManager` comme implémentation active du backend physique ;
-- conserver les drivers V4 réels hors runtime actif jusqu’à validation de cette frontière ;
-- ne pas toucher NVS.
+| ARCH-099 | Injection passive `RelayPhysicalBackend` dans `EquipmentOutputRuntimeAdapter` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 4.11
 
@@ -85,10 +76,23 @@ Flash: 758,911 octets
 - `RelayPhysicalBackend` expose `setZoneValve(...)` et `getZoneValveState(...)` ;
 - `RelaisManagerBackend` adapte `RelaisManager::setRelay(...)` et `RelaisManager::getState(...)` ;
 - aucun fichier runtime existant n’est modifié ;
-- `EquipmentOutputRuntimeAdapter` n’est pas encore modifié ;
 - `main.cpp` n’est pas modifié ;
 - aucun driver V4 réel n’est activé ;
 - les fallbacks Web/LCD restent en place.
+
+## Décisions du Run 4.12
+
+- `EquipmentOutputRuntimeAdapter.h` déclare `RelayPhysicalBackend` ;
+- `EquipmentOutputRuntimeAdapter` expose `setPhysicalBackend(...)` ;
+- `EquipmentOutputRuntimeAdapter` stocke `_physicalBackend` ;
+- `setZoneValve(...)` essaie `_physicalBackend` si disponible ;
+- si le backend physique est absent ou échoue, fallback direct vers `_relayManager->setRelay(...)` ;
+- `getZoneValveState(...)` essaie `_physicalBackend` si disponible ;
+- si le backend physique est absent ou ne renvoie pas d’état exploitable, fallback direct vers `_relayManager->getState(...)` ;
+- `main.cpp` n’est pas modifié ;
+- aucun appel `outputAdapter.setPhysicalBackend(...)` n’est encore ajouté ;
+- aucun driver V4 réel n’est activé ;
+- aucun changement NVS, Web, LCD ou JSON.
 
 Documents de référence :
 
@@ -96,6 +100,7 @@ Documents de référence :
 docs/checkpoints/CHECKPOINT_2026-07-09_v4-phase4-run4-9-web-lcd-state-read-validated.md
 docs/architecture/AQUALOOK_V4_RUNTIME_BRIDGE_NEXT_STEP_PLAN.md
 docs/architecture/AQUALOOK_V4_RELAY_PHYSICAL_BACKEND.md
+docs/architecture/AQUALOOK_V4_OUTPUT_ADAPTER_PHYSICAL_BACKEND_INJECTION.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
@@ -109,7 +114,7 @@ docs/architecture/AQUALOOK_V4_LCD_OUTPUT_STATE_READ.md
 
 ## Prochaine étape
 
-Valider **AquaLook V4 — Phase 4 — Run 4.11 — compilation**.
+Valider **Run 4.11 + Run 4.12 — compilation**.
 
 Commande :
 
@@ -120,16 +125,16 @@ pio run -e ProgrammeArrosage
 Après compilation OK :
 
 ```text
-AquaLook V4 — Phase 4 — Run 4.12
-Injection passive RelayPhysicalBackend dans EquipmentOutputRuntimeAdapter
+AquaLook V4 — Phase 4 — Run 4.13
+Câblage passif RelaisManagerBackend dans main.cpp
 ```
 
-Invariants du Run 4.12 :
+Invariants du Run 4.13 :
 
 - aucun changement NVS ;
 - aucun changement Web ;
 - aucun changement LCD ;
 - aucun changement JSON ;
 - aucun driver V4 réel activé ;
-- fallback direct `RelaisManager` conservé ;
+- conserver `outputAdapter.bind(&relaisMgr)` comme fallback ;
 - compilation PlatformIO obligatoire.
