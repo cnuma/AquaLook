@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.7 compilation validée, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.8 injection passive DisplayManager, 9 juillet 2026
 
 ## État général
 
@@ -20,6 +20,8 @@ Le Run 4.5 documente la stratégie de migration progressive des lectures d’ét
 Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore. La compilation PlatformIO complète est validée.
 
 Le Run 4.7 fait passer les lectures d’état Web existantes via une façade de lecture `OutputAwareRelayState`. Cette façade lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)`, puis retombe sur `RelaisManager::getState(zone)` si l’état EquipmentOutput n’est pas exploitable. Le JSON `/api/status` reste inchangé. La compilation PlatformIO complète est validée.
+
+Le Run 4.8 injecte passivement `EquipmentOutputRuntimeAdapter` dans `DisplayManager`. Le pointeur est câblé depuis `main.cpp`, mais aucune lecture LCD n’est encore migrée.
 
 ## Validation PlatformIO complète Run 4.7
 
@@ -119,6 +121,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
 | ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
 | ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée et compilée** |
+| ARCH-095 | Injection passive `DisplayManager` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 3.6
 
@@ -207,6 +210,17 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - aucune modification LCD n’est introduite ;
 - la compilation PlatformIO complète réussit.
 
+## Décisions du Run 4.8
+
+- `DisplayManager.h` déclare `EquipmentOutputRuntimeAdapter` par forward declaration ;
+- `DisplayManager` expose `setOutputAdapter(...)` ;
+- `DisplayManager` stocke un pointeur optionnel `_outputs` ;
+- `main.cpp` appelle `displayMgr.setOutputAdapter(&outputAdapter)` avant `displayMgr.begin(...)` ;
+- aucune lecture LCD n’utilise encore `_outputs` ;
+- `DisplayManager.cpp` n’est pas modifié ;
+- aucune modification NVS n’est introduite ;
+- aucune modification Web n’est introduite.
+
 Documents de référence :
 
 ```text
@@ -217,10 +231,17 @@ docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_STATE_READ_STRATEGY.md
 docs/architecture/AQUALOOK_V4_WEBMANAGER_OUTPUT_ADAPTER_INJECTION.md
 docs/architecture/AQUALOOK_V4_WEB_STATUS_OUTPUT_STATE_READ.md
+docs/architecture/AQUALOOK_V4_DISPLAYMANAGER_OUTPUT_ADAPTER_INJECTION.md
 ```
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.8 — injection passive de `EquipmentOutputRuntimeAdapter` dans `DisplayManager`**.
+Valider **AquaLook V4 — Phase 4 — Run 4.8 — compilation**.
 
-Objectif immédiat : préparer la migration des lectures LCD, sans modifier encore `DisplayManager::update()`, `DisplayManager::handleTouchZone()`, les écrans, le tactile ou la veille.
+Commande :
+
+```powershell
+pio run -e ProgrammeArrosage
+```
+
+Objectif immédiat : confirmer que l’injection passive de `EquipmentOutputRuntimeAdapter` dans `DisplayManager` compile correctement, sans changement comportemental LCD.
