@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.9 lecture état LCD via EquipmentOutput, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.9 compilation validée, 9 juillet 2026
 
 ## État général
 
@@ -21,7 +21,14 @@ Le Run 4.7 fait passer les lectures d’état Web existantes via une façade `Ou
 
 Le Run 4.8 injecte passivement `EquipmentOutputRuntimeAdapter` dans `DisplayManager`. Le pointeur est câblé depuis `main.cpp`, mais aucune lecture LCD n’est encore migrée.
 
-Le Run 4.9 fait passer les lectures d’état LCD existantes via une façade `OutputAwareRelayState`. Cette approche intercepte les appels LCD existants à `_relais->getState(zone)`, avec lecture prioritaire `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` puis fallback `RelaisManager::getState(zone)`.
+Le Run 4.9 fait passer les lectures d’état LCD existantes via une façade `OutputAwareRelayState`. Cette approche intercepte les appels LCD existants à `_relais->getState(zone)`, avec lecture prioritaire `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` puis fallback `RelaisManager::getState(zone)`. La compilation PlatformIO est validée par l’utilisateur. Les métriques RAM/Flash n’ont pas été fournies dans le message de validation.
+
+## Validation PlatformIO Run 4.9
+
+```text
+Compilation SUCCESS validée par l’utilisateur.
+Métriques RAM/Flash non fournies dans le message de validation.
+```
 
 ## Validation PlatformIO complète Run 4.7
 
@@ -122,7 +129,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
 | ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée et compilée** |
 | ARCH-095 | Injection passive `DisplayManager` | **Ajoutée, compilation à valider** |
-| ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée, compilation à valider** |
+| ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée et compilée** |
 
 ## Décisions du Run 4.1
 
@@ -208,7 +215,8 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - les appels LCD existants à `_relais->getState(zone)` passent désormais par la façade ;
 - la portée réelle est plus large que le seul `anyActive`, mais le comportement reste équivalent tant que l’adaptateur délègue à `RelaisManager` ;
 - aucune modification NVS n’est introduite ;
-- aucune modification Web n’est introduite.
+- aucune modification Web n’est introduite ;
+- la compilation PlatformIO est validée.
 
 Documents de référence :
 
@@ -226,12 +234,14 @@ docs/architecture/AQUALOOK_V4_LCD_OUTPUT_STATE_READ.md
 
 ## Prochaine étape
 
-Valider **AquaLook V4 — Phase 4 — Run 4.9 — compilation**.
+Effectuer un test rapide Web/LCD :
 
-Commande :
-
-```powershell
-pio run -e ProgrammeArrosage
+```text
+/api/status
+/api/storage
+page principale
+LCD veille/réveil
+état zone active LCD/Web
 ```
 
-Objectif immédiat : confirmer que la façade `OutputAwareRelayState` côté `DisplayManager` compile correctement, puis tester rapidement LCD/Web.
+Si le test est bon, créer un checkpoint de fin de séquence Web/LCD lectures d’état.
