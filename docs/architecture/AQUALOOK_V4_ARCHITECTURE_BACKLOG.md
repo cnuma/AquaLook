@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.8 injection passive DisplayManager, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.9 lecture état LCD via EquipmentOutput, 9 juillet 2026
 
 ## État général
 
@@ -9,19 +9,19 @@ Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase
 
 La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La notion générique retenue côté domaine/runtime est `EquipmentOutput`. La terminologie `Relay` reste réservée au backend physique relais.
 
-La cartographie de `RelaisManager` a confirmé que le point d’insertion le moins risqué est le callback runtime `onRelayRequest(zone, state)` dans `main.cpp`.
-
 Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
 
-Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation : `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction. Les tests rapides utilisateur confirment que Web et LCD semblent encore fonctionner correctement.
+Le Run 4.4 corrige la collision macro Arduino `DISABLED` / `OperationError::DISABLED`, renommé en `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction. Les tests rapides utilisateur confirment que Web et LCD semblent encore fonctionner correctement.
 
-Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`, sans modifier encore les écrans.
+Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`.
 
-Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore. La compilation PlatformIO complète est validée.
+Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`, compilation validée.
 
-Le Run 4.7 fait passer les lectures d’état Web existantes via une façade de lecture `OutputAwareRelayState`. Cette façade lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)`, puis retombe sur `RelaisManager::getState(zone)` si l’état EquipmentOutput n’est pas exploitable. Le JSON `/api/status` reste inchangé. La compilation PlatformIO complète est validée.
+Le Run 4.7 fait passer les lectures d’état Web existantes via une façade `OutputAwareRelayState`. Le JSON `/api/status` reste inchangé, compilation validée.
 
 Le Run 4.8 injecte passivement `EquipmentOutputRuntimeAdapter` dans `DisplayManager`. Le pointeur est câblé depuis `main.cpp`, mais aucune lecture LCD n’est encore migrée.
+
+Le Run 4.9 fait passer les lectures d’état LCD existantes via une façade `OutputAwareRelayState`. Cette approche intercepte les appels LCD existants à `_relais->getState(zone)`, avec lecture prioritaire `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` puis fallback `RelaisManager::getState(zone)`.
 
 ## Validation PlatformIO complète Run 4.7
 
@@ -122,18 +122,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
 | ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée et compilée** |
 | ARCH-095 | Injection passive `DisplayManager` | **Ajoutée, compilation à valider** |
-
-## Décisions du Run 3.6
-
-- un plan `BinaryActuatorDriverBootstrapPlan` est ajouté ;
-- le bootstrap enregistre les drivers demandés dans un registre fourni ;
-- les contextes doivent être fournis explicitement par l’appelant ;
-- aucun registre global n’est créé ;
-- aucun driver n’est instancié automatiquement ;
-- les drivers disponibles sont filtrés par le profil compilé ;
-- les erreurs de registre sont propagées ;
-- la compilation PlatformIO complète réussit ;
-- aucun raccord à `RelaisManager` ou au runtime actif n’est introduit.
+| ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 4.1
 
@@ -142,9 +131,8 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - les relais restent le premier backend matériel, mais ne sont pas la notion centrale du runtime V4 ;
 - `RelaisManager` reste en place tant que la stratégie de transition n’est pas validée ;
 - le point d’insertion futur recommandé est `onRelayRequest(zone, state)` dans `main.cpp` ;
-- les lectures Web/LCD de `RelaisManager::getState(zone)` devront être traitées séparément d’un premier adaptateur de commande ;
-- aucune modification NVS n’est introduite ;
-- aucun changement runtime n’est introduit.
+- les lectures Web/LCD de `RelaisManager::getState(zone)` doivent être traitées séparément d’un premier adaptateur de commande ;
+- aucune modification NVS n’est introduite.
 
 ## Décisions du Run 4.2
 
@@ -152,8 +140,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - l’adaptateur runtime est placé hors de `src/domain`, car il connaît `RelaisManager` ;
 - l’adaptateur délègue encore les vannes de zone à `RelaisManager::setRelay(zone, state)` ;
 - l’adaptateur expose une lecture d’état logique via `RelaisManager::getState(zone)` ;
-- aucune modification NVS n’est introduite ;
-- aucun changement matériel ou runtime actif n’est introduit.
+- aucune modification NVS n’est introduite.
 
 ## Décisions du Run 4.3
 
@@ -162,16 +149,13 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - `outputAdapter.bind(&relaisMgr)` est appelé juste après `relaisMgr.begin(&configMgr)` ;
 - `onRelayRequest(zone, state)` appelle désormais `outputAdapter.setZoneValve(zone, state, millis())` ;
 - l’adaptateur délègue encore à `RelaisManager::setRelay(zone, state)` ;
-- aucun changement NVS n’est introduit ;
 - aucun driver V4 Phase 3 n’est activé directement.
 
 ## Décisions du Run 4.4
 
-- la compilation locale a révélé une collision entre la macro Arduino `DISABLED` et `OperationError::DISABLED` ;
 - `OperationError::DISABLED` est renommé `OperationError::TARGET_DISABLED` ;
 - aucune valeur numérique de l’énumération n’est déplacée ;
 - aucune logique runtime n’est modifiée ;
-- aucune modification NVS n’est introduite ;
 - la compilation PlatformIO complète réussit après correction ;
 - Web et LCD semblent encore fonctionner correctement après test utilisateur rapide.
 
@@ -182,19 +166,16 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - `DisplayManager::update()` utilise encore `RelaisManager` pour `anyActive` ;
 - `DisplayManager::handleTouchZone()` utilise encore `RelaisManager` pour choisir marche/arrêt manuel ;
 - la cible de migration est `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
-- le fallback vers `RelaisManager` restera obligatoire dans les premiers runs actifs ;
-- aucune modification Web/LCD active n’est introduite dans Run 4.5.
+- le fallback vers `RelaisManager` reste obligatoire.
 
 ## Décisions du Run 4.6
 
-- `WebManager.h` déclare `EquipmentOutputRuntimeAdapter` par forward declaration ;
+- `WebManager.h` déclare `EquipmentOutputRuntimeAdapter` ;
 - `WebManager` expose `setOutputAdapter(...)` ;
 - `WebManager` stocke un pointeur optionnel `_outputs` ;
 - `main.cpp` appelle `webMgr.setOutputAdapter(&outputAdapter)` avant `webMgr.begin(...)` ;
 - aucune route Web n’utilise encore `_outputs` ;
 - `/api/status` reste inchangé ;
-- aucune modification NVS n’est introduite ;
-- aucune modification LCD n’est introduite ;
 - la compilation PlatformIO complète réussit.
 
 ## Décisions du Run 4.7
@@ -204,20 +185,28 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - `OutputAwareRelayState::getState(zone)` lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
 - si l’état est `VALID`, `BINARY`, la valeur binaire est utilisée ;
 - sinon, fallback vers `RelaisManager::getState(zone)` ;
-- la ligne existante de `WebManager::handleStatus()` conserve le même format JSON ;
 - `/api/status` conserve `zones[].active` en booléen ;
-- aucune modification NVS n’est introduite ;
-- aucune modification LCD n’est introduite ;
 - la compilation PlatformIO complète réussit.
 
 ## Décisions du Run 4.8
 
-- `DisplayManager.h` déclare `EquipmentOutputRuntimeAdapter` par forward declaration ;
+- `DisplayManager.h` déclare `EquipmentOutputRuntimeAdapter` ;
 - `DisplayManager` expose `setOutputAdapter(...)` ;
 - `DisplayManager` stocke un pointeur optionnel `_outputs` ;
 - `main.cpp` appelle `displayMgr.setOutputAdapter(&outputAdapter)` avant `displayMgr.begin(...)` ;
 - aucune lecture LCD n’utilise encore `_outputs` ;
+- `DisplayManager.cpp` n’est pas modifié.
+
+## Décisions du Run 4.9
+
+- `DisplayManager.h` inclut désormais `EquipmentOutputRuntimeAdapter.h` ;
+- le membre `_relais` de `DisplayManager` devient une façade `OutputAwareRelayState` ;
+- `OutputAwareRelayState::getState(zone)` lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
+- si l’état est `VALID`, `BINARY`, la valeur binaire est utilisée ;
+- sinon, fallback vers `RelaisManager::getState(zone)` ;
 - `DisplayManager.cpp` n’est pas modifié ;
+- les appels LCD existants à `_relais->getState(zone)` passent désormais par la façade ;
+- la portée réelle est plus large que le seul `anyActive`, mais le comportement reste équivalent tant que l’adaptateur délègue à `RelaisManager` ;
 - aucune modification NVS n’est introduite ;
 - aucune modification Web n’est introduite.
 
@@ -232,11 +221,12 @@ docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_STATE_READ_STRATEGY.md
 docs/architecture/AQUALOOK_V4_WEBMANAGER_OUTPUT_ADAPTER_INJECTION.md
 docs/architecture/AQUALOOK_V4_WEB_STATUS_OUTPUT_STATE_READ.md
 docs/architecture/AQUALOOK_V4_DISPLAYMANAGER_OUTPUT_ADAPTER_INJECTION.md
+docs/architecture/AQUALOOK_V4_LCD_OUTPUT_STATE_READ.md
 ```
 
 ## Prochaine étape
 
-Valider **AquaLook V4 — Phase 4 — Run 4.8 — compilation**.
+Valider **AquaLook V4 — Phase 4 — Run 4.9 — compilation**.
 
 Commande :
 
@@ -244,4 +234,4 @@ Commande :
 pio run -e ProgrammeArrosage
 ```
 
-Objectif immédiat : confirmer que l’injection passive de `EquipmentOutputRuntimeAdapter` dans `DisplayManager` compile correctement, sans changement comportemental LCD.
+Objectif immédiat : confirmer que la façade `OutputAwareRelayState` côté `DisplayManager` compile correctement, puis tester rapidement LCD/Web.
