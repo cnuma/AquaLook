@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.6 compilation validée, 8 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.7 lecture état Web via EquipmentOutput, 9 juillet 2026
 
 ## État général
 
@@ -18,6 +18,8 @@ Le Run 4.4 corrige une collision de macro Arduino détectée à la compilation :
 Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`, sans modifier encore les écrans.
 
 Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`. Le pointeur existe, mais aucune route Web ne l’utilise encore. La compilation PlatformIO complète est validée.
+
+Le Run 4.7 fait passer les lectures d’état Web existantes via une façade de lecture `OutputAwareRelayState`. Cette façade lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)`, puis retombe sur `RelaisManager::getState(zone)` si l’état EquipmentOutput n’est pas exploitable. Le JSON `/api/status` reste inchangé.
 
 ## Validation PlatformIO complète Run 4.6
 
@@ -104,6 +106,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-091 | Collision macro Arduino `DISABLED` | **Corrigée** |
 | ARCH-092 | Stratégie lecture état Web/LCD | **Documentée** |
 | ARCH-093 | Injection passive `WebManager` | **Ajoutée et compilée** |
+| ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée, compilation à valider** |
 
 ## Décisions du Run 3.6
 
@@ -179,6 +182,18 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - aucune modification LCD n’est introduite ;
 - la compilation PlatformIO complète réussit.
 
+## Décisions du Run 4.7
+
+- `WebManager.h` inclut désormais `EquipmentOutputRuntimeAdapter.h` ;
+- le membre `_relais` de `WebManager` devient une façade `OutputAwareRelayState` ;
+- `OutputAwareRelayState::getState(zone)` lit d’abord `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` ;
+- si l’état est `VALID`, `BINARY`, la valeur binaire est utilisée ;
+- sinon, fallback vers `RelaisManager::getState(zone)` ;
+- la ligne existante de `WebManager::handleStatus()` conserve le même format JSON ;
+- `/api/status` conserve `zones[].active` en booléen ;
+- aucune modification NVS n’est introduite ;
+- aucune modification LCD n’est introduite.
+
 Documents de référence :
 
 ```text
@@ -188,10 +203,17 @@ docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_CALLBACK_INTEGRATION.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_STATE_READ_STRATEGY.md
 docs/architecture/AQUALOOK_V4_WEBMANAGER_OUTPUT_ADAPTER_INJECTION.md
+docs/architecture/AQUALOOK_V4_WEB_STATUS_OUTPUT_STATE_READ.md
 ```
 
 ## Prochaine étape
 
-Poursuivre **AquaLook V4 — Phase 4 — Run 4.7 — lecture Web via helper EquipmentOutput avec fallback**.
+Valider **AquaLook V4 — Phase 4 — Run 4.7 — compilation**.
 
-Objectif immédiat : modifier uniquement `WebManager::handleStatus()` et ajouter un helper privé `zoneValveActive(uint8_t zone) const`, avec fallback strict vers `RelaisManager::getState(zone)`.
+Commande :
+
+```powershell
+pio run -e ProgrammeArrosage
+```
+
+Objectif immédiat : confirmer que la façade `OutputAwareRelayState` compile correctement, puis vérifier que `/api/status` expose toujours `zones[].active` comme avant.
