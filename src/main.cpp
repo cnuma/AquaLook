@@ -122,6 +122,7 @@ void setup() {
 
     delay(800);
 
+    displayMgr.setOutputAdapter(&outputAdapter);
     displayMgr.begin(
         &ntpMgr,
         &weatherMgr,
