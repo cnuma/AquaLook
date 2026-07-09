@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Run 4.9 figé après validation Web/LCD, 9 juillet 2026
+**Dernière mise à jour :** Phase 4 — Run 4.10 plan du prochain raccord runtime, 9 juillet 2026
 
 ## État général
 
@@ -9,32 +9,11 @@ Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase
 
 La Phase 4 démarre par la stratégie d’intégration runtime des sorties. La notion générique retenue côté domaine/runtime est `EquipmentOutput`. La terminologie `Relay` reste réservée au backend physique relais.
 
-Le Run 4.2 a ajouté un adaptateur `EquipmentOutputRuntimeAdapter` passif. Le Run 4.3 l’instancie et branche le callback `onRelayRequest(zone, state)` vers cet adaptateur, qui délègue encore à `RelaisManager::setRelay(zone, state)`.
+Le Run 4.9 fige la migration des lectures d’état Web/LCD via `EquipmentOutputRuntimeAdapter`, avec fallback `RelaisManager`, compilation validée et test rapide Web/LCD validé.
 
-Le Run 4.4 corrige la collision macro Arduino `DISABLED` / `OperationError::DISABLED`, renommé en `OperationError::TARGET_DISABLED`. La compilation PlatformIO complète est validée après correction. Les tests rapides utilisateur confirment que Web et LCD semblent encore fonctionner correctement.
-
-Le Run 4.5 documente la stratégie de migration progressive des lectures d’état Web/LCD vers `EquipmentOutputRuntimeAdapter`.
-
-Le Run 4.6 injecte passivement `EquipmentOutputRuntimeAdapter` dans `WebManager`, compilation validée.
-
-Le Run 4.7 fait passer les lectures d’état Web existantes via une façade `OutputAwareRelayState`. Le JSON `/api/status` reste inchangé, compilation validée.
-
-Le Run 4.8 injecte passivement `EquipmentOutputRuntimeAdapter` dans `DisplayManager`. Le pointeur est câblé depuis `main.cpp`, mais aucune lecture LCD n’est encore migrée.
-
-Le Run 4.9 fait passer les lectures d’état LCD existantes via une façade `OutputAwareRelayState`. Cette approche intercepte les appels LCD existants à `_relais->getState(zone)`, avec lecture prioritaire `EquipmentOutputRuntimeAdapter::getZoneValveState(zone)` puis fallback `RelaisManager::getState(zone)`. La compilation PlatformIO est validée. Le test rapide Web/LCD est validé par l’utilisateur.
+Le Run 4.10 documente le prochain raccord runtime recommandé : ne pas brancher les drivers V4 réels immédiatement, mais préparer d’abord une frontière passive `RelayPhysicalBackend`, avec `RelaisManager` comme implémentation active.
 
 ## Validation PlatformIO complète Run 4.9
-
-```text
-Building in release mode
-Retrieving maximum program size .pio\build\ProgrammeArrosage\firmware.elf
-Checking size .pio\build\ProgrammeArrosage\firmware.elf
-Advanced Memory Usage is available via "PlatformIO Home > Project Inspect"
-RAM:   [==        ]  20.6% (used 67400 bytes from 327680 bytes)
-Flash: [======    ]  62.6% (used 1272705 bytes from 2031616 bytes)
-Configuring upload protocol...
-CURRENT: upload_protocol = esptool
-```
 
 ```text
 RAM:   20.6% — 67,400 / 327,680 octets
@@ -80,56 +59,6 @@ capacityBytes       31914983424
 
 Après retrait/remise de la carte SD, la page a de nouveau fonctionné. Aucun correctif code n’est appliqué à ce stade ; conserver comme point de vigilance matériel/runtime SD.
 
-## Validation PlatformIO complète Run 4.7
-
-```text
-Environment        Status    Duration
-ProgrammeArrosage  SUCCESS   00:03:07.759
-```
-
-```text
-RAM:   20.6% — 67,392 / 327,680 octets
-Flash: 62.6% — 1,272,505 / 2,031,616 octets
-```
-
-## Validation PlatformIO complète Run 4.6
-
-```text
-Environment        Status    Duration
-ProgrammeArrosage  SUCCESS   00:00:20.060
-```
-
-```text
-RAM:   20.6% — 67,392 / 327,680 octets
-Flash: 62.6% — 1,272,377 / 2,031,616 octets
-```
-
-## Validation PlatformIO complète Run 4.4
-
-```text
-Environment        Status    Duration
-ProgrammeArrosage  SUCCESS   00:02:20.491
-```
-
-```text
-RAM:   20.6% — 67,384 / 327,680 octets
-Flash: 62.6% — 1,272,369 / 2,031,616 octets
-```
-
-Le warning SdFat `__has_include(FS.h)` reste présent, non bloquant et sans lien avec les drivers V4.
-
-## Validation PlatformIO complète Run 3.6
-
-```text
-Environment        Status    Duration
-ProgrammeArrosage  SUCCESS   00:02:36.328
-```
-
-```text
-RAM:   20.6% — 67,384 / 327,680 octets
-Flash: 62.6% — 1,272,061 / 2,031,616 octets
-```
-
 ## Décisions principales
 
 | ID | Sujet | Statut |
@@ -166,6 +95,7 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 | ARCH-094 | Lecture état Web via `EquipmentOutput` | **Ajoutée et compilée** |
 | ARCH-095 | Injection passive `DisplayManager` | **Ajoutée, compilation à valider** |
 | ARCH-096 | Lecture état LCD via `EquipmentOutput` | **Ajoutée et compilée** |
+| ARCH-097 | Plan prochain raccord runtime | **Documenté** |
 
 ## Décisions du Run 4.9
 
@@ -182,9 +112,20 @@ Flash: 62.6% — 1,272,061 / 2,031,616 octets
 - la compilation PlatformIO est validée ;
 - le test rapide Web/LCD est validé.
 
+## Décisions du Run 4.10
+
+- ne pas brancher directement les drivers V4 Phase 3 dans le runtime actif ;
+- différer la factorisation des façades Web/LCD pour éviter de toucher une séquence fraîchement validée ;
+- préparer d’abord une frontière runtime passive `RelayPhysicalBackend` ;
+- garder `RelaisManager` comme implémentation active du backend physique ;
+- conserver les drivers V4 réels hors runtime actif jusqu’à validation de cette frontière ;
+- ne pas toucher NVS.
+
 Documents de référence :
 
 ```text
+docs/checkpoints/CHECKPOINT_2026-07-09_v4-phase4-run4-9-web-lcd-state-read-validated.md
+docs/architecture/AQUALOOK_V4_RUNTIME_BRIDGE_NEXT_STEP_PLAN.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_INTEGRATION_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_RUNTIME_CARTOGRAPHY.md
 docs/architecture/AQUALOOK_V4_EQUIPMENT_OUTPUT_RUNTIME_ADAPTER.md
@@ -198,11 +139,17 @@ docs/architecture/AQUALOOK_V4_LCD_OUTPUT_STATE_READ.md
 
 ## Prochaine étape
 
-Poursuivre vers le step suivant de la Phase 4 : sécuriser la suite de la migration `EquipmentOutput` avant tout branchement driver V4 réel.
-
-Candidat recommandé :
-
 ```text
-AquaLook V4 — Phase 4 — Run 4.10
-Checkpoint de fin de séquence Web/LCD lectures d’état + plan du prochain raccord runtime
+AquaLook V4 — Phase 4 — Run 4.11
+Interface passive RelayPhysicalBackend + adaptateur RelaisManagerBackend
 ```
+
+Invariants du Run 4.11 :
+
+- aucun changement NVS ;
+- aucun changement Web ;
+- aucun changement LCD ;
+- aucun changement JSON ;
+- aucun driver V4 réel activé ;
+- `RelaisManager` reste l’implémentation active ;
+- compilation PlatformIO obligatoire.
