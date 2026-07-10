@@ -4,12 +4,12 @@
 #include <stdint.h>
 
 #include "RelayPhysicalBackend.h"
-#include "RelayTopology.h"
-#include "config.h"
 #include "domain/BinaryActuatorDriver.h"
 #include "domain/BinaryActuatorDriverRegistry.h"
 #include "domain/BoardPortModel.h"
 #include "domain/HardwareInventoryModel.h"
+#include "RelayTopology.h"
+#include "config.h"
 
 namespace AquaLook { namespace Runtime {
 
