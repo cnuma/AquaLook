@@ -20,6 +20,15 @@ public:
         FAILED = 3
     };
 
+    struct ExecutionCounters {
+        uint32_t physicalBackend;
+        uint32_t relayManagerFallback;
+        uint32_t failed;
+
+        constexpr ExecutionCounters()
+            : physicalBackend(0U), relayManagerFallback(0U), failed(0U) {}
+    };
+
     void bind(RelaisManager* relayManager);
     void setPhysicalBackend(RelayPhysicalBackend* physicalBackend);
     bool isBound() const;
@@ -37,6 +46,7 @@ public:
 
     Domain::EquipmentStateValue getZoneValveState(uint8_t zoneIndex) const;
     ExecutionPath lastExecutionPath() const;
+    const ExecutionCounters& executionCounters() const;
     static const char* executionPathName(ExecutionPath path);
 
 private:
@@ -44,8 +54,10 @@ private:
     RelayPhysicalBackend* _physicalBackend = nullptr;
     uint16_t _nextExecutionValue = 1U;
     ExecutionPath _lastExecutionPath = ExecutionPath::NONE;
+    ExecutionCounters _executionCounters;
 
     Domain::ExecutionId nextExecutionId();
+    void recordExecutionPath(ExecutionPath path);
     static Domain::OperationResult rejected(
         Domain::EquipmentId equipmentId,
         Domain::OperationError error,
