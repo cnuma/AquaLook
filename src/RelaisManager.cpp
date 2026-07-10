@@ -4,6 +4,12 @@
 #include "EventLog.h"
 #include "FaultManager.h"
 
+void RelaisManager::setXl9535SharedOutputState(
+    AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
+) {
+    _xl9535SharedOutputState = sharedOutputState;
+}
+
 void RelaisManager::begin(ConfigManager* config) {
     _config = config;
     buildRuntimeTopology();
@@ -23,6 +29,14 @@ void RelaisManager::begin(ConfigManager* config) {
         _regP0[b] = inv ? 0xFF : 0x00;
         _regP1[b] = inv ? 0xFF : 0x00;
         _boardReady[b] = false;
+
+        if (_xl9535SharedOutputState &&
+            RelayTopology::validateBoard(board) &&
+            board.controller == RelayTopology::CONTROLLER_XL9535) {
+            const uint16_t value = static_cast<uint16_t>(_regP0[b]) |
+                static_cast<uint16_t>(static_cast<uint16_t>(_regP1[b]) << 8U);
+            _xl9535SharedOutputState->seed(board.i2cAddress, value);
+        }
     }
 
     _hardwareReady = initHardware();
@@ -209,17 +223,40 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
         return false;
     }
 
-    uint8_t& reg = mapping.channelIndex < 8
-        ? _regP0[mapping.boardIndex]
-        : _regP1[mapping.boardIndex];
-    const uint8_t bit = mapping.channelIndex < 8
-        ? mapping.channelIndex
-        : mapping.channelIndex - 8;
     const bool inv = (mapping.logic == RelayTopology::LOGIC_INVERTED);
     const bool physicalHigh = inv ? !state : state;
 
-    if (physicalHigh) reg |= (uint8_t)(1U << bit);
-    else reg &= (uint8_t)~(1U << bit);
+    if (mapping.controller == RelayTopology::CONTROLLER_XL9535 &&
+        _xl9535SharedOutputState) {
+        uint16_t sharedValue = 0U;
+        if (!_xl9535SharedOutputState->updateChannel(
+                mapping.i2cAddress,
+                mapping.channelIndex,
+                physicalHigh,
+                sharedValue)) {
+            EventLog::log(
+                LOG_ERROR,
+                "Relais: etat partage XL9535 indisponible addr=0x%02X voie=%u",
+                mapping.i2cAddress,
+                mapping.channelIndex + 1U
+            );
+            FaultManager::setActive(FaultId::RELAY_I2C, true);
+            EventBus::displayDirty = true;
+            return false;
+        }
+        _regP0[mapping.boardIndex] = static_cast<uint8_t>(sharedValue & 0xFFU);
+        _regP1[mapping.boardIndex] = static_cast<uint8_t>((sharedValue >> 8U) & 0xFFU);
+    } else {
+        uint8_t& reg = mapping.channelIndex < 8
+            ? _regP0[mapping.boardIndex]
+            : _regP1[mapping.boardIndex];
+        const uint8_t bit = mapping.channelIndex < 8
+            ? mapping.channelIndex
+            : mapping.channelIndex - 8;
+
+        if (physicalHigh) reg |= static_cast<uint8_t>(1U << bit);
+        else reg &= static_cast<uint8_t>(~(1U << bit));
+    }
 
     const bool ok = applyBoard(mapping.boardIndex);
     _boardReady[mapping.boardIndex] = ok;
@@ -273,6 +310,14 @@ bool RelaisManager::applyBoard(uint8_t boardIndex) {
         if (ok && board.channelCount > 8)
             ok = writeReg(board.i2cAddress, MCP23017_REG_OLATB, _regP1[boardIndex]);
     } else {
+        if (_xl9535SharedOutputState) {
+            uint16_t sharedValue = 0U;
+            if (!_xl9535SharedOutputState->read(board.i2cAddress, sharedValue)) {
+                return false;
+            }
+            _regP0[boardIndex] = static_cast<uint8_t>(sharedValue & 0xFFU);
+            _regP1[boardIndex] = static_cast<uint8_t>((sharedValue >> 8U) & 0xFFU);
+        }
         ok = writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P0, _regP0[boardIndex]);
         if (ok && board.channelCount > 8)
             ok = writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P1, _regP1[boardIndex]);
@@ -314,7 +359,7 @@ uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
         return 0xFF;
     }
 
-    Wire.requestFrom(addr, (uint8_t)1);
+    Wire.requestFrom(addr, static_cast<uint8_t>(1));
     return Wire.available() ? Wire.read() : 0xFF;
 }
 
@@ -324,6 +369,6 @@ uint8_t RelaisManager::nbRelaisPhysical() const {
 
 uint32_t RelaisManager::maxWateringMs() const {
     return _config
-        ? (uint32_t)_config->system().maxWateringMin * 60000UL
+        ? static_cast<uint32_t>(_config->system().maxWateringMin) * 60000UL
         : MAX_WATERING_DURATION_MS;
 }
