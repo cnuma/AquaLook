@@ -17,6 +17,8 @@
 #include "ConfigManager.h"
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"
+#include "EquipmentManager.h"
+#include "EquipmentModel.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "domain/Xl9535SharedOutputState.h"
 
@@ -31,10 +33,80 @@ WebManager webMgr;
 DisplayManager displayMgr;
 ConfigManager configMgr;
 StorageManager storageMgr;
+EquipmentManager equipmentMgr;
+EquipmentModel::EquipmentConfigSet transientEquipmentModel;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
+static bool equipmentRuntimeReady = false;
+
+static int16_t findZoneAssignmentIndex(
+    const RelayTopology::RelayTopologyConfig& topology,
+    uint8_t zone
+) {
+    for (uint8_t index = 0U; index < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++index) {
+        const RelayTopology::RelayAssignment& assignment = topology.assignments[index];
+        if (assignment.enabled &&
+            assignment.role == RelayTopology::ROLE_ZONE_VALVE &&
+            assignment.targetIndex == zone &&
+            RelayTopology::validateAssignment(topology, index)) {
+            return static_cast<int16_t>(index);
+        }
+    }
+    return -1;
+}
+
+static bool buildTransientEquipmentModel(uint8_t nbZones) {
+    EquipmentModel::clear(transientEquipmentModel);
+    const RelayTopology::RelayTopologyConfig& topology = relaisMgr.topology();
+
+    for (uint8_t zone = 0U; zone < nbZones; ++zone) {
+        const int16_t assignmentIndex = findZoneAssignmentIndex(topology, zone);
+        if (assignmentIndex < 0 || zone >= EquipmentModel::MAX_EQUIPMENTS) {
+            return false;
+        }
+
+        EquipmentModel::EquipmentConfig& valve =
+            transientEquipmentModel.equipments[zone];
+        valve.enabled = true;
+        valve.type = EquipmentModel::EQUIP_ZONE_VALVE;
+        valve.targetIndex = zone;
+        valve.relayAssignmentIndex = static_cast<uint8_t>(assignmentIndex);
+        snprintf(valve.name, sizeof(valve.name), "Vanne zone %u", zone + 1U);
+
+        EquipmentModel::ZoneEquipmentLink& link =
+            transientEquipmentModel.zoneLinks[zone];
+        link.enabled = true;
+        link.zoneIndex = zone;
+        link.valveEquipmentIndex = zone;
+        link.pumpEquipmentIndex = EquipmentModel::INVALID_INDEX;
+
+        if (!EquipmentModel::validateEquipment(transientEquipmentModel, zone) ||
+            !EquipmentModel::validateZoneLink(transientEquipmentModel, zone, nbZones)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static void onRelayRequest(uint8_t zone, bool state) {
+    if (equipmentRuntimeReady) {
+        const EquipmentManager::ActionResult result = state
+            ? equipmentMgr.startZone(zone)
+            : equipmentMgr.stopZone(zone);
+        if (result == EquipmentManager::ACTION_OK) {
+            EventBus::displayDirty = true;
+            return;
+        }
+        EventLog::log(
+            LOG_WARN,
+            "Equipment: zone %u echec=%u, fallback adaptateur",
+            zone + 1U,
+            static_cast<unsigned>(result)
+        );
+    }
+
     outputAdapter.setZoneValve(zone, state, millis());
     EventBus::displayDirty = true;
 }
@@ -120,6 +192,26 @@ void setup() {
 #endif
 
     outputAdapter.bind(&relaisMgr);
+
+    const uint8_t nbZones = configMgr.nbZones();
+    if (buildTransientEquipmentModel(nbZones)) {
+        equipmentMgr.begin(
+            &transientEquipmentModel,
+            &relaisMgr.topology(),
+            nbZones,
+            &relaisMgr
+        );
+        equipmentMgr.setOutputAdapter(&outputAdapter);
+        equipmentRuntimeReady = equipmentMgr.isInitialized() && equipmentMgr.hasExecutor();
+    }
+
+    EventLog::log(
+        equipmentRuntimeReady ? LOG_INFO : LOG_WARN,
+        equipmentRuntimeReady
+            ? "Equipment: modele transitoire pret pour %u zone(s)"
+            : "Equipment: modele indisponible, fallback adaptateur direct",
+        nbZones
+    );
     splashStep("Relais");
 
     scheduleMgr.begin();
