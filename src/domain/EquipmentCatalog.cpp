@@ -9,7 +9,7 @@ constexpr CapabilityMask BINARY_BASE_CAPABILITIES =
     CAP_STATE_FEEDBACK |
     CAP_SAFE_STATE;
 
-constexpr EquipmentTypeDescriptor EQUIPMENT_CATALOG[] = {
+constexpr EquipmentTypeDescriptor AQUALOOK_EQUIPMENT_CATALOG[] = {
     {
         EquipmentTypeIds::ZONE_VALVE,
         BINARY_BASE_CAPABILITIES | CAP_TIMED_OPERATION,
@@ -78,14 +78,15 @@ constexpr EquipmentTypeDescriptor EQUIPMENT_CATALOG[] = {
     }
 };
 
-constexpr size_t EQUIPMENT_CATALOG_COUNT =
-    sizeof(EQUIPMENT_CATALOG) / sizeof(EQUIPMENT_CATALOG[0]);
+constexpr size_t AQUALOOK_EQUIPMENT_CATALOG_COUNT =
+    sizeof(AQUALOOK_EQUIPMENT_CATALOG) / sizeof(AQUALOOK_EQUIPMENT_CATALOG[0]);
 
 bool hasDuplicateEquipmentId(
     const Equipment* equipments,
     size_t equipmentCount,
     size_t index
 ) {
+    (void)equipmentCount;
     for (size_t previous = 0U; previous < index; ++previous) {
         if (equipments[previous].id == equipments[index].id) {
             return true;
@@ -96,22 +97,23 @@ bool hasDuplicateEquipmentId(
 
 } // namespace
 
-const EquipmentTypeDescriptor* equipmentTypeCatalog(size_t& count) {
-    count = EQUIPMENT_CATALOG_COUNT;
-    return EQUIPMENT_CATALOG;
+const EquipmentTypeDescriptor* aquaLookEquipmentTypeCatalog(size_t& count) {
+    count = AQUALOOK_EQUIPMENT_CATALOG_COUNT;
+    return AQUALOOK_EQUIPMENT_CATALOG;
 }
 
-const EquipmentTypeDescriptor* findEquipmentTypeDescriptor(EquipmentTypeId typeId) {
-    for (size_t index = 0U; index < EQUIPMENT_CATALOG_COUNT; ++index) {
-        if (EQUIPMENT_CATALOG[index].id == typeId) {
-            return &EQUIPMENT_CATALOG[index];
+const EquipmentTypeDescriptor* findAquaLookEquipmentTypeDescriptor(EquipmentTypeId typeId) {
+    for (size_t index = 0U; index < AQUALOOK_EQUIPMENT_CATALOG_COUNT; ++index) {
+        if (AQUALOOK_EQUIPMENT_CATALOG[index].id == typeId) {
+            return &AQUALOOK_EQUIPMENT_CATALOG[index];
         }
     }
     return nullptr;
 }
 
-const char* equipmentTypeName(EquipmentTypeId typeId) {
-    const EquipmentTypeDescriptor* descriptor = findEquipmentTypeDescriptor(typeId);
+const char* aquaLookEquipmentTypeName(EquipmentTypeId typeId) {
+    const EquipmentTypeDescriptor* descriptor =
+        findAquaLookEquipmentTypeDescriptor(typeId);
     return descriptor ? descriptor->technicalName : "unknown";
 }
 
@@ -124,7 +126,8 @@ bool isPumpType(EquipmentTypeId typeId) {
 }
 
 bool isBinaryOutputEquipmentType(EquipmentTypeId typeId) {
-    const EquipmentTypeDescriptor* descriptor = findEquipmentTypeDescriptor(typeId);
+    const EquipmentTypeDescriptor* descriptor =
+        findAquaLookEquipmentTypeDescriptor(typeId);
     return descriptor &&
            hasAnyCapability(descriptor->requiredCapabilities, CAP_BINARY_COMMAND);
 }
@@ -134,7 +137,7 @@ EquipmentValidationResult validateEquipmentAgainstCatalog(
     const BoundedArena& arena
 ) {
     const EquipmentTypeDescriptor* descriptor =
-        findEquipmentTypeDescriptor(equipment.typeId);
+        findAquaLookEquipmentTypeDescriptor(equipment.typeId);
     if (!descriptor) {
         return EquipmentValidationError::INVALID_TYPE_ID;
     }
@@ -155,7 +158,7 @@ EquipmentInventoryValidationResult validateEquipmentInventory(
     for (size_t index = 0U; index < equipmentCount; ++index) {
         const Equipment& equipment = equipments[index];
         const EquipmentTypeDescriptor* descriptor =
-            findEquipmentTypeDescriptor(equipment.typeId);
+            findAquaLookEquipmentTypeDescriptor(equipment.typeId);
         if (!descriptor) {
             return EquipmentInventoryValidationResult(
                 EquipmentInventoryValidationError::UNKNOWN_TYPE,
