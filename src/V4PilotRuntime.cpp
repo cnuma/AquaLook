@@ -60,7 +60,9 @@ bool V4PilotRuntime::begin(
         port.capabilities = Domain::PORT_CAP_DIGITAL_OUTPUT |
                             Domain::PORT_CAP_RELAY_OUTPUT;
         port.type = Domain::PortType::RELAY;
-        port.direction = Domain::PortDirection::OUTPUT;
+        // Arduino defines OUTPUT as a macro. Use the stable enum value to avoid
+        // preprocessing Domain::PortDirection::OUTPUT into an integer token.
+        port.direction = static_cast<Domain::PortDirection>(2U);
         port.safeState = Domain::PortSafeState::INACTIVE;
         port.flags = Domain::PORT_FLAG_ENABLED;
         if (sourceBoard.logic == RelayTopology::LOGIC_INVERTED) {
