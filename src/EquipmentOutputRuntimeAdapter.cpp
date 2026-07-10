@@ -25,6 +25,29 @@ EquipmentOutputRuntimeAdapter::lastExecutionPath() const {
     return _lastExecutionPath;
 }
 
+const EquipmentOutputRuntimeAdapter::ExecutionCounters&
+EquipmentOutputRuntimeAdapter::executionCounters() const {
+    return _executionCounters;
+}
+
+void EquipmentOutputRuntimeAdapter::recordExecutionPath(ExecutionPath path) {
+    _lastExecutionPath = path;
+    switch (path) {
+        case ExecutionPath::PHYSICAL_BACKEND:
+            ++_executionCounters.physicalBackend;
+            break;
+        case ExecutionPath::RELAY_MANAGER_FALLBACK:
+            ++_executionCounters.relayManagerFallback;
+            break;
+        case ExecutionPath::FAILED:
+            ++_executionCounters.failed;
+            break;
+        case ExecutionPath::NONE:
+        default:
+            break;
+    }
+}
+
 const char* EquipmentOutputRuntimeAdapter::executionPathName(ExecutionPath path) {
     switch (path) {
         case ExecutionPath::PHYSICAL_BACKEND: return "physical_backend";
@@ -64,7 +87,7 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::command(
     uint32_t nowMs
 ) {
     if (requested.kind != Domain::EquipmentOutputKind::BINARY) {
-        _lastExecutionPath = ExecutionPath::FAILED;
+        recordExecutionPath(ExecutionPath::FAILED);
         return rejected(
             Domain::EquipmentId(),
             Domain::OperationError::CAPABILITY_NOT_SUPPORTED,
@@ -77,7 +100,7 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::command(
             return setZoneValve(requested.output.targetIndex, requested.active, nowMs);
 
         default:
-            _lastExecutionPath = ExecutionPath::FAILED;
+            recordExecutionPath(ExecutionPath::FAILED);
             return rejected(
                 Domain::EquipmentId(),
                 Domain::OperationError::CAPABILITY_NOT_SUPPORTED,
@@ -95,7 +118,7 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
         Domain::equipmentIdForZoneValve(zoneIndex);
 
     if (zoneIndex >= MAX_ZONES) {
-        _lastExecutionPath = ExecutionPath::FAILED;
+        recordExecutionPath(ExecutionPath::FAILED);
         return rejected(equipmentId, Domain::OperationError::INVALID_TARGET, nowMs);
     }
 
@@ -114,13 +137,13 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     if (!applied && _relayManager) {
         _relayManager->setRelay(zoneIndex, active);
         applied = true;
-        _lastExecutionPath = ExecutionPath::RELAY_MANAGER_FALLBACK;
+        recordExecutionPath(ExecutionPath::RELAY_MANAGER_FALLBACK);
     } else if (appliedByPhysicalBackend) {
-        _lastExecutionPath = ExecutionPath::PHYSICAL_BACKEND;
+        recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
     }
 
     if (!applied) {
-        _lastExecutionPath = ExecutionPath::FAILED;
+        recordExecutionPath(ExecutionPath::FAILED);
         return rejected(
             equipmentId,
             Domain::OperationError::DEPENDENCY_UNAVAILABLE,
