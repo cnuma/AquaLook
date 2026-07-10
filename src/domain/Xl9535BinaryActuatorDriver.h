@@ -4,6 +4,7 @@
 
 #include "domain/BinaryActuatorDriver.h"
 #include "domain/ProtocolBuildProfile.h"
+#include "domain/Xl9535SharedOutputState.h"
 
 namespace AquaLook { namespace Domain {
 
@@ -28,6 +29,7 @@ struct Xl9535I2cOps {
 struct Xl9535BinaryActuatorContext {
     const Xl9535I2cOps* i2c;
     void* platformContext;
+    Xl9535SharedOutputState* sharedOutputState;
     BinaryActuatorHealth health;
     uint8_t configured;
     uint8_t address;
@@ -37,7 +39,7 @@ struct Xl9535BinaryActuatorContext {
     uint8_t reserved;
 
     constexpr Xl9535BinaryActuatorContext()
-        : i2c(nullptr), platformContext(nullptr),
+        : i2c(nullptr), platformContext(nullptr), sharedOutputState(nullptr),
           health(BinaryActuatorHealth::UNKNOWN), configured(0U), address(0U),
           outputLatch(0U), directionMask(0xFFFFU),
           lastObserved(BinaryActuatorState::UNKNOWN), reserved(0U) {}
