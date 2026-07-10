@@ -20,11 +20,20 @@ class ConfigManager;
 
 class RelaisManager {
 public:
-    void setXl9535SharedOutputState(
-        AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
-    );
     void begin(ConfigManager* config = nullptr);
     void update();
+
+    void setXl9535SharedOutputState(
+        AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
+    ) {
+        _xl9535SharedOutputState = sharedOutputState;
+    }
+
+    void mirrorZoneState(uint8_t zone, bool state, uint32_t nowMs) {
+        if (zone >= MAX_ZONES) return;
+        _state[zone] = state;
+        _startMs[zone] = state ? nowMs : 0U;
+    }
 
     // API historique conservée : l'index reste un index de zone.
     void setRelay(uint8_t relay, bool state);
@@ -37,7 +46,6 @@ public:
 
 private:
     ConfigManager* _config = nullptr;
-    AquaLook::Domain::Xl9535SharedOutputState* _xl9535SharedOutputState = nullptr;
     bool _state[MAX_ZONES] = {};
     uint32_t _startMs[MAX_ZONES] = {};
     bool _assignmentState[RelayTopology::MAX_RELAY_ASSIGNMENTS] = {};
@@ -47,6 +55,7 @@ private:
     uint8_t _regP1[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _boardReady[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _hardwareReady = false;
+    AquaLook::Domain::Xl9535SharedOutputState* _xl9535SharedOutputState = nullptr;
 
     void buildRuntimeTopology();
     bool initHardware();
