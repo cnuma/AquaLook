@@ -1,5 +1,6 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 
+#include "EventLog.h"
 #include "RelaisManager.h"
 #include "RelayPhysicalBackend.h"
 #include "config.h"
@@ -119,6 +120,12 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     if (zoneIndex >= MAX_ZONES) {
         recordExecutionPath(ExecutionPath::FAILED);
+        EventLog::log(
+            LOG_ERROR,
+            "Equipment: zone %u %s path=failed error=invalid_target",
+            zoneIndex + 1U,
+            active ? "ON" : "OFF"
+        );
         return rejected(equipmentId, Domain::OperationError::INVALID_TARGET, nowMs);
     }
 
@@ -144,6 +151,12 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     if (!applied) {
         recordExecutionPath(ExecutionPath::FAILED);
+        EventLog::log(
+            LOG_ERROR,
+            "Equipment: zone %u %s path=failed error=dependency_unavailable",
+            zoneIndex + 1U,
+            active ? "ON" : "OFF"
+        );
         return rejected(
             equipmentId,
             Domain::OperationError::DEPENDENCY_UNAVAILABLE,
@@ -158,6 +171,19 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     result.stage = Domain::OperationStage::APPLICATION;
     result.error = Domain::OperationError::NONE;
     result.completedAtMs = nowMs;
+
+    EventLog::log(
+        LOG_INFO,
+        "Equipment: zone %u %s path=%s exec=%u totals=%lu/%lu/%lu",
+        zoneIndex + 1U,
+        active ? "ON" : "OFF",
+        executionPathName(_lastExecutionPath),
+        static_cast<unsigned>(result.executionId.value),
+        static_cast<unsigned long>(_executionCounters.physicalBackend),
+        static_cast<unsigned long>(_executionCounters.relayManagerFallback),
+        static_cast<unsigned long>(_executionCounters.failed)
+    );
+
     return result;
 }
 
