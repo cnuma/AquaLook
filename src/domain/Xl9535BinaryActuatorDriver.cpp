@@ -68,6 +68,20 @@ BinaryActuatorState safeStateForPort(const PortDefinition& port) {
     return BinaryActuatorState::UNKNOWN;
 }
 
+bool syncOutputLatchFromSharedState(Xl9535BinaryActuatorContext& context) {
+    if (!context.sharedOutputState) {
+        return true;
+    }
+
+    uint16_t sharedValue = 0U;
+    if (context.sharedOutputState->read(context.address, sharedValue)) {
+        context.outputLatch = sharedValue;
+        return true;
+    }
+
+    return context.sharedOutputState->seed(context.address, context.outputLatch);
+}
+
 bool writeOutputLatch(Xl9535BinaryActuatorContext& context) {
     return context.i2c->writeRegister16(
         context.platformContext,
@@ -86,17 +100,33 @@ bool writeConfiguration(Xl9535BinaryActuatorContext& context) {
     );
 }
 
-void setLatchBit(
+bool setLatchBit(
     Xl9535BinaryActuatorContext& context,
     const PortDefinition& port,
     BinaryActuatorState state
 ) {
+    const bool high = levelHighForState(port, state);
+
+    if (context.sharedOutputState) {
+        uint16_t sharedValue = 0U;
+        if (!context.sharedOutputState->updateChannel(
+                context.address,
+                static_cast<uint8_t>(port.channel),
+                high,
+                sharedValue)) {
+            return false;
+        }
+        context.outputLatch = sharedValue;
+        return true;
+    }
+
     const uint16_t mask = channelMask(port.channel);
-    if (levelHighForState(port, state)) {
+    if (high) {
         context.outputLatch = static_cast<uint16_t>(context.outputLatch | mask);
     } else {
         context.outputLatch = static_cast<uint16_t>(context.outputLatch & ~mask);
     }
+    return true;
 }
 
 BinaryActuatorDriverResult writeLogicalState(
@@ -104,7 +134,10 @@ BinaryActuatorDriverResult writeLogicalState(
     const PortDefinition& port,
     BinaryActuatorState requested
 ) {
-    setLatchBit(context, port, requested);
+    if (!setLatchBit(context, port, requested)) {
+        context.health = BinaryActuatorHealth::FAULTED;
+        return makeFailed(BinaryActuatorDriverError::INTERNAL_ERROR);
+    }
     if (!writeOutputLatch(context)) {
         context.health = BinaryActuatorHealth::FAULTED;
         return makeFailed(BinaryActuatorDriverError::COMMUNICATION_ERROR);
@@ -137,13 +170,21 @@ BinaryActuatorDriverResult configureXl9535(
     }
 
     context->address = address;
+    if (!syncOutputLatchFromSharedState(*context)) {
+        context->health = BinaryActuatorHealth::FAULTED;
+        return makeFailed(BinaryActuatorDriverError::INTERNAL_ERROR);
+    }
+
     const BinaryActuatorState safeState = safeStateForPort(port);
     if (safeState == BinaryActuatorState::UNKNOWN) {
         context->health = BinaryActuatorHealth::DEGRADED;
         return makeFailed(BinaryActuatorDriverError::SAFE_STATE_UNSUPPORTED);
     }
 
-    setLatchBit(*context, port, safeState);
+    if (!setLatchBit(*context, port, safeState)) {
+        context->health = BinaryActuatorHealth::FAULTED;
+        return makeFailed(BinaryActuatorDriverError::INTERNAL_ERROR);
+    }
     if (!writeOutputLatch(*context)) {
         context->health = BinaryActuatorHealth::FAULTED;
         return makeFailed(BinaryActuatorDriverError::COMMUNICATION_ERROR);
