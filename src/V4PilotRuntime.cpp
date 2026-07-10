@@ -74,6 +74,15 @@ bool V4PilotRuntime::begin(
     _xl9535Context.platformContext = &Wire;
     _xl9535Context.sharedOutputState = &sharedOutputState;
 
+    // RelaisManager initialized every declared relay channel as an output.
+    // The V4 driver rewrites the complete 16-bit direction register when its
+    // first port is configured, so preload the same board-wide direction state
+    // instead of leaving every non-pilot channel as an input.
+    const uint16_t relayOutputMask = board.portCount >= 16U
+        ? 0xFFFFU
+        : static_cast<uint16_t>((1UL << board.portCount) - 1UL);
+    _xl9535Context.directionMask = static_cast<uint16_t>(~relayOutputMask);
+
     const Domain::DriverRegistryResult registered = _driverRegistry.registerDriver(
         Domain::makeXl9535BinaryActuatorDriverBinding(_xl9535Context)
     );
