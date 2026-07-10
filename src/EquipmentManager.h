@@ -12,7 +12,7 @@ class EquipmentOutputRuntimeAdapter;
 
 // Orchestration des équipements AquaLook.
 // À ce stade, seules les électrovannes de zones sont exécutables.
-// Les dépendances pompe sont résolues mais pas encore orchestrées.
+// Les dépendances pompe sont résolues et planifiées, mais pas encore exécutées.
 class EquipmentManager {
 public:
     enum ActionResult : uint8_t {
@@ -26,6 +26,50 @@ public:
         ACTION_RELAY_ROLE_MISMATCH,
         ACTION_EXECUTOR_NOT_CONNECTED,
         ACTION_EXECUTION_FAILED
+    };
+
+    enum PlanAction : uint8_t {
+        PLAN_ACTION_NONE = 0,
+        PLAN_ACTION_VALVE_ON,
+        PLAN_ACTION_VALVE_OFF,
+        PLAN_ACTION_PUMP_ON,
+        PLAN_ACTION_PUMP_OFF,
+        PLAN_ACTION_WAIT
+    };
+
+    struct PlanStep {
+        PlanAction action;
+        uint8_t equipmentIndex;
+        uint32_t delayMs;
+
+        constexpr PlanStep(
+            PlanAction requestedAction = PLAN_ACTION_NONE,
+            uint8_t requestedEquipmentIndex = EquipmentModel::INVALID_INDEX,
+            uint32_t requestedDelayMs = 0U
+        ) : action(requestedAction),
+            equipmentIndex(requestedEquipmentIndex),
+            delayMs(requestedDelayMs) {}
+    };
+
+    static constexpr uint8_t MAX_PLAN_STEPS = 4U;
+
+    struct ZoneExecutionPlan {
+        ActionResult result;
+        uint8_t zone;
+        bool requiresPump;
+        uint8_t stepCount;
+        PlanStep steps[MAX_PLAN_STEPS];
+
+        constexpr ZoneExecutionPlan()
+            : result(ACTION_NOT_INITIALIZED),
+              zone(0U),
+              requiresPump(false),
+              stepCount(0U),
+              steps{} {}
+
+        constexpr bool valid() const {
+            return result == ACTION_OK && stepCount > 0U;
+        }
     };
 
     struct EquipmentResolution {
@@ -66,6 +110,8 @@ public:
     bool hasExecutor() const;
     ZoneResolution resolveZone(uint8_t zone) const;
     ZoneDependencyResolution resolveZoneDependencies(uint8_t zone) const;
+    ZoneExecutionPlan buildZoneStartPlan(uint8_t zone) const;
+    ZoneExecutionPlan buildZoneStopPlan(uint8_t zone) const;
 
     ActionResult startZone(uint8_t zone);
     ActionResult stopZone(uint8_t zone);
@@ -83,4 +129,5 @@ private:
     ) const;
     ActionResult validateZoneRequest(uint8_t zone, ZoneResolution& resolution) const;
     ActionResult executeZone(uint8_t zone, bool state);
+    ZoneExecutionPlan buildZonePlan(uint8_t zone, bool starting) const;
 };
