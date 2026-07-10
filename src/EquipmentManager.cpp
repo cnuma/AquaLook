@@ -180,6 +180,80 @@ EquipmentManager::resolveZoneDependencies(uint8_t zone) const {
     return resolution;
 }
 
+EquipmentManager::ZoneExecutionPlan EquipmentManager::buildZonePlan(
+    uint8_t zone,
+    bool starting
+) const {
+    ZoneExecutionPlan plan;
+    plan.zone = zone;
+
+    const ZoneDependencyResolution dependencies = resolveZoneDependencies(zone);
+    plan.result = dependencies.result;
+    if (!dependencies.valid()) return plan;
+
+    plan.requiresPump = dependencies.requiresPump;
+
+    if (!dependencies.requiresPump) {
+        plan.steps[0] = PlanStep(
+            starting ? PLAN_ACTION_VALVE_ON : PLAN_ACTION_VALVE_OFF,
+            dependencies.valve.equipmentIndex
+        );
+        plan.stepCount = 1U;
+        plan.result = ACTION_OK;
+        return plan;
+    }
+
+    const EquipmentModel::EquipmentConfig& pump =
+        _equipmentModel->equipments[dependencies.pump.equipmentIndex];
+
+    if (starting) {
+        plan.steps[plan.stepCount++] = PlanStep(
+            PLAN_ACTION_VALVE_ON,
+            dependencies.valve.equipmentIndex
+        );
+        if (pump.startupDelayMs > 0U) {
+            plan.steps[plan.stepCount++] = PlanStep(
+                PLAN_ACTION_WAIT,
+                EquipmentModel::INVALID_INDEX,
+                pump.startupDelayMs
+            );
+        }
+        plan.steps[plan.stepCount++] = PlanStep(
+            PLAN_ACTION_PUMP_ON,
+            dependencies.pump.equipmentIndex
+        );
+    } else {
+        plan.steps[plan.stepCount++] = PlanStep(
+            PLAN_ACTION_PUMP_OFF,
+            dependencies.pump.equipmentIndex
+        );
+        if (pump.shutdownDelayMs > 0U) {
+            plan.steps[plan.stepCount++] = PlanStep(
+                PLAN_ACTION_WAIT,
+                EquipmentModel::INVALID_INDEX,
+                pump.shutdownDelayMs
+            );
+        }
+        plan.steps[plan.stepCount++] = PlanStep(
+            PLAN_ACTION_VALVE_OFF,
+            dependencies.valve.equipmentIndex
+        );
+    }
+
+    plan.result = ACTION_OK;
+    return plan;
+}
+
+EquipmentManager::ZoneExecutionPlan
+EquipmentManager::buildZoneStartPlan(uint8_t zone) const {
+    return buildZonePlan(zone, true);
+}
+
+EquipmentManager::ZoneExecutionPlan
+EquipmentManager::buildZoneStopPlan(uint8_t zone) const {
+    return buildZonePlan(zone, false);
+}
+
 EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool state) {
     ZoneResolution resolution;
     const ActionResult validation = validateZoneRequest(zone, resolution);
