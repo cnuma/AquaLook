@@ -28,27 +28,6 @@ public:
         ACTION_EXECUTION_FAILED
     };
 
-    enum ExecutionPath : uint8_t {
-        EXECUTION_PATH_NONE = 0,
-        EXECUTION_PATH_PHYSICAL_BACKEND,
-        EXECUTION_PATH_RELAY_FALLBACK,
-        EXECUTION_PATH_FAILED
-    };
-
-    struct ExecutionStats {
-        uint32_t commandCount;
-        uint32_t physicalBackendSuccessCount;
-        uint32_t relayFallbackSuccessCount;
-        uint32_t failureCount;
-        uint32_t lastCommandAtMs;
-        uint8_t lastZone;
-        bool lastRequestedState;
-        ExecutionPath lastPath;
-        ActionResult lastResult;
-
-        ExecutionStats();
-    };
-
     struct EquipmentResolution {
         ActionResult result;
         uint8_t equipmentIndex;
@@ -87,8 +66,6 @@ public:
     bool hasExecutor() const;
     ZoneResolution resolveZone(uint8_t zone) const;
     ZoneDependencyResolution resolveZoneDependencies(uint8_t zone) const;
-    const ExecutionStats& executionStats() const;
-    void resetExecutionStats();
 
     ActionResult startZone(uint8_t zone);
     ActionResult stopZone(uint8_t zone);
@@ -99,7 +76,6 @@ private:
     RelaisManager* _relayExecutor = nullptr;
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputAdapter = nullptr;
     uint8_t _nbZones = 0;
-    ExecutionStats _executionStats;
 
     ActionResult resolveEquipment(
         uint8_t equipmentIndex,
@@ -107,11 +83,4 @@ private:
     ) const;
     ActionResult validateZoneRequest(uint8_t zone, ZoneResolution& resolution) const;
     ActionResult executeZone(uint8_t zone, bool state);
-    ActionResult recordExecution(
-        uint8_t zone,
-        bool state,
-        ExecutionPath path,
-        ActionResult result,
-        uint32_t nowMs
-    );
 };
