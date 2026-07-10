@@ -13,6 +13,13 @@ class RelayPhysicalBackend;
 
 class EquipmentOutputRuntimeAdapter {
 public:
+    enum class ExecutionPath : uint8_t {
+        NONE = 0,
+        PHYSICAL_BACKEND = 1,
+        RELAY_MANAGER_FALLBACK = 2,
+        FAILED = 3
+    };
+
     void bind(RelaisManager* relayManager);
     void setPhysicalBackend(RelayPhysicalBackend* physicalBackend);
     bool isBound() const;
@@ -29,11 +36,14 @@ public:
     );
 
     Domain::EquipmentStateValue getZoneValveState(uint8_t zoneIndex) const;
+    ExecutionPath lastExecutionPath() const;
+    static const char* executionPathName(ExecutionPath path);
 
 private:
     RelaisManager* _relayManager = nullptr;
     RelayPhysicalBackend* _physicalBackend = nullptr;
     uint16_t _nextExecutionValue = 1U;
+    ExecutionPath _lastExecutionPath = ExecutionPath::NONE;
 
     Domain::ExecutionId nextExecutionId();
     static Domain::OperationResult rejected(
