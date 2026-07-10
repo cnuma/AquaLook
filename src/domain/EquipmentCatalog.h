@@ -5,15 +5,12 @@
 
 #include "domain/EquipmentModel.h"
 #include "domain/EquipmentOutputTypes.h"
+#include "domain/EquipmentTypeCatalog.h"
 
 namespace AquaLook { namespace Domain {
 
 namespace EquipmentTypeIds {
-constexpr EquipmentTypeId ZONE_VALVE(1U);
-constexpr EquipmentTypeId PUMP(2U);
-constexpr EquipmentTypeId AUX_CONTACT(3U);
-constexpr EquipmentTypeId GREENHOUSE_VENT(4U);
-constexpr EquipmentTypeId LIGHTING(5U);
+constexpr EquipmentTypeId AUX_CONTACT = AUXILIARY;
 constexpr EquipmentTypeId MISTER(6U);
 constexpr EquipmentTypeId FAN(7U);
 }
@@ -85,9 +82,9 @@ struct EquipmentInventoryValidationResult {
     }
 };
 
-const EquipmentTypeDescriptor* equipmentTypeCatalog(size_t& count);
-const EquipmentTypeDescriptor* findEquipmentTypeDescriptor(EquipmentTypeId typeId);
-const char* equipmentTypeName(EquipmentTypeId typeId);
+const EquipmentTypeDescriptor* aquaLookEquipmentTypeCatalog(size_t& count);
+const EquipmentTypeDescriptor* findAquaLookEquipmentTypeDescriptor(EquipmentTypeId typeId);
+const char* aquaLookEquipmentTypeName(EquipmentTypeId typeId);
 
 bool isZoneValveType(EquipmentTypeId typeId);
 bool isPumpType(EquipmentTypeId typeId);
