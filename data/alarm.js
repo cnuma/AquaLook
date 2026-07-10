@@ -113,6 +113,63 @@
     }
   }
 
+  function getBuildInfoPanel() {
+    let buildInfo = document.getElementById('firmware-build-info');
+    if (buildInfo) return buildInfo;
+
+    const systemInfo = document.getElementById('sys-info');
+    if (!systemInfo || !systemInfo.parentNode) return null;
+
+    buildInfo = document.createElement('div');
+    buildInfo.id = 'firmware-build-info';
+    buildInfo.className = 'cfg-info';
+    buildInfo.style.marginTop = '8px';
+    buildInfo.textContent = 'Compilation : chargement...';
+    systemInfo.insertAdjacentElement('afterend', buildInfo);
+    return buildInfo;
+  }
+
+  async function refreshBuildInfo() {
+    try {
+      const response = await fetch(
+        '/api/diagnostics',
+        { cache: 'no-store' }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const diagnostics = await response.json();
+      const build = diagnostics.build || {};
+      const buildInfo = getBuildInfoPanel();
+      if (!buildInfo) return;
+
+      const version = build.version || 'unknown';
+      const number = build.number || 'unknown';
+      const sha = build.gitSha || 'unknown';
+      const branch = build.gitBranch || 'unknown';
+      const backend = build.relayBackend || 'unknown';
+      const compiled = [build.compiledDate, build.compiledTime]
+        .filter(Boolean)
+        .join(' ');
+
+      buildInfo.innerHTML =
+        `Firmware : <span>AquaLook ${version}</span><br>` +
+        `Build : <span>${number}</span><br>` +
+        `Commit : <span>${sha}</span><br>` +
+        `Branche : <span>${branch}</span><br>` +
+        `Backend relais : <span>${backend.toUpperCase()}</span><br>` +
+        `Compilé le : <span>${compiled || '--'}</span>`;
+    } catch (error) {
+      console.log('[build-info] indisponible', error);
+      const buildInfo = getBuildInfoPanel();
+      if (buildInfo) buildInfo.textContent = 'Compilation : indisponible';
+    }
+  }
+
   refreshStorageState();
   setInterval(refreshStorageState, 5000);
+  refreshBuildInfo();
+  setInterval(refreshBuildInfo, 60000);
 })();
