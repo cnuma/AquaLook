@@ -81,9 +81,15 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     }
 
     bool applied = false;
+    bool appliedByPhysicalBackend = false;
 
     if (_physicalBackend) {
         applied = _physicalBackend->setZoneValve(zoneIndex, active, nowMs);
+        appliedByPhysicalBackend = applied;
+    }
+
+    if (appliedByPhysicalBackend && _relayManager) {
+        _relayManager->mirrorZoneState(zoneIndex, active, nowMs);
     }
 
     if (!applied && _relayManager) {
