@@ -25,9 +25,7 @@ public:
 
     void setXl9535SharedOutputState(
         AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
-    ) {
-        _xl9535SharedOutputState = sharedOutputState;
-    }
+    );
 
     void mirrorZoneState(uint8_t zone, bool state, uint32_t nowMs) {
         if (zone >= MAX_ZONES) return;
