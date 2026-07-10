@@ -1,6 +1,19 @@
 #include "SystemDiagnostics.h"
 #include <WiFi.h>
 
+#ifndef AQUALOOK_VERSION
+#define AQUALOOK_VERSION "unknown"
+#endif
+#ifndef AQUALOOK_BUILD_NUMBER
+#define AQUALOOK_BUILD_NUMBER "unknown"
+#endif
+#ifndef AQUALOOK_GIT_SHA
+#define AQUALOOK_GIT_SHA "unknown"
+#endif
+#ifndef AQUALOOK_GIT_BRANCH
+#define AQUALOOK_GIT_BRANCH "unknown"
+#endif
+
 void storageHealthUpdate();
 
 portMUX_TYPE SystemDiagnostics::_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -153,6 +166,19 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     system["chipRevision"] = ESP.getChipRevision();
     system["resetReason"] = resetReasonStr(esp_reset_reason());
     system["loopCore"] = xPortGetCoreID();
+
+    JsonObject build = doc["build"].to<JsonObject>();
+    build["version"] = AQUALOOK_VERSION;
+    build["number"] = AQUALOOK_BUILD_NUMBER;
+    build["gitSha"] = AQUALOOK_GIT_SHA;
+    build["gitBranch"] = AQUALOOK_GIT_BRANCH;
+#if AQUALOOK_RELAY_BACKEND_V4
+    build["relayBackend"] = "v4";
+#else
+    build["relayBackend"] = "legacy";
+#endif
+    build["compiledDate"] = __DATE__;
+    build["compiledTime"] = __TIME__;
 
     JsonObject memory = doc["memory"].to<JsonObject>();
     memory["heapFree"] = ESP.getFreeHeap();
