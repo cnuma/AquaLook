@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 4 — Runs 4.11 à 4.13 figés après validation fonctionnelle, 10 juillet 2026
+**Dernière mise à jour :** Phase 6 — Run 6.1 stratégie de bascule du backend physique, 10 juillet 2026
 
 ## État général
 
@@ -9,15 +9,25 @@ Les Phases 1 et 2 sont clôturées comme socles architecturaux isolés. La Phase
 
 La Phase 4 introduit progressivement la notion générique `EquipmentOutput` dans le runtime tout en gardant `RelaisManager` comme backend physique effectif et comme fallback.
 
-Le Run 4.9 fige la migration des lectures d’état Web/LCD via `EquipmentOutputRuntimeAdapter`.
+Les Runs 4.11 à 4.13 ont ajouté et validé la chaîne suivante :
 
-Le Run 4.10 documente la frontière backend recommandée.
+```text
+EquipmentOutputRuntimeAdapter
+  -> RelayPhysicalBackend
+  -> RelaisManagerBackend
+  -> RelaisManager
+```
 
-Le Run 4.11 ajoute `RelayPhysicalBackend` et `RelaisManagerBackend`.
+Fallback direct conservé :
 
-Le Run 4.12 injecte `RelayPhysicalBackend` dans `EquipmentOutputRuntimeAdapter`, avec fallback direct `RelaisManager`.
+```text
+EquipmentOutputRuntimeAdapter
+  -> RelaisManager
+```
 
-Le Run 4.13 câble `RelaisManagerBackend` dans `main.cpp`. La compilation et le test fonctionnel utilisateur sont validés.
+La Phase 5 de tests et validation automatisée est mise en pause sur décision utilisateur. Elle reste prévue et pourra être reprise avant ou pendant la stabilisation de la Phase 6.
+
+La Phase 6 est ouverte par le Run 6.1 documentaire. Elle doit introduire progressivement un backend physique V4 sans basculement brutal, avec fallback, rollback et journalisation obligatoires.
 
 ## Validation PlatformIO complète Runs 4.11 à 4.13
 
@@ -59,17 +69,6 @@ zones actives: 3
 manualDurationMin: 1
 ```
 
-États observés :
-
-```text
-Jardin   active=false
-Terrasse active=true
-Zone 3   active=true
-Zone 4   active=true
-```
-
-Le motif `Manuel 1min` est remonté pour les zones testées.
-
 Validation utilisateur :
 
 ```text
@@ -82,7 +81,7 @@ Conclusion :
 - états actifs remontés correctement ;
 - page Web fonctionnelle ;
 - LCD fonctionnel ;
-- non-régression principale validée par l’utilisateur.
+- non-régression principale validée.
 
 ## Décisions principales
 
@@ -124,24 +123,42 @@ Conclusion :
 | ARCH-098 | Interface passive `RelayPhysicalBackend` | **Ajoutée, compilée et validée** |
 | ARCH-099 | Injection `RelayPhysicalBackend` dans `EquipmentOutputRuntimeAdapter` | **Ajoutée, compilée et validée** |
 | ARCH-100 | Câblage `RelaisManagerBackend` dans `main.cpp` | **Ajouté, compilé et validé** |
+| ARCH-101 | Stratégie de bascule backend physique V4 | **Documentée** |
 
-## Décisions Runs 4.11 à 4.13
+## Décisions du Run 6.1
 
-- ajout de `RelayPhysicalBackend` ;
-- ajout de `RelaisManagerBackend` ;
-- backend optionnel essayé avant le fallback direct ;
-- `RelaisManagerBackend` est câblé dans `main.cpp` ;
-- `outputAdapter.bind(&relaisMgr)` reste conservé ;
-- aucun driver V4 réel n’est activé ;
-- aucun changement NVS, Web, LCD ou JSON ;
-- compilation et test de non-régression validés.
+- Phase 5 mise en pause, non supprimée ;
+- aucun driver V4 réel activé ;
+- migration progressive par zone ;
+- backend V4 jamais utilisé implicitement sur une zone non migrée ;
+- priorité au backend V4 uniquement si toutes les conditions de disponibilité sont réunies ;
+- fallback historique obligatoire en cas d’échec ;
+- erreur primaire et fallback journalisés séparément ;
+- rollback compile-time, runtime et Git obligatoire ;
+- état sûr par défaut : `OFF` ;
+- aucune suppression de fallback pendant les premiers runs de Phase 6 ;
+- retrait éventuel des fallbacks soumis à validation longue durée et décision explicite.
+
+## Séquence Phase 6 proposée
+
+```text
+Run 6.1  Stratégie de bascule du backend physique
+Run 6.2  Backend V4 derrière RelayPhysicalBackend
+Run 6.3  Résolution RelayAssignment vers driver/port
+Run 6.4  Profils compile-time legacy / V4
+Run 6.5  Activation sur une zone pilote
+Run 6.6  Comparaison ancien / nouveau backend
+Run 6.7  Migration progressive des zones
+Run 6.8  Tests de panne et fallback
+Run 6.9  Stabilisation du backend V4
+Run 6.10 Décision de retrait des fallbacks
+```
 
 Documents de référence :
 
 ```text
-docs/checkpoints/CHECKPOINT_2026-07-09_v4-phase4-run4-9-web-lcd-state-read-validated.md
 docs/checkpoints/CHECKPOINT_2026-07-10_v4-phase4-run4-11-to-4-13-backend-bridge-validated.md
-docs/architecture/AQUALOOK_V4_RUNTIME_BRIDGE_NEXT_STEP_PLAN.md
+docs/architecture/AQUALOOK_V4_PHASE6_BACKEND_SWITCHOVER_STRATEGY.md
 docs/architecture/AQUALOOK_V4_RELAY_PHYSICAL_BACKEND.md
 docs/architecture/AQUALOOK_V4_OUTPUT_ADAPTER_PHYSICAL_BACKEND_INJECTION.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_BACKEND_WIRING.md
@@ -150,8 +167,18 @@ docs/architecture/AQUALOOK_V4_RELAISMANAGER_BACKEND_WIRING.md
 ## Prochaine étape
 
 ```text
-AquaLook V4 — Phase 5 — Tests et validation automatisée
-Run 5.1 — Stratégie et matrice de tests
+AquaLook V4 — Phase 6 — Run 6.2
+Créer V4RelayPhysicalBackend derrière RelayPhysicalBackend, sans activation runtime
 ```
 
-Objectif : couvrir systématiquement les branches backend, fallback, erreurs, zones invalides et produire un rapport automatique avant l’activation des drivers physiques V4.
+Invariants Run 6.2 :
+
+- aucun changement NVS ;
+- aucun changement Web ;
+- aucun changement LCD ;
+- aucun changement JSON ;
+- aucun backend V4 actif dans `main.cpp` ;
+- backend historique inchangé ;
+- fallback direct conservé ;
+- compilation PlatformIO obligatoire ;
+- diff minimal.
