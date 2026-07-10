@@ -3,13 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "RelayTopology.h"
-#include "V4RelayPhysicalBackend.h"
 #include "domain/BinaryActuatorDriverRegistry.h"
 #include "domain/BoardPortModel.h"
 #include "domain/HardwareInventoryModel.h"
 #include "domain/Xl9535BinaryActuatorDriver.h"
 #include "domain/Xl9535SharedOutputState.h"
+#include "RelayTopology.h"
+#include "V4RelayPhysicalBackend.h"
 
 namespace AquaLook { namespace Runtime {
 
