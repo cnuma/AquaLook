@@ -41,6 +41,10 @@ public:
         bool& active
     ) const override;
 
+    void setMigratedZoneMask(uint32_t mask) {
+        _migratedZoneMask = mask;
+    }
+
     bool isZoneMigrated(uint8_t zoneIndex) const;
     bool hasAnyMigratedZone() const;
 
