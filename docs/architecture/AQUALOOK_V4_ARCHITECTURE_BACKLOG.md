@@ -1,7 +1,7 @@
 # AquaLook V4 — Backlog d’architecture
 
 **Statut :** backlog vivant  
-**Dernière mise à jour :** Phase 6 — Run 6.1 stratégie de bascule du backend physique, 10 juillet 2026
+**Dernière mise à jour :** Phase 6 — Run 6.2 V4RelayPhysicalBackend inactif, 10 juillet 2026
 
 ## État général
 
@@ -28,6 +28,8 @@ EquipmentOutputRuntimeAdapter
 La Phase 5 de tests et validation automatisée est mise en pause sur décision utilisateur. Elle reste prévue et pourra être reprise avant ou pendant la stabilisation de la Phase 6.
 
 La Phase 6 est ouverte par le Run 6.1 documentaire. Elle doit introduire progressivement un backend physique V4 sans basculement brutal, avec fallback, rollback et journalisation obligatoires.
+
+Le Run 6.2 ajoute `V4RelayPhysicalBackend` derrière `RelayPhysicalBackend`. Le backend est strictement inactif : aucune zone migrée, aucune commande appliquée, aucune lecture V4 valide et aucun câblage dans `main.cpp`.
 
 ## Validation PlatformIO complète Runs 4.11 à 4.13
 
@@ -124,6 +126,7 @@ Conclusion :
 | ARCH-099 | Injection `RelayPhysicalBackend` dans `EquipmentOutputRuntimeAdapter` | **Ajoutée, compilée et validée** |
 | ARCH-100 | Câblage `RelaisManagerBackend` dans `main.cpp` | **Ajouté, compilé et validé** |
 | ARCH-101 | Stratégie de bascule backend physique V4 | **Documentée** |
+| ARCH-102 | Squelette inactif `V4RelayPhysicalBackend` | **Ajouté, compilation à valider** |
 
 ## Décisions du Run 6.1
 
@@ -138,6 +141,20 @@ Conclusion :
 - état sûr par défaut : `OFF` ;
 - aucune suppression de fallback pendant les premiers runs de Phase 6 ;
 - retrait éventuel des fallbacks soumis à validation longue durée et décision explicite.
+
+## Décisions du Run 6.2
+
+- ajout de `src/V4RelayPhysicalBackend.h` ;
+- ajout de `src/V4RelayPhysicalBackend.cpp` ;
+- `V4RelayPhysicalBackend` implémente `RelayPhysicalBackend` ;
+- masque de zones migrées initialisé à zéro ;
+- `setZoneValve(...)` renvoie toujours `false` ;
+- `getZoneValveState(...)` force `active=false` puis renvoie `false` ;
+- aucune instance créée dans `main.cpp` ;
+- aucun appel au registre de drivers Phase 3 ;
+- aucun backend V4 actif ;
+- aucun changement NVS, Web, LCD ou JSON ;
+- fallback historique inchangé.
 
 ## Séquence Phase 6 proposée
 
@@ -159,6 +176,7 @@ Documents de référence :
 ```text
 docs/checkpoints/CHECKPOINT_2026-07-10_v4-phase4-run4-11-to-4-13-backend-bridge-validated.md
 docs/architecture/AQUALOOK_V4_PHASE6_BACKEND_SWITCHOVER_STRATEGY.md
+docs/architecture/AQUALOOK_V4_PHASE6_V4_RELAY_PHYSICAL_BACKEND.md
 docs/architecture/AQUALOOK_V4_RELAY_PHYSICAL_BACKEND.md
 docs/architecture/AQUALOOK_V4_OUTPUT_ADAPTER_PHYSICAL_BACKEND_INJECTION.md
 docs/architecture/AQUALOOK_V4_RELAISMANAGER_BACKEND_WIRING.md
@@ -166,19 +184,28 @@ docs/architecture/AQUALOOK_V4_RELAISMANAGER_BACKEND_WIRING.md
 
 ## Prochaine étape
 
-```text
-AquaLook V4 — Phase 6 — Run 6.2
-Créer V4RelayPhysicalBackend derrière RelayPhysicalBackend, sans activation runtime
+Valider **Run 6.2 — compilation**.
+
+Commande :
+
+```powershell
+pio run -e ProgrammeArrosage
 ```
 
-Invariants Run 6.2 :
+Après compilation OK :
 
+```text
+AquaLook V4 — Phase 6 — Run 6.3
+Résolution RelayAssignment vers registre de drivers et port physique,
+sans activation de zone
+```
+
+Invariants Run 6.3 :
+
+- inspection obligatoire des contrats Phase 3 réels ;
+- aucune activation de zone ;
 - aucun changement NVS ;
-- aucun changement Web ;
-- aucun changement LCD ;
-- aucun changement JSON ;
-- aucun backend V4 actif dans `main.cpp` ;
-- backend historique inchangé ;
-- fallback direct conservé ;
-- compilation PlatformIO obligatoire ;
-- diff minimal.
+- aucun changement Web/LCD/JSON ;
+- aucun câblage V4 dans `main.cpp` ;
+- fallback historique conservé ;
+- compilation PlatformIO obligatoire.
