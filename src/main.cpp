@@ -8,6 +8,7 @@
 #include "NTPManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
+#include "RelaisManagerBackend.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
@@ -21,6 +22,7 @@ WiFiManager wifiMgr;
 NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
+AquaLook::Runtime::RelaisManagerBackend relaisBackend;
 ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
@@ -87,6 +89,8 @@ void setup() {
     splashStep("Configuration");
 
     relaisMgr.begin(&configMgr);
+    relaisBackend.bind(&relaisMgr);
+    outputAdapter.setPhysicalBackend(&relaisBackend);
     outputAdapter.bind(&relaisMgr);
     splashStep("Relais");
 
