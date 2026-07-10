@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include "config.h"
 #include "RelayTopology.h"
+#include "domain/Xl9535SharedOutputState.h"
 
 class ConfigManager;
 
@@ -19,6 +20,9 @@ class ConfigManager;
 
 class RelaisManager {
 public:
+    void setXl9535SharedOutputState(
+        AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
+    );
     void begin(ConfigManager* config = nullptr);
     void update();
 
@@ -33,6 +37,7 @@ public:
 
 private:
     ConfigManager* _config = nullptr;
+    AquaLook::Domain::Xl9535SharedOutputState* _xl9535SharedOutputState = nullptr;
     bool _state[MAX_ZONES] = {};
     uint32_t _startMs[MAX_ZONES] = {};
     bool _assignmentState[RelayTopology::MAX_RELAY_ASSIGNMENTS] = {};
