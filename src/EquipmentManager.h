@@ -6,6 +6,10 @@
 
 class RelaisManager;
 
+namespace AquaLook { namespace Runtime {
+class EquipmentOutputRuntimeAdapter;
+}}
+
 // Orchestration des équipements AquaLook.
 // À ce stade, seules les électrovannes de zones sont exécutables.
 // Les dépendances pompe sont résolues mais pas encore orchestrées.
@@ -55,8 +59,11 @@ public:
     );
 
     void setRelayExecutor(RelaisManager* relayExecutor);
+    void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputAdapter);
     bool isInitialized() const;
     bool hasRelayExecutor() const;
+    bool hasOutputAdapter() const;
+    bool hasExecutor() const;
     ZoneResolution resolveZone(uint8_t zone) const;
     ZoneDependencyResolution resolveZoneDependencies(uint8_t zone) const;
 
@@ -67,6 +74,7 @@ private:
     const EquipmentModel::EquipmentConfigSet* _equipmentModel = nullptr;
     const RelayTopology::RelayTopologyConfig* _relayTopology = nullptr;
     RelaisManager* _relayExecutor = nullptr;
+    AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputAdapter = nullptr;
     uint8_t _nbZones = 0;
 
     ActionResult resolveEquipment(
