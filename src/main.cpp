@@ -1,3 +1,4 @@
+#include "V4PilotRuntime.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include "config.h"
@@ -9,7 +10,6 @@
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "RelaisManagerBackend.h"
-#include "V4PilotRuntime.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
