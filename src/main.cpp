@@ -9,6 +9,7 @@
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "RelaisManagerBackend.h"
+#include "V4PilotRuntime.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
@@ -24,6 +25,7 @@ NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
 AquaLook::Runtime::RelaisManagerBackend relaisBackend;
+AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
@@ -93,7 +95,30 @@ void setup() {
     relaisMgr.setXl9535SharedOutputState(&xl9535SharedOutputState);
     relaisMgr.begin(&configMgr);
     relaisBackend.bind(&relaisMgr);
+
+#if AQUALOOK_RELAY_BACKEND_V4
+    const bool v4PilotReady = v4PilotRuntime.begin(
+        relaisMgr.topology(),
+        xl9535SharedOutputState
+    );
+    if (v4PilotReady) {
+        outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());
+        EventLog::log(
+            LOG_WARN,
+            "Relais V4: zone pilote 1 active, fallback legacy conserve"
+        );
+    } else {
+        outputAdapter.setPhysicalBackend(&relaisBackend);
+        EventLog::log(
+            LOG_ERROR,
+            "Relais V4: pilote indisponible, backend legacy force"
+        );
+    }
+#else
     outputAdapter.setPhysicalBackend(&relaisBackend);
+    EventLog::log(LOG_INFO, "Relais: profil backend legacy");
+#endif
+
     outputAdapter.bind(&relaisMgr);
     splashStep("Relais");
 
