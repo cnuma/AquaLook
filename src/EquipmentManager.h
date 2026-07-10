@@ -30,15 +30,15 @@ public:
 
     enum ExecutionPath : uint8_t {
         EXECUTION_PATH_NONE = 0,
-        EXECUTION_PATH_OUTPUT_ADAPTER,
+        EXECUTION_PATH_PHYSICAL_BACKEND,
         EXECUTION_PATH_RELAY_FALLBACK,
         EXECUTION_PATH_FAILED
     };
 
     struct ExecutionStats {
         uint32_t commandCount;
-        uint32_t adapterSuccessCount;
-        uint32_t fallbackSuccessCount;
+        uint32_t physicalBackendSuccessCount;
+        uint32_t relayFallbackSuccessCount;
         uint32_t failureCount;
         uint32_t lastCommandAtMs;
         uint8_t lastZone;
