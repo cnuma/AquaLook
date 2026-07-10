@@ -1,4 +1,5 @@
 #include "EquipmentManager.h"
+#include "EquipmentOutputRuntimeAdapter.h"
 #include "RelaisManager.h"
 
 EquipmentManager::EquipmentResolution::EquipmentResolution()
@@ -39,12 +40,26 @@ void EquipmentManager::setRelayExecutor(RelaisManager* relayExecutor) {
     _relayExecutor = relayExecutor;
 }
 
+void EquipmentManager::setOutputAdapter(
+    AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputAdapter
+) {
+    _outputAdapter = outputAdapter;
+}
+
 bool EquipmentManager::isInitialized() const {
     return _equipmentModel != nullptr && _relayTopology != nullptr;
 }
 
 bool EquipmentManager::hasRelayExecutor() const {
     return _relayExecutor != nullptr;
+}
+
+bool EquipmentManager::hasOutputAdapter() const {
+    return _outputAdapter != nullptr && _outputAdapter->isBound();
+}
+
+bool EquipmentManager::hasExecutor() const {
+    return hasOutputAdapter() || hasRelayExecutor();
 }
 
 EquipmentManager::ActionResult EquipmentManager::resolveEquipment(
@@ -169,11 +184,21 @@ EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool 
     ZoneResolution resolution;
     const ActionResult validation = validateZoneRequest(zone, resolution);
     if (validation != ACTION_OK) return validation;
-    if (!hasRelayExecutor()) return ACTION_EXECUTOR_NOT_CONNECTED;
+    if (!hasExecutor()) return ACTION_EXECUTOR_NOT_CONNECTED;
 
-    return _relayExecutor->setAssignment(resolution.relayAssignmentIndex, state)
-        ? ACTION_OK
-        : ACTION_EXECUTION_FAILED;
+    if (hasOutputAdapter()) {
+        const AquaLook::Domain::OperationResult result =
+            _outputAdapter->setZoneValve(zone, state, millis());
+        if (result.succeeded()) return ACTION_OK;
+    }
+
+    if (hasRelayExecutor()) {
+        return _relayExecutor->setAssignment(resolution.relayAssignmentIndex, state)
+            ? ACTION_OK
+            : ACTION_EXECUTION_FAILED;
+    }
+
+    return ACTION_EXECUTION_FAILED;
 }
 
 EquipmentManager::ActionResult EquipmentManager::startZone(uint8_t zone) {
