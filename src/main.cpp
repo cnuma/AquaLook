@@ -17,6 +17,7 @@
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "domain/Xl9535SharedOutputState.h"
 
 WiFiManager wifiMgr;
 NTPManager ntpMgr;
@@ -29,6 +30,7 @@ DisplayManager displayMgr;
 ConfigManager configMgr;
 StorageManager storageMgr;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
+AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static void onRelayRequest(uint8_t zone, bool state) {
     outputAdapter.setZoneValve(zone, state, millis());
@@ -88,6 +90,7 @@ void setup() {
 
     splashStep("Configuration");
 
+    relaisMgr.setXl9535SharedOutputState(&xl9535SharedOutputState);
     relaisMgr.begin(&configMgr);
     relaisBackend.bind(&relaisMgr);
     outputAdapter.setPhysicalBackend(&relaisBackend);
