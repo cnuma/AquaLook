@@ -17,7 +17,9 @@ namespace RelayTopology {
 
 static constexpr uint8_t MAX_RELAY_BOARDS = 8;
 static constexpr uint8_t MAX_CHANNELS_PER_BOARD = 8;
-static constexpr uint8_t MAX_RELAY_ASSIGNMENTS = MAX_ZONES;
+static constexpr uint8_t RESERVED_AUXILIARY_ASSIGNMENTS = 4;
+static constexpr uint8_t MAX_RELAY_ASSIGNMENTS =
+    MAX_ZONES + RESERVED_AUXILIARY_ASSIGNMENTS;
 
 // Valeurs alignées sur le modèle existant ConfigManager :
 // 0 = XL9535, 1 = MCP23017.
