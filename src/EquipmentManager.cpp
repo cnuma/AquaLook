@@ -1,5 +1,6 @@
 #include "EquipmentManager.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "EventLog.h"
 #include "RelaisManager.h"
 
 EquipmentManager::EquipmentResolution::EquipmentResolution()
@@ -60,6 +61,19 @@ bool EquipmentManager::hasOutputAdapter() const {
 
 bool EquipmentManager::hasExecutor() const {
     return hasOutputAdapter() || hasRelayExecutor();
+}
+
+const char* EquipmentManager::planActionName(PlanAction action) {
+    switch (action) {
+        case PLAN_ACTION_VALVE_ON: return "VALVE_ON";
+        case PLAN_ACTION_VALVE_OFF: return "VALVE_OFF";
+        case PLAN_ACTION_PUMP_ON: return "PUMP_ON";
+        case PLAN_ACTION_PUMP_OFF: return "PUMP_OFF";
+        case PLAN_ACTION_WAIT: return "WAIT";
+        case PLAN_ACTION_NONE:
+        default:
+            return "NONE";
+    }
 }
 
 EquipmentManager::ActionResult EquipmentManager::resolveEquipment(
@@ -254,6 +268,68 @@ EquipmentManager::buildZoneStopPlan(uint8_t zone) const {
     return buildZonePlan(zone, false);
 }
 
+EquipmentManager::ActionResult EquipmentManager::dryRunZonePlan(
+    uint8_t zone,
+    bool starting
+) const {
+    const ZoneExecutionPlan plan = buildZonePlan(zone, starting);
+    if (!plan.valid()) {
+        EventLog::log(
+            LOG_WARN,
+            "Equipment plan: zone %u %s dry_run=yes error=%u",
+            zone + 1U,
+            starting ? "START" : "STOP",
+            static_cast<unsigned>(plan.result)
+        );
+        return plan.result;
+    }
+
+    EventLog::log(
+        LOG_INFO,
+        "Equipment plan: zone %u %s steps=%u pump=%s dry_run=yes",
+        zone + 1U,
+        starting ? "START" : "STOP",
+        plan.stepCount,
+        plan.requiresPump ? "yes" : "no"
+    );
+
+    for (uint8_t index = 0U; index < plan.stepCount; ++index) {
+        const PlanStep& step = plan.steps[index];
+        if (step.action == PLAN_ACTION_WAIT) {
+            EventLog::log(
+                LOG_INFO,
+                "Equipment plan: zone %u step=%u action=%s delay=%lu dry_run=yes",
+                zone + 1U,
+                index + 1U,
+                planActionName(step.action),
+                static_cast<unsigned long>(step.delayMs)
+            );
+            continue;
+        }
+
+        EventLog::log(
+            LOG_INFO,
+            "Equipment plan: zone %u step=%u action=%s equipment=%u dry_run=yes",
+            zone + 1U,
+            index + 1U,
+            planActionName(step.action),
+            step.equipmentIndex
+        );
+    }
+
+    return ACTION_OK;
+}
+
+EquipmentManager::ActionResult
+EquipmentManager::dryRunZoneStartPlan(uint8_t zone) const {
+    return dryRunZonePlan(zone, true);
+}
+
+EquipmentManager::ActionResult
+EquipmentManager::dryRunZoneStopPlan(uint8_t zone) const {
+    return dryRunZonePlan(zone, false);
+}
+
 EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool state) {
     ZoneResolution resolution;
     const ActionResult validation = validateZoneRequest(zone, resolution);
@@ -276,9 +352,11 @@ EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool 
 }
 
 EquipmentManager::ActionResult EquipmentManager::startZone(uint8_t zone) {
+    dryRunZoneStartPlan(zone);
     return executeZone(zone, true);
 }
 
 EquipmentManager::ActionResult EquipmentManager::stopZone(uint8_t zone) {
+    dryRunZoneStopPlan(zone);
     return executeZone(zone, false);
 }
