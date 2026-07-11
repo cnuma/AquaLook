@@ -134,6 +134,40 @@ static bool findFreeShadowRelayChannel(
     return false;
 }
 
+static int16_t findFreeShadowBoardIndex(
+    const RelayTopology::RelayTopologyConfig& topology
+) {
+    for (uint8_t index = 0U; index < RelayTopology::MAX_RELAY_BOARDS; ++index) {
+        if (!topology.boards[index].enabled) {
+            return static_cast<int16_t>(index);
+        }
+    }
+    return -1;
+}
+
+static bool createSyntheticShadowRelayChannel(
+    RelayTopology::RelayTopologyConfig& topology,
+    uint8_t& boardIndex,
+    uint8_t& channelIndex
+) {
+    const int16_t freeBoardIndex = findFreeShadowBoardIndex(topology);
+    if (freeBoardIndex < 0) return false;
+
+    boardIndex = static_cast<uint8_t>(freeBoardIndex);
+    channelIndex = 0U;
+
+    RelayTopology::RelayBoardConfig& board = topology.boards[boardIndex];
+    board.enabled = true;
+    board.controller = RelayTopology::CONTROLLER_XL9535;
+    board.i2cAddress = RelayTopology::defaultAddressForController(
+        RelayTopology::CONTROLLER_XL9535
+    );
+    board.channelCount = 1U;
+    board.logic = RelayTopology::LOGIC_DIRECT;
+
+    return RelayTopology::validateBoard(board);
+}
+
 static int16_t findFreeShadowAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology
 ) {
@@ -164,10 +198,18 @@ static bool buildShadowPumpScenario(uint8_t nbZones) {
     const int16_t equipmentIndex = findFreeShadowEquipmentIndex(nbZones);
     uint8_t boardIndex = 0U;
     uint8_t channelIndex = 0U;
+    bool syntheticBoard = false;
 
-    if (assignmentIndex < 0 || equipmentIndex < 0 ||
-        !findFreeShadowRelayChannel(shadowRelayTopology, boardIndex, channelIndex)) {
-        return false;
+    if (assignmentIndex < 0 || equipmentIndex < 0) return false;
+
+    if (!findFreeShadowRelayChannel(shadowRelayTopology, boardIndex, channelIndex)) {
+        syntheticBoard = true;
+        if (!createSyntheticShadowRelayChannel(
+                shadowRelayTopology,
+                boardIndex,
+                channelIndex)) {
+            return false;
+        }
     }
 
     RelayTopology::RelayAssignment& pumpAssignment =
@@ -214,10 +256,12 @@ static bool buildShadowPumpScenario(uint8_t nbZones) {
 
     EventLog::log(
         LOG_INFO,
-        "Shadow pump: scenario pret equipment=%u board=%u channel=%u delays=%u/%u passive=yes",
+        "Shadow pump: scenario pret equipment=%u assignment=%u board=%u channel=%u source=%s delays=%u/%u passive=yes",
         static_cast<unsigned>(equipmentIndex),
+        static_cast<unsigned>(assignmentIndex),
         static_cast<unsigned>(boardIndex),
         static_cast<unsigned>(channelIndex),
+        syntheticBoard ? "synthetic_board" : "free_channel",
         static_cast<unsigned>(SHADOW_PUMP_STARTUP_DELAY_MS),
         static_cast<unsigned>(SHADOW_PUMP_SHUTDOWN_DELAY_MS)
     );
