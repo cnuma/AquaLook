@@ -12,7 +12,8 @@ class EquipmentOutputRuntimeAdapter;
 
 // Orchestration des équipements AquaLook.
 // À ce stade, seules les électrovannes de zones sont exécutables.
-// Les dépendances pompe sont résolues et planifiées, mais pas encore exécutées.
+// Les dépendances pompe sont résolues, planifiées et observables en dry-run,
+// mais aucune action pompe n'est exécutée.
 class EquipmentManager {
 public:
     enum ActionResult : uint8_t {
@@ -112,6 +113,9 @@ public:
     ZoneDependencyResolution resolveZoneDependencies(uint8_t zone) const;
     ZoneExecutionPlan buildZoneStartPlan(uint8_t zone) const;
     ZoneExecutionPlan buildZoneStopPlan(uint8_t zone) const;
+    ActionResult dryRunZoneStartPlan(uint8_t zone) const;
+    ActionResult dryRunZoneStopPlan(uint8_t zone) const;
+    static const char* planActionName(PlanAction action);
 
     ActionResult startZone(uint8_t zone);
     ActionResult stopZone(uint8_t zone);
@@ -130,4 +134,5 @@ private:
     ActionResult validateZoneRequest(uint8_t zone, ZoneResolution& resolution) const;
     ActionResult executeZone(uint8_t zone, bool state);
     ZoneExecutionPlan buildZonePlan(uint8_t zone, bool starting) const;
+    ActionResult dryRunZonePlan(uint8_t zone, bool starting) const;
 };
