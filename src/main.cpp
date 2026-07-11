@@ -20,6 +20,7 @@
 #include "EquipmentManager.h"
 #include "EquipmentModel.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "EquipmentExecutionShadowRuntime.h"
 #include "domain/Xl9535SharedOutputState.h"
 
 WiFiManager wifiMgr;
@@ -36,6 +37,7 @@ StorageManager storageMgr;
 EquipmentManager equipmentMgr;
 EquipmentModel::EquipmentConfigSet transientEquipmentModel;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
+AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static bool equipmentRuntimeReady = false;
@@ -92,6 +94,12 @@ static bool buildTransientEquipmentModel(uint8_t nbZones) {
 
 static void onRelayRequest(uint8_t zone, bool state) {
     if (equipmentRuntimeReady) {
+        const uint32_t nowMs = millis();
+        const EquipmentManager::ZoneExecutionPlan shadowPlan = state
+            ? equipmentMgr.buildZoneStartPlan(zone)
+            : equipmentMgr.buildZoneStopPlan(zone);
+        executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
+
         const EquipmentManager::ActionResult result = state
             ? equipmentMgr.startZone(zone)
             : equipmentMgr.stopZone(zone);
@@ -212,6 +220,7 @@ void setup() {
             : "Equipment: modele indisponible, fallback adaptateur direct",
         nbZones
     );
+    executionShadowRuntime.begin(equipmentRuntimeReady ? nbZones : 0U);
     splashStep("Relais");
 
     scheduleMgr.begin();
@@ -287,6 +296,7 @@ void loop() {
         );
     }
 
+    executionShadowRuntime.update(millis());
     relaisMgr.update();
     webMgr.update();
     displayMgr.update();
