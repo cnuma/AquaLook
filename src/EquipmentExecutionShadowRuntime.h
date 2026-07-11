@@ -23,8 +23,10 @@ public:
     );
 
     void update(uint32_t nowMs);
+    void emergencyStopAll(uint32_t nowMs);
 
     bool isEnabled() const;
+    bool isConsistent() const;
     uint8_t zoneCount() const;
     uint8_t sharedPumpUserCount() const;
 
@@ -51,6 +53,8 @@ private:
         const EquipmentManager::ZoneExecutionPlan& source,
         bool keepPumpTransition
     );
+    uint8_t countPumpRequests() const;
+    void repairConsistency();
     void logProgress(uint8_t zone, ZoneSlot& slot, uint32_t nowMs);
 };
 
