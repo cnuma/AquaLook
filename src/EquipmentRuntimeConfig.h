@@ -7,9 +7,9 @@
 namespace AquaLook { namespace Runtime {
 
 enum class EquipmentControlMode : uint8_t {
-    DISABLED = 0,
-    SHADOW = 1,
-    PHYSICAL = 2
+    MODE_DISABLED = 0,
+    MODE_SHADOW = 1,
+    MODE_PHYSICAL = 2
 };
 
 struct PumpRuntimeConfig {
