@@ -26,6 +26,7 @@ public:
 
     bool isEnabled() const;
     uint8_t zoneCount() const;
+    uint8_t sharedPumpUserCount() const;
 
 private:
     struct ZoneSlot {
@@ -33,17 +34,23 @@ private:
         PassiveExecutionState observedState;
         uint8_t observedStep;
         bool occupied;
+        bool pumpRequested;
 
         ZoneSlot();
     };
 
     ZoneSlot _slots[MAX_ZONES];
     uint8_t _nbZones;
+    uint8_t _sharedPumpUsers;
     uint16_t _nextActivityId;
     uint16_t _nextExecutionId;
     bool _enabled;
 
     static uint16_t nextValidId(uint16_t current);
+    static EquipmentManager::ZoneExecutionPlan buildArbitratedPlan(
+        const EquipmentManager::ZoneExecutionPlan& source,
+        bool keepPumpTransition
+    );
     void logProgress(uint8_t zone, ZoneSlot& slot, uint32_t nowMs);
 };
 
