@@ -35,11 +35,17 @@ uint32_t crc32Bytes(const uint8_t* data, size_t len) {
 
 bool structurallySafe(const EquipmentRuntimeConfig& config) {
     const uint8_t mode = static_cast<uint8_t>(config.pump.mode);
-    if (mode > static_cast<uint8_t>(EquipmentControlMode::PHYSICAL)) return false;
+    if (mode > static_cast<uint8_t>(EquipmentControlMode::MODE_PHYSICAL)) {
+        return false;
+    }
     if (config.pump.startupDelayMs > 30000U ||
-        config.pump.shutdownDelayMs > 30000U) return false;
-    if (config.pump.minOnSec > 3600U || config.pump.minOffSec > 3600U) return false;
-    if (config.pump.mode == EquipmentControlMode::PHYSICAL &&
+        config.pump.shutdownDelayMs > 30000U) {
+        return false;
+    }
+    if (config.pump.minOnSec > 3600U || config.pump.minOffSec > 3600U) {
+        return false;
+    }
+    if (config.pump.mode == EquipmentControlMode::MODE_PHYSICAL &&
         config.pump.relayAssignmentIndex == EquipmentModel::INVALID_INDEX) {
         return false;
     }
