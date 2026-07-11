@@ -30,7 +30,7 @@ void EquipmentExecutionShadowRuntime::begin(uint8_t nbZones) {
     EventLog::log(
         _enabled ? LOG_INFO : LOG_WARN,
         _enabled
-            ? "Shadow engine: actif pour %u zone(s), shared_pump=yes passive=yes"
+            ? "Shadow engine: actif pour %u zone(s), shared_pump=yes hardened=yes passive=yes"
             : "Shadow engine: desactive, aucune zone",
         _nbZones
     );
@@ -44,6 +44,7 @@ bool EquipmentExecutionShadowRuntime::submit(
 ) {
     if (!_enabled || zone >= _nbZones || zone >= MAX_ZONES) return false;
 
+    repairConsistency();
     ZoneSlot& slot = _slots[zone];
     if (slot.engine.isActive()) {
         const ExecutionContext& previous = slot.engine.context();
@@ -56,39 +57,44 @@ bool EquipmentExecutionShadowRuntime::submit(
         );
         slot.engine.cancel(nowMs);
         slot.engine.reset();
+        slot.occupied = false;
     }
 
-    bool keepPumpTransition = true;
-    uint8_t usersBefore = _sharedPumpUsers;
-    uint8_t usersAfter = _sharedPumpUsers;
+    const bool requestedBefore = slot.pumpRequested;
+    const uint8_t usersBefore = _sharedPumpUsers;
+    bool keepPumpTransition = false;
+    const char* transition = "NONE";
 
     if (plan.requiresPump) {
         if (starting) {
             if (!slot.pumpRequested) {
                 slot.pumpRequested = true;
-                if (_sharedPumpUsers < MAX_ZONES) ++_sharedPumpUsers;
+                ++_sharedPumpUsers;
+                keepPumpTransition = usersBefore == 0U;
+                transition = keepPumpTransition ? "PUMP_ON" : "KEEP_ON";
+            } else {
+                transition = "DUPLICATE_START";
             }
-            usersAfter = _sharedPumpUsers;
-            keepPumpTransition = usersBefore == 0U;
         } else {
             if (slot.pumpRequested) {
                 slot.pumpRequested = false;
                 if (_sharedPumpUsers > 0U) --_sharedPumpUsers;
+                keepPumpTransition = _sharedPumpUsers == 0U;
+                transition = keepPumpTransition ? "PUMP_OFF" : "KEEP_ON";
+            } else {
+                transition = "ORPHAN_STOP";
             }
-            usersAfter = _sharedPumpUsers;
-            keepPumpTransition = usersAfter == 0U;
         }
 
         EventLog::log(
             LOG_INFO,
-            "Shadow pump arbiter: zone %u %s users=%u->%u transition=%s passive=yes",
+            "Shadow pump arbiter: zone %u %s users=%u->%u transition=%s consistent=%s passive=yes",
             zone + 1U,
             starting ? "ACQUIRE" : "RELEASE",
             usersBefore,
-            usersAfter,
-            keepPumpTransition
-                ? (starting ? "PUMP_ON" : "PUMP_OFF")
-                : "KEEP_ON"
+            _sharedPumpUsers,
+            transition,
+            isConsistent() ? "yes" : "no"
         );
     }
 
@@ -108,13 +114,19 @@ bool EquipmentExecutionShadowRuntime::submit(
         nowMs
     );
 
+    if (!loaded) {
+        slot.pumpRequested = requestedBefore;
+        _sharedPumpUsers = usersBefore;
+        repairConsistency();
+    }
+
     slot.occupied = loaded;
     slot.observedState = slot.engine.context().state;
     slot.observedStep = slot.engine.context().currentStep;
 
     EventLog::log(
         loaded ? LOG_INFO : LOG_WARN,
-        "[Activity#%u][Exec#%u] Shadow: zone %u %s accepted=%s steps=%u source_steps=%u pump=%s users=%u passive=yes",
+        "[Activity#%u][Exec#%u] Shadow: zone %u %s accepted=%s steps=%u source_steps=%u pump=%s users=%u consistent=%s passive=yes",
         activityValue,
         executionValue,
         zone + 1U,
@@ -123,13 +135,15 @@ bool EquipmentExecutionShadowRuntime::submit(
         effectivePlan.stepCount,
         plan.stepCount,
         effectivePlan.requiresPump ? "yes" : "no",
-        _sharedPumpUsers
+        _sharedPumpUsers,
+        isConsistent() ? "yes" : "no"
     );
     return loaded;
 }
 
 void EquipmentExecutionShadowRuntime::update(uint32_t nowMs) {
     if (!_enabled) return;
+    repairConsistency();
     for (uint8_t zone = 0U; zone < _nbZones; ++zone) {
         ZoneSlot& slot = _slots[zone];
         if (!slot.occupied) continue;
@@ -143,16 +157,50 @@ void EquipmentExecutionShadowRuntime::update(uint32_t nowMs) {
     }
 }
 
-bool EquipmentExecutionShadowRuntime::isEnabled() const {
-    return _enabled;
+void EquipmentExecutionShadowRuntime::emergencyStopAll(uint32_t nowMs) {
+    for (uint8_t zone = 0U; zone < MAX_ZONES; ++zone) {
+        ZoneSlot& slot = _slots[zone];
+        if (slot.engine.isActive()) slot.engine.cancel(nowMs);
+        slot.engine.reset();
+        slot.observedState = PassiveExecutionState::IDLE;
+        slot.observedStep = 0U;
+        slot.occupied = false;
+        slot.pumpRequested = false;
+    }
+    _sharedPumpUsers = 0U;
+    EventLog::log(
+        LOG_WARN,
+        "Shadow pump arbiter: EMERGENCY_STOP users=0 consistent=yes passive=yes"
+    );
 }
 
-uint8_t EquipmentExecutionShadowRuntime::zoneCount() const {
-    return _nbZones;
+bool EquipmentExecutionShadowRuntime::isEnabled() const { return _enabled; }
+bool EquipmentExecutionShadowRuntime::isConsistent() const {
+    return _sharedPumpUsers == countPumpRequests() && _sharedPumpUsers <= _nbZones;
 }
-
+uint8_t EquipmentExecutionShadowRuntime::zoneCount() const { return _nbZones; }
 uint8_t EquipmentExecutionShadowRuntime::sharedPumpUserCount() const {
     return _sharedPumpUsers;
+}
+
+uint8_t EquipmentExecutionShadowRuntime::countPumpRequests() const {
+    uint8_t count = 0U;
+    for (uint8_t zone = 0U; zone < _nbZones; ++zone) {
+        if (_slots[zone].pumpRequested) ++count;
+    }
+    return count;
+}
+
+void EquipmentExecutionShadowRuntime::repairConsistency() {
+    const uint8_t counted = countPumpRequests();
+    if (_sharedPumpUsers == counted && _sharedPumpUsers <= _nbZones) return;
+    EventLog::log(
+        LOG_ERROR,
+        "Shadow pump arbiter: incoherence users=%u counted=%u, repair passive=yes",
+        _sharedPumpUsers,
+        counted
+    );
+    _sharedPumpUsers = counted;
 }
 
 uint16_t EquipmentExecutionShadowRuntime::nextValidId(uint16_t current) {
@@ -218,51 +266,31 @@ void EquipmentExecutionShadowRuntime::logProgress(
 
     if (context.state != slot.observedState) {
         if (context.state == PassiveExecutionState::RUNNING) {
-            EventLog::log(
-                LOG_INFO,
+            EventLog::log(LOG_INFO,
                 "[Activity#%u][Exec#%u] Shadow: zone %u state=RUNNING passive=yes",
-                context.activityId.value,
-                context.executionId.value,
-                zone + 1U
-            );
+                context.activityId.value, context.executionId.value, zone + 1U);
         } else if (context.state == PassiveExecutionState::WAITING) {
             const EquipmentManager::PlanStep& waitStep =
                 context.plan.steps[context.currentStep];
-            EventLog::log(
-                LOG_INFO,
+            EventLog::log(LOG_INFO,
                 "[Activity#%u][Exec#%u] Shadow: zone %u state=WAITING delay=%lu passive=yes",
-                context.activityId.value,
-                context.executionId.value,
-                zone + 1U,
-                (unsigned long)waitStep.delayMs
-            );
+                context.activityId.value, context.executionId.value, zone + 1U,
+                (unsigned long)waitStep.delayMs);
         } else if (context.state == PassiveExecutionState::SUCCEEDED) {
-            EventLog::log(
-                LOG_INFO,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=SUCCEEDED duration=%lu users=%u passive=yes",
-                context.activityId.value,
-                context.executionId.value,
-                zone + 1U,
-                (unsigned long)(nowMs - context.startedAtMs),
-                _sharedPumpUsers
-            );
+            EventLog::log(LOG_INFO,
+                "[Activity#%u][Exec#%u] Shadow: zone %u state=SUCCEEDED duration=%lu users=%u consistent=%s passive=yes",
+                context.activityId.value, context.executionId.value, zone + 1U,
+                (unsigned long)(nowMs - context.startedAtMs), _sharedPumpUsers,
+                isConsistent() ? "yes" : "no");
         } else if (context.state == PassiveExecutionState::FAILED) {
-            EventLog::log(
-                LOG_WARN,
+            EventLog::log(LOG_WARN,
                 "[Activity#%u][Exec#%u] Shadow: zone %u state=FAILED error=%u passive=yes",
-                context.activityId.value,
-                context.executionId.value,
-                zone + 1U,
-                (unsigned)context.error
-            );
+                context.activityId.value, context.executionId.value, zone + 1U,
+                (unsigned)context.error);
         } else if (context.state == PassiveExecutionState::CANCELLED) {
-            EventLog::log(
-                LOG_WARN,
+            EventLog::log(LOG_WARN,
                 "[Activity#%u][Exec#%u] Shadow: zone %u state=CANCELLED passive=yes",
-                context.activityId.value,
-                context.executionId.value,
-                zone + 1U
-            );
+                context.activityId.value, context.executionId.value, zone + 1U);
         }
     }
 
