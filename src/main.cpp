@@ -21,6 +21,7 @@
 #include "EquipmentModel.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "EquipmentExecutionShadowRuntime.h"
+#include "EquipmentRuntimeConfigStore.h"
 #include "domain/Xl9535SharedOutputState.h"
 
 WiFiManager wifiMgr;
@@ -41,12 +42,11 @@ EquipmentModel::EquipmentConfigSet shadowEquipmentModel;
 RelayTopology::RelayTopologyConfig shadowRelayTopology;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
+AquaLook::Runtime::EquipmentRuntimeConfigStore equipmentConfigStore;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
-static constexpr uint16_t SHADOW_PUMP_STARTUP_DELAY_MS = 500U;
-static constexpr uint16_t SHADOW_PUMP_SHUTDOWN_DELAY_MS = 500U;
 
 static int16_t findZoneAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology,
@@ -70,20 +70,16 @@ static bool buildTransientEquipmentModel(uint8_t nbZones) {
 
     for (uint8_t zone = 0U; zone < nbZones; ++zone) {
         const int16_t assignmentIndex = findZoneAssignmentIndex(topology, zone);
-        if (assignmentIndex < 0 || zone >= EquipmentModel::MAX_EQUIPMENTS) {
-            return false;
-        }
+        if (assignmentIndex < 0 || zone >= EquipmentModel::MAX_EQUIPMENTS) return false;
 
-        EquipmentModel::EquipmentConfig& valve =
-            transientEquipmentModel.equipments[zone];
+        EquipmentModel::EquipmentConfig& valve = transientEquipmentModel.equipments[zone];
         valve.enabled = true;
         valve.type = EquipmentModel::EQUIP_ZONE_VALVE;
         valve.targetIndex = zone;
         valve.relayAssignmentIndex = static_cast<uint8_t>(assignmentIndex);
         snprintf(valve.name, sizeof(valve.name), "Vanne zone %u", zone + 1U);
 
-        EquipmentModel::ZoneEquipmentLink& link =
-            transientEquipmentModel.zoneLinks[zone];
+        EquipmentModel::ZoneEquipmentLink& link = transientEquipmentModel.zoneLinks[zone];
         link.enabled = true;
         link.zoneIndex = zone;
         link.valveEquipmentIndex = zone;
@@ -94,7 +90,6 @@ static bool buildTransientEquipmentModel(uint8_t nbZones) {
             return false;
         }
     }
-
     return true;
 }
 
@@ -188,7 +183,10 @@ static int16_t findFreeShadowEquipmentIndex(uint8_t nbZones) {
     return -1;
 }
 
-static bool buildShadowPumpScenario(uint8_t nbZones) {
+static bool buildShadowPumpScenario(
+    uint8_t nbZones,
+    const AquaLook::Runtime::EquipmentRuntimeConfig& runtimeConfig
+) {
     if (nbZones == 0U || nbZones >= EquipmentModel::MAX_EQUIPMENTS) return false;
 
     shadowEquipmentModel = transientEquipmentModel;
@@ -216,7 +214,7 @@ static bool buildShadowPumpScenario(uint8_t nbZones) {
         shadowRelayTopology.assignments[assignmentIndex];
     pumpAssignment.enabled = true;
     pumpAssignment.role = RelayTopology::ROLE_PUMP;
-    pumpAssignment.targetIndex = 0U;
+    pumpAssignment.targetIndex = runtimeConfig.pump.targetIndex;
     pumpAssignment.boardIndex = boardIndex;
     pumpAssignment.channelIndex = channelIndex;
 
@@ -224,10 +222,12 @@ static bool buildShadowPumpScenario(uint8_t nbZones) {
         shadowEquipmentModel.equipments[equipmentIndex];
     pump.enabled = true;
     pump.type = EquipmentModel::EQUIP_PUMP;
-    pump.targetIndex = 0U;
+    pump.targetIndex = runtimeConfig.pump.targetIndex;
     pump.relayAssignmentIndex = static_cast<uint8_t>(assignmentIndex);
-    pump.startupDelayMs = SHADOW_PUMP_STARTUP_DELAY_MS;
-    pump.shutdownDelayMs = SHADOW_PUMP_SHUTDOWN_DELAY_MS;
+    pump.startupDelayMs = runtimeConfig.pump.startupDelayMs;
+    pump.shutdownDelayMs = runtimeConfig.pump.shutdownDelayMs;
+    pump.minOnSec = runtimeConfig.pump.minOnSec;
+    pump.minOffSec = runtimeConfig.pump.minOffSec;
     snprintf(pump.name, sizeof(pump.name), "Pompe shadow");
 
     if (!RelayTopology::validateAssignment(
@@ -262,8 +262,8 @@ static bool buildShadowPumpScenario(uint8_t nbZones) {
         static_cast<unsigned>(boardIndex),
         static_cast<unsigned>(channelIndex),
         syntheticBoard ? "synthetic_board" : "free_channel",
-        static_cast<unsigned>(SHADOW_PUMP_STARTUP_DELAY_MS),
-        static_cast<unsigned>(SHADOW_PUMP_SHUTDOWN_DELAY_MS)
+        static_cast<unsigned>(runtimeConfig.pump.startupDelayMs),
+        static_cast<unsigned>(runtimeConfig.pump.shutdownDelayMs)
     );
     return shadowEquipmentMgr.isInitialized();
 }
@@ -319,21 +319,27 @@ void setup() {
     for (uint8_t addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
         if (Wire.endTransmission() == 0) {
-            EventLog::log(
-                LOG_INFO,
-                "I2C: peripherique trouve a 0x%02X",
-                addr
-            );
+            EventLog::log(LOG_INFO, "I2C: peripherique trouve a 0x%02X", addr);
             found++;
         }
     }
-    EventLog::log(
-        found > 0 ? LOG_INFO : LOG_WARN,
-        "I2C: scan termine, %u peripherique(s)",
-        found
-    );
+    EventLog::log(found > 0 ? LOG_INFO : LOG_WARN,
+                  "I2C: scan termine, %u peripherique(s)", found);
 
     configMgr.begin();
+    const bool equipmentConfigStoreReady = equipmentConfigStore.begin();
+    const AquaLook::Runtime::EquipmentRuntimeConfig& equipmentConfig =
+        equipmentConfigStore.config();
+    EventLog::log(
+        equipmentConfigStoreReady ? LOG_INFO : LOG_WARN,
+        "Equipment config runtime: status=%s enabled=%s mode=%s assignment=%u delays=%u/%u",
+        equipmentConfigStore.lastStatus(),
+        equipmentConfig.pump.enabled ? "yes" : "no",
+        AquaLook::Runtime::equipmentControlModeName(equipmentConfig.pump.mode),
+        static_cast<unsigned>(equipmentConfig.pump.relayAssignmentIndex),
+        static_cast<unsigned>(equipmentConfig.pump.startupDelayMs),
+        static_cast<unsigned>(equipmentConfig.pump.shutdownDelayMs)
+    );
 
     displayMgr.initTft();
     displayMgr.showSplash(0, "Initialisation...");
@@ -341,12 +347,10 @@ void setup() {
     storageMgr.begin();
     splashStep(storageMgr.isSdAvailable() ? "Carte SD" : "SD indisponible");
 
-    EventLog::log(
-        LOG_INFO,
-        "Config: SSID='%s', mot de passe present=%s",
-        configMgr.wifi().ssid,
-        strlen(configMgr.wifi().password) > 0 ? "oui" : "non"
-    );
+    EventLog::log(LOG_INFO,
+                  "Config: SSID='%s', mot de passe present=%s",
+                  configMgr.wifi().ssid,
+                  strlen(configMgr.wifi().password) > 0 ? "oui" : "non");
 
     splashStep("Configuration");
 
@@ -361,16 +365,12 @@ void setup() {
     );
     if (v4PilotReady) {
         outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());
-        EventLog::log(
-            LOG_WARN,
-            "Relais V4: zone pilote 1 active, fallback legacy conserve"
-        );
+        EventLog::log(LOG_WARN,
+                      "Relais V4: zone pilote 1 active, fallback legacy conserve");
     } else {
         outputAdapter.setPhysicalBackend(&relaisBackend);
-        EventLog::log(
-            LOG_ERROR,
-            "Relais V4: pilote indisponible, backend legacy force"
-        );
+        EventLog::log(LOG_ERROR,
+                      "Relais V4: pilote indisponible, backend legacy force");
     }
 #else
     outputAdapter.setPhysicalBackend(&relaisBackend);
@@ -399,12 +399,29 @@ void setup() {
         nbZones
     );
 
-    shadowPumpScenarioReady = equipmentRuntimeReady && buildShadowPumpScenario(nbZones);
+    const bool pumpConfigured = equipmentConfig.pump.enabled &&
+        equipmentConfig.pump.mode != AquaLook::Runtime::EquipmentControlMode::MODE_DISABLED;
+    const bool physicalModeRequested =
+        equipmentConfig.pump.mode == AquaLook::Runtime::EquipmentControlMode::MODE_PHYSICAL;
+
+    if (physicalModeRequested) {
+        EventLog::log(
+            LOG_WARN,
+            "Equipment config runtime: mode physical demande mais bloque, execution shadow forcee"
+        );
+    }
+
+    shadowPumpScenarioReady = equipmentRuntimeReady &&
+        pumpConfigured &&
+        buildShadowPumpScenario(nbZones, equipmentConfig);
+
     EventLog::log(
-        shadowPumpScenarioReady ? LOG_INFO : LOG_WARN,
+        shadowPumpScenarioReady ? LOG_INFO : (pumpConfigured ? LOG_WARN : LOG_INFO),
         shadowPumpScenarioReady
-            ? "Shadow pump: dependance synthetique active passive=yes"
-            : "Shadow pump: scenario indisponible, plans sans pompe"
+            ? "Shadow pump: configuration NVS active mode_effectif=shadow passive=yes"
+            : (pumpConfigured
+                ? "Shadow pump: configuration demandee mais scenario indisponible"
+                : "Shadow pump: desactive par configuration NVS")
     );
 
     executionShadowRuntime.begin(equipmentRuntimeReady ? nbZones : 0U);
@@ -415,10 +432,7 @@ void setup() {
     configMgr.applyToSchedule(scheduleMgr);
     splashStep("Planning");
 
-    wifiMgr.begin(
-        configMgr.wifi().ssid,
-        configMgr.wifi().password
-    );
+    wifiMgr.begin(configMgr.wifi().ssid, configMgr.wifi().password);
     splashStep("WiFi");
 
     ntpMgr.begin(&configMgr);
@@ -452,11 +466,7 @@ void setup() {
     );
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
-    EventLog::log(
-        LOG_INFO,
-        "HW: PSRAM %u octets",
-        ESP.getPsramSize()
-    );
+    EventLog::log(LOG_INFO, "HW: PSRAM %u octets", ESP.getPsramSize());
 }
 
 void loop() {
