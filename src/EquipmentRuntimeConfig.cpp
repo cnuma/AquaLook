@@ -8,7 +8,7 @@ static constexpr uint16_t MAX_MIN_STATE_SEC = 3600U;
 
 PumpRuntimeConfig::PumpRuntimeConfig()
     : enabled(false),
-      mode(EquipmentControlMode::DISABLED),
+      mode(EquipmentControlMode::MODE_DISABLED),
       targetIndex(0U),
       relayAssignmentIndex(EquipmentModel::INVALID_INDEX),
       startupDelayMs(500U),
@@ -24,9 +24,9 @@ EquipmentRuntimeConfigValidation::EquipmentRuntimeConfigValidation()
 
 const char* equipmentControlModeName(EquipmentControlMode mode) {
     switch (mode) {
-        case EquipmentControlMode::DISABLED: return "disabled";
-        case EquipmentControlMode::SHADOW: return "shadow";
-        case EquipmentControlMode::PHYSICAL: return "physical";
+        case EquipmentControlMode::MODE_DISABLED: return "disabled";
+        case EquipmentControlMode::MODE_SHADOW: return "shadow";
+        case EquipmentControlMode::MODE_PHYSICAL: return "physical";
         default: return "invalid";
     }
 }
@@ -35,7 +35,7 @@ EquipmentRuntimeConfig makeSafeDefaultEquipmentRuntimeConfig() {
     EquipmentRuntimeConfig config;
     config.schemaVersion = EQUIPMENT_RUNTIME_CONFIG_SCHEMA;
     config.pump.enabled = false;
-    config.pump.mode = EquipmentControlMode::DISABLED;
+    config.pump.mode = EquipmentControlMode::MODE_DISABLED;
     config.pump.targetIndex = 0U;
     config.pump.relayAssignmentIndex = EquipmentModel::INVALID_INDEX;
     config.pump.startupDelayMs = 500U;
@@ -57,7 +57,7 @@ EquipmentRuntimeConfigValidation validateEquipmentRuntimeConfig(
     }
 
     const uint8_t modeValue = static_cast<uint8_t>(config.pump.mode);
-    if (modeValue > static_cast<uint8_t>(EquipmentControlMode::PHYSICAL)) {
+    if (modeValue > static_cast<uint8_t>(EquipmentControlMode::MODE_PHYSICAL)) {
         result.reason = "invalid_pump_mode";
         return result;
     }
@@ -74,14 +74,15 @@ EquipmentRuntimeConfigValidation validateEquipmentRuntimeConfig(
         return result;
     }
 
-    if (!config.pump.enabled || config.pump.mode == EquipmentControlMode::DISABLED) {
+    if (!config.pump.enabled ||
+        config.pump.mode == EquipmentControlMode::MODE_DISABLED) {
         result.valid = true;
         result.physicalActivationAllowed = false;
         result.reason = "pump_disabled";
         return result;
     }
 
-    if (config.pump.mode == EquipmentControlMode::SHADOW) {
+    if (config.pump.mode == EquipmentControlMode::MODE_SHADOW) {
         result.valid = true;
         result.physicalActivationAllowed = false;
         result.reason = "shadow_only";
@@ -122,7 +123,7 @@ bool applyPumpConfigToModel(
     uint8_t pumpEquipmentIndex
 ) {
     if (!config.pump.enabled ||
-        config.pump.mode == EquipmentControlMode::DISABLED) {
+        config.pump.mode == EquipmentControlMode::MODE_DISABLED) {
         for (uint8_t zone = 0U; zone < nbZones && zone < MAX_ZONES; ++zone) {
             model.zoneLinks[zone].pumpEquipmentIndex = EquipmentModel::INVALID_INDEX;
         }
