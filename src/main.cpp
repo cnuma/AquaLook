@@ -35,12 +35,18 @@ DisplayManager displayMgr;
 ConfigManager configMgr;
 StorageManager storageMgr;
 EquipmentManager equipmentMgr;
+EquipmentManager shadowEquipmentMgr;
 EquipmentModel::EquipmentConfigSet transientEquipmentModel;
+EquipmentModel::EquipmentConfigSet shadowEquipmentModel;
+RelayTopology::RelayTopologyConfig shadowRelayTopology;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static bool equipmentRuntimeReady = false;
+static bool shadowPumpScenarioReady = false;
+static constexpr uint16_t SHADOW_PUMP_STARTUP_DELAY_MS = 500U;
+static constexpr uint16_t SHADOW_PUMP_SHUTDOWN_DELAY_MS = 500U;
 
 static int16_t findZoneAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology,
@@ -92,12 +98,140 @@ static bool buildTransientEquipmentModel(uint8_t nbZones) {
     return true;
 }
 
+static bool relayChannelAlreadyAssigned(
+    const RelayTopology::RelayTopologyConfig& topology,
+    uint8_t boardIndex,
+    uint8_t channelIndex
+) {
+    for (uint8_t index = 0U; index < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++index) {
+        const RelayTopology::RelayAssignment& assignment = topology.assignments[index];
+        if (assignment.enabled &&
+            assignment.boardIndex == boardIndex &&
+            assignment.channelIndex == channelIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool findFreeShadowRelayChannel(
+    const RelayTopology::RelayTopologyConfig& topology,
+    uint8_t& boardIndex,
+    uint8_t& channelIndex
+) {
+    for (uint8_t board = 0U; board < RelayTopology::MAX_RELAY_BOARDS; ++board) {
+        const RelayTopology::RelayBoardConfig& boardConfig = topology.boards[board];
+        if (!RelayTopology::validateBoard(boardConfig)) continue;
+
+        for (uint8_t channel = 0U; channel < boardConfig.channelCount; ++channel) {
+            if (!relayChannelAlreadyAssigned(topology, board, channel)) {
+                boardIndex = board;
+                channelIndex = channel;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int16_t findFreeShadowAssignmentIndex(
+    const RelayTopology::RelayTopologyConfig& topology
+) {
+    for (uint8_t index = 0U; index < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++index) {
+        if (!topology.assignments[index].enabled) {
+            return static_cast<int16_t>(index);
+        }
+    }
+    return -1;
+}
+
+static int16_t findFreeShadowEquipmentIndex(uint8_t nbZones) {
+    for (uint8_t index = nbZones; index < EquipmentModel::MAX_EQUIPMENTS; ++index) {
+        if (!shadowEquipmentModel.equipments[index].enabled) {
+            return static_cast<int16_t>(index);
+        }
+    }
+    return -1;
+}
+
+static bool buildShadowPumpScenario(uint8_t nbZones) {
+    if (nbZones == 0U || nbZones >= EquipmentModel::MAX_EQUIPMENTS) return false;
+
+    shadowEquipmentModel = transientEquipmentModel;
+    shadowRelayTopology = relaisMgr.topology();
+
+    const int16_t assignmentIndex = findFreeShadowAssignmentIndex(shadowRelayTopology);
+    const int16_t equipmentIndex = findFreeShadowEquipmentIndex(nbZones);
+    uint8_t boardIndex = 0U;
+    uint8_t channelIndex = 0U;
+
+    if (assignmentIndex < 0 || equipmentIndex < 0 ||
+        !findFreeShadowRelayChannel(shadowRelayTopology, boardIndex, channelIndex)) {
+        return false;
+    }
+
+    RelayTopology::RelayAssignment& pumpAssignment =
+        shadowRelayTopology.assignments[assignmentIndex];
+    pumpAssignment.enabled = true;
+    pumpAssignment.role = RelayTopology::ROLE_PUMP;
+    pumpAssignment.targetIndex = 0U;
+    pumpAssignment.boardIndex = boardIndex;
+    pumpAssignment.channelIndex = channelIndex;
+
+    EquipmentModel::EquipmentConfig& pump =
+        shadowEquipmentModel.equipments[equipmentIndex];
+    pump.enabled = true;
+    pump.type = EquipmentModel::EQUIP_PUMP;
+    pump.targetIndex = 0U;
+    pump.relayAssignmentIndex = static_cast<uint8_t>(assignmentIndex);
+    pump.startupDelayMs = SHADOW_PUMP_STARTUP_DELAY_MS;
+    pump.shutdownDelayMs = SHADOW_PUMP_SHUTDOWN_DELAY_MS;
+    snprintf(pump.name, sizeof(pump.name), "Pompe shadow");
+
+    if (!RelayTopology::validateAssignment(
+            shadowRelayTopology,
+            static_cast<uint8_t>(assignmentIndex)) ||
+        !EquipmentModel::validateEquipment(
+            shadowEquipmentModel,
+            static_cast<uint8_t>(equipmentIndex))) {
+        return false;
+    }
+
+    for (uint8_t zone = 0U; zone < nbZones; ++zone) {
+        shadowEquipmentModel.zoneLinks[zone].pumpEquipmentIndex =
+            static_cast<uint8_t>(equipmentIndex);
+        if (!EquipmentModel::validateZoneLink(shadowEquipmentModel, zone, nbZones)) {
+            return false;
+        }
+    }
+
+    shadowEquipmentMgr.begin(
+        &shadowEquipmentModel,
+        &shadowRelayTopology,
+        nbZones,
+        nullptr
+    );
+
+    EventLog::log(
+        LOG_INFO,
+        "Shadow pump: scenario pret equipment=%u board=%u channel=%u delays=%u/%u passive=yes",
+        static_cast<unsigned>(equipmentIndex),
+        static_cast<unsigned>(boardIndex),
+        static_cast<unsigned>(channelIndex),
+        static_cast<unsigned>(SHADOW_PUMP_STARTUP_DELAY_MS),
+        static_cast<unsigned>(SHADOW_PUMP_SHUTDOWN_DELAY_MS)
+    );
+    return shadowEquipmentMgr.isInitialized();
+}
+
 static void onRelayRequest(uint8_t zone, bool state) {
     if (equipmentRuntimeReady) {
         const uint32_t nowMs = millis();
+        const EquipmentManager& shadowPlanManager =
+            shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
         const EquipmentManager::ZoneExecutionPlan shadowPlan = state
-            ? equipmentMgr.buildZoneStartPlan(zone)
-            : equipmentMgr.buildZoneStopPlan(zone);
+            ? shadowPlanManager.buildZoneStartPlan(zone)
+            : shadowPlanManager.buildZoneStopPlan(zone);
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
         const EquipmentManager::ActionResult result = state
@@ -220,6 +354,15 @@ void setup() {
             : "Equipment: modele indisponible, fallback adaptateur direct",
         nbZones
     );
+
+    shadowPumpScenarioReady = equipmentRuntimeReady && buildShadowPumpScenario(nbZones);
+    EventLog::log(
+        shadowPumpScenarioReady ? LOG_INFO : LOG_WARN,
+        shadowPumpScenarioReady
+            ? "Shadow pump: dependance synthetique active passive=yes"
+            : "Shadow pump: scenario indisponible, plans sans pompe"
+    );
+
     executionShadowRuntime.begin(equipmentRuntimeReady ? nbZones : 0U);
     splashStep("Relais");
 
