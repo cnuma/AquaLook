@@ -82,9 +82,6 @@ public:
 
         _server.on("/logs", HTTP_GET,
             [](AsyncWebServerRequest* req) {
-                // Fallback minimal conserve dans le firmware. La version
-                // complete est servie par SdStaticHandler depuis
-                // /www/logs.html lorsque la carte SD est disponible.
                 static const char PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Journal</title><style>body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}header{display:flex;gap:.7rem;align-items:center;padding:.7rem;background:#151515}button{padding:.6rem;border:0;border-radius:5px;background:#b71c1c;color:#fff;font-weight:700}a{margin-left:auto;color:#4fc3f7}iframe{width:100%;height:calc(100vh - 58px);border:0}</style></head><body><header><button onclick="fetch('/api/logs/ack',{method:'POST'}).then(()=>location.reload())">Acquitter</button><a href="/index.html">Retour</a></header><iframe src="/api/logs"></iframe></body></html>
 )rawliteral";
@@ -163,6 +160,9 @@ private:
     uint16_t _pendingManualDuration = 10;
     bool _pendingManualDurationValid = false;
     bool _pendingSystemReboot = false;
+
+    bool _restartPending = false;
+    uint32_t _restartAtMs = 0;
 
     void setupRoutes();
     void setupCaptiveRoutes();
