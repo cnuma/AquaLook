@@ -225,4 +225,79 @@ new_decor = '''    const bool displayChanged =
 '''
 replace_once(decor_path, old_decor, new_decor)
 
+weather_path = ROOT / "src" / "WeatherManager.cpp"
+old_due = '''    const uint32_t now = millis();
+    const bool due =
+        !_fetched ||
+        _forceFetch ||
+        (now - _lastCheck >= OWM_CHECK_INTERVAL_MS);
+
+    if (!due) return;
+'''
+new_due = '''    const uint32_t now = millis();
+    const bool retryDue =
+        _nextFetchAt == 0U ||
+        static_cast<int32_t>(now - _nextFetchAt) >= 0;
+    const bool due =
+        _forceFetch ||
+        (!_fetched && retryDue) ||
+        (_fetched && (now - _lastCheck >= OWM_CHECK_INTERVAL_MS));
+
+    if (!due) return;
+'''
+replace_once(weather_path, old_due, new_due)
+
+old_parse = '''            if (result.httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
+
+                JsonDocument doc;
+                const DeserializationError err = deserializeJson(doc, payload);
+'''
+new_parse = '''            if (result.httpCode == HTTP_CODE_OK) {
+                result.payloadSize = http.getSize();
+
+                JsonDocument doc;
+                WiFiClient& stream = http.getStream();
+                const DeserializationError err = deserializeJson(doc, stream);
+'''
+replace_once(weather_path, old_parse, new_parse)
+
+old_failure = '''    if (!result.success) {
+        EventLog::log(
+            LOG_WARN,
+            "Meteo: fetch echoue code=%d erreur=%s",
+            static_cast<int>(result.httpCode),
+            result.error[0] ? result.error : "inconnue"
+        );
+        return;
+    }
+'''
+new_failure = '''    if (!result.success) {
+        _nextFetchAt = millis() + FETCH_RETRY_DELAY_MS;
+        EventLog::log(
+            LOG_WARN,
+            "Meteo: fetch echoue code=%d taille=%ld erreur=%s retry=%lus",
+            static_cast<int>(result.httpCode),
+            static_cast<long>(result.payloadSize),
+            result.error[0] ? result.error : "inconnue",
+            static_cast<unsigned long>(FETCH_RETRY_DELAY_MS / 1000UL)
+        );
+        return;
+    }
+'''
+replace_once(weather_path, old_failure, new_failure)
+
+old_success = '''    _rainExpected = result.rainExpected;
+    _fetched = true;
+
+    EventBus::displayDirty = true;
+'''
+new_success = '''    _rainExpected = result.rainExpected;
+    _fetched = true;
+    _nextFetchAt = 0U;
+
+    EventBus::displayDirty = true;
+'''
+replace_once(weather_path, old_success, new_success)
+
 print("Run 6.22 materialise avec succes.")
