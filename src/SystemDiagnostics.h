@@ -10,6 +10,9 @@
 // Aucun stockage flash, aucune allocation périodique, aucune tâche dédiée.
 class SystemDiagnostics {
 public:
+    static constexpr uint32_t LOOP_OVERRUN_THRESHOLD_US = 100000UL;
+    static constexpr uint32_t LOOP_OVERRUN_LOG_INTERVAL_MS = 5000UL;
+
     static void begin();
     static void loopEnter();
     static void loopExit();
@@ -33,6 +36,10 @@ private:
     static uint32_t _loopPeriodUs;
     static uint32_t _loopPeriodMaxUs;
     static uint64_t _loopDurationTotalUs;
+    static uint32_t _loopOverrunCount;
+    static uint32_t _lastLoopOverrunUs;
+    static uint32_t _lastLoopOverrunAtMs;
+    static uint32_t _lastLoopOverrunLogAtMs;
 
     static uint32_t _webResponses;
     static uint32_t _webErrors;
