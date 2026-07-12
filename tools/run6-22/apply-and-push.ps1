@@ -12,7 +12,12 @@ if ($currentBranch -ne $expectedBranch) {
     throw "Branche active '$currentBranch'. Branche attendue: '$expectedBranch'."
 }
 
-if ((git status --porcelain).Count -gt 0) {
+$initialChanges = @(git status --porcelain)
+if ($LASTEXITCODE -ne 0) {
+    throw "git status a echoue."
+}
+
+if ($initialChanges.Count -gt 0) {
     throw "Le working tree doit etre propre avant application du Run 6.22."
 }
 
@@ -31,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "git diff --check a detecte une erreur."
 }
 
-$changes = git status --porcelain
+$changes = @(git status --porcelain)
 if ($LASTEXITCODE -ne 0) {
     throw "git status a echoue."
 }
