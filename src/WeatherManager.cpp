@@ -16,11 +16,27 @@ void clearForecast(ForecastDay (&forecast)[5]) {
         forecast[i] = ForecastDay{};
     }
 }
+
+bool deadlineReached(uint32_t now, uint32_t deadline) {
+    return deadline == 0 || static_cast<int32_t>(now - deadline) >= 0;
+}
+
+String payloadPreview(const String& payload) {
+    String preview;
+    preview.reserve(97);
+    const size_t limit = payload.length() < 96 ? payload.length() : 96;
+    for (size_t i = 0; i < limit; ++i) {
+        const char c = payload[i];
+        preview += (c == '\r' || c == '\n' || c == '\t') ? ' ' : c;
+    }
+    return preview;
+}
 }
 
 void WeatherManager::begin(ConfigManager* config) {
     _config = config;
     clearForecast(_forecast);
+    _nextFetchAt = 0;
     Serial.println("[Meteo] Initialisé");
 }
 
@@ -29,6 +45,7 @@ void WeatherManager::update(bool wifiConnected) {
         if (_config->owm().apiKey[0] != '\0') {
             _forceFetch = true;
             _fetched = false;
+            _nextFetchAt = 0;
             Serial.println("[Meteo] Reconfiguration — nouveau fetch OWM");
         } else {
             _fetched = false;
@@ -41,11 +58,7 @@ void WeatherManager::update(bool wifiConnected) {
     if (!wifiConnected || _fetchInProgress) return;
 
     const uint32_t now = millis();
-    const bool due =
-        !_fetched ||
-        _forceFetch ||
-        (now - _lastCheck >= OWM_CHECK_INTERVAL_MS);
-
+    const bool due = _forceFetch || deadlineReached(now, _nextFetchAt);
     if (!due) return;
 
     const char* apiKey = _config ? _config->owm().apiKey : OWM_API_KEY;
@@ -54,11 +67,13 @@ void WeatherManager::update(bool wifiConnected) {
             Serial.println("[Meteo] Pas de clé API — météo désactivée");
             _fetched = true;
         }
+        _nextFetchAt = now + OWM_CHECK_INTERVAL_MS;
         return;
     }
 
     _lastCheck = now;
     _forceFetch = false;
+    _nextFetchAt = now + FETCH_RETRY_DELAY_MS;
 
     if (!startFetch()) {
         EventLog::log(
@@ -160,161 +175,182 @@ void WeatherManager::performFetch() {
             result.httpCode = static_cast<int16_t>(http.GET());
 
             if (result.httpCode == HTTP_CODE_OK) {
+                const int32_t announcedSize = http.getSize();
+                const String contentType = http.header("Content-Type");
                 String payload = http.getString();
+                result.payloadSize = static_cast<int32_t>(payload.length());
 
-                JsonDocument doc;
-                const DeserializationError err = deserializeJson(doc, payload);
-                if (err) {
-                    snprintf(
-                        result.error,
-                        sizeof(result.error),
-                        "JSON: %.48s",
-                        err.c_str()
-                    );
+                EventLog::log(
+                    LOG_INFO,
+                    "Meteo: HTTP 200 annonce=%ld recu=%ld type=%s",
+                    static_cast<long>(announcedSize),
+                    static_cast<long>(result.payloadSize),
+                    contentType.length() ? contentType.c_str() : "inconnu"
+                );
+
+                if (payload.length() == 0) {
+                    strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
                 } else {
-                    float totalRain = 0.0f;
-                    float firstTemp = 0.0f;
-                    bool gotTemp = false;
-
-                    time_t nowT;
-                    time(&nowT);
-                    const uint32_t todayDay =
-                        (nowT > 86400) ? static_cast<uint32_t>(nowT / 86400UL) : 0;
-                    const bool useEpoch = todayDay > 0;
-
-                    uint8_t entryCount = 0;
-                    uint16_t pressureSum[5] = {0, 0, 0, 0, 0};
-                    uint8_t pressureCount[5] = {0, 0, 0, 0, 0};
-                    uint8_t bestNoonDist[5] = {255, 255, 255, 255, 255};
-                    const int32_t cityTzOffset = doc["city"]["timezone"] | 0;
-
-                    for (JsonObject entry : doc["list"].as<JsonArray>()) {
-                        float rain = 0.0f;
-                        if (entry["rain"].is<JsonObject>()) {
-                            rain = entry["rain"]["3h"] | 0.0f;
-                        }
-
-                        const float temp = entry["main"]["temp"] | 0.0f;
-                        const float feelsLike =
-                            entry["main"]["feels_like"] | temp;
-                        const uint8_t humidity = constrain(
-                            static_cast<int>(entry["main"]["humidity"] | 0),
-                            0,
-                            100
+                    JsonDocument doc;
+                    const DeserializationError err = deserializeJson(doc, payload);
+                    if (err) {
+                        const String preview = payloadPreview(payload);
+                        EventLog::log(
+                            LOG_WARN,
+                            "Meteo: JSON invalide apercu=%.96s",
+                            preview.c_str()
                         );
-                        const uint8_t clouds = constrain(
-                            static_cast<int>(entry["clouds"]["all"] | 0),
-                            0,
-                            100
+                        snprintf(
+                            result.error,
+                            sizeof(result.error),
+                            "JSON: %.48s",
+                            err.c_str()
                         );
-                        const uint16_t pressure =
-                            static_cast<uint16_t>(entry["main"]["pressure"] | 0);
-                        const float windKmh =
-                            (entry["wind"]["speed"] | 0.0f) * 3.6f;
-                        const int16_t windDeg = entry["wind"]["deg"] | -1;
-                        const float gustKmh =
-                            (entry["wind"]["gust"] | 0.0f) * 3.6f;
-                        const float popRaw = entry["pop"] | 0.0f;
-                        const uint8_t popPct = constrain(
-                            static_cast<int>(lroundf(popRaw * 100.0f)),
-                            0,
-                            100
-                        );
+                    } else {
+                        float totalRain = 0.0f;
+                        float firstTemp = 0.0f;
+                        bool gotTemp = false;
 
-                        const uint32_t dt = entry["dt"] | static_cast<uint32_t>(0);
-                        int8_t offset;
-                        if (useEpoch) {
-                            const int64_t localEntry =
-                                static_cast<int64_t>(dt) + cityTzOffset;
-                            const int64_t localNow =
-                                static_cast<int64_t>(nowT) + cityTzOffset;
-                            const int32_t entryDay =
-                                static_cast<int32_t>(localEntry / 86400LL);
-                            const int32_t localToday =
-                                static_cast<int32_t>(localNow / 86400LL);
-                            offset = static_cast<int8_t>(entryDay - localToday);
-                        } else {
-                            offset = static_cast<int8_t>(entryCount / 8);
-                        }
-                        entryCount++;
+                        time_t nowT;
+                        time(&nowT);
+                        const uint32_t todayDay =
+                            (nowT > 86400) ? static_cast<uint32_t>(nowT / 86400UL) : 0;
+                        const bool useEpoch = todayDay > 0;
 
-                        if (offset == 0) totalRain += rain;
+                        uint8_t entryCount = 0;
+                        uint16_t pressureSum[5] = {0, 0, 0, 0, 0};
+                        uint8_t pressureCount[5] = {0, 0, 0, 0, 0};
+                        uint8_t bestNoonDist[5] = {255, 255, 255, 255, 255};
+                        const int32_t cityTzOffset = doc["city"]["timezone"] | 0;
 
-                        if (offset >= 0 && offset < 5) {
-                            ForecastDay& day = result.forecast[offset];
-                            day.rainMm += rain;
-                            if (temp > day.tempMax) day.tempMax = temp;
-                            if (temp < day.tempMin) day.tempMin = temp;
-                            if (feelsLike > day.feelsLikeMax) {
-                                day.feelsLikeMax = feelsLike;
-                            }
-                            if (windKmh > day.windMaxKmh) {
-                                day.windMaxKmh = windKmh;
-                                day.windDeg = windDeg;
-                            }
-                            if (gustKmh > day.gustMaxKmh) {
-                                day.gustMaxKmh = gustKmh;
-                            }
-                            if (popPct > day.rainProbability) {
-                                day.rainProbability = popPct;
-                            }
-                            if (humidity > day.humidityMax) {
-                                day.humidityMax = humidity;
-                            }
-                            if (clouds > day.cloudsMax) {
-                                day.cloudsMax = clouds;
-                            }
-                            if (pressure > 0) {
-                                pressureSum[offset] += pressure;
-                                pressureCount[offset]++;
+                        for (JsonObject entry : doc["list"].as<JsonArray>()) {
+                            float rain = 0.0f;
+                            if (entry["rain"].is<JsonObject>()) {
+                                rain = entry["rain"]["3h"] | 0.0f;
                             }
 
-                            uint8_t localHour = 12;
-                            if (dt > 0) {
-                                const int64_t localEpoch =
-                                    static_cast<int64_t>(dt) + cityTzOffset;
-                                localHour = static_cast<uint8_t>(
-                                    (localEpoch % 86400LL) / 3600LL
-                                );
-                            }
-
-                            const uint8_t noonDist = static_cast<uint8_t>(
-                                abs(static_cast<int>(localHour) - 12)
+                            const float temp = entry["main"]["temp"] | 0.0f;
+                            const float feelsLike =
+                                entry["main"]["feels_like"] | temp;
+                            const uint8_t humidity = constrain(
+                                static_cast<int>(entry["main"]["humidity"] | 0),
+                                0,
+                                100
                             );
-                            if (noonDist < bestNoonDist[offset]) {
-                                bestNoonDist[offset] = noonDist;
-                                const char* desc =
-                                    entry["weather"][0]["description"] | "";
-                                const char* icon =
-                                    entry["weather"][0]["icon"] | "";
-                                strlcpy(
-                                    day.description,
-                                    desc,
-                                    sizeof(day.description)
-                                );
-                                strlcpy(day.icon, icon, sizeof(day.icon));
+                            const uint8_t clouds = constrain(
+                                static_cast<int>(entry["clouds"]["all"] | 0),
+                                0,
+                                100
+                            );
+                            const uint16_t pressure =
+                                static_cast<uint16_t>(entry["main"]["pressure"] | 0);
+                            const float windKmh =
+                                (entry["wind"]["speed"] | 0.0f) * 3.6f;
+                            const int16_t windDeg = entry["wind"]["deg"] | -1;
+                            const float gustKmh =
+                                (entry["wind"]["gust"] | 0.0f) * 3.6f;
+                            const float popRaw = entry["pop"] | 0.0f;
+                            const uint8_t popPct = constrain(
+                                static_cast<int>(lroundf(popRaw * 100.0f)),
+                                0,
+                                100
+                            );
+
+                            const uint32_t dt = entry["dt"] | static_cast<uint32_t>(0);
+                            int8_t offset;
+                            if (useEpoch) {
+                                const int64_t localEntry =
+                                    static_cast<int64_t>(dt) + cityTzOffset;
+                                const int64_t localNow =
+                                    static_cast<int64_t>(nowT) + cityTzOffset;
+                                const int32_t entryDay =
+                                    static_cast<int32_t>(localEntry / 86400LL);
+                                const int32_t localToday =
+                                    static_cast<int32_t>(localNow / 86400LL);
+                                offset = static_cast<int8_t>(entryDay - localToday);
+                            } else {
+                                offset = static_cast<int8_t>(entryCount / 8);
                             }
-                            day.valid = true;
+                            entryCount++;
+
+                            if (offset == 0) totalRain += rain;
+
+                            if (offset >= 0 && offset < 5) {
+                                ForecastDay& day = result.forecast[offset];
+                                day.rainMm += rain;
+                                if (temp > day.tempMax) day.tempMax = temp;
+                                if (temp < day.tempMin) day.tempMin = temp;
+                                if (feelsLike > day.feelsLikeMax) {
+                                    day.feelsLikeMax = feelsLike;
+                                }
+                                if (windKmh > day.windMaxKmh) {
+                                    day.windMaxKmh = windKmh;
+                                    day.windDeg = windDeg;
+                                }
+                                if (gustKmh > day.gustMaxKmh) {
+                                    day.gustMaxKmh = gustKmh;
+                                }
+                                if (popPct > day.rainProbability) {
+                                    day.rainProbability = popPct;
+                                }
+                                if (humidity > day.humidityMax) {
+                                    day.humidityMax = humidity;
+                                }
+                                if (clouds > day.cloudsMax) {
+                                    day.cloudsMax = clouds;
+                                }
+                                if (pressure > 0) {
+                                    pressureSum[offset] += pressure;
+                                    pressureCount[offset]++;
+                                }
+
+                                uint8_t localHour = 12;
+                                if (dt > 0) {
+                                    const int64_t localEpoch =
+                                        static_cast<int64_t>(dt) + cityTzOffset;
+                                    localHour = static_cast<uint8_t>(
+                                        (localEpoch % 86400LL) / 3600LL
+                                    );
+                                }
+
+                                const uint8_t noonDist = static_cast<uint8_t>(
+                                    abs(static_cast<int>(localHour) - 12)
+                                );
+                                if (noonDist < bestNoonDist[offset]) {
+                                    bestNoonDist[offset] = noonDist;
+                                    const char* desc =
+                                        entry["weather"][0]["description"] | "";
+                                    const char* icon =
+                                        entry["weather"][0]["icon"] | "";
+                                    strlcpy(
+                                        day.description,
+                                        desc,
+                                        sizeof(day.description)
+                                    );
+                                    strlcpy(day.icon, icon, sizeof(day.icon));
+                                }
+                                day.valid = true;
+                            }
+
+                            if (!gotTemp) {
+                                firstTemp = temp;
+                                gotTemp = true;
+                            }
                         }
 
-                        if (!gotTemp) {
-                            firstTemp = temp;
-                            gotTemp = true;
+                        for (uint8_t i = 0; i < 5; ++i) {
+                            if (pressureCount[i] > 0) {
+                                result.forecast[i].pressureAvg =
+                                    pressureSum[i] / pressureCount[i];
+                            }
                         }
+
+                        result.rainMm = totalRain;
+                        result.tempC = firstTemp;
+                        result.rainExpected =
+                            totalRain >= request.rainThresholdMm;
+                        result.success = true;
                     }
-
-                    for (uint8_t i = 0; i < 5; ++i) {
-                        if (pressureCount[i] > 0) {
-                            result.forecast[i].pressureAvg =
-                                pressureSum[i] / pressureCount[i];
-                        }
-                    }
-
-                    result.rainMm = totalRain;
-                    result.tempC = firstTemp;
-                    result.rainExpected =
-                        totalRain >= request.rainThresholdMm;
-                    result.success = true;
                 }
             } else {
                 snprintf(
@@ -346,11 +382,15 @@ void WeatherManager::applyPendingResult() {
     _resultReady = false;
     portEXIT_CRITICAL(&g_weatherMux);
 
+    const uint32_t now = millis();
     if (!result.success) {
+        _nextFetchAt = now + FETCH_RETRY_DELAY_MS;
         EventLog::log(
             LOG_WARN,
-            "Meteo: fetch echoue code=%d erreur=%s",
+            "Meteo: fetch echoue code=%d taille=%ld retry=%lus erreur=%s",
             static_cast<int>(result.httpCode),
+            static_cast<long>(result.payloadSize),
+            FETCH_RETRY_DELAY_MS / 1000UL,
             result.error[0] ? result.error : "inconnue"
         );
         return;
@@ -364,12 +404,14 @@ void WeatherManager::applyPendingResult() {
     _tempC = result.tempC;
     _rainExpected = result.rainExpected;
     _fetched = true;
+    _nextFetchAt = now + OWM_CHECK_INTERVAL_MS;
 
     EventBus::displayDirty = true;
 
     EventLog::log(
         LOG_INFO,
-        "Meteo: fetch termine pluie=%.1fmm temp=%.1fC statut=%s",
+        "Meteo: fetch termine taille=%ld pluie=%.1fmm temp=%.1fC statut=%s",
+        static_cast<long>(result.payloadSize),
         _rainMm,
         _tempC,
         _rainExpected ? "arrosage_bloque" : "ok"
