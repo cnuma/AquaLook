@@ -1,7 +1,12 @@
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 $expectedBranch = "work/run6-22-non-blocking-runtime"
 $currentBranch = (git branch --show-current).Trim()
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Impossible de determiner la branche Git active."
+}
 
 if ($currentBranch -ne $expectedBranch) {
     throw "Branche active '$currentBranch'. Branche attendue: '$expectedBranch'."
@@ -12,19 +17,43 @@ if ((git status --porcelain).Count -gt 0) {
 }
 
 git pull --ff-only
+if ($LASTEXITCODE -ne 0) {
+    throw "git pull --ff-only a echoue."
+}
 
-git apply --check tools/run6-22/WebManager.cpp.patch
-git apply --check tools/run6-22/DisplayPlanningDecor.cpp.patch
-git apply --check tools/run6-22/main.cpp.patch
-
-git apply tools/run6-22/WebManager.cpp.patch
-git apply tools/run6-22/DisplayPlanningDecor.cpp.patch
-git apply tools/run6-22/main.cpp.patch
+python .\tools\run6-22\materialize.py
+if ($LASTEXITCODE -ne 0) {
+    throw "La materialisation du Run 6.22 a echoue."
+}
 
 git diff --check
+if ($LASTEXITCODE -ne 0) {
+    throw "git diff --check a detecte une erreur."
+}
 
-git add src/WebManager.cpp src/DisplayPlanningDecor.cpp src/main.cpp
+$changes = git status --porcelain
+if ($LASTEXITCODE -ne 0) {
+    throw "git status a echoue."
+}
+
+if ($changes.Count -eq 0) {
+    Write-Host "Run 6.22 deja materialise. Aucun commit necessaire."
+    exit 0
+}
+
+git add src\WebManager.cpp src\DisplayPlanningDecor.cpp src\main.cpp
+if ($LASTEXITCODE -ne 0) {
+    throw "git add a echoue."
+}
+
 git commit -m "refactor: materialize Run 6.22 runtime integration"
+if ($LASTEXITCODE -ne 0) {
+    throw "git commit a echoue."
+}
+
 git push origin $expectedBranch
+if ($LASTEXITCODE -ne 0) {
+    throw "git push a echoue."
+}
 
 Write-Host "Run 6.22 materialise, commite et pousse sur $expectedBranch."
