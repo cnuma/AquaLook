@@ -1,0 +1,43 @@
+name: Materialize Run 6.22
+
+on:
+  push:
+    branches:
+      - work/run6-22-non-blocking-runtime
+    paths:
+      - tools/run6-22/**
+      - .github/workflows/materialize-run6-22.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-runtime-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout work branch
+        uses: actions/checkout@v4
+        with:
+          ref: work/run6-22-non-blocking-runtime
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply Run 6.22 patches
+        run: |
+          git apply --check tools/run6-22/WebManager.cpp.patch
+          git apply --check tools/run6-22/DisplayPlanningDecor.cpp.patch
+          git apply --check tools/run6-22/main.cpp.patch
+          git apply tools/run6-22/WebManager.cpp.patch
+          git apply tools/run6-22/DisplayPlanningDecor.cpp.patch
+          git apply tools/run6-22/main.cpp.patch
+          git diff --check
+
+      - name: Commit materialized runtime changes
+        run: |
+          git add src/WebManager.cpp src/DisplayPlanningDecor.cpp src/main.cpp
+          git commit -m "refactor: materialize Run 6.22 runtime integration"
+          git push origin HEAD:work/run6-22-non-blocking-runtime
