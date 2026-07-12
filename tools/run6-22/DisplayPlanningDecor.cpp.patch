@@ -1,0 +1,43 @@
+diff --git a/src/DisplayPlanningDecor.cpp b/src/DisplayPlanningDecor.cpp
+--- a/src/DisplayPlanningDecor.cpp
++++ b/src/DisplayPlanningDecor.cpp
+@@ -22,7 +22,6 @@
+ namespace {
+ uint32_t s_lastDisplayUpdate = UINT32_MAX;
+-uint32_t s_lastDecorMs = 0;
+ Screen s_lastScreen = Screen::SYSTEM;
+ HomeMode s_lastMode = HomeMode::GRID4;
+ uint8_t s_lastGrid4View = 255;
+@@ -280,17 +279,14 @@ void displayPlanningDecorDraw(DisplayManager& display) {
+     const bool displayChanged =
+         s_lastDisplayUpdate != display._lastUpdate ||
+         s_lastScreen != display._screen ||
+         s_lastMode != display._homeMode ||
+         s_lastGrid4View != display._grid4View;
+-    const bool periodicRefresh = now - s_lastDecorMs >= 750;
+
+-    if (!displayChanged && !periodicRefresh) return;
++    // Les décorations statiques ne sont redessinées qu'après un rendu
++    // DisplayManager réellement modifié. L'ancien rappel toutes les 750 ms
++    // retraçait inutilement les hachures sur le bus SPI.
++    if (!displayChanged) return;
+
+     s_lastDisplayUpdate = display._lastUpdate;
+     s_lastScreen = display._screen;
+     s_lastMode = display._homeMode;
+     s_lastGrid4View = display._grid4View;
+-    s_lastDecorMs = now;
+
+-    if (displayChanged) {
+-        switch (display._homeMode) {
+-            case HomeMode::LIST:  redrawListWeather(display);  break;
+-            case HomeMode::GRID2: redrawGrid2Weather(display); break;
+-            case HomeMode::GRID4: break;
+-        }
++    switch (display._homeMode) {
++        case HomeMode::LIST:  redrawListWeather(display);  break;
++        case HomeMode::GRID2: redrawGrid2Weather(display); break;
++        case HomeMode::GRID4: break;
+     }
+
+     switch (display._homeMode) {
