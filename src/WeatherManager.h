@@ -65,6 +65,7 @@ private:
         bool rainExpected = false;
         bool success = false;
         int16_t httpCode = 0;
+        int32_t payloadSize = -1;
         char error[64] = "";
     };
 
@@ -74,6 +75,7 @@ private:
     float _tempC = 0.0f;
     bool _fetched = false;
     uint32_t _lastCheck = 0;
+    uint32_t _nextFetchAt = 0;
     bool _forceFetch = false;
 
     ForecastDay _forecast[5];
@@ -85,6 +87,7 @@ private:
 
     static constexpr uint32_t FETCH_TASK_STACK_BYTES = 12288;
     static constexpr UBaseType_t FETCH_TASK_PRIORITY = 1;
+    static constexpr uint32_t FETCH_RETRY_DELAY_MS = 60000UL;
 
     bool startFetch();
     void applyPendingResult();
