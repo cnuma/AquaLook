@@ -17,6 +17,7 @@
 #include "ConfigManager.h"
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"
+#include "RuntimeProfiler.h"
 #include "EquipmentManager.h"
 #include "EquipmentModel.h"
 #include "EquipmentOutputRuntimeAdapter.h"
@@ -472,18 +473,31 @@ void setup() {
 void loop() {
     SystemDiagnostics::loopEnter();
 
+    uint32_t startedUs = RuntimeProfiler::start();
     FaultManager::update();
-    storageMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::FAULTS_PRE, startedUs);
 
+    startedUs = RuntimeProfiler::start();
+    storageMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::STORAGE, startedUs);
+
+    startedUs = RuntimeProfiler::start();
     wifiMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::WIFI, startedUs);
     const bool connected = wifiMgr.isConnected();
 
     if (connected) {
+        startedUs = RuntimeProfiler::start();
         ntpMgr.update();
+        RuntimeProfiler::stop(RuntimeProfiler::Component::NTP, startedUs);
+
+        startedUs = RuntimeProfiler::start();
         weatherMgr.update(true);
+        RuntimeProfiler::stop(RuntimeProfiler::Component::WEATHER, startedUs);
     }
 
     if (ntpMgr.isSynced()) {
+        startedUs = RuntimeProfiler::start();
         scheduleMgr.update(
             ntpMgr.getHour(),
             ntpMgr.getMinute(),
@@ -491,15 +505,36 @@ void loop() {
             ntpMgr.getEpochDay(),
             weatherMgr.getRainMm()
         );
+        RuntimeProfiler::stop(RuntimeProfiler::Component::SCHEDULE, startedUs);
     }
 
+    startedUs = RuntimeProfiler::start();
     executionShadowRuntime.update(millis());
-    relaisMgr.update();
-    webMgr.update();
-    displayMgr.update();
-    displayPlanningDecorDraw(displayMgr);
+    RuntimeProfiler::stop(RuntimeProfiler::Component::EQUIPMENT_SHADOW, startedUs);
 
+    startedUs = RuntimeProfiler::start();
+    relaisMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::RELAY, startedUs);
+
+    startedUs = RuntimeProfiler::start();
+    webMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::WEB, startedUs);
+
+    startedUs = RuntimeProfiler::start();
+    displayMgr.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_MANAGER, startedUs);
+
+    startedUs = RuntimeProfiler::start();
+    displayPlanningDecorDraw(displayMgr);
+    RuntimeProfiler::stop(RuntimeProfiler::Component::PLANNING_DECOR, startedUs);
+
+    startedUs = RuntimeProfiler::start();
     FaultManager::update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::FAULTS_POST, startedUs);
+
+    startedUs = RuntimeProfiler::start();
     yield();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::YIELD, startedUs);
+
     SystemDiagnostics::loopExit();
 }

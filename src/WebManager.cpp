@@ -2,6 +2,7 @@
 #include "EventBus.h"
 #include "EventLog.h"
 #include "SystemDiagnostics.h"
+#include "TimeUtils.h"
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -37,8 +38,16 @@ void WebManager::begin(NTPManager* ntp, WeatherManager* weather,
 //  update — opérations différées hors de la tâche AsyncTCP
 // ─────────────────────────────────────────────────────────────
 void WebManager::update() {
+    const uint32_t nowMs = millis();
+
+    if (_restartPending && AquaLook::Time::deadlineReached(nowMs, _restartAtMs)) {
+        _restartPending = false;
+        ESP.restart();
+        return;
+    }
+
     if (!_systemSavePending) return;
-    if ((int32_t)(millis() - _systemSaveAtMs) < 0) return;
+    if (!AquaLook::Time::deadlineReached(nowMs, _systemSaveAtMs)) return;
 
     CfgSystem pending;
     uint16_t manualDuration = 10;
@@ -70,9 +79,9 @@ void WebManager::update() {
     }
 
     if (rebootAfter) {
-        EventLog::log(LOG_INFO, "Systeme: redemarrage apres sauvegarde");
-        delay(100);
-        ESP.restart();
+        EventLog::log(LOG_INFO, "Systeme: redemarrage programme apres sauvegarde");
+        _restartPending = true;
+        _restartAtMs = millis() + 100U;
     }
 }
 

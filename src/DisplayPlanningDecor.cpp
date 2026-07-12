@@ -277,28 +277,23 @@ void simplifyWideButtons(DisplayManager& d) {
 void displayPlanningDecorDraw(DisplayManager& display) {
     if (display._screenMgr.isAsleep() || display._screen != Screen::HOME) return;
 
-    const uint32_t now = millis();
     const bool displayChanged =
         s_lastDisplayUpdate != display._lastUpdate ||
         s_lastScreen != display._screen ||
         s_lastMode != display._homeMode ||
         s_lastGrid4View != display._grid4View;
-    const bool periodicRefresh = now - s_lastDecorMs >= 750;
 
-    if (!displayChanged && !periodicRefresh) return;
+    if (!displayChanged) return;
 
     s_lastDisplayUpdate = display._lastUpdate;
     s_lastScreen = display._screen;
     s_lastMode = display._homeMode;
     s_lastGrid4View = display._grid4View;
-    s_lastDecorMs = now;
 
-    if (displayChanged) {
-        switch (display._homeMode) {
-            case HomeMode::LIST:  redrawListWeather(display);  break;
-            case HomeMode::GRID2: redrawGrid2Weather(display); break;
-            case HomeMode::GRID4: break;
-        }
+    switch (display._homeMode) {
+        case HomeMode::LIST:  redrawListWeather(display);  break;
+        case HomeMode::GRID2: redrawGrid2Weather(display); break;
+        case HomeMode::GRID4: break;
     }
 
     switch (display._homeMode) {
