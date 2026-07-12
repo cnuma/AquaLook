@@ -46,12 +46,16 @@ if ($changes.Count -eq 0) {
     exit 0
 }
 
-git add src\WebManager.cpp src\DisplayPlanningDecor.cpp src\main.cpp
+git add `
+    src\WebManager.cpp `
+    src\DisplayPlanningDecor.cpp `
+    src\main.cpp `
+    src\WeatherManager.cpp
 if ($LASTEXITCODE -ne 0) {
     throw "git add a echoue."
 }
 
-git commit -m "refactor: materialize Run 6.22 runtime integration"
+git commit -m "fix: stabilize Run 6.22 runtime and weather retries"
 if ($LASTEXITCODE -ne 0) {
     throw "git commit a echoue."
 }
