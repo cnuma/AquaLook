@@ -1,5 +1,8 @@
 #include "SystemDiagnostics.h"
 #include <WiFi.h>
+#include "EventLog.h"
+#include "TimeUtils.h"
+#include "RuntimeProfiler.h"
 
 #ifndef AQUALOOK_VERSION
 #define AQUALOOK_VERSION "unknown"
@@ -14,7 +17,6 @@
 #define AQUALOOK_GIT_BRANCH "unknown"
 #endif
 
-void storageHealthUpdate();
 
 portMUX_TYPE SystemDiagnostics::_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -27,6 +29,10 @@ uint32_t SystemDiagnostics::_loopDurationMaxUs = 0;
 uint32_t SystemDiagnostics::_loopPeriodUs = 0;
 uint32_t SystemDiagnostics::_loopPeriodMaxUs = 0;
 uint64_t SystemDiagnostics::_loopDurationTotalUs = 0;
+uint32_t SystemDiagnostics::_loopOverrunCount = 0;
+uint32_t SystemDiagnostics::_lastLoopOverrunUs = 0;
+uint32_t SystemDiagnostics::_lastLoopOverrunAtMs = 0;
+uint32_t SystemDiagnostics::_lastLoopOverrunLogAtMs = 0;
 
 uint32_t SystemDiagnostics::_webResponses = 0;
 uint32_t SystemDiagnostics::_webErrors = 0;
@@ -38,6 +44,7 @@ size_t   SystemDiagnostics::_lastWebBytes = 0;
 char     SystemDiagnostics::_lastWebUri[64] = "";
 
 void SystemDiagnostics::begin() {
+    RuntimeProfiler::begin();
     portENTER_CRITICAL(&_mux);
     _bootMs = millis();
     _lastLoopMs = millis();
@@ -47,6 +54,10 @@ void SystemDiagnostics::begin() {
     _loopPeriodUs = 0;
     _loopPeriodMaxUs = 0;
     _loopDurationTotalUs = 0;
+    _loopOverrunCount = 0;
+    _lastLoopOverrunUs = 0;
+    _lastLoopOverrunAtMs = 0;
+    _lastLoopOverrunLogAtMs = 0;
     _webResponses = 0;
     _webErrors = 0;
     _lastWebGenerationUs = 0;
@@ -59,8 +70,6 @@ void SystemDiagnostics::begin() {
 }
 
 void SystemDiagnostics::loopEnter() {
-    storageHealthUpdate();
-
     const uint32_t nowUs = micros();
     const uint32_t nowMs = millis();
 
@@ -79,6 +88,9 @@ void SystemDiagnostics::loopEnter() {
 
 void SystemDiagnostics::loopExit() {
     const uint32_t durationUs = micros() - _loopStartedUs;
+    const uint32_t nowMs = millis();
+    bool shouldLogOverrun = false;
+    uint32_t overrunCount = 0;
 
     portENTER_CRITICAL(&_mux);
     _loopDurationUs = durationUs;
@@ -87,7 +99,35 @@ void SystemDiagnostics::loopExit() {
     }
     _loopDurationTotalUs += durationUs;
     _loopCount++;
+
+    if (durationUs > LOOP_OVERRUN_THRESHOLD_US) {
+        _loopOverrunCount++;
+        _lastLoopOverrunUs = durationUs;
+        _lastLoopOverrunAtMs = nowMs;
+        overrunCount = _loopOverrunCount;
+
+        if (_lastLoopOverrunLogAtMs == 0U ||
+            AquaLook::Time::elapsedAtLeast(
+                nowMs,
+                _lastLoopOverrunLogAtMs,
+                LOOP_OVERRUN_LOG_INTERVAL_MS)) {
+            _lastLoopOverrunLogAtMs = nowMs;
+            shouldLogOverrun = true;
+        }
+    }
     portEXIT_CRITICAL(&_mux);
+
+    // Le journal est emis hors section critique. La limitation evite une
+    // tempete de logs qui aggraverait elle-meme le ralentissement mesure.
+    if (shouldLogOverrun) {
+        EventLog::log(
+            LOG_WARN,
+            "Timing: boucle lente duration=%lu us threshold=%lu us count=%lu",
+            static_cast<unsigned long>(durationUs),
+            static_cast<unsigned long>(LOOP_OVERRUN_THRESHOLD_US),
+            static_cast<unsigned long>(overrunCount)
+        );
+    }
 }
 
 void SystemDiagnostics::noteWebResponse(const char* uri,
@@ -131,6 +171,9 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     uint32_t loopPeriodUs;
     uint32_t loopPeriodMaxUs;
     uint64_t loopDurationTotalUs;
+    uint32_t loopOverrunCount;
+    uint32_t lastLoopOverrunUs;
+    uint32_t lastLoopOverrunAtMs;
     uint32_t lastLoopMs;
     uint32_t webResponses;
     uint32_t webErrors;
@@ -148,6 +191,9 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     loopPeriodUs = _loopPeriodUs;
     loopPeriodMaxUs = _loopPeriodMaxUs;
     loopDurationTotalUs = _loopDurationTotalUs;
+    loopOverrunCount = _loopOverrunCount;
+    lastLoopOverrunUs = _lastLoopOverrunUs;
+    lastLoopOverrunAtMs = _lastLoopOverrunAtMs;
     lastLoopMs = _lastLoopMs;
     webResponses = _webResponses;
     webErrors = _webErrors;
@@ -190,16 +236,22 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     memory["psramFree"] = ESP.getFreePsram();
     memory["loopStackHighWaterWords"] = uxTaskGetStackHighWaterMark(nullptr);
 
+    const uint32_t nowMs = millis();
     JsonObject loop = doc["loop"].to<JsonObject>();
     loop["count"] = loopCount;
     loop["lastDurationUs"] = loopDurationUs;
     loop["maxDurationUs"] = loopDurationMaxUs;
     loop["lastPeriodUs"] = loopPeriodUs;
     loop["maxPeriodUs"] = loopPeriodMaxUs;
-    loop["ageMs"] = millis() - lastLoopMs;
+    loop["ageMs"] = nowMs - lastLoopMs;
     loop["averageDurationUs"] =
-        loopCount ? (uint32_t)(loopDurationTotalUs / loopCount) : 0;
-    loop["healthy"] = (millis() - lastLoopMs) < 2000UL;
+        loopCount ? static_cast<uint32_t>(loopDurationTotalUs / loopCount) : 0U;
+    loop["healthy"] = (nowMs - lastLoopMs) < 2000UL;
+    loop["overrunThresholdUs"] = LOOP_OVERRUN_THRESHOLD_US;
+    loop["overrunCount"] = loopOverrunCount;
+    loop["lastOverrunUs"] = lastLoopOverrunUs;
+    loop["lastOverrunAgeMs"] =
+        lastLoopOverrunAtMs ? nowMs - lastLoopOverrunAtMs : 0U;
 
 #if (configGENERATE_RUN_TIME_STATS == 1)
     loop["cpuStatsAvailable"] = true;
@@ -212,10 +264,10 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     web["errors"] = webErrors;
     web["lastUri"] = lastWebUri;
     web["lastStatus"] = lastWebStatus;
-    web["lastBytes"] = (uint32_t)lastWebBytes;
+    web["lastBytes"] = static_cast<uint32_t>(lastWebBytes);
     web["lastGenerationUs"] = lastWebGenerationUs;
     web["maxGenerationUs"] = maxWebGenerationUs;
-    web["lastAgeMs"] = lastWebAtMs ? millis() - lastWebAtMs : 0;
+    web["lastAgeMs"] = lastWebAtMs ? nowMs - lastWebAtMs : 0U;
 
     JsonObject w = doc["wifi"].to<JsonObject>();
     if (wifi) {
@@ -236,4 +288,6 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
 
     w["channel"] = WiFi.channel();
     w["mac"] = WiFi.macAddress();
+
+    RuntimeProfiler::fillJson(doc);
 }
