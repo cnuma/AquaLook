@@ -2,12 +2,14 @@
 #include "EventBus.h"
 #include "EventLog.h"
 #include "FaultManager.h"
+#include "TimeUtils.h"
 #include <DNSServer.h>
 
 static DNSServer _dnsServer;
 static bool _dnsStarted = false;
 
 static constexpr uint8_t DNS_PORT = 53;
+static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
 
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid, sizeof(_ssid));
@@ -33,7 +35,12 @@ void WiFiManager::begin(const char* ssid, const char* pwd) {
 void WiFiManager::update() {
     const uint32_t now = millis();
 
+    if (processPendingAction(now)) {
+        return;
+    }
+
     if (EventBus::captiveRequested &&
+        _state != State::CAPTIVE_STARTING &&
         _state != State::CAPTIVE_PORTAL) {
         EventBus::captiveRequested = false;
         startCaptivePortal();
@@ -53,9 +60,76 @@ void WiFiManager::update() {
         case State::CAPTIVE_PORTAL:
             handleCaptivePortal();
             break;
+        case State::CAPTIVE_STARTING:
         case State::IDLE:
             break;
     }
+}
+
+void WiFiManager::scheduleAction(
+    PendingAction action,
+    uint32_t deadlineMs
+) {
+    _pendingAction = action;
+    _pendingDeadlineMs = deadlineMs;
+}
+
+bool WiFiManager::processPendingAction(uint32_t now) {
+    if (_pendingAction == PendingAction::NONE) return false;
+    if (!AquaLook::Time::deadlineReached(now, _pendingDeadlineMs)) return true;
+
+    const PendingAction action = _pendingAction;
+    _pendingAction = PendingAction::NONE;
+
+    switch (action) {
+        case PendingAction::STA_SET_MODE:
+            WiFi.mode(WIFI_STA);
+            scheduleAction(
+                PendingAction::STA_BEGIN,
+                now + WIFI_MODE_SETTLE_MS
+            );
+            return true;
+
+        case PendingAction::STA_BEGIN:
+            WiFi.begin(_ssid, _pwd);
+            _lastActionMs = now;
+            return true;
+
+        case PendingAction::AP_SET_MODE:
+            WiFi.mode(WIFI_AP);
+            WiFi.softAP(CAPTIVE_AP_SSID);
+            scheduleAction(
+                PendingAction::AP_FINALIZE,
+                now + WIFI_AP_SETTLE_MS
+            );
+            return true;
+
+        case PendingAction::AP_FINALIZE: {
+            const IPAddress apIp = WiFi.softAPIP();
+
+            EventLog::log(
+                LOG_INFO,
+                "WiFi: AP '%s' IP=%s",
+                CAPTIVE_AP_SSID,
+                apIp.toString().c_str()
+            );
+
+            _dnsServer.start(DNS_PORT, "*", apIp);
+            _dnsStarted = true;
+            _state = State::CAPTIVE_PORTAL;
+            EventBus::displayDirty = true;
+            return true;
+        }
+
+        case PendingAction::RESTART:
+            ESP.restart();
+            return true;
+
+        case PendingAction::NONE:
+            return false;
+    }
+
+    return false;
 }
 
 void WiFiManager::handleConnecting(uint32_t now) {
@@ -95,7 +169,7 @@ void WiFiManager::handleConnecting(uint32_t now) {
             "WiFi: echec #%u, %s, wl_status=%d, retry dans %lus",
             _retryCount + 1,
             cause,
-            (int)s,
+            static_cast<int>(s),
             RETRY_INTERVAL_MS / 1000UL
         );
 
@@ -127,7 +201,7 @@ void WiFiManager::handleConnected() {
         EventLog::log(
             LOG_WARN,
             "WiFi: connexion perdue, wl_status=%d",
-            (int)WiFi.status()
+            static_cast<int>(WiFi.status())
         );
         _state = State::DISCONNECTED;
         _lastActionMs = millis();
@@ -169,39 +243,27 @@ void WiFiManager::startConnection() {
     );
 
     WiFi.disconnect(true);
-    delay(100);
-    WiFi.mode(WIFI_STA);
-    delay(50);
-    WiFi.begin(_ssid, _pwd);
-
     _state = State::CONNECTING;
-    _lastActionMs = millis();
+    scheduleAction(
+        PendingAction::STA_SET_MODE,
+        millis() + WIFI_DISCONNECT_SETTLE_MS
+    );
 }
 
 void WiFiManager::startCaptivePortal() {
     EventLog::log(LOG_INFO, "WiFi: demarrage portail captif");
 
+    if (_dnsStarted) {
+        _dnsServer.stop();
+        _dnsStarted = false;
+    }
+
     WiFi.disconnect(true);
-    delay(100);
-    WiFi.mode(WIFI_AP);
-
-    const char* apSsid = "Arrosage-Setup";
-    WiFi.softAP(apSsid);
-    delay(200);
-
-    const IPAddress apIp = WiFi.softAPIP();
-
-    EventLog::log(
-        LOG_INFO,
-        "WiFi: AP '%s' IP=%s",
-        apSsid,
-        apIp.toString().c_str()
+    _state = State::CAPTIVE_STARTING;
+    scheduleAction(
+        PendingAction::AP_SET_MODE,
+        millis() + WIFI_DISCONNECT_SETTLE_MS
     );
-
-    _dnsServer.start(DNS_PORT, "*", apIp);
-    _dnsStarted = true;
-    _state = State::CAPTIVE_PORTAL;
-    EventBus::displayDirty = true;
 }
 
 void WiFiManager::stopCaptivePortal() {
@@ -211,14 +273,18 @@ void WiFiManager::stopCaptivePortal() {
     }
 
     WiFi.softAPdisconnect(true);
-    EventLog::log(LOG_INFO, "WiFi: portail arrete, reboot");
-    delay(200);
-    ESP.restart();
+    EventLog::log(LOG_INFO, "WiFi: portail arrete, reboot programme");
+
+    _state = State::IDLE;
+    scheduleAction(
+        PendingAction::RESTART,
+        millis() + WIFI_RESTART_SETTLE_MS
+    );
 }
 
 int8_t WiFiManager::getRssi() const {
     if (_state != State::CONNECTED) return 0;
-    return (int8_t)WiFi.RSSI();
+    return static_cast<int8_t>(WiFi.RSSI());
 }
 
 const char* WiFiManager::stateStr() const {
@@ -231,6 +297,8 @@ const char* WiFiManager::stateStr() const {
             return "CONNECTED";
         case State::DISCONNECTED:
             return "DISCONNECTED";
+        case State::CAPTIVE_STARTING:
+            return "CAPTIVE_STARTING";
         case State::CAPTIVE_PORTAL:
             return "CAPTIVE_PORTAL";
         default:
@@ -253,7 +321,7 @@ void WiFiManager::startScan() {
 int16_t WiFiManager::getScanCount() const {
     if (!_scanPending) return 0;
 
-    const int16_t n = (int16_t)WiFi.scanComplete();
+    const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
     return n == WIFI_SCAN_RUNNING ? -1 : n;
 }
 
@@ -264,12 +332,12 @@ WiFiManager::getScanEntry(uint8_t i) const {
     e.rssi = 0;
     e.secured = false;
 
-    const int16_t n = (int16_t)WiFi.scanComplete();
-    if (n <= 0 || i >= (uint8_t)n) return e;
+    const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
+    if (n <= 0 || i >= static_cast<uint8_t>(n)) return e;
 
     const String s = WiFi.SSID(i);
     strlcpy(e.ssid, s.c_str(), sizeof(e.ssid));
-    e.rssi = (int8_t)WiFi.RSSI(i);
+    e.rssi = static_cast<int8_t>(WiFi.RSSI(i));
     e.secured =
         WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
 
