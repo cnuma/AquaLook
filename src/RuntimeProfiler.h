@@ -15,7 +15,7 @@ public:
         EQUIPMENT_SHADOW,
         RELAY,
         WEB,
-        DISPLAY,
+        DISPLAY_MANAGER,
         PLANNING_DECOR,
         FAULTS_POST,
         YIELD,
