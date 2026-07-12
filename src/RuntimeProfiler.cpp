@@ -64,11 +64,13 @@ void RuntimeProfiler::stop(
     if (shouldLog) {
         EventLog::log(
             LOG_WARN,
-            "Timing: composant lent name=%s duration=%lu us threshold=%lu us count=%lu",
+            "Timing: composant lent name=%s duration=%lu us threshold=%lu us count=%lu atMs=%lu core=%d",
             componentName(component),
             static_cast<unsigned long>(durationUs),
             static_cast<unsigned long>(SLOW_COMPONENT_THRESHOLD_US),
-            static_cast<unsigned long>(slowCount)
+            static_cast<unsigned long>(slowCount),
+            static_cast<unsigned long>(nowMs),
+            xPortGetCoreID()
         );
     }
 }
