@@ -1,0 +1,17 @@
+diff --git a/src/DisplayManager.cpp b/src/DisplayManager.cpp
+index 6dc9ce4..c107ecf 100644
+--- a/src/DisplayManager.cpp
++++ b/src/DisplayManager.cpp
+@@ -237,10 +237,10 @@
+     // Note : le warning addApbChangeCallback vient de TFT_eSPI qui ré-enregistre
+     // son callback APB lors du second passage dans begin(). Suppression du log parasite
+     // en désactivant temporairement les logs ESP pendant l'init du touch.
+-    esp_log_level_set("*", ESP_LOG_ERROR);  // masquer le warning doublon SPI
++    esp_log_level_set("*", ESP_LOG_ERROR);  // masquer uniquement pendant init SPI/touch
+     _touchSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
+-    esp_log_level_set("*", ESP_LOG_WARN);   // restaurer
+     _touch.begin(_touchSPI);
++    esp_log_level_set("*", ESP_LOG_WARN);   // restaurer apres initialisation complete
+     _touch.setRotation(1);
+ 
+     // Déterminer le mode HOME selon le nb de zones actives
