@@ -177,18 +177,16 @@ void WeatherManager::performFetch() {
             if (result.httpCode == HTTP_CODE_OK) {
                 const int32_t announcedSize = http.getSize();
                 const String contentType = http.header("Content-Type");
-                String payload = http.getString();
-                result.payloadSize = static_cast<int32_t>(payload.length());
+                result.payloadSize = announcedSize;
 
                 EventLog::log(
                     LOG_INFO,
-                    "Meteo: HTTP 200 annonce=%ld recu=%ld type=%s",
+                    "Meteo: HTTP 200 annonce=%ld lecture=stream type=%s",
                     static_cast<long>(announcedSize),
-                    static_cast<long>(result.payloadSize),
                     contentType.length() ? contentType.c_str() : "inconnu"
                 );
 
-                if (payload.length() == 0) {
+                if (announcedSize == 0) {
                     strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
                 } else {
                     // La reponse OWM complete contient de nombreux champs inutilises.
@@ -213,20 +211,14 @@ void WeatherManager::performFetch() {
                     JsonDocument doc;
                     const DeserializationError err = deserializeJson(
                         doc,
-                        payload,
+                        http.getStream(),
                         DeserializationOption::Filter(filter)
                     );
                     if (err) {
-                        const String preview = payloadPreview(payload);
-                        EventLog::log(
-                            LOG_WARN,
-                            "Meteo: JSON invalide apercu=%.96s",
-                            preview.c_str()
-                        );
                         snprintf(
                             result.error,
                             sizeof(result.error),
-                            "JSON: %.48s",
+                            "JSON stream: %.40s",
                             err.c_str()
                         );
                     } else {
