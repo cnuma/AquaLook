@@ -1,6 +1,7 @@
 #include "NTPManager.h"
 #include "ConfigManager.h"
 #include "EventBus.h"
+#include "EventLog.h"
 
 // ── Intervalles de poll (compile-time) ────────
 static constexpr uint32_t POLL_BEFORE_SYNC_MS = 500;
@@ -10,7 +11,7 @@ static constexpr uint32_t POLL_AFTER_SYNC_MS  = 3600000UL;  // 1h
 void NTPManager::begin(ConfigManager* config) {
     _config = config;
     applyConfig();
-    Serial.println("[NTP] Synchronisation lancée...");
+    EventLog::log(LOG_INFO, "NTP: synchronisation lancee");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ void NTPManager::update() {
         applyConfig();
         _synced   = false;   // forcer resync avec les nouveaux paramètres
         _lastPoll = 0;
-        Serial.println("[NTP] Reconfiguration suite à configDirty");
+        EventLog::log(LOG_INFO, "NTP: reconfiguration suite a configDirty");
         // Ne pas remettre configDirty à false ici —
         // d'autres managers (WeatherManager) doivent aussi le lire
     }
@@ -38,7 +39,8 @@ void NTPManager::update() {
             // ne nécessite pas un fillScreen() ni un redraw complet. Le prochain
             // rafraîchissement dynamique nominal mettra à jour l'heure et les
             // informations temporelles sans blocage ni scintillement.
-            Serial.printf("[NTP] Synchronisé : %s\n", getTimeStr().c_str());
+            const String timeStr = getTimeStr();
+            EventLog::log(LOG_INFO, "NTP: synchronise %s", timeStr.c_str());
         }
         _lastSync = now;
     }
@@ -51,11 +53,17 @@ void NTPManager::applyConfig() {
     if (_config) {
         const CfgNtp& n = _config->ntp();
         configTime(n.gmtOffset, n.dstOffset, n.server);
-        Serial.printf("[NTP] Config : %s gmt=%ld dst=%ld\n",
-                      n.server, n.gmtOffset, n.dstOffset);
+        EventLog::log(
+            LOG_INFO,
+            "NTP: config serveur=%s gmt=%ld dst=%ld",
+            n.server,
+            n.gmtOffset,
+            n.dstOffset
+        );
     } else {
         // Fallback compile-time si pas de ConfigManager
         configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER1, NTP_SERVER2);
+        EventLog::log(LOG_INFO, "NTP: config compile-time");
     }
 }
 
