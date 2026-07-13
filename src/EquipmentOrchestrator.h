@@ -6,8 +6,7 @@
 namespace AquaLook { namespace Application {
 
 // Couche applicative placée entre les intentions métier et EquipmentManager.
-// RUN7.1 reste strictement passif : l'orchestrateur construit et expose un
-// aperçu du plan, sans exécuter d'action matérielle.
+// RUN7.3 ajoute un contrat d'exécution contrôlé, sans branchement dans main.cpp.
 class EquipmentOrchestrator {
 public:
     enum Intent : uint8_t {
@@ -44,18 +43,37 @@ public:
         }
     };
 
-    void begin(const EquipmentManager* equipmentManager, uint8_t nbZones);
+    struct ExecutionResult {
+        Preview preview;
+        EquipmentManager::ActionResult actionResult;
+        bool executed;
+
+        constexpr ExecutionResult()
+            : preview(),
+              actionResult(EquipmentManager::ACTION_NOT_INITIALIZED),
+              executed(false) {}
+
+        constexpr bool success() const {
+            return executed && actionResult == EquipmentManager::ACTION_OK;
+        }
+    };
+
+    void begin(EquipmentManager* equipmentManager, uint8_t nbZones);
     bool isInitialized() const;
     uint8_t zoneCount() const;
 
     Preview previewStartZone(uint8_t zone) const;
     Preview previewStopZone(uint8_t zone) const;
 
+    ExecutionResult executeStartZone(uint8_t zone);
+    ExecutionResult executeStopZone(uint8_t zone);
+
 private:
-    const EquipmentManager* _equipmentManager = nullptr;
+    EquipmentManager* _equipmentManager = nullptr;
     uint8_t _nbZones = 0U;
 
     Preview previewZone(Intent intent, uint8_t zone) const;
+    ExecutionResult executeZone(Intent intent, uint8_t zone);
 };
 
 }} // namespace AquaLook::Application
