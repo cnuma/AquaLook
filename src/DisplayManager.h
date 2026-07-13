@@ -72,6 +72,14 @@ public:
                ConfigManager* config);
     void update();
 
+    // Demande un rafraichissement dynamique au prochain passage dans update().
+    // Contrairement a EventBus::displayDirty, cette demande ne provoque ni
+    // fillScreen() ni rendu complet et evite le scintillement lors des
+    // transitions normales ON/OFF.
+    void requestDynamicRefresh() {
+        _lastUpdate = millis() - _refreshNomMs;
+    }
+
     void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs) {
         _outputs = outputs;
         _relais.outputs = outputs;

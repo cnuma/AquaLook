@@ -280,7 +280,10 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
         inv ? "inverse" : "directe"
     );
 
-    EventBus::displayDirty = true;
+    // Une transition ON/OFF reussie est deja propagee par le callback runtime.
+    // Ne pas forcer ici un redraw complet du TFT. Les erreurs conservent leurs
+    // displayDirty plus haut dans la fonction.
+    if (!ok) EventBus::displayDirty = true;
     return ok;
 }
 

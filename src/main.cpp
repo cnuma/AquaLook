@@ -283,7 +283,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
             ? equipmentMgr.startZone(zone)
             : equipmentMgr.stopZone(zone);
         if (result == EquipmentManager::ACTION_OK) {
-            EventBus::displayDirty = true;
+            displayMgr.requestDynamicRefresh();
             return;
         }
         EventLog::log(
@@ -295,7 +295,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
     }
 
     outputAdapter.setZoneValve(zone, state, millis());
-    EventBus::displayDirty = true;
+    displayMgr.requestDynamicRefresh();
 }
 
 static uint8_t _splashStep = 0;

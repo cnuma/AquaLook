@@ -191,8 +191,31 @@ void WeatherManager::performFetch() {
                 if (payload.length() == 0) {
                     strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
                 } else {
+                    // La reponse OWM complete contient de nombreux champs inutilises.
+                    // Sans filtre, ArduinoJson duplique toute la structure en memoire
+                    // et peut echouer avec NoMemory malgre une reponse HTTP valide.
+                    JsonDocument filter;
+                    filter["city"]["timezone"] = true;
+                    filter["list"][0]["dt"] = true;
+                    filter["list"][0]["main"]["temp"] = true;
+                    filter["list"][0]["main"]["feels_like"] = true;
+                    filter["list"][0]["main"]["humidity"] = true;
+                    filter["list"][0]["main"]["pressure"] = true;
+                    filter["list"][0]["clouds"]["all"] = true;
+                    filter["list"][0]["wind"]["speed"] = true;
+                    filter["list"][0]["wind"]["deg"] = true;
+                    filter["list"][0]["wind"]["gust"] = true;
+                    filter["list"][0]["pop"] = true;
+                    filter["list"][0]["rain"]["3h"] = true;
+                    filter["list"][0]["weather"][0]["description"] = true;
+                    filter["list"][0]["weather"][0]["icon"] = true;
+
                     JsonDocument doc;
-                    const DeserializationError err = deserializeJson(doc, payload);
+                    const DeserializationError err = deserializeJson(
+                        doc,
+                        payload,
+                        DeserializationOption::Filter(filter)
+                    );
                     if (err) {
                         const String preview = payloadPreview(payload);
                         EventLog::log(
