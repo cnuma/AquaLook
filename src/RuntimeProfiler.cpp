@@ -31,8 +31,13 @@ void RuntimeProfiler::stop(
 
     if (index >= static_cast<uint8_t>(Component::COUNT)) return;
 
+    const bool isYield = component == Component::YIELD;
+    const bool schedulerSuspect =
+        !isYield && durationUs >= SCHEDULER_STALL_THRESHOLD_US;
+
     bool shouldLog = false;
     uint32_t slowCount = 0;
+    uint32_t schedulerSuspectCount = 0;
 
     portENTER_CRITICAL(&_mux);
 
@@ -49,11 +54,19 @@ void RuntimeProfiler::stop(
         metrics.lastSlowAtMs = nowMs;
         slowCount = metrics.slowCount;
 
-        if (metrics.lastLogAtMs == 0U ||
-            AquaLook::Time::elapsedAtLeast(
-                nowMs,
-                metrics.lastLogAtMs,
-                LOG_INTERVAL_MS)) {
+        if (schedulerSuspect) {
+            metrics.schedulerSuspectCount++;
+        }
+        schedulerSuspectCount = metrics.schedulerSuspectCount;
+
+        // yield() rend volontairement la main aux taches systeme. Sa duree
+        // murale ne doit donc pas etre signalee comme lenteur metier.
+        if (!isYield &&
+            (metrics.lastLogAtMs == 0U ||
+             AquaLook::Time::elapsedAtLeast(
+                 nowMs,
+                 metrics.lastLogAtMs,
+                 LOG_INTERVAL_MS))) {
             metrics.lastLogAtMs = nowMs;
             shouldLog = true;
         }
@@ -62,15 +75,14 @@ void RuntimeProfiler::stop(
     portEXIT_CRITICAL(&_mux);
 
     if (shouldLog) {
-        // Le timestamp relatif est deja ajoute par EventLog. Garder ce message
-        // volontairement court afin que le nom, la duree, le compteur et le
-        // coeur CPU restent visibles dans les sorties serie bornees.
         EventLog::log(
             LOG_WARN,
-            "Timing: n=%s us=%lu count=%lu core=%d",
+            "Timing: n=%s wallUs=%lu count=%lu schedSuspect=%s schedCount=%lu core=%d",
             componentName(component),
             static_cast<unsigned long>(durationUs),
             static_cast<unsigned long>(slowCount),
+            schedulerSuspect ? "yes" : "no",
+            static_cast<unsigned long>(schedulerSuspectCount),
             xPortGetCoreID()
         );
     }
@@ -110,6 +122,8 @@ void RuntimeProfiler::fillJson(JsonDocument& doc) {
     const uint32_t nowMs = millis();
     JsonObject root = doc["runtimeComponents"].to<JsonObject>();
     root["slowThresholdUs"] = SLOW_COMPONENT_THRESHOLD_US;
+    root["schedulerStallThresholdUs"] = SCHEDULER_STALL_THRESHOLD_US;
+    root["measurement"] = "wall-time";
 
     for (uint8_t i = 0;
          i < static_cast<uint8_t>(Component::COUNT);
@@ -123,6 +137,7 @@ void RuntimeProfiler::fillJson(JsonDocument& doc) {
         item["lastUs"] = metrics.lastUs;
         item["maxUs"] = metrics.maxUs;
         item["slowCount"] = metrics.slowCount;
+        item["schedulerSuspectCount"] = metrics.schedulerSuspectCount;
         item["lastSlowUs"] = metrics.lastSlowUs;
         item["lastSlowAgeMs"] =
             metrics.lastSlowAtMs
