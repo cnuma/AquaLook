@@ -23,6 +23,7 @@ public:
     };
 
     static constexpr uint32_t SLOW_COMPONENT_THRESHOLD_US = 50000UL;
+    static constexpr uint32_t SCHEDULER_STALL_THRESHOLD_US = 100000UL;
     static constexpr uint32_t LOG_INTERVAL_MS = 5000UL;
 
     static void begin();
@@ -37,6 +38,7 @@ private:
         uint32_t lastUs = 0;
         uint32_t maxUs = 0;
         uint32_t slowCount = 0;
+        uint32_t schedulerSuspectCount = 0;
         uint32_t lastSlowUs = 0;
         uint32_t lastSlowAtMs = 0;
         uint32_t lastLogAtMs = 0;
