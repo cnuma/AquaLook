@@ -3,7 +3,7 @@
 namespace AquaLook { namespace Application {
 
 void EquipmentOrchestrator::begin(
-    const EquipmentManager* equipmentManager,
+    EquipmentManager* equipmentManager,
     uint8_t nbZones
 ) {
     _equipmentManager = equipmentManager;
@@ -30,6 +30,18 @@ EquipmentOrchestrator::Preview EquipmentOrchestrator::previewStopZone(
     uint8_t zone
 ) const {
     return previewZone(INTENT_STOP_ZONE, zone);
+}
+
+EquipmentOrchestrator::ExecutionResult EquipmentOrchestrator::executeStartZone(
+    uint8_t zone
+) {
+    return executeZone(INTENT_START_ZONE, zone);
+}
+
+EquipmentOrchestrator::ExecutionResult EquipmentOrchestrator::executeStopZone(
+    uint8_t zone
+) {
+    return executeZone(INTENT_STOP_ZONE, zone);
 }
 
 EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
@@ -63,6 +75,25 @@ EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
         ? PREVIEW_READY
         : PREVIEW_PLAN_REJECTED;
     return preview;
+}
+
+EquipmentOrchestrator::ExecutionResult EquipmentOrchestrator::executeZone(
+    Intent intent,
+    uint8_t zone
+) {
+    ExecutionResult result;
+    result.preview = previewZone(intent, zone);
+    result.actionResult = result.preview.planResult;
+
+    if (!result.preview.ready() || _equipmentManager == nullptr) {
+        return result;
+    }
+
+    result.actionResult = intent == INTENT_START_ZONE
+        ? _equipmentManager->startZone(zone)
+        : _equipmentManager->stopZone(zone);
+    result.executed = true;
+    return result;
 }
 
 }} // namespace AquaLook::Application
