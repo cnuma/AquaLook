@@ -1,0 +1,89 @@
+diff --git a/src/DisplayManager.h b/src/DisplayManager.h
+--- a/src/DisplayManager.h
++++ b/src/DisplayManager.h
+@@ -73,6 +73,15 @@ public:
+                RelaisManager* relais, ScheduleManager* schedule,
+                ConfigManager* config);
+     void update();
++
++    // Demande un rafraichissement dynamique au prochain passage dans update().
++    // Contrairement a EventBus::displayDirty, cette demande ne provoque ni
++    // fillScreen() ni rendu complet et evite le scintillement lors des
++    // transitions normales ON/OFF.
++    void requestDynamicRefresh() {
++        _lastUpdate = millis() - _refreshNomMs;
++    }
+ 
+     void setOutputAdapter(AquaLook::Runtime::EquipmentOutputRuntimeAdapter* outputs) {
+         _outputs = outputs;
+diff --git a/src/main.cpp b/src/main.cpp
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -284,8 +284,8 @@ static void onRelayRequest(uint8_t zone, bool state) {
+             ? equipmentMgr.startZone(zone)
+             : equipmentMgr.stopZone(zone);
+         if (result == EquipmentManager::ACTION_OK) {
+-            EventBus::displayDirty = true;
++            displayMgr.requestDynamicRefresh();
+             return;
+         }
+         EventLog::log(
+@@ -297,7 +297,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
+     }
+ 
+     outputAdapter.setZoneValve(zone, state, millis());
+-    EventBus::displayDirty = true;
++    displayMgr.requestDynamicRefresh();
+ }
+ 
+ static uint8_t _splashStep = 0;
+diff --git a/src/RelaisManager.cpp b/src/RelaisManager.cpp
+--- a/src/RelaisManager.cpp
++++ b/src/RelaisManager.cpp
+@@ -282,7 +282,10 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
+         inv ? "inverse" : "directe"
+     );
+ 
+-    EventBus::displayDirty = true;
++    // Une transition ON/OFF reussie est deja propagee par le callback runtime.
++    // Ne pas forcer ici un redraw complet du TFT. Les erreurs conservent leurs
++    // displayDirty plus haut dans la fonction.
++    if (!ok) EventBus::displayDirty = true;
+     return ok;
+ }
+diff --git a/src/WeatherManager.cpp b/src/WeatherManager.cpp
+--- a/src/WeatherManager.cpp
++++ b/src/WeatherManager.cpp
+@@ -193,8 +193,27 @@ void WeatherManager::performFetch() {
+                 if (payload.length() == 0) {
+                     strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
+                 } else {
++                    // La reponse OWM complete contient de nombreux champs inutilises.
++                    // Sans filtre, ArduinoJson duplique toute la structure en memoire
++                    // et peut echouer avec NoMemory malgre une reponse HTTP valide.
++                    JsonDocument filter;
++                    filter["city"]["timezone"] = true;
++                    filter["list"][0]["dt"] = true;
++                    filter["list"][0]["main"]["temp"] = true;
++                    filter["list"][0]["main"]["feels_like"] = true;
++                    filter["list"][0]["main"]["humidity"] = true;
++                    filter["list"][0]["main"]["pressure"] = true;
++                    filter["list"][0]["clouds"]["all"] = true;
++                    filter["list"][0]["wind"]["speed"] = true;
++                    filter["list"][0]["wind"]["deg"] = true;
++                    filter["list"][0]["wind"]["gust"] = true;
++                    filter["list"][0]["pop"] = true;
++                    filter["list"][0]["rain"]["3h"] = true;
++                    filter["list"][0]["weather"][0]["description"] = true;
++                    filter["list"][0]["weather"][0]["icon"] = true;
++
+                     JsonDocument doc;
+-                    const DeserializationError err = deserializeJson(doc, payload);
++                    const DeserializationError err = deserializeJson(
++                        doc,
++                        payload,
++                        DeserializationOption::Filter(filter)
++                    );
+                     if (err) {
+                         const String preview = payloadPreview(payload);
+                         EventLog::log(
