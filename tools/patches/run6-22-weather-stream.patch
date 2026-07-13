@@ -1,0 +1,95 @@
+diff --git a/src/WeatherManager.cpp b/src/WeatherManager.cpp
+--- a/src/WeatherManager.cpp
++++ b/src/WeatherManager.cpp
+@@ -2,58 +2,46 @@
+             if (result.httpCode == HTTP_CODE_OK) {
+                 const int32_t announcedSize = http.getSize();
+                 const String contentType = http.header("Content-Type");
+-                String payload = http.getString();
+-                result.payloadSize = static_cast<int32_t>(payload.length());
++                result.payloadSize = announcedSize;
+ 
+                 EventLog::log(
+                     LOG_INFO,
+-                    "Meteo: HTTP 200 annonce=%ld recu=%ld type=%s",
++                    "Meteo: HTTP 200 annonce=%ld lecture=stream type=%s",
+                     static_cast<long>(announcedSize),
+-                    static_cast<long>(result.payloadSize),
+                     contentType.length() ? contentType.c_str() : "inconnu"
+                 );
+ 
+-                if (payload.length() == 0) {
+-                    strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
++                // Parse directement le flux HTTP pour eviter une copie String de
++                // 16 a 17 Ko, puis ne conserve que les champs reellement utilises.
++                JsonDocument filter;
++                filter["city"]["timezone"] = true;
++                filter["list"][0]["dt"] = true;
++                filter["list"][0]["main"]["temp"] = true;
++                filter["list"][0]["main"]["feels_like"] = true;
++                filter["list"][0]["main"]["humidity"] = true;
++                filter["list"][0]["main"]["pressure"] = true;
++                filter["list"][0]["clouds"]["all"] = true;
++                filter["list"][0]["wind"]["speed"] = true;
++                filter["list"][0]["wind"]["deg"] = true;
++                filter["list"][0]["wind"]["gust"] = true;
++                filter["list"][0]["pop"] = true;
++                filter["list"][0]["rain"]["3h"] = true;
++                filter["list"][0]["weather"][0]["description"] = true;
++                filter["list"][0]["weather"][0]["icon"] = true;
++
++                JsonDocument doc;
++                const DeserializationError err = deserializeJson(
++                    doc,
++                    http.getStream(),
++                    DeserializationOption::Filter(filter)
++                );
++                if (err) {
++                    snprintf(
++                        result.error,
++                        sizeof(result.error),
++                        "JSON stream: %.40s",
++                        err.c_str()
++                    );
+                 } else {
+-                    // La reponse OWM complete contient de nombreux champs inutilises.
+-                    // Sans filtre, ArduinoJson duplique toute la structure en memoire
+-                    // et peut echouer avec NoMemory malgre une reponse HTTP valide.
+-                    JsonDocument filter;
+-                    filter["city"]["timezone"] = true;
+-                    filter["list"][0]["dt"] = true;
+-                    filter["list"][0]["main"]["temp"] = true;
+-                    filter["list"][0]["main"]["feels_like"] = true;
+-                    filter["list"][0]["main"]["humidity"] = true;
+-                    filter["list"][0]["main"]["pressure"] = true;
+-                    filter["list"][0]["clouds"]["all"] = true;
+-                    filter["list"][0]["wind"]["speed"] = true;
+-                    filter["list"][0]["wind"]["deg"] = true;
+-                    filter["list"][0]["wind"]["gust"] = true;
+-                    filter["list"][0]["pop"] = true;
+-                    filter["list"][0]["rain"]["3h"] = true;
+-                    filter["list"][0]["weather"][0]["description"] = true;
+-                    filter["list"][0]["weather"][0]["icon"] = true;
+-
+-                    JsonDocument doc;
+-                    const DeserializationError err = deserializeJson(
+-                        doc,
+-                        payload,
+-                        DeserializationOption::Filter(filter)
+-                    );
+-                    if (err) {
+-                        const String preview = payloadPreview(payload);
+-                        EventLog::log(
+-                            LOG_WARN,
+-                            "Meteo: JSON invalide apercu=%.96s",
+-                            preview.c_str()
+-                        );
+-                        snprintf(
+-                            result.error,
+-                            sizeof(result.error),
+-                            "JSON: %.48s",
+-                            err.c_str()
+-                        );
+-                    } else {
+-                        float totalRain = 0.0f;
++                    float totalRain = 0.0f;
