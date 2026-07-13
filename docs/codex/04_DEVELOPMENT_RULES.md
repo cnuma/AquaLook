@@ -12,6 +12,37 @@
 - Toute constante matérielle compile-time va dans `config.h`.
 - Toute valeur modifiable en production va dans ConfigManager.
 
+## Mémoire, flux et régressions indirectes
+
+Cette règle s’applique à tous les développements ESP32, ESP8266 et Arduino réalisés à partir de ce socle.
+
+- Ne pas évaluer la mémoire d’une fonction isolément. Évaluer le pic transitoire du chemin complet : pile de tâche, buffers réseau, `String`, documents JSON, caches, sprites, structures runtime et allocations concurrentes.
+- Toute création de tâche FreeRTOS ajoute une pile dédiée et peut réduire la marge disponible du heap global. Ce coût doit être pris en compte avant de déplacer une fonction précédemment synchrone vers une tâche asynchrone.
+- Sur une cible sans PSRAM, ne pas charger intégralement une réponse réseau volumineuse dans un `String` lorsqu’une lecture en flux est possible.
+- Pour JSON, CSV, fichiers, réponses HTTP et autres données potentiellement volumineuses, préférer le parsing en flux, les filtres de champs, les buffers bornés ou le traitement par morceaux.
+- Éviter de conserver simultanément plusieurs représentations d’une même donnée, par exemple payload complet plus document JSON plus copie de diagnostic.
+- Toute augmentation de l’empreinte RAM globale impose de retester les fonctions déjà stables qui utilisent des allocations transitoires importantes, même si leur code n’a pas été modifié.
+- Une refonte asynchrone, l’ajout d’observabilité, d’un cache ou d’une structure runtime doit être considérée comme susceptible de provoquer une régression indirecte dans un autre module.
+- Avant validation, relever au minimum le heap libre au repos, le heap avant l’opération sensible, le résultat de l’opération et le heap après libération lorsque l’environnement le permet.
+- Les diagnostics doivent distinguer autant que possible : erreur réseau, réponse vide, erreur de format, manque de mémoire et authentification refusée.
+- Ne pas considérer une fonction comme validée uniquement parce qu’elle compilait ou fonctionnait avant une refonte d’architecture.
+
+## Validation des fichiers et artefacts applicables
+
+- Tout patch, diff, script, archive, fichier de configuration ou fichier de transformation destiné à l’utilisateur doit être testé avant publication avec l’outil exact qui sera utilisé par l’utilisateur.
+- Un patch Git doit être généré depuis une base fidèle, et non rédigé manuellement lorsque l’outil `git diff` peut le produire.
+- La validation minimale d’un patch Git comprend obligatoirement :
+  1. `git apply --check <patch>` sur la base ciblée ;
+  2. application réelle dans une copie ou un worktree temporaire ;
+  3. `git diff --check` après application ;
+  4. vérification des fichiers et fonctions réellement modifiés ;
+  5. absence de duplication et de changement hors périmètre.
+- Ne jamais publier un patch avec des en-têtes ou compteurs de hunk écrits ou modifiés manuellement sans régénération et revalidation complète.
+- Une archive doit être ouverte et extraite dans un répertoire temporaire ; son contenu, ses chemins et l’absence de fichiers parasites doivent être contrôlés.
+- Un script doit au minimum passer un contrôle syntaxique ou un mode non destructif lorsqu’il existe.
+- Si l’environnement ne permet pas la validation complète, le fichier ne doit pas être présenté comme validé. La limitation et la commande de contrôle locale doivent être indiquées explicitement.
+- Ne jamais utiliser l’utilisateur comme premier testeur d’un artefact que l’environnement de développement pouvait vérifier.
+
 ## Versionnement et identité du produit
 
 Cette règle est obligatoire pour AquaLook et doit être reprise dans tout nouveau projet développé.
