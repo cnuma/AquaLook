@@ -50,16 +50,25 @@ Validation structurelle effectuée par inspection :
 - aucun état global ajouté ;
 - aucun impact sur le chemin runtime actuel tant que l'orchestrateur n'est pas branché.
 
-La compilation PlatformIO et les tests matériels ne sont pas déclarés réussis dans ce checkpoint : ils doivent être exécutés sur le poste disposant de la chaîne AquaLook et de la carte.
+La compilation PlatformIO, l'upload et les tests matériels ne sont pas déclarés réussis dans ce checkpoint : ils doivent être exécutés sur le poste disposant de la chaîne AquaLook et de la carte.
 
-## Commandes de validation locale
+## Commandes complètes de validation locale
+
+La procédure standard AquaLook doit toujours inclure la compilation legacy, la compilation et l'upload V4, puis le monitor série :
 
 ```powershell
+git fetch --prune
+git switch work/step7-run7-1
+git pull --ff-only
+
 pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM3
+pio device monitor --port COM3 --baud 115200
 ```
 
-Aucun upload n'est requis pour RUN7.1, car cette couche n'est pas encore reliée au runtime.
+Ne pas lancer séparément `pio run -e ProgrammeArrosage_v4` avant l'upload : la commande d'upload compile déjà cet environnement.
+
+Même lorsqu'une évolution n'est pas encore reliée au runtime, l'upload et le monitor restent nécessaires pour valider l'absence de régression sur la cible réelle.
 
 ## Étape suivante proposée — RUN7.2
 
