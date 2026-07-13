@@ -62,14 +62,15 @@ void RuntimeProfiler::stop(
     portEXIT_CRITICAL(&_mux);
 
     if (shouldLog) {
+        // Le timestamp relatif est deja ajoute par EventLog. Garder ce message
+        // volontairement court afin que le nom, la duree, le compteur et le
+        // coeur CPU restent visibles dans les sorties serie bornees.
         EventLog::log(
             LOG_WARN,
-            "Timing: composant lent name=%s duration=%lu us threshold=%lu us count=%lu atMs=%lu core=%d",
+            "Timing: n=%s us=%lu count=%lu core=%d",
             componentName(component),
             static_cast<unsigned long>(durationUs),
-            static_cast<unsigned long>(SLOW_COMPONENT_THRESHOLD_US),
             static_cast<unsigned long>(slowCount),
-            static_cast<unsigned long>(nowMs),
             xPortGetCoreID()
         );
     }
