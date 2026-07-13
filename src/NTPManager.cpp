@@ -34,7 +34,10 @@ void NTPManager::update() {
     if (getLocalTime(&timeinfo, 0)) {   // 0ms = strictement non bloquant
         if (!_synced) {
             _synced = true;
-            EventBus::displayDirty = true;
+            // Ne pas positionner displayDirty ici : la synchronisation de l'heure
+            // ne nécessite pas un fillScreen() ni un redraw complet. Le prochain
+            // rafraîchissement dynamique nominal mettra à jour l'heure et les
+            // informations temporelles sans blocage ni scintillement.
             Serial.printf("[NTP] Synchronisé : %s\n", getTimeStr().c_str());
         }
         _lastSync = now;
