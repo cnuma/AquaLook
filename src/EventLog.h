@@ -28,8 +28,9 @@ public:
         vsnprintf(buf, sizeof(buf), fmt, args);
         va_end(args);
 
+        const uint32_t nowMs = millis();
         const uint8_t idx = (_head + _count) % LOG_CAPACITY;
-        _buf[idx].ms = millis();
+        _buf[idx].ms = nowMs;
         _buf[idx].level = level;
         strlcpy(_buf[idx].msg, buf, LOG_MSG_LEN);
 
@@ -46,8 +47,20 @@ public:
 
         const char* prefix = (level == LOG_ERROR) ? "[ERR] " :
                              (level == LOG_WARN)  ? "[WRN] " : "[INF] ";
-        Serial.print(prefix);
-        Serial.println(buf);
+        const uint32_t totalSeconds = nowMs / 1000UL;
+        const uint32_t hours = totalSeconds / 3600UL;
+        const uint32_t minutes = (totalSeconds % 3600UL) / 60UL;
+        const uint32_t seconds = totalSeconds % 60UL;
+        const uint32_t millisPart = nowMs % 1000UL;
+        Serial.printf(
+            "[%02lu:%02lu:%02lu.%03lu] %s%s\n",
+            static_cast<unsigned long>(hours),
+            static_cast<unsigned long>(minutes),
+            static_cast<unsigned long>(seconds),
+            static_cast<unsigned long>(millisPart),
+            prefix,
+            buf
+        );
     }
 
     static uint8_t count() { return _count; }
