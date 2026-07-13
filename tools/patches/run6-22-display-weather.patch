@@ -1,7 +1,7 @@
 diff --git a/src/DisplayManager.h b/src/DisplayManager.h
 --- a/src/DisplayManager.h
 +++ b/src/DisplayManager.h
-@@ -73,6 +73,15 @@ public:
+@@ -73,6 +73,14 @@ public:
                 RelaisManager* relais, ScheduleManager* schedule,
                 ConfigManager* config);
      void update();
@@ -19,7 +19,7 @@ diff --git a/src/DisplayManager.h b/src/DisplayManager.h
 diff --git a/src/main.cpp b/src/main.cpp
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -284,8 +284,8 @@ static void onRelayRequest(uint8_t zone, bool state) {
+@@ -284,7 +284,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
              ? equipmentMgr.startZone(zone)
              : equipmentMgr.stopZone(zone);
          if (result == EquipmentManager::ACTION_OK) {
@@ -40,7 +40,7 @@ diff --git a/src/main.cpp b/src/main.cpp
 diff --git a/src/RelaisManager.cpp b/src/RelaisManager.cpp
 --- a/src/RelaisManager.cpp
 +++ b/src/RelaisManager.cpp
-@@ -282,7 +282,10 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
+@@ -282,6 +282,9 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
          inv ? "inverse" : "directe"
      );
  
@@ -54,7 +54,7 @@ diff --git a/src/RelaisManager.cpp b/src/RelaisManager.cpp
 diff --git a/src/WeatherManager.cpp b/src/WeatherManager.cpp
 --- a/src/WeatherManager.cpp
 +++ b/src/WeatherManager.cpp
-@@ -193,8 +193,27 @@ void WeatherManager::performFetch() {
+@@ -193,8 +193,31 @@ void WeatherManager::performFetch() {
                  if (payload.length() == 0) {
                      strlcpy(result.error, "reponse HTTP vide", sizeof(result.error));
                  } else {
