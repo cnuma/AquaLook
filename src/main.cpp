@@ -299,6 +299,29 @@ static void onRelayRequest(uint8_t zone, bool state) {
                 static_cast<unsigned long>(orchestratorStats.plansWithPump),
                 static_cast<unsigned long>(orchestratorStats.plannedSteps)
             );
+            const EquipmentManager& auditPlanManager =
+                shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
+            const EquipmentManager::ZoneExecutionPlan auditShadowPlan = state
+                ? auditPlanManager.buildZoneStartPlan(zone)
+                : auditPlanManager.buildZoneStopPlan(zone);
+            const bool auditMatch =
+                orchestratorPreview.ready() == auditShadowPlan.valid() &&
+                orchestratorPreview.planResult == auditShadowPlan.result &&
+                orchestratorPreview.stepCount == auditShadowPlan.stepCount &&
+                orchestratorPreview.requiresPump == auditShadowPlan.requiresPump;
+            EventLog::log(
+                auditMatch ? LOG_INFO : LOG_WARN,
+                "Orchestrator audit: zone=%u intent=%s match=%s preview=%u/%u/%s shadow=%u/%u/%s authority=no",
+                zone + 1U,
+                state ? "START" : "STOP",
+                auditMatch ? "yes" : "no",
+                static_cast<unsigned>(orchestratorPreview.planResult),
+                static_cast<unsigned>(orchestratorPreview.stepCount),
+                orchestratorPreview.requiresPump ? "pump" : "no_pump",
+                static_cast<unsigned>(auditShadowPlan.result),
+                static_cast<unsigned>(auditShadowPlan.stepCount),
+                auditShadowPlan.requiresPump ? "pump" : "no_pump"
+            );
         }
 
         const EquipmentManager& shadowPlanManager =
