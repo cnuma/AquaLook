@@ -81,9 +81,14 @@ void configureWithPump(EquipmentModel::EquipmentConfigSet& model,
 void testNotInitialized() {
     EquipmentOrchestrator orchestrator;
     const auto preview = orchestrator.previewStartZone(0U);
+    const auto execution = orchestrator.executeStartZone(0U);
     check(!orchestrator.isInitialized(), "starts uninitialized");
     check(preview.status == EquipmentOrchestrator::PREVIEW_NOT_INITIALIZED,
-          "uninitialized request rejected");
+          "uninitialized preview rejected");
+    check(!execution.executionAttempted,
+          "uninitialized execution not attempted");
+    check(execution.executionResult == EquipmentManager::ACTION_NOT_INITIALIZED,
+          "uninitialized execution result preserved");
 }
 
 void testInvalidZone() {
@@ -96,8 +101,13 @@ void testInvalidZone() {
     orchestrator.begin(&manager, 1U);
 
     const auto preview = orchestrator.previewStartZone(1U);
+    const auto execution = orchestrator.executeStartZone(1U);
     check(preview.status == EquipmentOrchestrator::PREVIEW_INVALID_ZONE,
-          "out-of-range zone rejected");
+          "out-of-range preview rejected");
+    check(!execution.executionAttempted,
+          "out-of-range execution not attempted");
+    check(execution.executionResult == EquipmentManager::ACTION_INVALID_ZONE,
+          "out-of-range execution result preserved");
 }
 
 void testValveOnly() {
@@ -149,15 +159,51 @@ void testManagerRejection() {
     orchestrator.begin(&manager, 1U);
 
     const auto preview = orchestrator.previewStartZone(0U);
+    const auto execution = orchestrator.executeStartZone(0U);
     check(preview.status == EquipmentOrchestrator::PREVIEW_PLAN_REJECTED,
           "manager rejection propagated");
     check(preview.planResult == EquipmentManager::ACTION_ZONE_LINK_NOT_FOUND,
           "manager result preserved");
+    check(!execution.executionAttempted,
+          "rejected plan is not executed");
+    check(execution.executionResult == EquipmentManager::ACTION_ZONE_LINK_NOT_FOUND,
+          "rejected execution result preserved");
+}
+
+void testExecutionWithoutExecutor() {
+    EquipmentModel::EquipmentConfigSet model;
+    RelayTopology::RelayTopologyConfig topology;
+    configureValveOnly(model, topology);
+    EquipmentManager manager;
+    manager.begin(&model, &topology, 1U);
+    EquipmentOrchestrator orchestrator;
+    orchestrator.begin(&manager, 1U);
+
+    const auto start = orchestrator.executeStartZone(0U);
+    const auto stop = orchestrator.executeStopZone(0U);
+
+    check(start.preview.ready(),
+          "start execution keeps validated preview");
+    check(start.executionAttempted,
+          "start execution attempted after valid plan");
+    check(start.executionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
+          "start reports missing executor");
+    check(!start.succeeded(),
+          "start without executor does not succeed");
+
+    check(stop.preview.ready(),
+          "stop execution keeps validated preview");
+    check(stop.executionAttempted,
+          "stop execution attempted after valid plan");
+    check(stop.executionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
+          "stop reports missing executor");
+    check(!stop.succeeded(),
+          "stop without executor does not succeed");
 }
 
 void runAll() {
     Serial.println("============================================================");
-    Serial.println("AquaLook V4 - RUN7.2 - Passive orchestrator bench");
+    Serial.println("AquaLook V4 - RUN7.4 - Controlled orchestrator execution bench");
     Serial.println("No relay or physical backend is exercised.");
     Serial.println("============================================================");
     testNotInitialized();
@@ -165,6 +211,7 @@ void runAll() {
     testValveOnly();
     testPumpDependency();
     testManagerRejection();
+    testExecutionWithoutExecutor();
     Serial.println("============================================================");
     Serial.printf("RESULT: passed=%u failed=%u status=%s\n",
                   passed, failed, failed == 0U ? "SUCCESS" : "FAILED");
