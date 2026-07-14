@@ -275,6 +275,8 @@ static bool buildShadowPumpScenario(
 static void onRelayRequest(uint8_t zone, bool state) {
     if (equipmentRuntimeReady) {
         const uint32_t nowMs = millis();
+        EquipmentManager::ZoneExecutionPlan shadowPlan;
+        bool shadowPlanFromOrchestrator = false;
 
         if (equipmentOrchestratorShadowReady) {
             const AquaLook::Application::EquipmentOrchestrator::Preview orchestratorPreview = state
@@ -299,36 +301,26 @@ static void onRelayRequest(uint8_t zone, bool state) {
                 static_cast<unsigned long>(orchestratorStats.plansWithPump),
                 static_cast<unsigned long>(orchestratorStats.plannedSteps)
             );
-            const EquipmentManager& auditPlanManager =
+            shadowPlan = orchestratorPreview.plan;
+            shadowPlanFromOrchestrator = true;
+        } else {
+            const EquipmentManager& shadowPlanManager =
                 shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
-            const EquipmentManager::ZoneExecutionPlan auditShadowPlan = state
-                ? auditPlanManager.buildZoneStartPlan(zone)
-                : auditPlanManager.buildZoneStopPlan(zone);
-            const bool auditMatch =
-                orchestratorPreview.ready() == auditShadowPlan.valid() &&
-                orchestratorPreview.planResult == auditShadowPlan.result &&
-                orchestratorPreview.stepCount == auditShadowPlan.stepCount &&
-                orchestratorPreview.requiresPump == auditShadowPlan.requiresPump;
-            EventLog::log(
-                auditMatch ? LOG_INFO : LOG_WARN,
-                "Orchestrator audit: zone=%u intent=%s match=%s preview=%u/%u/%s shadow=%u/%u/%s authority=no",
-                zone + 1U,
-                state ? "START" : "STOP",
-                auditMatch ? "yes" : "no",
-                static_cast<unsigned>(orchestratorPreview.planResult),
-                static_cast<unsigned>(orchestratorPreview.stepCount),
-                orchestratorPreview.requiresPump ? "pump" : "no_pump",
-                static_cast<unsigned>(auditShadowPlan.result),
-                static_cast<unsigned>(auditShadowPlan.stepCount),
-                auditShadowPlan.requiresPump ? "pump" : "no_pump"
-            );
+            shadowPlan = state
+                ? shadowPlanManager.buildZoneStartPlan(zone)
+                : shadowPlanManager.buildZoneStopPlan(zone);
         }
 
-        const EquipmentManager& shadowPlanManager =
-            shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
-        const EquipmentManager::ZoneExecutionPlan shadowPlan = state
-            ? shadowPlanManager.buildZoneStartPlan(zone)
-            : shadowPlanManager.buildZoneStopPlan(zone);
+        EventLog::log(
+            shadowPlan.valid() ? LOG_INFO : LOG_WARN,
+            "Orchestrator handoff: zone=%u intent=%s source=%s result=%u steps=%u pump=%s authority=no",
+            zone + 1U,
+            state ? "START" : "STOP",
+            shadowPlanFromOrchestrator ? "orchestrator" : "legacy_shadow_builder",
+            static_cast<unsigned>(shadowPlan.result),
+            static_cast<unsigned>(shadowPlan.stepCount),
+            shadowPlan.requiresPump ? "yes" : "no"
+        );
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
         const EquipmentManager::ActionResult result = state
