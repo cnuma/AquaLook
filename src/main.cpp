@@ -51,6 +51,79 @@ AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
 static bool equipmentOrchestratorShadowReady = false;
+enum class OrchestratorAuthorityMode : uint8_t {
+    Disabled = 0U,
+    Controlled
+};
+
+enum class OrchestratorFallbackReason : uint8_t {
+    None = 0U,
+    AuthorityDisabled,
+    OrchestratorUnavailable,
+    PlanNotFromOrchestrator,
+    InvalidPlan
+};
+
+struct OrchestratorAuthorityDecision {
+    bool useOrchestrator = false;
+    OrchestratorFallbackReason fallbackReason =
+        OrchestratorFallbackReason::AuthorityDisabled;
+};
+
+// RUN7.10: decision layer only. Physical authority remains disabled until
+// compilation, bench and hardware validation have all succeeded.
+static constexpr OrchestratorAuthorityMode ORCHESTRATOR_AUTHORITY_MODE =
+    OrchestratorAuthorityMode::Disabled;
+
+static OrchestratorAuthorityDecision decideOrchestratorAuthority(
+    OrchestratorAuthorityMode mode,
+    bool orchestratorReady,
+    bool planFromOrchestrator,
+    const EquipmentManager::ZoneExecutionPlan& plan
+) {
+    if (mode == OrchestratorAuthorityMode::Disabled) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::AuthorityDisabled;
+        return decision;
+    }
+    if (!orchestratorReady) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::OrchestratorUnavailable;
+        return decision;
+    }
+    if (!planFromOrchestrator) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::PlanNotFromOrchestrator;
+        return decision;
+    }
+    if (!plan.valid()) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::InvalidPlan;
+        return decision;
+    }
+    OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = true;
+        decision.fallbackReason = OrchestratorFallbackReason::None;
+        return decision;
+}
+
+static const char* orchestratorFallbackReasonName(
+    OrchestratorFallbackReason reason
+) {
+    switch (reason) {
+        case OrchestratorFallbackReason::None: return "none";
+        case OrchestratorFallbackReason::AuthorityDisabled: return "authority_disabled";
+        case OrchestratorFallbackReason::OrchestratorUnavailable: return "orchestrator_unavailable";
+        case OrchestratorFallbackReason::PlanNotFromOrchestrator: return "plan_not_from_orchestrator";
+        case OrchestratorFallbackReason::InvalidPlan: return "invalid_plan";
+    }
+    return "unknown";
+}
+
 
 static int16_t findZoneAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology,
@@ -321,6 +394,23 @@ static void onRelayRequest(uint8_t zone, bool state) {
             static_cast<unsigned>(shadowPlan.stepCount),
             shadowPlan.requiresPump ? "yes" : "no"
         );
+        const OrchestratorAuthorityDecision authorityDecision =
+            decideOrchestratorAuthority(
+                ORCHESTRATOR_AUTHORITY_MODE,
+                equipmentOrchestratorShadowReady,
+                shadowPlanFromOrchestrator,
+                shadowPlan
+            );
+        EventLog::log(
+            authorityDecision.useOrchestrator ? LOG_INFO : LOG_WARN,
+            "Orchestrator authority: zone=%u intent=%s authority=%s path=%s fallback=%s",
+            zone + 1U,
+            state ? "START" : "STOP",
+            authorityDecision.useOrchestrator ? "yes" : "no",
+            authorityDecision.useOrchestrator ? "orchestrator" : "legacy",
+            orchestratorFallbackReasonName(authorityDecision.fallbackReason)
+        );
+
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
         const EquipmentManager::ActionResult result = state
