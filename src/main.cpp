@@ -23,6 +23,7 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "EquipmentExecutionShadowRuntime.h"
 #include "EquipmentRuntimeConfigStore.h"
+#include "EquipmentOrchestrator.h"
 #include "domain/Xl9535SharedOutputState.h"
 
 WiFiManager wifiMgr;
@@ -44,10 +45,12 @@ RelayTopology::RelayTopologyConfig shadowRelayTopology;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
 AquaLook::Runtime::EquipmentRuntimeConfigStore equipmentConfigStore;
+AquaLook::Application::EquipmentOrchestrator equipmentOrchestrator;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
+static bool equipmentOrchestratorShadowReady = false;
 
 static int16_t findZoneAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology,
@@ -272,6 +275,32 @@ static bool buildShadowPumpScenario(
 static void onRelayRequest(uint8_t zone, bool state) {
     if (equipmentRuntimeReady) {
         const uint32_t nowMs = millis();
+
+        if (equipmentOrchestratorShadowReady) {
+            const AquaLook::Application::EquipmentOrchestrator::Preview orchestratorPreview = state
+                ? equipmentOrchestrator.previewStartZone(zone)
+                : equipmentOrchestrator.previewStopZone(zone);
+            const AquaLook::Application::EquipmentOrchestrator::ObservationStats& orchestratorStats =
+                equipmentOrchestrator.stats();
+            EventLog::log(
+                orchestratorPreview.ready() ? LOG_INFO : LOG_WARN,
+                "Orchestrator shadow: zone=%u intent=%s status=%u plan=%u steps=%u pump=%s authority=no stats=%lu/%lu/%lu ready=%lu rejected=%lu pumpPlans=%lu plannedSteps=%lu",
+                zone + 1U,
+                state ? "START" : "STOP",
+                static_cast<unsigned>(orchestratorPreview.status),
+                static_cast<unsigned>(orchestratorPreview.planResult),
+                static_cast<unsigned>(orchestratorPreview.stepCount),
+                orchestratorPreview.requiresPump ? "yes" : "no",
+                static_cast<unsigned long>(orchestratorStats.totalRequests),
+                static_cast<unsigned long>(orchestratorStats.startRequests),
+                static_cast<unsigned long>(orchestratorStats.stopRequests),
+                static_cast<unsigned long>(orchestratorStats.readyPlans),
+                static_cast<unsigned long>(orchestratorStats.rejectedPlans),
+                static_cast<unsigned long>(orchestratorStats.plansWithPump),
+                static_cast<unsigned long>(orchestratorStats.plannedSteps)
+            );
+        }
+
         const EquipmentManager& shadowPlanManager =
             shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
         const EquipmentManager::ZoneExecutionPlan shadowPlan = state
@@ -297,7 +326,6 @@ static void onRelayRequest(uint8_t zone, bool state) {
     outputAdapter.setZoneValve(zone, state, millis());
     displayMgr.requestDynamicRefresh();
 }
-
 static uint8_t _splashStep = 0;
 
 static void splashStep(const char* label) {
@@ -425,6 +453,18 @@ void setup() {
                 : "Shadow pump: desactive par configuration NVS")
     );
 
+    EquipmentManager* orchestratorShadowManager = shadowPumpScenarioReady
+        ? &shadowEquipmentMgr
+        : &equipmentMgr;
+    equipmentOrchestrator.begin(orchestratorShadowManager, nbZones);
+    equipmentOrchestratorShadowReady = equipmentOrchestrator.isInitialized();
+    EventLog::log(
+        equipmentOrchestratorShadowReady ? LOG_INFO : LOG_WARN,
+        "Orchestrator shadow: status=%s source=%s authority=no zones=%u",
+        equipmentOrchestratorShadowReady ? "ready" : "unavailable",
+        shadowPumpScenarioReady ? "pump_shadow" : "runtime_model",
+        static_cast<unsigned>(nbZones)
+    );
     executionShadowRuntime.begin(equipmentRuntimeReady ? nbZones : 0U);
     splashStep("Relais");
 
