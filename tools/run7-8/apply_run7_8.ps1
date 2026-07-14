@@ -20,15 +20,7 @@ if ($content.Contains('Orchestrator audit: zone=%u intent=%s match=%s')) {
     exit 0
 }
 
-$marker = @'
-            );
-        }
-
-        const EquipmentManager& shadowPlanManager =
-'@
-
-$replacement = @'
-            );
+$auditBlock = @'
 
             const EquipmentManager& auditPlanManager =
                 shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
@@ -53,21 +45,22 @@ $replacement = @'
                 static_cast<unsigned>(auditShadowPlan.stepCount),
                 auditShadowPlan.requiresPump ? "pump" : "no_pump"
             );
-        }
-
-        const EquipmentManager& shadowPlanManager =
 '@
 
-$first = $content.IndexOf($marker, [System.StringComparison]::Ordinal)
-if ($first -lt 0) {
-    throw 'Point insertion RUN7.8 introuvable dans src/main.cpp.'
-}
-$second = $content.IndexOf($marker, $first + $marker.Length, [System.StringComparison]::Ordinal)
-if ($second -ge 0) {
-    throw 'Point insertion RUN7.8 non unique dans src/main.cpp.'
+# Repere structurel stable situe a la fin du log RUN7.7, dans la portee de orchestratorPreview.
+$pattern = '(?s)(\s*static_cast<unsigned long>\(orchestratorStats\.plannedSteps\)\s*\n\s*\);)(\s*\n\s*\})'
+$matches = [regex]::Matches($content, $pattern)
+if ($matches.Count -ne 1) {
+    throw "Repere structurel RUN7.8 invalide: $($matches.Count) occurrence(s)."
 }
 
-$content = $content.Substring(0, $first) + $replacement + $content.Substring($first + $marker.Length)
+$content = [regex]::Replace(
+    $content,
+    $pattern,
+    { param($m) $m.Groups[1].Value + $auditBlock + $m.Groups[2].Value },
+    1
+)
+
 $normalizedLines = $content -split "`n" | ForEach-Object { $_.TrimEnd() }
 $content = ($normalizedLines -join "`r`n").TrimEnd() + "`r`n"
 [System.IO.File]::WriteAllText((Resolve-Path $path), $content, [System.Text.UTF8Encoding]::new($false))
@@ -78,4 +71,4 @@ if ($LASTEXITCODE -ne 0) {
     throw 'git diff --check a detecte une erreur.'
 }
 
-Write-Host 'RUN7.8 applique: audit passif ajoute dans onRelayRequest().'
+Write-Host 'RUN7.8 applique: audit passif ajoute dans la portee du preview RUN7.7.'
