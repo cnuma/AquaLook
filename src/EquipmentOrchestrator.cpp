@@ -70,19 +70,19 @@ EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
     if (zone >= _nbZones) {
         preview.status = PREVIEW_INVALID_ZONE;
         preview.planResult = EquipmentManager::ACTION_INVALID_ZONE;
+        preview.plan.result = EquipmentManager::ACTION_INVALID_ZONE;
         recordPreview(preview);
         return preview;
     }
 
-    const EquipmentManager::ZoneExecutionPlan plan =
-        intent == INTENT_START_ZONE
-            ? _equipmentManager->buildZoneStartPlan(zone)
-            : _equipmentManager->buildZoneStopPlan(zone);
+    preview.plan = intent == INTENT_START_ZONE
+        ? _equipmentManager->buildZoneStartPlan(zone)
+        : _equipmentManager->buildZoneStopPlan(zone);
 
-    preview.planResult = plan.result;
-    preview.requiresPump = plan.requiresPump;
-    preview.stepCount = plan.stepCount;
-    preview.status = plan.valid()
+    preview.planResult = preview.plan.result;
+    preview.requiresPump = preview.plan.requiresPump;
+    preview.stepCount = preview.plan.stepCount;
+    preview.status = preview.plan.valid()
         ? PREVIEW_READY
         : PREVIEW_PLAN_REJECTED;
     recordPreview(preview);
