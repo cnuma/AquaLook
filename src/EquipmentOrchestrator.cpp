@@ -8,6 +8,7 @@ void EquipmentOrchestrator::begin(
 ) {
     _equipmentManager = equipmentManager;
     _nbZones = nbZones;
+    resetStats();
 }
 
 bool EquipmentOrchestrator::isInitialized() const {
@@ -44,6 +45,14 @@ EquipmentOrchestrator::ExecutionResult EquipmentOrchestrator::executeStopZone(
     return executeZone(INTENT_STOP_ZONE, zone);
 }
 
+const EquipmentOrchestrator::ObservationStats& EquipmentOrchestrator::stats() const {
+    return _stats;
+}
+
+void EquipmentOrchestrator::resetStats() {
+    _stats = ObservationStats();
+}
+
 EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
     Intent intent,
     uint8_t zone
@@ -54,12 +63,14 @@ EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
 
     if (!isInitialized()) {
         preview.status = PREVIEW_NOT_INITIALIZED;
+        recordPreview(preview);
         return preview;
     }
 
     if (zone >= _nbZones) {
         preview.status = PREVIEW_INVALID_ZONE;
         preview.planResult = EquipmentManager::ACTION_INVALID_ZONE;
+        recordPreview(preview);
         return preview;
     }
 
@@ -74,6 +85,7 @@ EquipmentOrchestrator::Preview EquipmentOrchestrator::previewZone(
     preview.status = plan.valid()
         ? PREVIEW_READY
         : PREVIEW_PLAN_REJECTED;
+    recordPreview(preview);
     return preview;
 }
 
@@ -94,6 +106,32 @@ EquipmentOrchestrator::ExecutionResult EquipmentOrchestrator::executeZone(
         : _equipmentManager->stopZone(zone);
     result.executed = true;
     return result;
+}
+
+void EquipmentOrchestrator::recordPreview(const Preview& preview) const {
+    ++_stats.totalRequests;
+    if (preview.intent == INTENT_START_ZONE) ++_stats.startRequests;
+    if (preview.intent == INTENT_STOP_ZONE) ++_stats.stopRequests;
+
+    switch (preview.status) {
+        case PREVIEW_READY:
+            ++_stats.readyPlans;
+            _stats.plannedSteps += preview.stepCount;
+            if (preview.requiresPump) ++_stats.plansWithPump;
+            break;
+        case PREVIEW_NOT_INITIALIZED:
+            ++_stats.rejectedPlans;
+            ++_stats.notInitialized;
+            break;
+        case PREVIEW_INVALID_ZONE:
+            ++_stats.rejectedPlans;
+            ++_stats.invalidZones;
+            break;
+        case PREVIEW_PLAN_REJECTED:
+            ++_stats.rejectedPlans;
+            ++_stats.managerRejections;
+            break;
+    }
 }
 
 }} // namespace AquaLook::Application
