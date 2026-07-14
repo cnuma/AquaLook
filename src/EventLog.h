@@ -85,12 +85,41 @@ public:
         formatTimestamp(entry.ms, entry.epoch, buf, len);
     }
 
+    // Compatibilite avec les vues historiques utilisant uniquement le temps
+    // depuis boot. Apres synchronisation NTP, reconstruit l'heure locale de
+    // l'entree a partir de l'horloge courante et de son age en millisecondes.
     static void msToHms(uint32_t ms, char* buf, uint8_t len) {
-        const uint32_t s = ms / 1000;
-        const uint32_t h = s / 3600;
-        const uint32_t m = (s % 3600) / 60;
-        const uint32_t sec = s % 60;
-        snprintf(buf, len, "%02u:%02u:%02u", h, m, sec);
+        const time_t nowEpoch = validWallClockEpoch();
+        if (nowEpoch > 0) {
+            const uint32_t nowMs = millis();
+            const uint32_t ageMs = nowMs - ms;
+            const time_t entryEpoch = nowEpoch - static_cast<time_t>(ageMs / 1000UL);
+            struct tm localTime;
+            if (localtime_r(&entryEpoch, &localTime) != nullptr) {
+                snprintf(
+                    buf,
+                    len,
+                    "%02d:%02d:%02d",
+                    localTime.tm_hour,
+                    localTime.tm_min,
+                    localTime.tm_sec
+                );
+                return;
+            }
+        }
+
+        const uint32_t s = ms / 1000UL;
+        const uint32_t h = s / 3600UL;
+        const uint32_t m = (s % 3600UL) / 60UL;
+        const uint32_t sec = s % 60UL;
+        snprintf(
+            buf,
+            len,
+            "%02lu:%02lu:%02lu",
+            static_cast<unsigned long>(h),
+            static_cast<unsigned long>(m),
+            static_cast<unsigned long>(sec)
+        );
     }
 
     static const char* levelStr(LogLevel l) {
