@@ -27,16 +27,18 @@ public:
         bool requiresPump;
         uint8_t stepCount;
         EquipmentManager::ActionResult planResult;
+        EquipmentManager::ZoneExecutionPlan plan;
 
-        constexpr Preview()
+        Preview()
             : status(PREVIEW_NOT_INITIALIZED),
               intent(INTENT_NONE),
               zone(0U),
               requiresPump(false),
               stepCount(0U),
-              planResult(EquipmentManager::ACTION_NOT_INITIALIZED) {}
+              planResult(EquipmentManager::ACTION_NOT_INITIALIZED),
+              plan() {}
 
-        constexpr bool ready() const {
+        bool ready() const {
             return status == PREVIEW_READY;
         }
     };
@@ -46,12 +48,12 @@ public:
         EquipmentManager::ActionResult actionResult;
         bool executed;
 
-        constexpr ExecutionResult()
+        ExecutionResult()
             : preview(),
               actionResult(EquipmentManager::ACTION_NOT_INITIALIZED),
               executed(false) {}
 
-        constexpr bool success() const {
+        bool success() const {
             return executed && actionResult == EquipmentManager::ACTION_OK;
         }
     };
