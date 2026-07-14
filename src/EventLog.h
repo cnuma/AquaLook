@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <time.h>
 #include "FaultManager.h"
 
 enum LogLevel : uint8_t {
@@ -13,10 +14,11 @@ static constexpr uint8_t LOG_MSG_LEN  = 72;
 
 struct LogEntry {
     uint32_t ms;
+    time_t epoch;
     LogLevel level;
     char msg[LOG_MSG_LEN];
 
-    LogEntry() : ms(0), level(LOG_INFO) { msg[0] = '\0'; }
+    LogEntry() : ms(0), epoch(0), level(LOG_INFO) { msg[0] = '\0'; }
 };
 
 class EventLog {
@@ -29,8 +31,10 @@ public:
         va_end(args);
 
         const uint32_t nowMs = millis();
+        const time_t nowEpoch = validWallClockEpoch();
         const uint8_t idx = (_head + _count) % LOG_CAPACITY;
         _buf[idx].ms = nowMs;
+        _buf[idx].epoch = nowEpoch;
         _buf[idx].level = level;
         strlcpy(_buf[idx].msg, buf, LOG_MSG_LEN);
 
@@ -47,20 +51,9 @@ public:
 
         const char* prefix = (level == LOG_ERROR) ? "[ERR] " :
                              (level == LOG_WARN)  ? "[WRN] " : "[INF] ";
-        const uint32_t totalSeconds = nowMs / 1000UL;
-        const uint32_t hours = totalSeconds / 3600UL;
-        const uint32_t minutes = (totalSeconds % 3600UL) / 60UL;
-        const uint32_t seconds = totalSeconds % 60UL;
-        const uint32_t millisPart = nowMs % 1000UL;
-        Serial.printf(
-            "[%02lu:%02lu:%02lu.%03lu] %s%s\n",
-            static_cast<unsigned long>(hours),
-            static_cast<unsigned long>(minutes),
-            static_cast<unsigned long>(seconds),
-            static_cast<unsigned long>(millisPart),
-            prefix,
-            buf
-        );
+        char timestamp[24];
+        formatTimestamp(nowMs, nowEpoch, timestamp, sizeof(timestamp));
+        Serial.printf("[%s] %s%s\n", timestamp, prefix, buf);
     }
 
     static uint8_t count() { return _count; }
@@ -86,6 +79,10 @@ public:
     static void ackErrors() {
         _hasErrors = false;
         FaultManager::acknowledge();
+    }
+
+    static void formatEntryTimestamp(const LogEntry& entry, char* buf, uint8_t len) {
+        formatTimestamp(entry.ms, entry.epoch, buf, len);
     }
 
     static void msToHms(uint32_t ms, char* buf, uint8_t len) {
@@ -114,6 +111,47 @@ public:
     }
 
 private:
+    // Une époque postérieure au 01/01/2024 indique que configTime/NTP a réglé
+    // l'horloge système. Avant cela, les logs conservent le temps depuis boot.
+    static time_t validWallClockEpoch() {
+        const time_t now = time(nullptr);
+        return now >= static_cast<time_t>(1704067200) ? now : 0;
+    }
+
+    static void formatTimestamp(uint32_t ms, time_t epoch, char* buf, uint8_t len) {
+        if (epoch > 0) {
+            struct tm localTime;
+            if (localtime_r(&epoch, &localTime) != nullptr) {
+                const uint32_t millisPart = ms % 1000UL;
+                snprintf(
+                    buf,
+                    len,
+                    "%02d:%02d:%02d.%03lu",
+                    localTime.tm_hour,
+                    localTime.tm_min,
+                    localTime.tm_sec,
+                    static_cast<unsigned long>(millisPart)
+                );
+                return;
+            }
+        }
+
+        const uint32_t totalSeconds = ms / 1000UL;
+        const uint32_t hours = totalSeconds / 3600UL;
+        const uint32_t minutes = (totalSeconds % 3600UL) / 60UL;
+        const uint32_t seconds = totalSeconds % 60UL;
+        const uint32_t millisPart = ms % 1000UL;
+        snprintf(
+            buf,
+            len,
+            "%02lu:%02lu:%02lu.%03lu",
+            static_cast<unsigned long>(hours),
+            static_cast<unsigned long>(minutes),
+            static_cast<unsigned long>(seconds),
+            static_cast<unsigned long>(millisPart)
+        );
+    }
+
     static LogEntry _buf[LOG_CAPACITY];
     static uint8_t _head;
     static uint8_t _count;
