@@ -1,11 +1,11 @@
 diff --git a/src/main.cpp b/src/main.cpp
-index bf13335..0000000 100644
+index 5f7d530..81f701e 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -53,6 +53,61 @@ static bool equipmentRuntimeReady = false;
+@@ -53,6 +53,64 @@
+ static bool equipmentRuntimeReady = false;
  static bool shadowPumpScenarioReady = false;
  static bool equipmentOrchestratorShadowReady = false;
- 
 +enum class OrchestratorAuthorityMode : uint8_t {
 +    Disabled = 0U,
 +    Controlled
@@ -64,13 +64,13 @@ index bf13335..0000000 100644
 +    return "unknown";
 +}
 +
+ 
  static int16_t findZoneAssignmentIndex(
      const RelayTopology::RelayTopologyConfig& topology,
-     uint8_t zone
-@@ -323,6 +378,22 @@ static void onRelayRequest(uint8_t zone, bool state) {
+@@ -321,6 +379,23 @@ static int16_t findZoneAssignmentIndex(
+             static_cast<unsigned>(shadowPlan.stepCount),
              shadowPlan.requiresPump ? "yes" : "no"
          );
-+
 +        const OrchestratorAuthorityDecision authorityDecision =
 +            decideOrchestratorAuthority(
 +                ORCHESTRATOR_AUTHORITY_MODE,
