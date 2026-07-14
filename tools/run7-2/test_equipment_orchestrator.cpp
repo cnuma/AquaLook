@@ -85,9 +85,9 @@ void testNotInitialized() {
     check(!orchestrator.isInitialized(), "starts uninitialized");
     check(preview.status == EquipmentOrchestrator::PREVIEW_NOT_INITIALIZED,
           "uninitialized preview rejected");
-    check(!execution.executionAttempted,
+    check(!execution.executed,
           "uninitialized execution not attempted");
-    check(execution.executionResult == EquipmentManager::ACTION_NOT_INITIALIZED,
+    check(execution.actionResult == EquipmentManager::ACTION_NOT_INITIALIZED,
           "uninitialized execution result preserved");
 }
 
@@ -104,9 +104,9 @@ void testInvalidZone() {
     const auto execution = orchestrator.executeStartZone(1U);
     check(preview.status == EquipmentOrchestrator::PREVIEW_INVALID_ZONE,
           "out-of-range preview rejected");
-    check(!execution.executionAttempted,
+    check(!execution.executed,
           "out-of-range execution not attempted");
-    check(execution.executionResult == EquipmentManager::ACTION_INVALID_ZONE,
+    check(execution.actionResult == EquipmentManager::ACTION_INVALID_ZONE,
           "out-of-range execution result preserved");
 }
 
@@ -164,9 +164,9 @@ void testManagerRejection() {
           "manager rejection propagated");
     check(preview.planResult == EquipmentManager::ACTION_ZONE_LINK_NOT_FOUND,
           "manager result preserved");
-    check(!execution.executionAttempted,
+    check(!execution.executed,
           "rejected plan is not executed");
-    check(execution.executionResult == EquipmentManager::ACTION_ZONE_LINK_NOT_FOUND,
+    check(execution.actionResult == EquipmentManager::ACTION_ZONE_LINK_NOT_FOUND,
           "rejected execution result preserved");
 }
 
@@ -184,20 +184,20 @@ void testExecutionWithoutExecutor() {
 
     check(start.preview.ready(),
           "start execution keeps validated preview");
-    check(start.executionAttempted,
+    check(start.executed,
           "start execution attempted after valid plan");
-    check(start.executionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
+    check(start.actionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
           "start reports missing executor");
-    check(!start.succeeded(),
+    check(!start.success(),
           "start without executor does not succeed");
 
     check(stop.preview.ready(),
           "stop execution keeps validated preview");
-    check(stop.executionAttempted,
+    check(stop.executed,
           "stop execution attempted after valid plan");
-    check(stop.executionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
+    check(stop.actionResult == EquipmentManager::ACTION_EXECUTOR_NOT_CONNECTED,
           "stop reports missing executor");
-    check(!stop.succeeded(),
+    check(!stop.success(),
           "stop without executor does not succeed");
 }
 
