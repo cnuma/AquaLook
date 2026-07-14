@@ -1,0 +1,1 @@
+RUN7.7 patch ready on top of validated RUN7.6. Use branch work/step7-run7-7 and apply tools/run7-7/apply_run7_7.ps1.
