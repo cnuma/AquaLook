@@ -24,7 +24,8 @@ function Insert-AfterOnce([string]$text, [string]$marker, [string]$insert, [stri
 }
 
 if (-not $content.Contains('#include "EquipmentOrchestrator.h"')) {
-    $content = Insert-AfterOnce $content '#include "EquipmentRuntimeConfigStore.h"' "`n#include \"EquipmentOrchestrator.h\"" 'include EquipmentOrchestrator'
+    $includeInsert = "`n" + '#include "EquipmentOrchestrator.h"'
+    $content = Insert-AfterOnce $content '#include "EquipmentRuntimeConfigStore.h"' $includeInsert 'include EquipmentOrchestrator'
 }
 
 if (-not $content.Contains('AquaLook::Application::EquipmentOrchestrator equipmentOrchestrator;')) {
