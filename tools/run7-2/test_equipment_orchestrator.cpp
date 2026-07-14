@@ -201,9 +201,38 @@ void testExecutionWithoutExecutor() {
           "stop without executor does not succeed");
 }
 
+void testObservationStats() {
+    EquipmentModel::EquipmentConfigSet model;
+    RelayTopology::RelayTopologyConfig topology;
+    configureWithPump(model, topology);
+    EquipmentManager manager;
+    manager.begin(&model, &topology, 1U);
+    EquipmentOrchestrator orchestrator;
+    orchestrator.begin(&manager, 1U);
+
+    orchestrator.previewStartZone(0U);
+    orchestrator.previewStopZone(0U);
+    orchestrator.previewStartZone(1U);
+
+    const auto& stats = orchestrator.stats();
+    check(stats.totalRequests == 3U, "stats count all requests");
+    check(stats.startRequests == 2U && stats.stopRequests == 1U,
+          "stats separate start and stop requests");
+    check(stats.readyPlans == 2U && stats.rejectedPlans == 1U,
+          "stats separate ready and rejected plans");
+    check(stats.invalidZones == 1U && stats.managerRejections == 0U,
+          "stats preserve rejection cause");
+    check(stats.plansWithPump == 2U && stats.plannedSteps == 6U,
+          "stats aggregate pump plans and steps");
+
+    orchestrator.resetStats();
+    check(orchestrator.stats().totalRequests == 0U,
+          "stats reset clears counters");
+}
+
 void runAll() {
     Serial.println("============================================================");
-    Serial.println("AquaLook V4 - RUN7.4 - Controlled orchestrator execution bench");
+    Serial.println("AquaLook V4 - RUN7.6 - Orchestrator observation counters bench");
     Serial.println("No relay or physical backend is exercised.");
     Serial.println("============================================================");
     testNotInitialized();
@@ -212,6 +241,7 @@ void runAll() {
     testPumpDependency();
     testManagerRejection();
     testExecutionWithoutExecutor();
+    testObservationStats();
     Serial.println("============================================================");
     Serial.printf("RESULT: passed=%u failed=%u status=%s\n",
                   passed, failed, failed == 0U ? "SUCCESS" : "FAILED");
