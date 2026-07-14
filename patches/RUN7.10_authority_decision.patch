@@ -1,0 +1,93 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index bf13335..0000000 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -53,6 +53,61 @@ static bool equipmentRuntimeReady = false;
+ static bool shadowPumpScenarioReady = false;
+ static bool equipmentOrchestratorShadowReady = false;
+ 
++enum class OrchestratorAuthorityMode : uint8_t {
++    Disabled = 0U,
++    Controlled
++};
++
++enum class OrchestratorFallbackReason : uint8_t {
++    None = 0U,
++    AuthorityDisabled,
++    OrchestratorUnavailable,
++    PlanNotFromOrchestrator,
++    InvalidPlan
++};
++
++struct OrchestratorAuthorityDecision {
++    bool useOrchestrator = false;
++    OrchestratorFallbackReason fallbackReason =
++        OrchestratorFallbackReason::AuthorityDisabled;
++};
++
++// RUN7.10: decision layer only. Physical authority remains disabled until
++// compilation, bench and hardware validation have all succeeded.
++static constexpr OrchestratorAuthorityMode ORCHESTRATOR_AUTHORITY_MODE =
++    OrchestratorAuthorityMode::Disabled;
++
++static OrchestratorAuthorityDecision decideOrchestratorAuthority(
++    OrchestratorAuthorityMode mode,
++    bool orchestratorReady,
++    bool planFromOrchestrator,
++    const EquipmentManager::ZoneExecutionPlan& plan
++) {
++    if (mode == OrchestratorAuthorityMode::Disabled) {
++        return {false, OrchestratorFallbackReason::AuthorityDisabled};
++    }
++    if (!orchestratorReady) {
++        return {false, OrchestratorFallbackReason::OrchestratorUnavailable};
++    }
++    if (!planFromOrchestrator) {
++        return {false, OrchestratorFallbackReason::PlanNotFromOrchestrator};
++    }
++    if (!plan.valid()) {
++        return {false, OrchestratorFallbackReason::InvalidPlan};
++    }
++    return {true, OrchestratorFallbackReason::None};
++}
++
++static const char* orchestratorFallbackReasonName(
++    OrchestratorFallbackReason reason
++) {
++    switch (reason) {
++        case OrchestratorFallbackReason::None: return "none";
++        case OrchestratorFallbackReason::AuthorityDisabled: return "authority_disabled";
++        case OrchestratorFallbackReason::OrchestratorUnavailable: return "orchestrator_unavailable";
++        case OrchestratorFallbackReason::PlanNotFromOrchestrator: return "plan_not_from_orchestrator";
++        case OrchestratorFallbackReason::InvalidPlan: return "invalid_plan";
++    }
++    return "unknown";
++}
++
+ static int16_t findZoneAssignmentIndex(
+     const RelayTopology::RelayTopologyConfig& topology,
+     uint8_t zone
+@@ -323,6 +378,22 @@ static void onRelayRequest(uint8_t zone, bool state) {
+             shadowPlan.requiresPump ? "yes" : "no"
+         );
++
++        const OrchestratorAuthorityDecision authorityDecision =
++            decideOrchestratorAuthority(
++                ORCHESTRATOR_AUTHORITY_MODE,
++                equipmentOrchestratorShadowReady,
++                shadowPlanFromOrchestrator,
++                shadowPlan
++            );
++        EventLog::log(
++            authorityDecision.useOrchestrator ? LOG_INFO : LOG_WARN,
++            "Orchestrator authority: zone=%u intent=%s authority=%s path=%s fallback=%s",
++            zone + 1U,
++            state ? "START" : "STOP",
++            authorityDecision.useOrchestrator ? "yes" : "no",
++            authorityDecision.useOrchestrator ? "orchestrator" : "legacy",
++            orchestratorFallbackReasonName(authorityDecision.fallbackReason)
++        );
++
+         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
+ 
+         const EquipmentManager::ActionResult result = state
