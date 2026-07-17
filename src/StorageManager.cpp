@@ -2,6 +2,7 @@
 
 #include "EventLog.h"
 #include "FaultManager.h"
+#include "IncidentManager.h"
 
 namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
@@ -33,6 +34,7 @@ void storageHealthUpdate() {
 
 void StorageManager::begin() {
     g_registeredStorage = this;
+    IncidentManager::begin();
 
     _sd.end();
     resetCardMetadata();
@@ -56,11 +58,19 @@ void StorageManager::begin() {
 
     if (mountSd(true)) {
         FaultManager::setActive(FaultId::STORAGE_SD, false);
+
+        const PersistentIncidentSnapshot incident = IncidentManager::storageSd();
+        if (incident.state == IncidentState::ACTIVE) {
+            IncidentManager::recoverStorageSd("available_after_reboot");
+        }
+
         logMounted(false, 0);
         return;
     }
 
     FaultManager::setActive(FaultId::STORAGE_SD, true);
+    IncidentManager::activateStorageSd(_lastMountFailureReason);
+
     EventLog::log(
         LOG_WARN,
         "Stockage: montage SD initial echoue raison=%s",
@@ -261,6 +271,7 @@ void StorageManager::markUnavailable(StorageStatus status,
     _lastMountFailureReason = reason ? reason : "unknown";
 
     FaultManager::setActive(FaultId::STORAGE_SD, true);
+    IncidentManager::activateStorageSd(_lastMountFailureReason);
 
     EventLog::log(
         LOG_ERROR,
@@ -282,6 +293,8 @@ void StorageManager::scheduleRecovery(uint32_t nowMs) {
     if (_recoveryAttempt >= SD_RECOVERY_MAX_ATTEMPTS) {
         _restartRecommended = true;
         _slowRecoveryMode = true;
+
+        IncidentManager::escalateStorageSdRecoveryFailure();
 
         EventLog::log(
             LOG_ERROR,
@@ -383,6 +396,10 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
         _restartRecommended = false;
 
         FaultManager::setActive(FaultId::STORAGE_SD, false);
+        IncidentManager::recoverStorageSd(
+            _slowRecoveryMode ? "slow_recovery_success" : "recovery_success"
+        );
+
         logMounted(true, downtimeMs);
         _slowRecoveryMode = false;
         return;
