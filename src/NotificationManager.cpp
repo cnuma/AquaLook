@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <time.h>
 
 #include "EventLog.h"
 
@@ -21,17 +22,11 @@ constexpr size_t SERVER_SIZE = 96U;
 constexpr size_t TOPIC_SIZE = 96U;
 
 const uint32_t RETRY_DELAYS_MS[] = {
-    0U,
-    60000U,
-    300000U,
-    900000U,
-    3600000U,
-    21600000U
+    0U, 60000U, 300000U, 900000U, 3600000U, 21600000U
 };
 constexpr size_t RETRY_DELAY_COUNT =
     sizeof(RETRY_DELAYS_MS) / sizeof(RETRY_DELAYS_MS[0]);
 
-// Racine officielle ISRG Root X1. La validation TLS reste obligatoire.
 const char ISRG_ROOT_X1[] PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
@@ -104,6 +99,21 @@ String withoutTrailingSlash(const char* value) {
     while (result.endsWith("/")) result.remove(result.length() - 1U);
     return result;
 }
+
+String extractHost(const char* server) {
+    String value = server ? server : "";
+    if (value.startsWith("https://")) value.remove(0, 8);
+    const int slash = value.indexOf('/');
+    if (slash >= 0) value.remove(slash);
+    const int colon = value.indexOf(':');
+    if (colon >= 0) value.remove(colon);
+    return value;
+}
+
+uint32_t currentEpoch() {
+    const time_t now = time(nullptr);
+    return now > 0 ? static_cast<uint32_t>(now) : 0U;
+}
 }
 
 void NotificationManager::begin() {
@@ -112,13 +122,8 @@ void NotificationManager::begin() {
     loadConfig();
 
     const BaseType_t created = xTaskCreatePinnedToCore(
-        supervisorTask,
-        "notify-supervisor",
-        SUPERVISOR_STACK,
-        nullptr,
-        TASK_PRIORITY,
-        &g_supervisorHandle,
-        TASK_CORE
+        supervisorTask, "notify-supervisor", SUPERVISOR_STACK, nullptr,
+        TASK_PRIORITY, &g_supervisorHandle, TASK_CORE
     );
 
     if (created != pdPASS) {
@@ -133,6 +138,10 @@ void NotificationManager::begin() {
         g_config.enabled ? "yes" : "no",
         validServer(g_config.server) && validTopic(g_config.topic) ? "yes" : "no"
     );
+}
+
+void NotificationManager::update() {
+    begin();
 }
 
 NotificationConfig NotificationManager::config() {
@@ -289,13 +298,8 @@ void NotificationManager::startSender(WorkType type) {
     );
 
     const BaseType_t created = xTaskCreatePinnedToCore(
-        senderTask,
-        "notify-sender",
-        SENDER_STACK,
-        nullptr,
-        TASK_PRIORITY,
-        &g_senderHandle,
-        TASK_CORE
+        senderTask, "notify-sender", SENDER_STACK, nullptr,
+        TASK_PRIORITY, &g_senderHandle, TASK_CORE
     );
 
     if (created != pdPASS) {
@@ -328,19 +332,25 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
         g_attempts = 0U;
         g_nextAttemptMs = 0U;
     } else {
-        copyText(
-            g_lastResult,
-            sizeof(g_lastResult),
-            result == WorkerResult::START_FAILED
-                ? "task-start-failed"
-                : "delivery-failed"
-        );
+        if (result == WorkerResult::START_FAILED) {
+            copyText(g_lastResult, sizeof(g_lastResult), "task-start-failed");
+        } else if (g_lastHttpCode == HTTPC_ERROR_CONNECTION_REFUSED) {
+            copyText(g_lastResult, sizeof(g_lastResult), "connection-refused");
+        } else if (g_lastHttpCode == HTTPC_ERROR_CONNECTION_LOST) {
+            copyText(g_lastResult, sizeof(g_lastResult), "connection-lost");
+        } else if (g_lastHttpCode == HTTPC_ERROR_READ_TIMEOUT) {
+            copyText(g_lastResult, sizeof(g_lastResult), "read-timeout");
+        } else {
+            copyText(g_lastResult, sizeof(g_lastResult), "delivery-failed");
+        }
+
         scheduleNextAttempt(nowMs);
         EventLog::log(
             LOG_WARN,
-            "Notification: echec type=%s http=%d prochain=%lus",
+            "Notification: echec type=%s http=%d reason=%s prochain=%lus",
             workCode(g_work),
             g_lastHttpCode,
+            HTTPClient::errorToString(g_lastHttpCode).c_str(),
             static_cast<unsigned long>(
                 g_nextAttemptMs > nowMs ? (g_nextAttemptMs - nowMs) / 1000U : 0U
             )
@@ -418,6 +428,29 @@ bool NotificationManager::sendCurrentWork() {
         message += ".";
     }
 
+    const String host = extractHost(configCopy.server);
+    IPAddress resolvedIp;
+    const int dnsResult = WiFi.hostByName(host.c_str(), resolvedIp);
+    const uint32_t heapBefore = ESP.getFreeHeap();
+    const uint32_t epoch = currentEpoch();
+
+    EventLog::log(
+        LOG_INFO,
+        "Notification: diagnostic host=%s dns=%s ip=%s heap=%lu epoch=%lu rssi=%ddBm",
+        host.c_str(),
+        dnsResult == 1 ? "ok" : "failed",
+        dnsResult == 1 ? resolvedIp.toString().c_str() : "-",
+        static_cast<unsigned long>(heapBefore),
+        static_cast<unsigned long>(epoch),
+        WiFi.RSSI()
+    );
+
+    if (dnsResult != 1) {
+        g_lastHttpCode = HTTPC_ERROR_CONNECTION_REFUSED;
+        copyText(g_lastResult, sizeof(g_lastResult), "dns-failed");
+        return false;
+    }
+
     const String endpoint =
         withoutTrailingSlash(configCopy.server) + "/" + configCopy.topic;
 
@@ -428,7 +461,15 @@ bool NotificationManager::sendCurrentWork() {
     http.setConnectTimeout(HTTP_TIMEOUT_MS);
     http.setTimeout(HTTP_TIMEOUT_MS);
     if (!http.begin(client, endpoint)) {
-        g_lastHttpCode = -1;
+        g_lastHttpCode = HTTPC_ERROR_CONNECTION_REFUSED;
+        copyText(g_lastResult, sizeof(g_lastResult), "http-begin-failed");
+        EventLog::log(
+            LOG_ERROR,
+            "Notification: http.begin echec host=%s heap=%lu epoch=%lu",
+            host.c_str(),
+            static_cast<unsigned long>(ESP.getFreeHeap()),
+            static_cast<unsigned long>(epoch)
+        );
         return false;
     }
 
@@ -447,6 +488,29 @@ bool NotificationManager::sendCurrentWork() {
         message.length()
     );
     g_lastHttpCode = code;
+
+    if (code < 0) {
+        char tlsError[160] = "";
+        const int tlsCode = client.lastError(tlsError, sizeof(tlsError));
+        EventLog::log(
+            LOG_ERROR,
+            "Notification: transport echec http=%d reason=%s tls=%d tlsmsg=%s heap=%lu epoch=%lu",
+            code,
+            HTTPClient::errorToString(code).c_str(),
+            tlsCode,
+            tlsError[0] ? tlsError : "none",
+            static_cast<unsigned long>(ESP.getFreeHeap()),
+            static_cast<unsigned long>(epoch)
+        );
+    } else {
+        EventLog::log(
+            LOG_INFO,
+            "Notification: reponse http=%d heap=%lu",
+            code,
+            static_cast<unsigned long>(ESP.getFreeHeap())
+        );
+    }
+
     http.end();
     return code >= 200 && code < 300;
 }
