@@ -7,6 +7,7 @@ namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
 constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 2U;
 constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
+constexpr uint32_t SD_SLOW_RECOVERY_INTERVAL_MS = 10UL * 60UL * 1000UL;
 constexpr uint32_t SD_RECOVERY_TASK_STACK = 4096U;
 constexpr UBaseType_t SD_RECOVERY_TASK_PRIORITY = 1U;
 constexpr BaseType_t SD_RECOVERY_TASK_CORE = 0;
@@ -44,6 +45,8 @@ void StorageManager::begin() {
     _nextRecoveryAttemptMs = 0;
     _unavailableSinceMs = 0;
     _restartRecommended = false;
+    _slowRecoveryMode = false;
+    _slowRecoveryCount = 0;
     _recoveryTaskResult = RecoveryTaskResult::NONE;
     _recoveryTaskHandle = nullptr;
     _lastMountFailureReason = "not_attempted";
@@ -69,9 +72,6 @@ void StorageManager::begin() {
 }
 
 void StorageManager::end() {
-    // end() n'est pas appele pendant une tentative de remontage normale.
-    // Eviter de detruire l'objet SdFat sous la tache si une fermeture externe
-    // exceptionnelle arrive au meme moment.
     if (_recoveryTaskResult == RecoveryTaskResult::RUNNING) {
         EventLog::log(
             LOG_WARN,
@@ -91,6 +91,8 @@ void StorageManager::end() {
     _nextRecoveryAttemptMs = 0;
     _unavailableSinceMs = 0;
     _restartRecommended = false;
+    _slowRecoveryMode = false;
+    _slowRecoveryCount = 0;
     _recoveryTaskResult = RecoveryTaskResult::NONE;
     _recoveryTaskHandle = nullptr;
     _lastMountFailureReason = "not_attempted";
@@ -115,7 +117,12 @@ void StorageManager::update() {
         return;
     }
 
-    if (_recoveryState == StorageRecoveryState::FAILED) return;
+    if (_recoveryState == StorageRecoveryState::FAILED) {
+        if (deadlineReached(nowMs, _nextRecoveryAttemptMs)) {
+            startRecoveryTask(nowMs);
+        }
+        return;
+    }
 
     if (!_sdAvailable || _status != StorageStatus::READY) return;
 
@@ -249,6 +256,8 @@ void StorageManager::markUnavailable(StorageStatus status,
     _sdAvailable = false;
     _healthFailureCount = 0;
     _restartRecommended = false;
+    _slowRecoveryMode = false;
+    _slowRecoveryCount = 0;
     _lastMountFailureReason = reason ? reason : "unknown";
 
     FaultManager::setActive(FaultId::STORAGE_SD, true);
@@ -271,14 +280,16 @@ void StorageManager::markUnavailable(StorageStatus status,
 
 void StorageManager::scheduleRecovery(uint32_t nowMs) {
     if (_recoveryAttempt >= SD_RECOVERY_MAX_ATTEMPTS) {
-        _recoveryState = StorageRecoveryState::FAILED;
         _restartRecommended = true;
+        _slowRecoveryMode = true;
 
         EventLog::log(
             LOG_ERROR,
-            "Stockage: echec apres %u essais, redemarrage conseille",
+            "Stockage: echec apres %u essais, reprise lente toutes les 10min",
             static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
         );
+
+        scheduleSlowRecovery(nowMs);
         return;
     }
 
@@ -295,21 +306,46 @@ void StorageManager::scheduleRecovery(uint32_t nowMs) {
     );
 }
 
+void StorageManager::scheduleSlowRecovery(uint32_t nowMs) {
+    _slowRecoveryMode = true;
+    _nextRecoveryAttemptMs = nowMs + SD_SLOW_RECOVERY_INTERVAL_MS;
+    _recoveryState = StorageRecoveryState::FAILED;
+
+    EventLog::log(
+        LOG_INFO,
+        "Stockage: prochaine tentative lente dans=10min"
+    );
+}
+
 void StorageManager::startRecoveryTask(uint32_t nowMs) {
     (void)nowMs;
 
     if (_recoveryTaskResult == RecoveryTaskResult::RUNNING) return;
 
     _recoveryState = StorageRecoveryState::RETRYING;
-    _recoveryAttempt++;
+
+    if (_slowRecoveryMode) {
+        _slowRecoveryCount++;
+    } else {
+        _recoveryAttempt++;
+    }
+
     _recoveryTaskResult = RecoveryTaskResult::RUNNING;
 
-    EventLog::log(
-        LOG_INFO,
-        "Stockage: tentative remontage=%u/%u tache=core0",
-        static_cast<unsigned>(_recoveryAttempt),
-        static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
-    );
+    if (_slowRecoveryMode) {
+        EventLog::log(
+            LOG_INFO,
+            "Stockage: tentative lente=%lu tache=core0",
+            static_cast<unsigned long>(_slowRecoveryCount)
+        );
+    } else {
+        EventLog::log(
+            LOG_INFO,
+            "Stockage: tentative remontage=%u/%u tache=core0",
+            static_cast<unsigned>(_recoveryAttempt),
+            static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
+        );
+    }
 
     const BaseType_t created = xTaskCreatePinnedToCore(
         recoveryTaskEntry,
@@ -341,8 +377,6 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
     if (result == RecoveryTaskResult::SUCCESS) {
         const uint32_t downtimeMs = nowMs - _unavailableSinceMs;
 
-        // Publication finale uniquement depuis la boucle principale : le Web
-        // ne peut pas acceder a SdFat pendant que la tache monte le volume.
         _sdAvailable = true;
         _recoveryState = StorageRecoveryState::IDLE;
         _nextRecoveryAttemptMs = 0;
@@ -350,11 +384,23 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
 
         FaultManager::setActive(FaultId::STORAGE_SD, false);
         logMounted(true, downtimeMs);
+        _slowRecoveryMode = false;
         return;
     }
 
     if (result == RecoveryTaskResult::START_FAILED) {
         _lastMountFailureReason = "task_start_failed";
+    }
+
+    if (_slowRecoveryMode) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: tentative lente=%lu echouee raison=%s",
+            static_cast<unsigned long>(_slowRecoveryCount),
+            _lastMountFailureReason
+        );
+        scheduleSlowRecovery(nowMs);
+        return;
     }
 
     EventLog::log(
@@ -401,8 +447,9 @@ void StorageManager::logMounted(bool recovered, uint32_t downtimeMs) {
     if (recovered) {
         EventLog::log(
             LOG_INFO,
-            "Stockage: SD recuperee essai=%u indisponible=%lus",
+            "Stockage: SD recuperee essai=%u lentes=%lu indisponible=%lus",
             static_cast<unsigned>(_recoveryAttempt),
+            static_cast<unsigned long>(_slowRecoveryCount),
             static_cast<unsigned long>(downtimeMs / 1000U)
         );
     }
@@ -419,9 +466,9 @@ const char* StorageManager::statusCode() const {
 }
 
 const char* StorageManager::statusMessage() const {
-    if (_restartRecommended) {
-        return "Carte SD toujours indisponible apres plusieurs essais. "
-               "Verifier la carte puis redemarrer le module; "
+    if (_slowRecoveryMode) {
+        return "Carte SD toujours indisponible apres les essais rapides. "
+               "Une tentative automatique est effectuee toutes les 10 minutes; "
                "l'interface LittleFS de secours reste active.";
     }
 
@@ -453,7 +500,7 @@ const char* StorageManager::recoveryStateCode() const {
         case StorageRecoveryState::IDLE:          return "idle";
         case StorageRecoveryState::WAITING_RETRY: return "waiting-retry";
         case StorageRecoveryState::RETRYING:      return "retrying";
-        case StorageRecoveryState::FAILED:        return "failed";
+        case StorageRecoveryState::FAILED:        return "failed-slow-retry";
         default:                                  return "unknown";
     }
 }
