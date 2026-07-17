@@ -15,7 +15,9 @@ constexpr uint8_t CONFIG_SCHEMA = 1U;
 constexpr uint32_t SUPERVISOR_PERIOD_MS = 1000U;
 constexpr uint32_t NETWORK_TIMEOUT_MS = 8000U;
 constexpr uint32_t SUPERVISOR_STACK = 4096U;
-constexpr uint32_t SENDER_STACK = 12288U;
+constexpr uint32_t SENDER_STACK = 6144U;
+constexpr size_t TLS_RX_BUFFER_SIZE = 4096U;
+constexpr size_t TLS_TX_BUFFER_SIZE = 1024U;
 constexpr UBaseType_t TASK_PRIORITY = 1U;
 constexpr BaseType_t TASK_CORE = 0;
 constexpr size_t SERVER_SIZE = 96U;
@@ -97,12 +99,6 @@ bool deadlineReached(uint32_t nowMs, uint32_t deadlineMs) {
 void copyText(char* target, size_t size, const char* source) {
     if (!target || size == 0U) return;
     strlcpy(target, source ? source : "", size);
-}
-
-String withoutTrailingSlash(const char* value) {
-    String result = value ? value : "";
-    while (result.endsWith("/")) result.remove(result.length() - 1U);
-    return result;
 }
 
 String extractHost(const char* server) {
@@ -479,27 +475,42 @@ bool NotificationManager::sendCurrentWork() {
         return false;
     }
 
-    WiFiClient tcpProbe;
-    tcpProbe.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
-    const bool tcpOk = tcpProbe.connect(resolvedIp, 443);
-    EventLog::log(
-        tcpOk ? LOG_INFO : LOG_ERROR,
-        "Notification: tcp host=%s port=443 status=%s heap=%lu",
-        host.c_str(),
-        tcpOk ? "ok" : "failed",
-        static_cast<unsigned long>(ESP.getFreeHeap())
-    );
-    tcpProbe.stop();
+    bool tcpOk = false;
+    {
+        WiFiClient tcpProbe;
+        tcpProbe.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+        tcpOk = tcpProbe.connect(resolvedIp, 443);
+        EventLog::log(
+            tcpOk ? LOG_INFO : LOG_ERROR,
+            "Notification: tcp host=%s port=443 status=%s heap=%lu",
+            host.c_str(),
+            tcpOk ? "ok" : "failed",
+            static_cast<unsigned long>(ESP.getFreeHeap())
+        );
+        tcpProbe.stop();
+    }
 
     if (!tcpOk) {
         g_lastHttpCode = ERROR_TCP;
         return false;
     }
 
+    vTaskDelay(pdMS_TO_TICKS(20U));
+
     WiFiClientSecure client;
+    client.setBufferSizes(TLS_RX_BUFFER_SIZE, TLS_TX_BUFFER_SIZE);
     client.setCACert(ISRG_ROOT_X1);
     client.setHandshakeTimeout(NETWORK_TIMEOUT_MS / 1000U);
     client.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+
+    EventLog::log(
+        LOG_INFO,
+        "Notification: tls preparation rx=%u tx=%u heap=%lu maxblock=%lu",
+        static_cast<unsigned>(TLS_RX_BUFFER_SIZE),
+        static_cast<unsigned>(TLS_TX_BUFFER_SIZE),
+        static_cast<unsigned long>(ESP.getFreeHeap()),
+        static_cast<unsigned long>(ESP.getMaxAllocHeap())
+    );
 
     const bool tlsOk = client.connect(host.c_str(), 443);
     if (!tlsOk) {
@@ -508,11 +519,12 @@ bool NotificationManager::sendCurrentWork() {
         g_lastHttpCode = ERROR_TLS;
         EventLog::log(
             LOG_ERROR,
-            "Notification: tls host=%s status=failed code=%d msg=%s heap=%lu epoch=%lu",
+            "Notification: tls host=%s status=failed code=%d msg=%s heap=%lu maxblock=%lu epoch=%lu",
             host.c_str(),
             tlsCode,
             tlsError[0] ? tlsError : "none",
             static_cast<unsigned long>(ESP.getFreeHeap()),
+            static_cast<unsigned long>(ESP.getMaxAllocHeap()),
             static_cast<unsigned long>(epoch)
         );
         client.stop();
@@ -521,9 +533,10 @@ bool NotificationManager::sendCurrentWork() {
 
     EventLog::log(
         LOG_INFO,
-        "Notification: tls host=%s status=ok heap=%lu",
+        "Notification: tls host=%s status=ok heap=%lu maxblock=%lu",
         host.c_str(),
-        static_cast<unsigned long>(ESP.getFreeHeap())
+        static_cast<unsigned long>(ESP.getFreeHeap()),
+        static_cast<unsigned long>(ESP.getMaxAllocHeap())
     );
 
     String path = basePath;
