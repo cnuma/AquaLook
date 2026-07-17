@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-
 #include "IncidentManager.h"
 
 struct NotificationConfig {
@@ -25,19 +24,6 @@ struct NotificationStatus {
 
 class NotificationManager {
 public:
-    static void begin();
-    static void update();
-
-    static NotificationConfig config();
-    static bool saveConfig(bool enabled,
-                           const char* server,
-                           const char* topic,
-                           const char* token,
-                           bool preserveTokenWhenEmpty);
-    static bool requestTest();
-    static NotificationStatus status();
-
-private:
     enum class WorkType : uint8_t {
         NONE = 0,
         INCIDENT_INITIAL,
@@ -54,14 +40,25 @@ private:
         START_FAILED
     };
 
+    static void begin();
+    static NotificationConfig config();
+    static NotificationStatus status();
+    static bool saveConfig(bool enabled,
+                           const char* server,
+                           const char* topic,
+                           const char* token,
+                           bool preserveTokenWhenEmpty);
+    static bool requestTest();
+
+private:
     static void loadConfig();
     static bool persistConfig();
     static void supervisorTask(void* parameter);
     static void senderTask(void* parameter);
-    static void scheduleNextAttempt(uint32_t nowMs);
     static void startSender(WorkType type);
-    static WorkType nextWork();
     static void processWorkerResult(uint32_t nowMs);
+    static void scheduleNextAttempt(uint32_t nowMs);
+    static WorkType nextWork();
     static bool sendCurrentWork();
     static bool validServer(const char* server);
     static bool validTopic(const char* topic);
