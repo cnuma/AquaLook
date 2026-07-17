@@ -7,6 +7,9 @@ namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
 constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 2U;
 constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
+constexpr uint32_t SD_RECOVERY_TASK_STACK = 4096U;
+constexpr UBaseType_t SD_RECOVERY_TASK_PRIORITY = 1U;
+constexpr BaseType_t SD_RECOVERY_TASK_CORE = 0;
 
 const uint32_t SD_RECOVERY_DELAYS_MS[SD_RECOVERY_MAX_ATTEMPTS] = {
     2000U,
@@ -41,12 +44,14 @@ void StorageManager::begin() {
     _nextRecoveryAttemptMs = 0;
     _unavailableSinceMs = 0;
     _restartRecommended = false;
+    _recoveryTaskResult = RecoveryTaskResult::NONE;
+    _recoveryTaskHandle = nullptr;
     _lastMountFailureReason = "not_attempted";
 
     pinMode(SD_CS_PIN, OUTPUT);
     digitalWrite(SD_CS_PIN, HIGH);
 
-    if (mountSd()) {
+    if (mountSd(true)) {
         FaultManager::setActive(FaultId::STORAGE_SD, false);
         logMounted(false, 0);
         return;
@@ -64,6 +69,17 @@ void StorageManager::begin() {
 }
 
 void StorageManager::end() {
+    // end() n'est pas appele pendant une tentative de remontage normale.
+    // Eviter de detruire l'objet SdFat sous la tache si une fermeture externe
+    // exceptionnelle arrive au meme moment.
+    if (_recoveryTaskResult == RecoveryTaskResult::RUNNING) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: fermeture ignoree pendant une tentative de remontage"
+        );
+        return;
+    }
+
     _sd.end();
     resetCardMetadata();
 
@@ -75,6 +91,8 @@ void StorageManager::end() {
     _nextRecoveryAttemptMs = 0;
     _unavailableSinceMs = 0;
     _restartRecommended = false;
+    _recoveryTaskResult = RecoveryTaskResult::NONE;
+    _recoveryTaskHandle = nullptr;
     _lastMountFailureReason = "not_attempted";
 
     if (g_registeredStorage == this) {
@@ -87,15 +105,17 @@ void StorageManager::update() {
 
     if (_recoveryState == StorageRecoveryState::WAITING_RETRY) {
         if (deadlineReached(nowMs, _nextRecoveryAttemptMs)) {
-            attemptRecovery(nowMs);
+            startRecoveryTask(nowMs);
         }
         return;
     }
 
-    if (_recoveryState == StorageRecoveryState::RETRYING ||
-        _recoveryState == StorageRecoveryState::FAILED) {
+    if (_recoveryState == StorageRecoveryState::RETRYING) {
+        processRecoveryTaskResult(nowMs);
         return;
     }
+
+    if (_recoveryState == StorageRecoveryState::FAILED) return;
 
     if (!_sdAvailable || _status != StorageStatus::READY) return;
 
@@ -163,7 +183,7 @@ void StorageManager::reportReadError(const char* path) {
     );
 }
 
-bool StorageManager::mountSd() {
+bool StorageManager::mountSd(bool publishAvailability) {
     _sd.end();
     resetCardMetadata();
 
@@ -194,15 +214,13 @@ bool StorageManager::mountSd() {
     const uint64_t bytesPerCluster = _sd.vol()->bytesPerCluster();
     const uint64_t clusterCount = _sd.vol()->clusterCount();
     _totalBytes = clusterCount * bytesPerCluster;
-
     _usedBytes = 0;
-    _sdAvailable = true;
 
     if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
         _status = StorageStatus::WEB_ASSETS_MISSING;
         _lastMountFailureReason = "web_assets_missing";
-        _sdAvailable = false;
         _sd.end();
+        resetCardMetadata();
         return false;
     }
 
@@ -210,6 +228,7 @@ bool StorageManager::mountSd() {
     _lastMountFailureReason = "none";
     _lastHealthCheckMs = millis();
     _healthFailureCount = 0;
+    _sdAvailable = publishAvailability;
     return true;
 }
 
@@ -246,6 +265,7 @@ void StorageManager::markUnavailable(StorageStatus status,
 
     _unavailableSinceMs = millis();
     _recoveryAttempt = 0;
+    _recoveryTaskResult = RecoveryTaskResult::NONE;
     scheduleRecovery(_unavailableSinceMs);
 }
 
@@ -275,20 +295,55 @@ void StorageManager::scheduleRecovery(uint32_t nowMs) {
     );
 }
 
-void StorageManager::attemptRecovery(uint32_t nowMs) {
+void StorageManager::startRecoveryTask(uint32_t nowMs) {
+    (void)nowMs;
+
+    if (_recoveryTaskResult == RecoveryTaskResult::RUNNING) return;
+
     _recoveryState = StorageRecoveryState::RETRYING;
     _recoveryAttempt++;
+    _recoveryTaskResult = RecoveryTaskResult::RUNNING;
 
     EventLog::log(
         LOG_INFO,
-        "Stockage: tentative remontage=%u/%u",
+        "Stockage: tentative remontage=%u/%u tache=core0",
         static_cast<unsigned>(_recoveryAttempt),
         static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
     );
 
-    if (mountSd()) {
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        recoveryTaskEntry,
+        "sd-recovery",
+        SD_RECOVERY_TASK_STACK,
+        this,
+        SD_RECOVERY_TASK_PRIORITY,
+        &_recoveryTaskHandle,
+        SD_RECOVERY_TASK_CORE
+    );
+
+    if (created != pdPASS) {
+        _recoveryTaskHandle = nullptr;
+        _recoveryTaskResult = RecoveryTaskResult::START_FAILED;
+    }
+}
+
+void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
+    const RecoveryTaskResult result = _recoveryTaskResult;
+
+    if (result == RecoveryTaskResult::NONE ||
+        result == RecoveryTaskResult::RUNNING) {
+        return;
+    }
+
+    _recoveryTaskResult = RecoveryTaskResult::NONE;
+    _recoveryTaskHandle = nullptr;
+
+    if (result == RecoveryTaskResult::SUCCESS) {
         const uint32_t downtimeMs = nowMs - _unavailableSinceMs;
 
+        // Publication finale uniquement depuis la boucle principale : le Web
+        // ne peut pas acceder a SdFat pendant que la tache monte le volume.
+        _sdAvailable = true;
         _recoveryState = StorageRecoveryState::IDLE;
         _nextRecoveryAttemptMs = 0;
         _restartRecommended = false;
@@ -296,6 +351,10 @@ void StorageManager::attemptRecovery(uint32_t nowMs) {
         FaultManager::setActive(FaultId::STORAGE_SD, false);
         logMounted(true, downtimeMs);
         return;
+    }
+
+    if (result == RecoveryTaskResult::START_FAILED) {
+        _lastMountFailureReason = "task_start_failed";
     }
 
     EventLog::log(
@@ -307,6 +366,22 @@ void StorageManager::attemptRecovery(uint32_t nowMs) {
     );
 
     scheduleRecovery(nowMs);
+}
+
+void StorageManager::recoveryTaskEntry(void* parameter) {
+    StorageManager* storage = static_cast<StorageManager*>(parameter);
+
+    if (!storage) {
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    const bool mounted = storage->mountSd(false);
+    storage->_recoveryTaskResult = mounted
+        ? RecoveryTaskResult::SUCCESS
+        : RecoveryTaskResult::FAILED;
+
+    vTaskDelete(nullptr);
 }
 
 void StorageManager::logMounted(bool recovered, uint32_t downtimeMs) {
