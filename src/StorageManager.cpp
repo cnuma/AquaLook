@@ -4,8 +4,23 @@
 #include "FaultManager.h"
 
 namespace {
-constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000;
+constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
+constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 2U;
+constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
+
+const uint32_t SD_RECOVERY_DELAYS_MS[SD_RECOVERY_MAX_ATTEMPTS] = {
+    2000U,
+    5000U,
+    10000U,
+    30000U,
+    60000U
+};
+
 StorageManager* g_registeredStorage = nullptr;
+
+bool deadlineReached(uint32_t nowMs, uint32_t deadlineMs) {
+    return static_cast<int32_t>(nowMs - deadlineMs) >= 0;
+}
 }
 
 void storageHealthUpdate() {
@@ -14,10 +29,143 @@ void storageHealthUpdate() {
 
 void StorageManager::begin() {
     g_registeredStorage = this;
-    end();
+
+    _sd.end();
+    resetCardMetadata();
+
+    _status = StorageStatus::NOT_INITIALIZED;
+    _recoveryState = StorageRecoveryState::IDLE;
+    _lastHealthCheckMs = 0;
+    _healthFailureCount = 0;
+    _recoveryAttempt = 0;
+    _nextRecoveryAttemptMs = 0;
+    _unavailableSinceMs = 0;
+    _restartRecommended = false;
+    _lastMountFailureReason = "not_attempted";
 
     pinMode(SD_CS_PIN, OUTPUT);
     digitalWrite(SD_CS_PIN, HIGH);
+
+    if (mountSd()) {
+        FaultManager::setActive(FaultId::STORAGE_SD, false);
+        logMounted(false, 0);
+        return;
+    }
+
+    FaultManager::setActive(FaultId::STORAGE_SD, true);
+    EventLog::log(
+        LOG_WARN,
+        "Stockage: montage SD initial echoue raison=%s",
+        _lastMountFailureReason
+    );
+
+    _unavailableSinceMs = millis();
+    scheduleRecovery(_unavailableSinceMs);
+}
+
+void StorageManager::end() {
+    _sd.end();
+    resetCardMetadata();
+
+    _status = StorageStatus::NOT_INITIALIZED;
+    _recoveryState = StorageRecoveryState::IDLE;
+    _lastHealthCheckMs = 0;
+    _healthFailureCount = 0;
+    _recoveryAttempt = 0;
+    _nextRecoveryAttemptMs = 0;
+    _unavailableSinceMs = 0;
+    _restartRecommended = false;
+    _lastMountFailureReason = "not_attempted";
+
+    if (g_registeredStorage == this) {
+        g_registeredStorage = nullptr;
+    }
+}
+
+void StorageManager::update() {
+    const uint32_t nowMs = millis();
+
+    if (_recoveryState == StorageRecoveryState::WAITING_RETRY) {
+        if (deadlineReached(nowMs, _nextRecoveryAttemptMs)) {
+            attemptRecovery(nowMs);
+        }
+        return;
+    }
+
+    if (_recoveryState == StorageRecoveryState::RETRYING ||
+        _recoveryState == StorageRecoveryState::FAILED) {
+        return;
+    }
+
+    if (!_sdAvailable || _status != StorageStatus::READY) return;
+
+    if (nowMs - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
+    _lastHealthCheckMs = nowMs;
+
+    if (_sd.exists("/www/index.html")) {
+        _healthFailureCount = 0;
+        return;
+    }
+
+    if (_healthFailureCount < 0xFFU) {
+        _healthFailureCount++;
+    }
+
+    if (_healthFailureCount < SD_HEALTH_FAILURE_CONFIRMATIONS) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: controle SD echoue confirmation=%u/%u",
+            static_cast<unsigned>(_healthFailureCount),
+            static_cast<unsigned>(SD_HEALTH_FAILURE_CONFIRMATIONS)
+        );
+        return;
+    }
+
+    markUnavailable(
+        StorageStatus::READ_ERROR,
+        "health_check_failed",
+        "/www/index.html"
+    );
+}
+
+bool StorageManager::existsOnSd(const char* path) {
+    return _sdAvailable &&
+           _status == StorageStatus::READY &&
+           path &&
+           path[0] == '/' &&
+           _sd.exists(path);
+}
+
+bool StorageManager::openRead(const char* path, FsFile& file) {
+    if (!_sdAvailable ||
+        _status != StorageStatus::READY ||
+        !path ||
+        path[0] != '/') {
+        return false;
+    }
+
+    if (file.isOpen()) file.close();
+    file = _sd.open(path, O_RDONLY);
+    return file.isOpen();
+}
+
+void StorageManager::reportReadError(const char* path) {
+    if (_recoveryState != StorageRecoveryState::IDLE ||
+        !_sdAvailable ||
+        _status != StorageStatus::READY) {
+        return;
+    }
+
+    markUnavailable(
+        StorageStatus::READ_ERROR,
+        "read_error",
+        path
+    );
+}
+
+bool StorageManager::mountSd() {
+    _sd.end();
+    resetCardMetadata();
 
     const SdSpiConfig sdConfig(
         SD_CS_PIN,
@@ -28,23 +176,15 @@ void StorageManager::begin() {
 
     if (!_sd.begin(sdConfig)) {
         _status = StorageStatus::SD_UNAVAILABLE;
-        FaultManager::setActive(FaultId::STORAGE_SD, true);
-        EventLog::log(
-            LOG_WARN,
-            "Stockage: carte SD absente, illisible ou corrompue"
-        );
-        return;
+        _lastMountFailureReason = "sd_begin_failed";
+        return false;
     }
 
     if (!_sd.card() || !_sd.vol()) {
         _status = StorageStatus::SD_UNAVAILABLE;
-        FaultManager::setActive(FaultId::STORAGE_SD, true);
-        EventLog::log(
-            LOG_WARN,
-            "Stockage: carte detectee sans volume exploitable (format ou corruption possible)"
-        );
+        _lastMountFailureReason = "volume_unavailable";
         _sd.end();
-        return;
+        return false;
     }
 
     _cardType = _sd.card()->type();
@@ -55,96 +195,142 @@ void StorageManager::begin() {
     const uint64_t clusterCount = _sd.vol()->clusterCount();
     _totalBytes = clusterCount * bytesPerCluster;
 
-    // Ne pas appeler freeClusterCount() au demarrage : sur une carte de
-    // grande capacite en SPI logiciel, le parcours complet de la FAT peut
-    // bloquer le boot pendant une duree excessive.
     _usedBytes = 0;
     _sdAvailable = true;
-    _lastHealthCheckMs = millis();
 
     if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
         _status = StorageStatus::WEB_ASSETS_MISSING;
-        FaultManager::setActive(FaultId::STORAGE_SD, true);
-        EventLog::log(
-            LOG_WARN,
-            "Stockage: SD montee mais ressources Web absentes (/www/index.html introuvable)"
-        );
-    } else {
-        _status = StorageStatus::READY;
-        FaultManager::setActive(FaultId::STORAGE_SD, false);
-        EventLog::log(
-            LOG_INFO,
-            "Stockage: ressources Web SD validees dans /www"
-        );
+        _lastMountFailureReason = "web_assets_missing";
+        _sdAvailable = false;
+        _sd.end();
+        return false;
     }
 
-    EventLog::log(
-        LOG_INFO,
-        "Stockage: SD montee en SPI logiciel type=%s capacite=%llu Mo total=%llu Mo",
-        cardTypeName(),
-        static_cast<unsigned long long>(_cardSizeBytes / (1024ULL * 1024ULL)),
-        static_cast<unsigned long long>(_totalBytes / (1024ULL * 1024ULL))
-    );
+    _status = StorageStatus::READY;
+    _lastMountFailureReason = "none";
+    _lastHealthCheckMs = millis();
+    _healthFailureCount = 0;
+    return true;
 }
 
-void StorageManager::end() {
-    _sd.end();
-
+void StorageManager::resetCardMetadata() {
     _sdAvailable = false;
-    _status = StorageStatus::NOT_INITIALIZED;
     _cardType = 0;
     _cardSizeBytes = 0;
     _totalBytes = 0;
     _usedBytes = 0;
-    _lastHealthCheckMs = 0;
 }
 
-void StorageManager::update() {
-    if (!_sdAvailable || _status != StorageStatus::READY) return;
+void StorageManager::markUnavailable(StorageStatus status,
+                                     const char* reason,
+                                     const char* path) {
+    if (_recoveryState != StorageRecoveryState::IDLE) return;
 
-    const uint32_t now = millis();
-    if (now - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
-    _lastHealthCheckMs = now;
-
-    // index.html est la sentinelle minimale : il a ete valide au boot.
-    // S'il disparait ensuite, la carte a ete retiree ou est devenue illisible.
-    if (_sd.exists("/www/index.html")) return;
-
-    _status = StorageStatus::READ_ERROR;
+    _status = status;
     _sdAvailable = false;
+    _healthFailureCount = 0;
+    _restartRecommended = false;
+    _lastMountFailureReason = reason ? reason : "unknown";
+
     FaultManager::setActive(FaultId::STORAGE_SD, true);
+
     EventLog::log(
         LOG_ERROR,
-        "Stockage: carte SD retiree ou devenue illisible pendant le fonctionnement"
+        "Stockage: SD indisponible raison=%s chemin=%s",
+        _lastMountFailureReason,
+        path ? path : "inconnu"
     );
+
     _sd.end();
+    resetCardMetadata();
+
+    _unavailableSinceMs = millis();
+    _recoveryAttempt = 0;
+    scheduleRecovery(_unavailableSinceMs);
 }
 
-bool StorageManager::existsOnSd(const char* path) {
-    return _sdAvailable &&
-           path &&
-           path[0] == '/' &&
-           _sd.exists(path);
-}
+void StorageManager::scheduleRecovery(uint32_t nowMs) {
+    if (_recoveryAttempt >= SD_RECOVERY_MAX_ATTEMPTS) {
+        _recoveryState = StorageRecoveryState::FAILED;
+        _restartRecommended = true;
 
-bool StorageManager::openRead(const char* path, FsFile& file) {
-    if (!_sdAvailable || !path || path[0] != '/') return false;
+        EventLog::log(
+            LOG_ERROR,
+            "Stockage: echec apres %u essais, redemarrage conseille",
+            static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
+        );
+        return;
+    }
 
-    if (file.isOpen()) file.close();
-    file = _sd.open(path, O_RDONLY);
-    return file.isOpen();
-}
+    const uint32_t delayMs = SD_RECOVERY_DELAYS_MS[_recoveryAttempt];
+    _nextRecoveryAttemptMs = nowMs + delayMs;
+    _recoveryState = StorageRecoveryState::WAITING_RETRY;
 
-void StorageManager::reportReadError(const char* path) {
-    _status = StorageStatus::READ_ERROR;
-    _sdAvailable = false;
-    FaultManager::setActive(FaultId::STORAGE_SD, true);
     EventLog::log(
-        LOG_ERROR,
-        "Stockage: erreur de lecture SD sur %s (carte illisible ou corrompue possible)",
-        path ? path : "chemin inconnu"
+        LOG_INFO,
+        "Stockage: remontage programme essai=%u/%u dans=%lus",
+        static_cast<unsigned>(_recoveryAttempt + 1U),
+        static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS),
+        static_cast<unsigned long>(delayMs / 1000U)
     );
-    _sd.end();
+}
+
+void StorageManager::attemptRecovery(uint32_t nowMs) {
+    _recoveryState = StorageRecoveryState::RETRYING;
+    _recoveryAttempt++;
+
+    EventLog::log(
+        LOG_INFO,
+        "Stockage: tentative remontage=%u/%u",
+        static_cast<unsigned>(_recoveryAttempt),
+        static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS)
+    );
+
+    if (mountSd()) {
+        const uint32_t downtimeMs = nowMs - _unavailableSinceMs;
+
+        _recoveryState = StorageRecoveryState::IDLE;
+        _nextRecoveryAttemptMs = 0;
+        _restartRecommended = false;
+
+        FaultManager::setActive(FaultId::STORAGE_SD, false);
+        logMounted(true, downtimeMs);
+        return;
+    }
+
+    EventLog::log(
+        LOG_WARN,
+        "Stockage: remontage %u/%u echoue raison=%s",
+        static_cast<unsigned>(_recoveryAttempt),
+        static_cast<unsigned>(SD_RECOVERY_MAX_ATTEMPTS),
+        _lastMountFailureReason
+    );
+
+    scheduleRecovery(nowMs);
+}
+
+void StorageManager::logMounted(bool recovered, uint32_t downtimeMs) {
+    EventLog::log(
+        LOG_INFO,
+        "Stockage: ressources Web SD validees dans /www"
+    );
+
+    EventLog::log(
+        LOG_INFO,
+        "Stockage: SD montee type=%s capacite=%llu Mo total=%llu Mo",
+        cardTypeName(),
+        static_cast<unsigned long long>(_cardSizeBytes / (1024ULL * 1024ULL)),
+        static_cast<unsigned long long>(_totalBytes / (1024ULL * 1024ULL))
+    );
+
+    if (recovered) {
+        EventLog::log(
+            LOG_INFO,
+            "Stockage: SD recuperee essai=%u indisponible=%lus",
+            static_cast<unsigned>(_recoveryAttempt),
+            static_cast<unsigned long>(downtimeMs / 1000U)
+        );
+    }
 }
 
 const char* StorageManager::statusCode() const {
@@ -158,18 +344,47 @@ const char* StorageManager::statusCode() const {
 }
 
 const char* StorageManager::statusMessage() const {
+    if (_restartRecommended) {
+        return "Carte SD toujours indisponible apres plusieurs essais. "
+               "Verifier la carte puis redemarrer le module; "
+               "l'interface LittleFS de secours reste active.";
+    }
+
+    if (_recoveryState == StorageRecoveryState::WAITING_RETRY ||
+        _recoveryState == StorageRecoveryState::RETRYING) {
+        return "Carte SD indisponible. Recuperation automatique en cours; "
+               "l'interface LittleFS de secours reste active.";
+    }
+
     switch (_status) {
         case StorageStatus::READY:
             return "Carte SD operationnelle, ressources Web disponibles.";
         case StorageStatus::SD_UNAVAILABLE:
-            return "Carte SD absente, illisible ou corrompue. Interface de secours LittleFS utilisee.";
+            return "Carte SD absente, illisible ou corrompue. "
+                   "Interface de secours LittleFS utilisee.";
         case StorageStatus::WEB_ASSETS_MISSING:
-            return "Carte SD montee, mais /www/index.html est absent. Interface de secours LittleFS utilisee.";
+            return "Carte SD montee, mais /www/index.html est absent. "
+                   "Interface de secours LittleFS utilisee.";
         case StorageStatus::READ_ERROR:
-            return "Erreur de lecture sur la carte SD. Carte retiree, illisible ou corrompue possible; interface de secours utilisee.";
+            return "Erreur de lecture sur la carte SD. "
+                   "Interface de secours LittleFS utilisee.";
         default:
             return "Stockage SD non initialise.";
     }
+}
+
+const char* StorageManager::recoveryStateCode() const {
+    switch (_recoveryState) {
+        case StorageRecoveryState::IDLE:          return "idle";
+        case StorageRecoveryState::WAITING_RETRY: return "waiting-retry";
+        case StorageRecoveryState::RETRYING:      return "retrying";
+        case StorageRecoveryState::FAILED:        return "failed";
+        default:                                  return "unknown";
+    }
+}
+
+uint8_t StorageManager::recoveryMaxAttempts() const {
+    return SD_RECOVERY_MAX_ATTEMPTS;
 }
 
 const char* StorageManager::cardTypeName() const {
