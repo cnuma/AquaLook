@@ -27,7 +27,7 @@ public:
 
     bool isSdAvailable() const { return _sdAvailable; }
     bool areWebAssetsAvailable() const {
-        return _status == StorageStatus::READY;
+        return _status == StorageStatus::READY && _sdAvailable;
     }
 
     StorageStatus status() const { return _status; }
@@ -52,21 +52,32 @@ public:
     const char* cardTypeName() const;
 
 private:
-    bool mountSd();
+    enum class RecoveryTaskResult : uint8_t {
+        NONE = 0,
+        RUNNING,
+        SUCCESS,
+        FAILED,
+        START_FAILED
+    };
+
+    bool mountSd(bool publishAvailability);
     void resetCardMetadata();
     void markUnavailable(StorageStatus status,
                          const char* reason,
                          const char* path);
     void scheduleRecovery(uint32_t nowMs);
-    void attemptRecovery(uint32_t nowMs);
+    void startRecoveryTask(uint32_t nowMs);
+    void processRecoveryTaskResult(uint32_t nowMs);
     void logMounted(bool recovered, uint32_t downtimeMs);
+
+    static void recoveryTaskEntry(void* parameter);
 
     SoftSpiDriver<SD_MISO_PIN, SD_MOSI_PIN, SD_SCLK_PIN> _softSpi;
     SdFs _sd;
 
-    bool _sdAvailable = false;
-    StorageStatus _status = StorageStatus::NOT_INITIALIZED;
-    StorageRecoveryState _recoveryState = StorageRecoveryState::IDLE;
+    volatile bool _sdAvailable = false;
+    volatile StorageStatus _status = StorageStatus::NOT_INITIALIZED;
+    volatile StorageRecoveryState _recoveryState = StorageRecoveryState::IDLE;
 
     uint8_t _cardType = 0;
     uint64_t _cardSizeBytes = 0;
@@ -80,6 +91,9 @@ private:
     uint32_t _nextRecoveryAttemptMs = 0;
     uint32_t _unavailableSinceMs = 0;
     bool _restartRecommended = false;
+
+    volatile RecoveryTaskResult _recoveryTaskResult = RecoveryTaskResult::NONE;
+    TaskHandle_t _recoveryTaskHandle = nullptr;
 
     const char* _lastMountFailureReason = "not_attempted";
 };
