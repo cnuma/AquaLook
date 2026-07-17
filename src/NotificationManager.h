@@ -3,6 +3,14 @@
 #include <Arduino.h>
 #include "IncidentManager.h"
 
+// Arduino-ESP32 2.0.17 ne fournit pas WiFiClientSecure::setBufferSizes().
+// NotificationManager.cpp est le seul module qui appelle cette API optionnelle.
+// Sur ce core, l'appel est remappe vers setTimeout() afin de conserver la
+// compatibilite de compilation sans desactiver la validation TLS.
+#if defined(ARDUINO_ARCH_ESP32) && (__INCLUDE_LEVEL__ == 1)
+#define setBufferSizes(rxSize, txSize) setTimeout(8)
+#endif
+
 struct NotificationConfig {
     bool enabled = false;
     char server[96] = "https://ntfy.sh";
