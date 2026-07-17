@@ -20,6 +20,8 @@ La page de journal doit rester centrée sur :
 
 La page de journal ne doit pas devenir une page générale de configuration.
 
+Les messages de confirmation, d’erreur et de progression ne doivent pas apparaître dans une fenêtre flottante au milieu du contenu. Cette implantation complique la gestion des zones, masque des informations et rompt la cohérence visuelle. Les retours opérateur doivent être intégrés dans le bandeau de la page ou dans une zone d’état fixe directement rattachée à celui-ci.
+
 ## Cible fonctionnelle
 
 Réorganiser l’administration autour de catégories stables :
@@ -68,6 +70,7 @@ Réorganiser l’administration autour de catégories stables :
 - les secrets ne doivent jamais être renvoyés en clair par l’API ;
 - les pages de diagnostic ne doivent pas servir de stockage permanent de réglages hétérogènes ;
 - les actions opérateur doivent être séparées des paramètres système ;
+- les confirmations et erreurs doivent être intégrées au bandeau ou à une zone d’état fixe, jamais dans une fenêtre flottante couvrant le contenu ;
 - les pages doivent rester utilisables avec la SD absente grâce aux fallbacks essentiels ;
 - l’organisation doit rester cohérente entre les ressources `data/` et les routes du firmware.
 
@@ -82,9 +85,10 @@ Ordre recommandé :
 3. inventorier toutes les routes et tous les paramètres actuels ;
 4. proposer une arborescence d’administration unifiée ;
 5. déplacer la configuration ntfy hors de `/logs` ;
-6. consolider les autres configurations dispersées ;
-7. valider les fallbacks SD/LittleFS et les migrations NVS ;
-8. créer un checkpoint dédié avant toute reprise fonctionnelle importante.
+6. déplacer les retours flottants vers le bandeau commun des pages ;
+7. consolider les autres configurations dispersées ;
+8. valider les fallbacks SD/LittleFS et les migrations NVS ;
+9. créer un checkpoint dédié avant toute reprise fonctionnelle importante.
 
 ## Invariant temporaire
 
