@@ -1,8 +1,8 @@
 #include "NotificationManager.h"
 
-#include <HTTPClient.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <time.h>
 
@@ -13,13 +13,18 @@ constexpr char NVS_NAMESPACE[] = "aq_notify";
 constexpr char NVS_CONFIG_KEY[] = "config";
 constexpr uint8_t CONFIG_SCHEMA = 1U;
 constexpr uint32_t SUPERVISOR_PERIOD_MS = 1000U;
-constexpr uint32_t HTTP_TIMEOUT_MS = 8000U;
+constexpr uint32_t NETWORK_TIMEOUT_MS = 8000U;
 constexpr uint32_t SUPERVISOR_STACK = 4096U;
-constexpr uint32_t SENDER_STACK = 6144U;
+constexpr uint32_t SENDER_STACK = 12288U;
 constexpr UBaseType_t TASK_PRIORITY = 1U;
 constexpr BaseType_t TASK_CORE = 0;
 constexpr size_t SERVER_SIZE = 96U;
 constexpr size_t TOPIC_SIZE = 96U;
+constexpr int ERROR_DNS = -1001;
+constexpr int ERROR_TCP = -1002;
+constexpr int ERROR_TLS = -1003;
+constexpr int ERROR_RESPONSE_TIMEOUT = -1004;
+constexpr int ERROR_INVALID_RESPONSE = -1005;
 
 const uint32_t RETRY_DELAYS_MS[] = {
     0U, 60000U, 300000U, 900000U, 3600000U, 21600000U
@@ -110,9 +115,39 @@ String extractHost(const char* server) {
     return value;
 }
 
+String extractBasePath(const char* server) {
+    String value = server ? server : "";
+    if (value.startsWith("https://")) value.remove(0, 8);
+    const int slash = value.indexOf('/');
+    if (slash < 0) return "";
+    String path = value.substring(slash);
+    while (path.endsWith("/")) path.remove(path.length() - 1U);
+    return path;
+}
+
 uint32_t currentEpoch() {
     const time_t now = time(nullptr);
     return now > 0 ? static_cast<uint32_t>(now) : 0U;
+}
+
+const char* transportReason(int code) {
+    switch (code) {
+        case ERROR_DNS: return "dns-failed";
+        case ERROR_TCP: return "tcp-failed";
+        case ERROR_TLS: return "tls-failed";
+        case ERROR_RESPONSE_TIMEOUT: return "response-timeout";
+        case ERROR_INVALID_RESPONSE: return "invalid-response";
+        default: return code >= 200 ? "http-response" : "delivery-failed";
+    }
+}
+
+int parseHttpStatus(const String& statusLine) {
+    if (!statusLine.startsWith("HTTP/1.")) return ERROR_INVALID_RESPONSE;
+    const int firstSpace = statusLine.indexOf(' ');
+    if (firstSpace < 0 || statusLine.length() < static_cast<size_t>(firstSpace + 4)) {
+        return ERROR_INVALID_RESPONSE;
+    }
+    return statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
 }
 }
 
@@ -334,23 +369,17 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
     } else {
         if (result == WorkerResult::START_FAILED) {
             copyText(g_lastResult, sizeof(g_lastResult), "task-start-failed");
-        } else if (g_lastHttpCode == HTTPC_ERROR_CONNECTION_REFUSED) {
-            copyText(g_lastResult, sizeof(g_lastResult), "connection-refused");
-        } else if (g_lastHttpCode == HTTPC_ERROR_CONNECTION_LOST) {
-            copyText(g_lastResult, sizeof(g_lastResult), "connection-lost");
-        } else if (g_lastHttpCode == HTTPC_ERROR_READ_TIMEOUT) {
-            copyText(g_lastResult, sizeof(g_lastResult), "read-timeout");
         } else {
-            copyText(g_lastResult, sizeof(g_lastResult), "delivery-failed");
+            copyText(g_lastResult, sizeof(g_lastResult), transportReason(g_lastHttpCode));
         }
 
         scheduleNextAttempt(nowMs);
         EventLog::log(
             LOG_WARN,
-            "Notification: echec type=%s http=%d reason=%s prochain=%lus",
+            "Notification: echec type=%s code=%d reason=%s prochain=%lus",
             workCode(g_work),
             g_lastHttpCode,
-            HTTPClient::errorToString(g_lastHttpCode).c_str(),
+            transportReason(g_lastHttpCode),
             static_cast<unsigned long>(
                 g_nextAttemptMs > nowMs ? (g_nextAttemptMs - nowMs) / 1000U : 0U
             )
@@ -429,9 +458,9 @@ bool NotificationManager::sendCurrentWork() {
     }
 
     const String host = extractHost(configCopy.server);
+    const String basePath = extractBasePath(configCopy.server);
     IPAddress resolvedIp;
     const int dnsResult = WiFi.hostByName(host.c_str(), resolvedIp);
-    const uint32_t heapBefore = ESP.getFreeHeap();
     const uint32_t epoch = currentEpoch();
 
     EventLog::log(
@@ -440,79 +469,121 @@ bool NotificationManager::sendCurrentWork() {
         host.c_str(),
         dnsResult == 1 ? "ok" : "failed",
         dnsResult == 1 ? resolvedIp.toString().c_str() : "-",
-        static_cast<unsigned long>(heapBefore),
+        static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(epoch),
         WiFi.RSSI()
     );
 
     if (dnsResult != 1) {
-        g_lastHttpCode = HTTPC_ERROR_CONNECTION_REFUSED;
-        copyText(g_lastResult, sizeof(g_lastResult), "dns-failed");
+        g_lastHttpCode = ERROR_DNS;
         return false;
     }
 
-    const String endpoint =
-        withoutTrailingSlash(configCopy.server) + "/" + configCopy.topic;
+    WiFiClient tcpProbe;
+    tcpProbe.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+    const bool tcpOk = tcpProbe.connect(resolvedIp, 443);
+    EventLog::log(
+        tcpOk ? LOG_INFO : LOG_ERROR,
+        "Notification: tcp host=%s port=443 status=%s heap=%lu",
+        host.c_str(),
+        tcpOk ? "ok" : "failed",
+        static_cast<unsigned long>(ESP.getFreeHeap())
+    );
+    tcpProbe.stop();
+
+    if (!tcpOk) {
+        g_lastHttpCode = ERROR_TCP;
+        return false;
+    }
 
     WiFiClientSecure client;
     client.setCACert(ISRG_ROOT_X1);
+    client.setHandshakeTimeout(NETWORK_TIMEOUT_MS / 1000U);
+    client.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
 
-    HTTPClient http;
-    http.setConnectTimeout(HTTP_TIMEOUT_MS);
-    http.setTimeout(HTTP_TIMEOUT_MS);
-    if (!http.begin(client, endpoint)) {
-        g_lastHttpCode = HTTPC_ERROR_CONNECTION_REFUSED;
-        copyText(g_lastResult, sizeof(g_lastResult), "http-begin-failed");
-        EventLog::log(
-            LOG_ERROR,
-            "Notification: http.begin echec host=%s heap=%lu epoch=%lu",
-            host.c_str(),
-            static_cast<unsigned long>(ESP.getFreeHeap()),
-            static_cast<unsigned long>(epoch)
-        );
-        return false;
-    }
-
-    http.addHeader("Content-Type", "text/plain; charset=utf-8");
-    http.addHeader("Title", title);
-    http.addHeader("Priority", priority);
-    http.addHeader("Tags", tags);
-    if (configCopy.token[0] != '\0') {
-        String auth = "Bearer ";
-        auth += configCopy.token;
-        http.addHeader("Authorization", auth);
-    }
-
-    const int code = http.POST(
-        reinterpret_cast<uint8_t*>(const_cast<char*>(message.c_str())),
-        message.length()
-    );
-    g_lastHttpCode = code;
-
-    if (code < 0) {
+    const bool tlsOk = client.connect(host.c_str(), 443);
+    if (!tlsOk) {
         char tlsError[160] = "";
         const int tlsCode = client.lastError(tlsError, sizeof(tlsError));
+        g_lastHttpCode = ERROR_TLS;
         EventLog::log(
             LOG_ERROR,
-            "Notification: transport echec http=%d reason=%s tls=%d tlsmsg=%s heap=%lu epoch=%lu",
-            code,
-            HTTPClient::errorToString(code).c_str(),
+            "Notification: tls host=%s status=failed code=%d msg=%s heap=%lu epoch=%lu",
+            host.c_str(),
             tlsCode,
             tlsError[0] ? tlsError : "none",
             static_cast<unsigned long>(ESP.getFreeHeap()),
             static_cast<unsigned long>(epoch)
         );
-    } else {
-        EventLog::log(
-            LOG_INFO,
-            "Notification: reponse http=%d heap=%lu",
-            code,
-            static_cast<unsigned long>(ESP.getFreeHeap())
-        );
+        client.stop();
+        return false;
     }
 
-    http.end();
-    return code >= 200 && code < 300;
+    EventLog::log(
+        LOG_INFO,
+        "Notification: tls host=%s status=ok heap=%lu",
+        host.c_str(),
+        static_cast<unsigned long>(ESP.getFreeHeap())
+    );
+
+    String path = basePath;
+    if (!path.startsWith("/")) path = "/" + path;
+    if (path == "/") path = "";
+    path += "/";
+    path += configCopy.topic;
+
+    client.print("POST ");
+    client.print(path);
+    client.print(" HTTP/1.1\r\nHost: ");
+    client.print(host);
+    client.print("\r\nUser-Agent: AquaLook/5.8\r\nContent-Type: text/plain; charset=utf-8\r\nTitle: ");
+    client.print(title);
+    client.print("\r\nPriority: ");
+    client.print(priority);
+    client.print("\r\nTags: ");
+    client.print(tags);
+    client.print("\r\n");
+    if (configCopy.token[0] != '\0') {
+        client.print("Authorization: Bearer ");
+        client.print(configCopy.token);
+        client.print("\r\n");
+    }
+    client.print("Content-Length: ");
+    client.print(message.length());
+    client.print("\r\nConnection: close\r\n\r\n");
+    client.print(message);
+
+    const uint32_t responseDeadline = millis() + NETWORK_TIMEOUT_MS;
+    while (!client.available() && client.connected() &&
+           !deadlineReached(millis(), responseDeadline)) {
+        vTaskDelay(pdMS_TO_TICKS(10U));
+    }
+
+    if (!client.available()) {
+        g_lastHttpCode = ERROR_RESPONSE_TIMEOUT;
+        EventLog::log(
+            LOG_ERROR,
+            "Notification: reponse absente connected=%s heap=%lu",
+            client.connected() ? "yes" : "no",
+            static_cast<unsigned long>(ESP.getFreeHeap())
+        );
+        client.stop();
+        return false;
+    }
+
+    const String statusLine = client.readStringUntil('\n');
+    const int statusCode = parseHttpStatus(statusLine);
+    g_lastHttpCode = statusCode;
+
+    EventLog::log(
+        statusCode >= 200 && statusCode < 300 ? LOG_INFO : LOG_ERROR,
+        "Notification: reponse http=%d heap=%lu",
+        statusCode,
+        static_cast<unsigned long>(ESP.getFreeHeap())
+    );
+
+    client.stop();
+    return statusCode >= 200 && statusCode < 300;
 }
 
 bool NotificationManager::validServer(const char* server) {
