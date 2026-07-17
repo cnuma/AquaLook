@@ -39,6 +39,7 @@ public:
     uint8_t recoveryAttempt() const { return _recoveryAttempt; }
     uint8_t recoveryMaxAttempts() const;
     bool isRestartRecommended() const { return _restartRecommended; }
+    bool isSlowRecoveryMode() const { return _slowRecoveryMode; }
     uint32_t unavailableSinceMs() const { return _unavailableSinceMs; }
 
     uint8_t cardType() const { return _cardType; }
@@ -66,6 +67,7 @@ private:
                          const char* reason,
                          const char* path);
     void scheduleRecovery(uint32_t nowMs);
+    void scheduleSlowRecovery(uint32_t nowMs);
     void startRecoveryTask(uint32_t nowMs);
     void processRecoveryTaskResult(uint32_t nowMs);
     void logMounted(bool recovered, uint32_t downtimeMs);
@@ -91,6 +93,8 @@ private:
     uint32_t _nextRecoveryAttemptMs = 0;
     uint32_t _unavailableSinceMs = 0;
     bool _restartRecommended = false;
+    bool _slowRecoveryMode = false;
+    uint32_t _slowRecoveryCount = 0;
 
     volatile RecoveryTaskResult _recoveryTaskResult = RecoveryTaskResult::NONE;
     TaskHandle_t _recoveryTaskHandle = nullptr;
