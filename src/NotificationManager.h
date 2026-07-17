@@ -1,0 +1,70 @@
+#pragma once
+
+#include <Arduino.h>
+
+#include "IncidentManager.h"
+
+struct NotificationConfig {
+    bool enabled = false;
+    char server[96] = "https://ntfy.sh";
+    char topic[96] = "";
+    char token[160] = "";
+};
+
+struct NotificationStatus {
+    bool configured = false;
+    bool enabled = false;
+    bool workerRunning = false;
+    bool testPending = false;
+    uint8_t pendingMask = 0;
+    uint32_t attempts = 0;
+    uint32_t nextAttemptInSec = 0;
+    int lastHttpCode = 0;
+    char lastResult[48] = "not-started";
+};
+
+class NotificationManager {
+public:
+    static void begin();
+    static void update();
+
+    static NotificationConfig config();
+    static bool saveConfig(bool enabled,
+                           const char* server,
+                           const char* topic,
+                           const char* token,
+                           bool preserveTokenWhenEmpty);
+    static bool requestTest();
+    static NotificationStatus status();
+
+private:
+    enum class WorkType : uint8_t {
+        NONE = 0,
+        INCIDENT_INITIAL,
+        INCIDENT_ESCALATION,
+        INCIDENT_RECOVERY,
+        MANUAL_TEST
+    };
+
+    enum class WorkerResult : uint8_t {
+        IDLE = 0,
+        RUNNING,
+        SUCCESS,
+        FAILED,
+        START_FAILED
+    };
+
+    static void loadConfig();
+    static bool persistConfig();
+    static void supervisorTask(void* parameter);
+    static void senderTask(void* parameter);
+    static void scheduleNextAttempt(uint32_t nowMs);
+    static void startSender(WorkType type);
+    static WorkType nextWork();
+    static void processWorkerResult(uint32_t nowMs);
+    static bool sendCurrentWork();
+    static bool validServer(const char* server);
+    static bool validTopic(const char* topic);
+    static const char* workCode(WorkType type);
+    static IncidentNotification incidentNotificationFor(WorkType type);
+};
