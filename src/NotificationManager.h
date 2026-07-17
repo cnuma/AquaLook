@@ -41,6 +41,7 @@ public:
     };
 
     static void begin();
+    static void update();
     static NotificationConfig config();
     static NotificationStatus status();
     static bool saveConfig(bool enabled,
