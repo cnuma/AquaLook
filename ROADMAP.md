@@ -61,6 +61,73 @@ Ordre de réalisation imposé :
 
 Invariant impératif : l’absence, le retrait ou la corruption de la carte SD ne doit jamais empêcher le démarrage du programmateur, l’exécution locale des cycles, l’accès à la première configuration ni l’utilisation d’une interface minimale de diagnostic et de récupération.
 
+### Mise à jour distante du firmware par GitHub Releases
+
+Permettre la mise à jour d’un module AquaLook à distance, sans présence physique à proximité du programmateur et sans connexion au même réseau local, en utilisant GitHub Releases comme source officielle des firmwares OTA.
+
+Objectifs fonctionnels :
+
+- publier les firmwares validés sous forme de fichiers binaires dans une GitHub Release ;
+- publier avec chaque version un manifeste décrivant au minimum la version, la compatibilité matérielle, la taille, l’URL de téléchargement et l’empreinte SHA-256 du firmware ;
+- permettre au module de vérifier manuellement ou périodiquement si une version plus récente est disponible ;
+- télécharger la mise à jour par une connexion HTTPS sortante initiée par le module ;
+- vérifier l’intégrité et l’authenticité du firmware avant toute installation ;
+- installer le firmware dans la partition OTA inactive puis redémarrer sur la nouvelle version ;
+- conserver une possibilité de retour automatique à la version précédente lorsque le nouveau firmware ne confirme pas un démarrage sain ;
+- afficher dans l’interface la version installée, la version disponible, la date de la dernière vérification et le résultat de la dernière tentative ;
+- permettre une vérification manuelle et, après validation de la stratégie de sécurité, une installation déclenchée depuis l’interface locale ou un mécanisme distant autorisé ;
+- journaliser toutes les étapes : découverte, téléchargement, validation, installation, redémarrage, confirmation ou retour arrière.
+
+GitHub comme infrastructure OTA :
+
+- GitHub Releases constitue la source officielle des versions publiées ;
+- une release ne doit être utilisée par les modules que lorsqu’elle est explicitement marquée comme compatible et déployable ;
+- les versions de développement, préversions et binaires non validés doivent être ignorés par défaut ;
+- le manifeste OTA doit permettre de distinguer les variantes matérielles, les schémas de partitions et les versions minimales compatibles ;
+- aucune clé GitHub disposant de droits d’écriture ne doit être stockée dans le module ;
+- l’accès à un dépôt privé, s’il est retenu, devra utiliser un mécanisme dédié qui n’expose pas durablement un jeton personnel dans le firmware ;
+- la stratégie finale devra décider entre dépôt public pour les seuls binaires publiés, dépôt privé avec relais sécurisé, ou serveur intermédiaire alimenté depuis GitHub Releases.
+
+Notifications associées — méthode à valider :
+
+- prévoir une abstraction de notification indépendante du fournisseur retenu ;
+- notifier au minimum la disponibilité d’une nouvelle version, le début de la mise à jour, la réussite, l’échec et un éventuel retour arrière ;
+- étudier ntfy comme première solution, en tenant compte du diagnostic TLS et de la fragmentation mémoire déjà observés sur la carte principale ;
+- comparer ntfy direct depuis le module, passerelle ESP32-S2, relais local, MQTT, Home Assistant ou service cloud intermédiaire ;
+- ne pas rendre la réussite de la mise à jour dépendante de la disponibilité du service de notification ;
+- conserver localement le résultat et le motif détaillé lorsque la notification ne peut pas être envoyée.
+
+Points d’architecture à étudier :
+
+- table de partitions compatible avec deux emplacements OTA, NVS et les besoins résiduels de LittleFS ;
+- taille maximale du firmware après migration des ressources Web vers la carte SD ;
+- capacité réelle de la carte à effectuer durablement les connexions HTTPS nécessaires avec une mémoire fragmentée ;
+- validation cryptographique du manifeste et du firmware, avec signature numérique à privilégier au-delà du seul contrôle SHA-256 ;
+- gestion des certificats racine, de leur expiration et de leur renouvellement ;
+- stratégie de déploiement progressif, de canal stable ou bêta et de blocage d’une version défectueuse ;
+- définition d’un état de démarrage sain avant confirmation définitive du nouveau firmware ;
+- conservation des configurations NVS, des programmes, des journaux et des données présentes sur la carte SD ;
+- compatibilité ascendante et migration contrôlée des structures de données persistantes ;
+- comportement lorsque la carte SD est absente, le réseau instable, le téléchargement interrompu ou l’alimentation coupée ;
+- politique concernant les cycles d’arrosage en cours : interdiction, report ou fenêtre de maintenance explicite ;
+- mécanisme de récupération local lorsque plusieurs démarrages du nouveau firmware échouent ;
+- limitation de fréquence des vérifications afin de ne pas perturber le planificateur ni surcharger GitHub.
+
+Ordre de réalisation proposé :
+
+1. valider l’occupation flash après migration des ressources Web vers la carte SD ;
+2. définir et tester une table de partitions OTA compatible avec le matériel ;
+3. définir le format du manifeste et la chaîne de publication GitHub Releases ;
+4. implémenter la vérification de version et le téléchargement sans installation ;
+5. ajouter les contrôles d’intégrité, de signature et de compatibilité ;
+6. intégrer l’installation OTA, la confirmation de démarrage et le rollback ;
+7. ajouter l’interface locale, les journaux et les commandes autorisées ;
+8. valider la méthode de notification puis l’intégrer sans couplage fort ;
+9. tester les coupures réseau et électriques, les images invalides et les retours arrière ;
+10. seulement après validation, autoriser un déclenchement distant contrôlé.
+
+Invariant impératif : aucune mise à jour ne doit pouvoir activer ou désactiver une voie de manière intempestive, interrompre silencieusement un cycle en cours, effacer la configuration ou rendre le module irrécupérable. Le module doit rester fonctionnel sur la version précédente tant que la nouvelle version n’a pas été téléchargée, vérifiée, démarrée et explicitement confirmée comme saine. Les notifications restent informatives et ne doivent jamais constituer une dépendance critique du processus OTA.
+
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
 Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
