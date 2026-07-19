@@ -2,7 +2,7 @@
 
 #include <Preferences.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <time.h>
 
 #include "EventLog.h"
@@ -20,7 +20,7 @@ constexpr BaseType_t TASK_CORE = 0;
 constexpr size_t SERVER_SIZE = 96U;
 constexpr size_t TOPIC_SIZE = 96U;
 constexpr int ERROR_DNS = -1001;
-constexpr int ERROR_TLS = -1003;
+constexpr int ERROR_TCP = -1003;
 constexpr int ERROR_RESPONSE_TIMEOUT = -1004;
 constexpr int ERROR_INVALID_RESPONSE = -1005;
 
@@ -29,40 +29,6 @@ const uint32_t RETRY_DELAYS_MS[] = {
 };
 constexpr size_t RETRY_DELAY_COUNT =
     sizeof(RETRY_DELAYS_MS) / sizeof(RETRY_DELAYS_MS[0]);
-
-const char ISRG_ROOT_X1[] PROGMEM = R"EOF(
------BEGIN CERTIFICATE-----
-MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
-TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
-cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
-WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
-ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
-MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
-h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
-0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
-A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
-T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
-B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
-B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
-KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
-OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
-jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
-qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
-rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
-HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
-hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
-ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
-3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
-NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
-ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
-TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
-jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
-oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
-4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
-mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
-emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
------END CERTIFICATE-----
-)EOF";
 
 struct StoredConfig {
     uint8_t schema;
@@ -99,7 +65,7 @@ void copyText(char* target, size_t size, const char* source) {
 
 String extractHost(const char* server) {
     String value = server ? server : "";
-    if (value.startsWith("https://")) value.remove(0, 8);
+    if (value.startsWith("http://")) value.remove(0, 7);
     const int slash = value.indexOf('/');
     if (slash >= 0) value.remove(slash);
     const int colon = value.indexOf(':');
@@ -109,7 +75,7 @@ String extractHost(const char* server) {
 
 String extractBasePath(const char* server) {
     String value = server ? server : "";
-    if (value.startsWith("https://")) value.remove(0, 8);
+    if (value.startsWith("http://")) value.remove(0, 7);
     const int slash = value.indexOf('/');
     if (slash < 0) return "";
     String path = value.substring(slash);
@@ -125,7 +91,7 @@ uint32_t currentEpoch() {
 const char* transportReason(int code) {
     switch (code) {
         case ERROR_DNS: return "dns-failed";
-        case ERROR_TLS: return "tls-failed";
+        case ERROR_TCP: return "tcp-failed";
         case ERROR_RESPONSE_TIMEOUT: return "response-timeout";
         case ERROR_INVALID_RESPONSE: return "invalid-response";
         default: return code >= 200 ? "http-response" : "delivery-failed";
@@ -430,30 +396,24 @@ bool NotificationManager::sendCurrentWork() {
         return false;
     }
 
-    WiFiClientSecure client;
-    client.setCACert(ISRG_ROOT_X1);
-    client.setHandshakeTimeout(NETWORK_TIMEOUT_MS / 1000U);
+    WiFiClient client;
     client.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
 
     EventLog::log(
         LOG_INFO,
-        "Notification: tls preparation heap=%lu maxblock=%lu stackFree=%u",
+        "Notification: tcp preparation heap=%lu maxblock=%lu stackFree=%u",
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMaxAllocHeap()),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );
 
-    const bool tlsOk = client.connect(host.c_str(), 443);
-    if (!tlsOk) {
-        char tlsError[160] = "";
-        const int tlsCode = client.lastError(tlsError, sizeof(tlsError));
-        g_lastHttpCode = ERROR_TLS;
+    const bool tcpOk = client.connect(host.c_str(), 80);
+    if (!tcpOk) {
+        g_lastHttpCode = ERROR_TCP;
         EventLog::log(
             LOG_ERROR,
-            "Notification: tls host=%s status=failed code=%d msg=%s heap=%lu maxblock=%lu epoch=%lu stackFree=%u",
+            "Notification: tcp host=%s port=80 status=failed heap=%lu maxblock=%lu epoch=%lu stackFree=%u",
             host.c_str(),
-            tlsCode,
-            tlsError[0] ? tlsError : "none",
             static_cast<unsigned long>(ESP.getFreeHeap()),
             static_cast<unsigned long>(ESP.getMaxAllocHeap()),
             static_cast<unsigned long>(epoch),
@@ -465,7 +425,7 @@ bool NotificationManager::sendCurrentWork() {
 
     EventLog::log(
         LOG_INFO,
-        "Notification: tls host=%s status=ok heap=%lu maxblock=%lu stackFree=%u",
+        "Notification: tcp host=%s port=80 status=ok heap=%lu maxblock=%lu stackFree=%u",
         host.c_str(),
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMaxAllocHeap()),
@@ -578,7 +538,7 @@ bool NotificationManager::sendCurrentWork() {
 bool NotificationManager::validServer(const char* server) {
     if (!server) return false;
     const String value = server;
-    return value.startsWith("https://") &&
+    return value.startsWith("http://") &&
            value.length() >= 12U &&
            value.length() < SERVER_SIZE;
 }
