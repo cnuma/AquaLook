@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include "IncidentManager.h"
 
+class ConfigManager;
+
 // Arduino-ESP32 2.0.17 ne fournit pas WiFiClientSecure::setBufferSizes().
 // NotificationManager.cpp est le seul module qui appelle cette API optionnelle.
 // Sur ce core, l'appel est remappe vers setTimeout() afin de conserver la
@@ -24,6 +26,7 @@ struct NotificationStatus {
     bool workerRunning = false;
     bool testPending = false;
     uint8_t pendingMask = 0;
+    uint8_t pendingZoneEvents = 0;
     uint32_t attempts = 0;
     uint32_t nextAttemptInSec = 0;
     int lastHttpCode = 0;
@@ -37,7 +40,8 @@ public:
         INCIDENT_INITIAL,
         INCIDENT_ESCALATION,
         INCIDENT_RECOVERY,
-        MANUAL_TEST
+        MANUAL_TEST,
+        ZONE_EVENT
     };
 
     enum class WorkerResult : uint8_t {
@@ -49,6 +53,7 @@ public:
     };
 
     static void begin();
+    static void bindConfig(ConfigManager* config);
     static void update();
     static NotificationConfig config();
     static NotificationStatus status();
@@ -58,6 +63,7 @@ public:
                            const char* token,
                            bool preserveTokenWhenEmpty);
     static bool requestTest();
+    static bool enqueueZoneEvent(uint8_t zone, bool active);
 
 private:
     static void loadConfig();

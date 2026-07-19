@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "EventLog.h"
+#include "ConfigManager.h"
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_notify";
@@ -23,6 +24,7 @@ constexpr int ERROR_DNS = -1001;
 constexpr int ERROR_TCP = -1003;
 constexpr int ERROR_RESPONSE_TIMEOUT = -1004;
 constexpr int ERROR_INVALID_RESPONSE = -1005;
+constexpr uint8_t ZONE_EVENT_QUEUE_CAPACITY = 8U;
 
 const uint32_t RETRY_DELAYS_MS[] = {
     0U, 60000U, 300000U, 900000U, 3600000U, 21600000U
@@ -40,6 +42,15 @@ struct StoredConfig {
 };
 
 NotificationConfig g_config;
+struct ZoneEvent {
+    uint8_t zone = 0U;
+    bool active = false;
+    char name[24] = "";
+};
+ZoneEvent g_zoneEvents[ZONE_EVENT_QUEUE_CAPACITY];
+uint8_t g_zoneEventHead = 0U;
+uint8_t g_zoneEventCount = 0U;
+ConfigManager* g_zoneConfig = nullptr;
 portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 TaskHandle_t g_supervisorHandle = nullptr;
 TaskHandle_t g_senderHandle = nullptr;
@@ -47,6 +58,7 @@ volatile NotificationManager::WorkerResult g_result =
     NotificationManager::WorkerResult::IDLE;
 volatile NotificationManager::WorkType g_work =
     NotificationManager::WorkType::NONE;
+NotificationManager::WorkType g_retryWork = NotificationManager::WorkType::NONE;
 volatile bool g_testPending = false;
 uint32_t g_attempts = 0U;
 uint32_t g_nextAttemptMs = 0U;
@@ -132,6 +144,10 @@ void NotificationManager::begin() {
     );
 }
 
+void NotificationManager::bindConfig(ConfigManager* config) {
+    g_zoneConfig = config;
+}
+
 void NotificationManager::update() {
     begin();
 }
@@ -152,6 +168,7 @@ NotificationStatus NotificationManager::status() {
     value.workerRunning = g_result == WorkerResult::RUNNING;
     value.testPending = g_testPending;
     value.pendingMask = IncidentManager::storageSd().pendingNotifications;
+    value.pendingZoneEvents = g_zoneEventCount;
     value.attempts = g_attempts;
     value.lastHttpCode = g_lastHttpCode;
     copyText(value.lastResult, sizeof(value.lastResult), g_lastResult);
@@ -210,6 +227,27 @@ bool NotificationManager::requestTest() {
     return true;
 }
 
+bool NotificationManager::enqueueZoneEvent(uint8_t zone, bool active) {
+    if (!g_zoneConfig || zone >= g_zoneConfig->nbZones()) return false;
+    const uint8_t required = active ? ZONE_NOTIFY_START : ZONE_NOTIFY_STOP;
+    if ((g_zoneConfig->zoneNotificationMask(zone) & required) == 0U) return false;
+
+    portENTER_CRITICAL(&g_mux);
+    if (g_zoneEventCount >= ZONE_EVENT_QUEUE_CAPACITY) {
+        portEXIT_CRITICAL(&g_mux);
+        EventLog::log(LOG_WARN, "Notification: file zones pleine zone=%u", zone + 1U);
+        return false;
+    }
+    const uint8_t index = (g_zoneEventHead + g_zoneEventCount) % ZONE_EVENT_QUEUE_CAPACITY;
+    g_zoneEvents[index].zone = zone;
+    g_zoneEvents[index].active = active;
+    copyText(g_zoneEvents[index].name, sizeof(g_zoneEvents[index].name),
+             g_zoneConfig->zone(zone).name);
+    g_zoneEventCount++;
+    portEXIT_CRITICAL(&g_mux);
+    return true;
+}
+
 void NotificationManager::loadConfig() {
     g_config = NotificationConfig{};
 
@@ -259,8 +297,18 @@ void NotificationManager::supervisorTask(void*) {
             g_config.enabled &&
             validServer(g_config.server) &&
             validTopic(g_config.topic) &&
-            WiFi.status() == WL_CONNECTED &&
-            (g_nextAttemptMs == 0U || deadlineReached(nowMs, g_nextAttemptMs))) {
+            WiFi.status() == WL_CONNECTED) {
+            const bool sdPending =
+                IncidentManager::storageSdNotificationPending(IncidentNotification::INITIAL) ||
+                IncidentManager::storageSdNotificationPending(IncidentNotification::ESCALATION) ||
+                IncidentManager::storageSdNotificationPending(IncidentNotification::RECOVERY);
+            const bool manualCanPreemptZoneRetry =
+                g_testPending && g_retryWork == WorkType::ZONE_EVENT;
+            if (!sdPending && !manualCanPreemptZoneRetry && g_nextAttemptMs != 0U &&
+                !deadlineReached(nowMs, g_nextAttemptMs)) {
+                vTaskDelay(pdMS_TO_TICKS(SUPERVISOR_PERIOD_MS));
+                continue;
+            }
             const WorkType work = nextWork();
             if (work != WorkType::NONE) startSender(work);
         }
@@ -308,6 +356,13 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
     if (result == WorkerResult::SUCCESS) {
         if (g_work == WorkType::MANUAL_TEST) {
             g_testPending = false;
+        } else if (g_work == WorkType::ZONE_EVENT) {
+            portENTER_CRITICAL(&g_mux);
+            if (g_zoneEventCount > 0U) {
+                g_zoneEventHead = (g_zoneEventHead + 1U) % ZONE_EVENT_QUEUE_CAPACITY;
+                g_zoneEventCount--;
+            }
+            portEXIT_CRITICAL(&g_mux);
         } else {
             IncidentManager::markStorageSdNotificationDelivered(
                 incidentNotificationFor(g_work)
@@ -323,6 +378,7 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
         );
         g_attempts = 0U;
         g_nextAttemptMs = 0U;
+        g_retryWork = WorkType::NONE;
     } else {
         if (result == WorkerResult::START_FAILED) {
             copyText(g_lastResult, sizeof(g_lastResult), "task-start-failed");
@@ -331,6 +387,7 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
         }
 
         scheduleNextAttempt(nowMs);
+        g_retryWork = g_work;
         EventLog::log(
             LOG_WARN,
             "Notification: echec type=%s code=%d reason=%s prochain=%lus",
@@ -354,7 +411,6 @@ void NotificationManager::scheduleNextAttempt(uint32_t nowMs) {
 }
 
 NotificationManager::WorkType NotificationManager::nextWork() {
-    if (g_testPending) return WorkType::MANUAL_TEST;
     if (IncidentManager::storageSdNotificationPending(IncidentNotification::INITIAL)) {
         return WorkType::INCIDENT_INITIAL;
     }
@@ -364,6 +420,8 @@ NotificationManager::WorkType NotificationManager::nextWork() {
     if (IncidentManager::storageSdNotificationPending(IncidentNotification::RECOVERY)) {
         return WorkType::INCIDENT_RECOVERY;
     }
+    if (g_testPending) return WorkType::MANUAL_TEST;
+    if (g_zoneEventCount > 0U) return WorkType::ZONE_EVENT;
     return WorkType::NONE;
 }
 
@@ -433,6 +491,17 @@ bool NotificationManager::sendCurrentWork() {
     );
 
     const PersistentIncidentSnapshot incident = IncidentManager::storageSd();
+    ZoneEvent zoneEvent;
+    if (g_work == WorkType::ZONE_EVENT) {
+        portENTER_CRITICAL(&g_mux);
+        if (g_zoneEventCount == 0U) {
+            portEXIT_CRITICAL(&g_mux);
+            client.stop();
+            return false;
+        }
+        zoneEvent = g_zoneEvents[g_zoneEventHead];
+        portEXIT_CRITICAL(&g_mux);
+    }
     String title;
     String message;
     const char* priority = "default";
@@ -461,12 +530,20 @@ bool NotificationManager::sendCurrentWork() {
             message = "Le canal ntfy est correctement configure et joignable.";
             tags = "test_tube,droplet";
             break;
+        case WorkType::ZONE_EVENT:
+            title = zoneEvent.active
+                ? "AquaLook - début d’arrosage"
+                : "AquaLook - fin d’arrosage";
+            message = "Zone ";
+            message += zoneEvent.name;
+            message += zoneEvent.active ? " démarrée" : " arrêtée";
+            break;
         default:
             client.stop();
             return false;
     }
 
-    if (g_work != WorkType::MANUAL_TEST) {
+    if (g_work != WorkType::MANUAL_TEST && g_work != WorkType::ZONE_EVENT) {
         message += " Occurrences: ";
         message += incident.occurrences;
         message += ". Cause: ";
@@ -566,6 +643,7 @@ const char* NotificationManager::workCode(WorkType type) {
         case WorkType::INCIDENT_ESCALATION: return "sd-escalation";
         case WorkType::INCIDENT_RECOVERY: return "sd-recovery";
         case WorkType::MANUAL_TEST: return "manual-test";
+        case WorkType::ZONE_EVENT: return "zone-event";
         default: return "none";
     }
 }

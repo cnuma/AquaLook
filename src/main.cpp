@@ -7,6 +7,7 @@
 #include "FaultManager.h"
 #include "WiFiManager.h"
 #include "NTPManager.h"
+#include "NotificationManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "RelaisManagerBackend.h"
@@ -461,6 +462,7 @@ void setup() {
                   "I2C: scan termine, %u peripherique(s)", found);
 
     configMgr.begin();
+    NotificationManager::bindConfig(&configMgr);
     const bool equipmentConfigStoreReady = equipmentConfigStore.begin();
     const AquaLook::Runtime::EquipmentRuntimeConfig& equipmentConfig =
         equipmentConfigStore.config();

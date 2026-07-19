@@ -114,6 +114,7 @@ public:
                 doc["workerRunning"] = status.workerRunning;
                 doc["testPending"] = status.testPending;
                 doc["pendingMask"] = status.pendingMask;
+                doc["pendingZoneEvents"] = status.pendingZoneEvents;
                 doc["attempts"] = status.attempts;
                 doc["nextAttemptInSec"] = status.nextAttemptInSec;
                 doc["lastHttpCode"] = status.lastHttpCode;
@@ -165,7 +166,7 @@ public:
         _server.on("/logs", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 static const char PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Journal</title></head><body><p>Interface de secours. Le fichier complet est servi depuis la carte SD.</p><a href="/api/logs">Journal brut</a></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Journal</title></head><body><p>Interface de secours. Le fichier complet est servi depuis la carte SD.</p><a href="/api/logs.txt">Journal brut</a></body></html>
 )rawliteral";
                 AsyncWebServerResponse* response = req->beginResponse(
                     200, "text/html; charset=utf-8", PAGE);
@@ -244,6 +245,7 @@ private:
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetZoneNotifications(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleStartCaptive(AsyncWebServerRequest* req);
     void handleResetConfig(AsyncWebServerRequest* req);
     void handleWifiScan(AsyncWebServerRequest* req);

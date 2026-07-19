@@ -34,7 +34,7 @@ public:
     }
 
     // API historique conservée : l'index reste un index de zone.
-    void setRelay(uint8_t relay, bool state);
+    bool setRelay(uint8_t relay, bool state);
     bool getState(uint8_t relay) const;
 
     // API matérielle générique : exécute une RelayAssignment validée.

@@ -1,6 +1,7 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 
 #include "EventLog.h"
+#include "NotificationManager.h"
 #include "RelaisManager.h"
 #include "RelayPhysicalBackend.h"
 #include "config.h"
@@ -131,6 +132,11 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     bool applied = false;
     bool appliedByPhysicalBackend = false;
+    const Domain::EquipmentStateValue previousState = getZoneValveState(zoneIndex);
+    const bool previousActive =
+        previousState.validity == Domain::StateValidity::VALID &&
+        previousState.kind == Domain::StateValueKind::BINARY &&
+        previousState.value != 0;
 
     if (_physicalBackend) {
         applied = _physicalBackend->setZoneValve(zoneIndex, active, nowMs);
@@ -142,9 +148,10 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     }
 
     if (!applied && _relayManager) {
-        _relayManager->setRelay(zoneIndex, active);
-        applied = true;
-        recordExecutionPath(ExecutionPath::RELAY_MANAGER_FALLBACK);
+        applied = _relayManager->setRelay(zoneIndex, active);
+        if (applied) {
+            recordExecutionPath(ExecutionPath::RELAY_MANAGER_FALLBACK);
+        }
     } else if (appliedByPhysicalBackend) {
         recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
     }
@@ -162,6 +169,10 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
             Domain::OperationError::DEPENDENCY_UNAVAILABLE,
             nowMs
         );
+    }
+
+    if (previousActive != active) {
+        NotificationManager::enqueueZoneEvent(zoneIndex, active);
     }
 
     Domain::OperationResult result;

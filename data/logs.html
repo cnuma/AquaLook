@@ -73,27 +73,15 @@ function validateNtfyForm(server,topic,enabled){
  return valid;
 }
 async function getJson(url,opt){const r=await fetch(url,{cache:'no-store',...(opt||{})});let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
-function extractJournalText(html){
- const doc=new DOMParser().parseFromString(html,'text/html');
- const rows=[...doc.querySelectorAll('table tr')].slice(1);
- if(!rows.length){
-  const empty=doc.querySelector('p');
-  return empty?empty.textContent.trim():'Aucune entrée disponible.';
- }
- return rows.map(row=>{
-  const cells=[...row.querySelectorAll('td')].map(cell=>cell.textContent.trim());
-  return cells.length>=3?`[${cells[0]}] [${cells[1]}] ${cells.slice(2).join(' ')}`:'';
- }).filter(Boolean).join('\n');
-}
 async function refreshJournal(forceBottom=false){
  if(journalRefreshRunning)return;
  journalRefreshRunning=true;
  const box=$('journal'),state=$('journal-state');
  const wasNearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<48;
  try{
-  const r=await fetch('/api/logs?_='+Date.now(),{cache:'no-store',headers:{'Accept':'text/html; charset=utf-8'}});
+  const r=await fetch('/api/logs.txt?_='+Date.now(),{cache:'no-store',headers:{'Accept':'text/plain; charset=utf-8'}});
   if(!r.ok)throw new Error('HTTP '+r.status);
-  box.textContent=extractJournalText(await r.text());
+  box.textContent=await r.text();
   state.textContent='Actualisé à '+new Date().toLocaleTimeString('fr-FR');
   if(forceBottom||wasNearBottom)box.scrollTop=box.scrollHeight;
  }catch(e){state.textContent='Journal indisponible : '+e.message}

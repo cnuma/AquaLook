@@ -8,7 +8,7 @@
 namespace {
 constexpr uint32_t NVS_MAGIC = 0x414C4F4BUL; // "ALOK"
 
-struct PersistedConfig {
+struct PersistedConfigV1 {
     uint32_t magic;
     uint16_t schema;
     uint16_t payloadSize;
@@ -22,6 +22,29 @@ struct PersistedConfig {
     CfgZone zones[MAX_ZONES];
     uint32_t crc32;
 };
+
+struct PersistedConfig {
+    uint32_t magic;
+    uint16_t schema;
+    uint16_t payloadSize;
+    CfgWifi wifi;
+    CfgTouch touch;
+    CfgManual manual;
+    CfgNtp ntp;
+    CfgOwm owm;
+    CfgSystem system;
+    CfgDisplay display;
+    CfgZone zones[MAX_ZONES];
+    uint8_t zoneNotificationMasks[MAX_ZONES];
+    uint32_t crc32;
+};
+
+static_assert(offsetof(PersistedConfig, zoneNotificationMasks) ==
+                  offsetof(PersistedConfigV1, crc32),
+              "Le prefixe NVS schema 1 doit rester strictement identique");
+static_assert(sizeof(PersistedConfig) ==
+                  sizeof(PersistedConfigV1) + MAX_ZONES,
+              "Le schema 2 doit ajouter exactement un uint8_t par zone");
 
 uint8_t normalizeActiveZones(uint8_t zones, uint8_t controller) {
     zones = constrain(zones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
@@ -93,7 +116,14 @@ void ConfigManager::begin() {
         return;
     }
 
-    EventLog::log(LOG_WARN, "Config: NVS/JSON absents ou invalides — valeurs par defaut");
+    if (_nvsRejected) {
+        EventLog::log(LOG_ERROR,
+                      "Config: NVS invalide conserve sans ecrasement; defauts RAM actifs");
+        defaults();
+        return;
+    }
+
+    EventLog::log(LOG_WARN, "Config: NVS/JSON absents — valeurs par defaut");
     defaults();
     save();
 }
@@ -106,22 +136,67 @@ bool ConfigManager::loadNvs() {
     }
 
     const size_t len = prefs.getBytesLength(CFG_NVS_KEY);
-    if (len != sizeof(PersistedConfig)) {
+    if (len != sizeof(PersistedConfig) && len != sizeof(PersistedConfigV1)) {
+        _nvsRejected = len != 0U;
         prefs.end();
         if (len != 0) EventLog::log(LOG_WARN, "Config: taille NVS invalide (%u/%u)",
                                      (unsigned)len, (unsigned)sizeof(PersistedConfig));
         return false;
     }
 
-    PersistedConfig* blob = static_cast<PersistedConfig*>(malloc(sizeof(PersistedConfig)));
-    if (!blob) {
+    uint8_t* raw = static_cast<uint8_t*>(malloc(len));
+    if (!raw) {
         prefs.end();
         EventLog::log(LOG_ERROR, "Config: allocation lecture NVS impossible");
         return false;
     }
 
-    const size_t read = prefs.getBytes(CFG_NVS_KEY, blob, sizeof(PersistedConfig));
+    const size_t read = prefs.getBytes(CFG_NVS_KEY, raw, len);
     prefs.end();
+
+    if (len == sizeof(PersistedConfigV1)) {
+        PersistedConfigV1* legacy = reinterpret_cast<PersistedConfigV1*>(raw);
+        bool valid = read == len && legacy->magic == NVS_MAGIC &&
+                     legacy->schema == 1U && legacy->payloadSize == len;
+        if (valid) {
+            valid = crc32Bytes(raw, offsetof(PersistedConfigV1, crc32)) == legacy->crc32;
+        }
+        if (!valid) {
+            _nvsRejected = true;
+            EventLog::log(LOG_ERROR, "Config: bloc NVS schema 1 invalide");
+            free(raw);
+            return false;
+        }
+        _wifi = legacy->wifi;
+        _touch = legacy->touch;
+        _manual = legacy->manual;
+        _ntp = legacy->ntp;
+        _owm = legacy->owm;
+        _system = legacy->system;
+        _display = legacy->display;
+        memcpy(_zones, legacy->zones, sizeof(_zones));
+        memset(_zoneNotificationMasks, 0, sizeof(_zoneNotificationMasks));
+        free(raw);
+        _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
+                                  ? _system.relayController : RELAY_CONTROLLER_XL9535;
+        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbRelaisPhysical = _system.nbZones;
+        _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
+        _loaded = true;
+        save();
+        Preferences check;
+        bool migrated = false;
+        if (check.begin(CFG_NVS_NAMESPACE, true)) {
+            migrated = check.getBytesLength(CFG_NVS_KEY) == sizeof(PersistedConfig);
+            check.end();
+        }
+        EventLog::log(migrated ? LOG_INFO : LOG_ERROR,
+                      migrated ? "Config: migration NVS schema 1 -> 2 reussie"
+                               : "Config: migration NVS schema 1 -> 2 non confirmee");
+        return true;
+    }
+
+    PersistedConfig* blob = reinterpret_cast<PersistedConfig*>(raw);
 
     bool valid = (read == sizeof(PersistedConfig)) &&
                  (blob->magic == NVS_MAGIC) &&
@@ -134,6 +209,7 @@ bool ConfigManager::loadNvs() {
     }
 
     if (!valid) {
+        _nvsRejected = true;
         EventLog::log(LOG_ERROR, "Config: bloc NVS invalide (entete/CRC)");
         free(blob);
         return false;
@@ -147,7 +223,12 @@ bool ConfigManager::loadNvs() {
     _system = blob->system;
     _display = blob->display;
     memcpy(_zones, blob->zones, sizeof(_zones));
-    free(blob);
+    memcpy(_zoneNotificationMasks, blob->zoneNotificationMasks,
+           sizeof(_zoneNotificationMasks));
+    for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+        _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
+    }
+    free(raw);
 
     _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
                               ? _system.relayController : RELAY_CONTROLLER_XL9535;
@@ -380,6 +461,8 @@ void ConfigManager::save() {
     blob->system = _system;
     blob->display = _display;
     memcpy(blob->zones, _zones, sizeof(_zones));
+    memcpy(blob->zoneNotificationMasks, _zoneNotificationMasks,
+           sizeof(_zoneNotificationMasks));
     blob->crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
                              offsetof(PersistedConfig, crc32));
 
@@ -591,6 +674,12 @@ void ConfigManager::setZoneName(uint8_t z, const char* name) {
     EventBus::displayDirty = true;
 }
 
+void ConfigManager::setZoneNotificationMask(uint8_t z, uint8_t mask) {
+    if (z >= MAX_ZONES) return;
+    _zoneNotificationMasks[z] = mask & ZONE_NOTIFY_MASK;
+    save();
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Affichage LCD — hot-reload, pas de reboot
 // ─────────────────────────────────────────────────────────────
@@ -735,6 +824,7 @@ void ConfigManager::zoneToJson(uint8_t z, JsonObject& obj) const {
     obj["name"]         = cz.name;
     obj["mode"]         = cz.mode;
     obj["intervalDays"] = cz.intervalDays;
+    obj["notificationMask"] = _zoneNotificationMasks[z];
 
     JsonObject rain = obj["rain"].to<JsonObject>();
     rain["threshMm"] = cz.rain.thresholdMm;
@@ -778,6 +868,8 @@ bool ConfigManager::zoneFromJson(uint8_t z, JsonObjectConst obj) {
 
     cz.mode         = obj["mode"]         | (uint8_t)0;
     cz.intervalDays = obj["intervalDays"] | (uint8_t)2;
+    _zoneNotificationMasks[z] =
+        (obj["notificationMask"] | (uint8_t)0) & ZONE_NOTIFY_MASK;
 
     JsonObjectConst rain = obj["rain"];
     if (rain) {

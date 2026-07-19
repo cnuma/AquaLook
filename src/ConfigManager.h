@@ -12,7 +12,11 @@
 #define CFG_NVS_NAMESPACE "aqualook"
 #define CFG_NVS_KEY       "config"
 #define CFG_NVS_INTERVAL_ANCHORS_KEY "intAnchors"
-#define CFG_NVS_SCHEMA    1
+#define CFG_NVS_SCHEMA    2
+
+static constexpr uint8_t ZONE_NOTIFY_START = 1U << 0;
+static constexpr uint8_t ZONE_NOTIFY_STOP  = 1U << 1;
+static constexpr uint8_t ZONE_NOTIFY_MASK  = ZONE_NOTIFY_START | ZONE_NOTIFY_STOP;
 
 // ═══════════════════════════════════════════════════════════════
 //  Structs de configuration persistée
@@ -215,6 +219,9 @@ public:
     const CfgOwm&    owm()    const { return _owm;    }
     const CfgSystem& system() const { return _system; }
     const CfgZone&   zone(uint8_t z) const;
+    uint8_t zoneNotificationMask(uint8_t z) const {
+        return z < MAX_ZONES ? _zoneNotificationMasks[z] : 0U;
+    }
     uint32_t          intervalAnchorDay(uint8_t z) const;
     const CfgDisplay& display() const { return _display; }
     bool weatherVisualsEnabled() const { return _weatherVisualsEnabled; }
@@ -257,6 +264,7 @@ public:
 
     // Nom de zone (nouveau v2)
     void setZoneName(uint8_t zone, const char* name);
+    void setZoneNotificationMask(uint8_t zone, uint8_t mask);
 
     // Affichage LCD (display tokens)
     void setDisplay(const CfgDisplay& d);  // hot-reload, pas de reboot
@@ -285,8 +293,10 @@ private:
     CfgSystem _system;
     CfgDisplay _display;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
+    uint8_t   _zoneNotificationMasks[MAX_ZONES] = {};
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
     bool      _loaded = false;
+    bool      _nvsRejected = false;
     bool      _weatherVisualsEnabled = false;
 
     bool loadNvs();
