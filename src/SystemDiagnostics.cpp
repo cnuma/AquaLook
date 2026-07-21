@@ -1,5 +1,7 @@
 #include "SystemDiagnostics.h"
 #include <WiFi.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include "EventLog.h"
 #include "TimeUtils.h"
 #include "RuntimeProfiler.h"
@@ -17,6 +19,108 @@
 #define AQUALOOK_GIT_BRANCH "unknown"
 #endif
 
+namespace {
+
+const char* appSubtypeName(uint8_t subtype) {
+    switch (subtype) {
+        case ESP_PARTITION_SUBTYPE_APP_FACTORY: return "factory";
+        case ESP_PARTITION_SUBTYPE_APP_OTA_0: return "ota_0";
+        case ESP_PARTITION_SUBTYPE_APP_OTA_1: return "ota_1";
+        default: return "other";
+    }
+}
+
+void logPartition(const char* role, const esp_partition_t* partition) {
+    if (partition == nullptr) {
+        EventLog::log(LOG_WARN, "OTA diag: %s absent", role);
+        return;
+    }
+
+    EventLog::log(
+        LOG_INFO,
+        "OTA diag: %s label=%s subtype=%s address=0x%06lX size=%lu",
+        role,
+        partition->label,
+        appSubtypeName(partition->subtype),
+        static_cast<unsigned long>(partition->address),
+        static_cast<unsigned long>(partition->size)
+    );
+}
+
+void logOtaStartupDiagnostics() {
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* boot = esp_ota_get_boot_partition();
+    const esp_partition_t* ota0 = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP,
+        ESP_PARTITION_SUBTYPE_APP_OTA_0,
+        nullptr
+    );
+    const esp_partition_t* ota1 = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP,
+        ESP_PARTITION_SUBTYPE_APP_OTA_1,
+        nullptr
+    );
+    const esp_partition_t* otaData = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA,
+        ESP_PARTITION_SUBTYPE_DATA_OTA,
+        nullptr
+    );
+
+    EventLog::log(
+        LOG_INFO,
+        "OTA diag: heapFree=%lu heapMin=%lu largestBlock=%lu",
+        static_cast<unsigned long>(ESP.getFreeHeap()),
+        static_cast<unsigned long>(ESP.getMinFreeHeap()),
+        static_cast<unsigned long>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)
+        )
+    );
+
+    logPartition("running", running);
+    logPartition("boot", boot);
+    logPartition("app0", ota0);
+    logPartition("app1", ota1);
+
+    if (otaData != nullptr) {
+        EventLog::log(
+            LOG_INFO,
+            "OTA diag: otadata label=%s address=0x%06lX size=%lu",
+            otaData->label,
+            static_cast<unsigned long>(otaData->address),
+            static_cast<unsigned long>(otaData->size)
+        );
+    } else {
+        EventLog::log(LOG_WARN, "OTA diag: otadata absent");
+    }
+
+    const bool layoutReady = ota0 != nullptr && ota1 != nullptr && otaData != nullptr;
+    const bool sizesReady = ota0 != nullptr && ota1 != nullptr &&
+        ota0->size >= 0x1F0000UL && ota1->size >= 0x1F0000UL;
+
+    EventLog::log(
+        layoutReady && sizesReady ? LOG_INFO : LOG_ERROR,
+        "OTA diag: layout=%s sizes=%s ready=%s",
+        layoutReady ? "dual_ota" : "incomplete",
+        sizesReady ? "ok" : "invalid",
+        layoutReady && sizesReady ? "yes" : "no"
+    );
+}
+
+void fillPartitionJson(JsonObject target,
+                       const esp_partition_t* partition,
+                       bool appPartition) {
+    target["present"] = partition != nullptr;
+    if (partition == nullptr) return;
+
+    target["label"] = partition->label;
+    target["address"] = partition->address;
+    target["size"] = partition->size;
+    if (appPartition) {
+        target["subtype"] = appSubtypeName(partition->subtype);
+    }
+}
+
+}  // namespace
 
 portMUX_TYPE SystemDiagnostics::_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -67,6 +171,8 @@ void SystemDiagnostics::begin() {
     _lastWebBytes = 0;
     _lastWebUri[0] = '\0';
     portEXIT_CRITICAL(&_mux);
+
+    logOtaStartupDiagnostics();
 }
 
 void SystemDiagnostics::loopEnter() {
@@ -235,6 +341,35 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     memory["psramSize"] = ESP.getPsramSize();
     memory["psramFree"] = ESP.getFreePsram();
     memory["loopStackHighWaterWords"] = uxTaskGetStackHighWaterMark(nullptr);
+
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* boot = esp_ota_get_boot_partition();
+    const esp_partition_t* ota0 = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP,
+        ESP_PARTITION_SUBTYPE_APP_OTA_0,
+        nullptr
+    );
+    const esp_partition_t* ota1 = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP,
+        ESP_PARTITION_SUBTYPE_APP_OTA_1,
+        nullptr
+    );
+    const esp_partition_t* otaData = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA,
+        ESP_PARTITION_SUBTYPE_DATA_OTA,
+        nullptr
+    );
+
+    JsonObject ota = doc["ota"].to<JsonObject>();
+    fillPartitionJson(ota["running"].to<JsonObject>(), running, true);
+    fillPartitionJson(ota["boot"].to<JsonObject>(), boot, true);
+    fillPartitionJson(ota["app0"].to<JsonObject>(), ota0, true);
+    fillPartitionJson(ota["app1"].to<JsonObject>(), ota1, true);
+    fillPartitionJson(ota["otadata"].to<JsonObject>(), otaData, false);
+    ota["dualLayout"] = ota0 != nullptr && ota1 != nullptr && otaData != nullptr;
+    ota["sizesValid"] = ota0 != nullptr && ota1 != nullptr &&
+        ota0->size >= 0x1F0000UL && ota1->size >= 0x1F0000UL;
+    ota["ready"] = ota["dualLayout"].as<bool>() && ota["sizesValid"].as<bool>();
 
     const uint32_t nowMs = millis();
     JsonObject loop = doc["loop"].to<JsonObject>();
