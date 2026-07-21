@@ -59,6 +59,48 @@ OTA diag: layout=dual_ota sizes=ok ready=yes
 
 Le nom de la partition `running` peut être `app0` ou `app1`. Pour un premier flash filaire nominal, `app0` est attendu mais n’est pas imposé comme invariant durable.
 
+## Résultats matériels reçus
+
+Upload et démarrage réalisés sur `COM3` le 21 juillet 2026.
+
+```text
+[00:00:00.339] [INF] AquaLook v2.0 demarrage
+[00:00:00.341] [INF] OTA diag: heapFree=265080 heapMin=259508 largestBlock=110580
+[00:00:00.342] [INF] OTA diag: running label=app0 subtype=ota_0 address=0x010000 size=203161
+[00:00:00.352] [INF] OTA diag: boot label=app0 subtype=ota_0 address=0x010000 size=2031616
+[00:00:00.362] [INF] OTA diag: app0 label=app0 subtype=ota_0 address=0x010000 size=2031616
+[00:00:00.373] [INF] OTA diag: app1 label=app1 subtype=ota_1 address=0x200000 size=2031616
+[00:00:00.373] [INF] OTA diag: otadata label=otadata address=0x00E000 size=8192
+[00:00:00.383] [INF] OTA diag: layout=dual_ota sizes=ok ready=yes
+```
+
+### Interprétation
+
+- partition réellement exécutée : `app0` / `ota_0` ;
+- partition de boot : `app0` / `ota_0` ;
+- `app0` présente, taille confirmée : `2031616` octets ;
+- `app1` présente, taille confirmée : `2031616` octets ;
+- `otadata` présente, taille confirmée : `8192` octets ;
+- synthèse firmware : `layout=dual_ota sizes=ok ready=yes` ;
+- heap libre au tout début du démarrage : `265080` octets ;
+- minimum historique relevé à cet instant : `259508` octets ;
+- plus grand bloc contigu : `110580` octets.
+
+La valeur `size=203161` de la ligne `running` est considérée comme une troncature lors de la copie du log : la même partition `app0` est immédiatement relue à `2031616` octets, et le contrôle interne conclut `sizes=ok ready=yes`.
+
+Ces valeurs mémoire sont nettement supérieures au diagnostic ntfy réalisé en fonctionnement établi, qui indiquait environ 74 KiB libres et un plus grand bloc contigu d’environ 39 KiB. Cela confirme que la fragmentation apparaît après l’initialisation et/ou au cours du fonctionnement, et devra être mesurée aux différents jalons d’OTA-1.
+
+## Observation indépendante : scan I²C
+
+Le même démarrage contient :
+
+```text
+[00:00:00.395] [INF] I2C: scan demarre
+[00:00:00.414] [WRN] I2C: scan termine, 0 peripherique(s)
+```
+
+Cette observation n’invalide pas OTA-0.1, car elle est indépendante de la table de partitions. Elle doit toutefois être vérifiée avant de déclarer le fonctionnement matériel global validé, notamment si la carte relais XL9535 devait être alimentée et connectée pendant ce test.
+
 ## Critères de validation matérielle
 
 Le run OTA-0.1 est validé sur matériel si :
@@ -85,11 +127,11 @@ pio run -e ProgrammeArrosage_v4
 
 ## Procédure de test
 
-Flasher le profil nominal :
+Flasher le profil nominal sur `COM3` :
 
 ```powershell
-pio run -e ProgrammeArrosage -t upload
-pio device monitor -b 115200
+pio run -e ProgrammeArrosage -t upload --upload-port COM3
+pio device monitor -p COM3 -b 115200
 ```
 
 Copier les lignes commençant par :
@@ -107,15 +149,19 @@ Puis contrôler le fonctionnement habituel du module sans lancer de test HTTPS.
 | Modification logicielle limitée à `SystemDiagnostics.cpp` | VALIDÉ |
 | Aucun HTTPS ajouté | VALIDÉ |
 | Aucune écriture OTA ajoutée | VALIDÉ |
-| Compilation Legacy | À EXÉCUTER LOCALEMENT |
-| Compilation V4 | À EXÉCUTER LOCALEMENT |
-| Upload matériel | À EXÉCUTER |
-| Table réelle du module | À RELEVER |
-| Mémoire au démarrage | À RELEVER |
-| Tactile et portail captif | À REVALIDER |
+| Compilation Legacy | VALIDÉ — binaire mesuré précédemment |
+| Compilation V4 | VALIDÉ — binaire mesuré précédemment |
+| Upload matériel sur COM3 | VALIDÉ |
+| Table réelle du module | VALIDÉ |
+| Deux partitions de 2031616 octets | VALIDÉ |
+| `otadata` de 8192 octets | VALIDÉ |
+| Résumé `ready=yes` | VALIDÉ |
+| Mémoire au démarrage | VALIDÉ — 265080 / 259508 / 110580 octets |
+| Tactile et portail captif | À CONFIRMER PAR TEST FONCTIONNEL |
+| Relais / bus I²C | À VÉRIFIER — scan I²C à 0 périphérique |
 
 ## Suite autorisée
 
-OTA-1 ne pourra commencer qu’après réception des logs matériels OTA-0.1 et validation du fonctionnement normal du programmateur.
+Le volet partitionnement et mémoire initiale d’OTA-0.1 est validé. OTA-1 peut préparer un test HTTPS isolé et non destructif, sans écriture dans `app1`.
 
-La première étape OTA-1 restera un test HTTPS isolé et non destructif. Aucune écriture dans `app1` ne sera autorisée à ce stade.
+Avant de clôturer complètement la validation fonctionnelle du firmware chargé, confirmer le tactile, l’accès Web et la situation du bus I²C. Le premier test OTA-1 devra instrumenter la mémoire avant et après initialisation complète afin d’expliquer la chute du plus grand bloc contigu observée lors du diagnostic ntfy.
