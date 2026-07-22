@@ -13,7 +13,12 @@ bool MaintenanceRequestStore::isValid(uint8_t rawValue) {
 
 MaintenanceRequest MaintenanceRequestStore::load() {
     Preferences preferences;
-    if (!preferences.begin(NVS_NAMESPACE, true)) {
+
+    // Ouvrir en lecture/ecriture afin de creer silencieusement le namespace
+    // lors du tout premier boot. Une ouverture read-only sur un namespace
+    // encore absent produit un log NVS NOT_FOUND bien que l'absence signifie
+    // simplement qu'aucune demande de maintenance n'a encore ete enregistree.
+    if (!preferences.begin(NVS_NAMESPACE, false)) {
         return MaintenanceRequest::NONE;
     }
 
