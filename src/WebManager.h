@@ -17,6 +17,7 @@
 #include "NotificationManager.h"
 #include "SdStaticHandler.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "MaintenanceRequest.h"
 
 class WebManager {
 public:
@@ -162,6 +163,50 @@ public:
             );
         notificationConfigHandler->setMethod(HTTP_POST);
         _server.addHandler(notificationConfigHandler);
+
+        _server.on("/ota", HTTP_GET,
+            [](AsyncWebServerRequest* req) {
+                static const char PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mise a jour</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101820;color:#eef;font-family:Arial,sans-serif}.card{box-sizing:border-box;width:92%;max-width:520px;padding:24px;background:#172532;border:1px solid #385064;border-radius:12px;box-shadow:0 10px 30px #0008}h1{margin:0 0 8px;font-size:24px}p{line-height:1.5;color:#bed0dc}.warning{padding:12px;border:1px solid #d59b35;border-radius:8px;background:#3a2b13;color:#ffd88b}button,a{box-sizing:border-box;display:block;width:100%;margin-top:14px;padding:12px;border-radius:7px;text-align:center;font-size:16px;text-decoration:none}button{border:0;background:#4fc3f7;color:#06141b;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}a{border:1px solid #526d80;color:#d7e9f3}#result{min-height:24px;margin-top:14px;font-weight:700}</style></head><body><main class="card"><h1>Mise a jour logicielle</h1><p>Ce test redemarre AquaLook en mode maintenance minimal, verifie l'acces HTTPS a GitHub, puis revient automatiquement au fonctionnement normal.</p><div class="warning">Le test est refuse si une zone d'arrosage est active. Aucune partition OTA n'est ecrite.</div><button id="probe" onclick="startProbe()">Tester GitHub maintenant</button><div id="result"></div><a href="/index.html">Retour a AquaLook</a></main><script>async function startProbe(){const b=document.getElementById('probe'),r=document.getElementById('result');if(!confirm('AquaLook va redemarrer pour tester GitHub. Continuer ?'))return;b.disabled=true;r.textContent='Preparation du redemarrage...';try{const x=await fetch('/api/maintenance/probe-github',{method:'POST'});const j=await x.json().catch(()=>({}));if(!x.ok){r.textContent=j.error==='watering-active'?'Test refuse : arrosage en cours.':'Erreur : '+(j.error||x.status);b.disabled=false;return}r.textContent='Demande acceptee. Redemarrage en cours...';setTimeout(()=>{r.textContent='Test en cours. AquaLook reviendra automatiquement.'},1500)}catch(e){r.textContent='Connexion interrompue : le module redemarre probablement.'}}</script></body></html>
+)rawliteral";
+                AsyncWebServerResponse* response = req->beginResponse(
+                    200, "text/html; charset=utf-8", PAGE);
+                response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                req->send(response);
+            }
+        );
+
+        _server.on("/api/maintenance/probe-github", HTTP_POST,
+            [this](AsyncWebServerRequest* req) {
+                if (!_config || !_relais) {
+                    req->send(503, "application/json", "{\"ok\":false,\"error\":\"runtime-not-ready\"}");
+                    return;
+                }
+
+                for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
+                    if (_relais->getState(zone)) {
+                        EventLog::log(
+                            LOG_WARN,
+                            "Maintenance Web: probe GitHub refuse, zone %u active",
+                            static_cast<unsigned>(zone + 1U)
+                        );
+                        req->send(409, "application/json", "{\"ok\":false,\"error\":\"watering-active\"}");
+                        return;
+                    }
+                }
+
+                if (!MaintenanceRequestStore::save(MaintenanceRequest::PROBE_GITHUB)) {
+                    EventLog::log(LOG_ERROR, "Maintenance Web: echec enregistrement demande NVS");
+                    req->send(500, "application/json", "{\"ok\":false,\"error\":\"nvs-write-failed\"}");
+                    return;
+                }
+
+                EventLog::log(LOG_WARN, "Maintenance Web: probe GitHub demande, redemarrage programme");
+                _restartPending = true;
+                _restartAtMs = millis() + 750U;
+                req->send(202, "application/json", "{\"ok\":true,\"restart\":true,\"command\":\"probe_github\"}");
+            }
+        );
 
         _server.on("/logs", HTTP_GET,
             [](AsyncWebServerRequest* req) {
