@@ -89,7 +89,7 @@ void runHttpsProbe() {
         return;
     }
 
-    const String statusLine = client.readStringUntil('\n');
+    String statusLine = client.readStringUntil('\n');
     statusLine.trim();
     Serial.printf("[OTA-1] http statusLine=%s\n", statusLine.c_str());
 
