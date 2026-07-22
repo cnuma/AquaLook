@@ -3,6 +3,7 @@
 #if AQUALOOK_OTA_TLS_PROBE
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 
@@ -116,6 +117,12 @@ void probeTask(void*) {
     );
     vTaskDelete(nullptr);
 }
+
+void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t) {
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+        OtaTlsProbe::onWifiConnected();
+    }
+}
 }  // namespace
 
 void OtaTlsProbe::onWifiConnected() {
@@ -135,6 +142,10 @@ void OtaTlsProbe::onWifiConnected() {
     if (created != pdPASS) {
         EventLog::log(LOG_ERROR, "OTA-1.1: task creation failed");
     }
+}
+
+void initVariant() {
+    WiFi.onEvent(onWiFiEvent, ARDUINO_EVENT_WIFI_STA_GOT_IP);
 }
 
 #else
