@@ -101,6 +101,30 @@ Le run suivant OTA-2.1 ajoutera une API locale contrôlée permettant de :
 
 `CHECK_VERSION` et `INSTALL_UPDATE` resteront désactivés jusqu'à définition et validation du manifeste GitHub.
 
+## Validation de compilation reçue
+
+### Profil V4
+
+Commande exécutée localement :
+
+```powershell
+pio run -e ProgrammeArrosage_v4
+```
+
+Résultat :
+
+- statut : `SUCCESS` ;
+- durée : `178.77 s` ;
+- RAM statique : `73 260 / 327 680 octets` — `22,4 %` ;
+- flash : `1 330 381 / 2 031 616 octets` — `65,5 %` ;
+- image `firmware.bin` créée avec succès.
+
+La marge flash reste confortable et largement inférieure au seuil de vigilance de 85 %.
+
+### Profil Legacy
+
+État : **à confirmer** avant upload matériel.
+
 ## Validation requise
 
 Compiler les profils :
