@@ -47,9 +47,11 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     ok = preferences.putULong("tls_ms", result.tlsDurationMs) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("uptime_ms", result.recordedUptimeMs) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("heap_min", result.minFreeHeap) == sizeof(uint32_t) && ok;
-    ok = preferences.putString("command", result.command) > 0U && ok;
-    ok = preferences.putString("http", result.httpLine) > 0U && ok;
-    ok = preferences.putString("detail", result.detail) > 0U && ok;
+
+    // Ces champs peuvent être volontairement vides après un probe réussi.
+    preferences.putString("command", result.command);
+    preferences.putString("http", result.httpLine);
+    preferences.putString("detail", result.detail);
 
     preferences.end();
     return ok;
