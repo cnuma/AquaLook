@@ -18,6 +18,7 @@
 #include "SdStaticHandler.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "MaintenanceRequest.h"
+#include "MaintenanceResult.h"
 
 class WebManager {
 public:
@@ -164,10 +165,33 @@ public:
         notificationConfigHandler->setMethod(HTTP_POST);
         _server.addHandler(notificationConfigHandler);
 
+        _server.on("/api/maintenance/last-result", HTTP_GET,
+            [](AsyncWebServerRequest* req) {
+                const MaintenanceResult result = MaintenanceResultStore::load();
+                JsonDocument doc;
+                doc["valid"] = result.valid;
+                if (result.valid) {
+                    doc["command"] = result.command;
+                    doc["success"] = result.success;
+                    doc["httpLine"] = result.httpLine;
+                    doc["tlsDurationMs"] = result.tlsDurationMs;
+                    doc["recordedUptimeMs"] = result.recordedUptimeMs;
+                    doc["minFreeHeap"] = result.minFreeHeap;
+                    doc["detail"] = result.detail;
+                }
+                String body;
+                serializeJson(doc, body);
+                AsyncWebServerResponse* response =
+                    req->beginResponse(200, "application/json", body);
+                response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                req->send(response);
+            }
+        );
+
         _server.on("/ota", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 static const char PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mise a jour</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101820;color:#eef;font-family:Arial,sans-serif}.card{box-sizing:border-box;width:92%;max-width:520px;padding:24px;background:#172532;border:1px solid #385064;border-radius:12px;box-shadow:0 10px 30px #0008}h1{margin:0 0 8px;font-size:24px}p{line-height:1.5;color:#bed0dc}.warning{padding:12px;border:1px solid #d59b35;border-radius:8px;background:#3a2b13;color:#ffd88b}button,a{box-sizing:border-box;display:block;width:100%;margin-top:14px;padding:12px;border-radius:7px;text-align:center;font-size:16px;text-decoration:none}button{border:0;background:#4fc3f7;color:#06141b;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}a{border:1px solid #526d80;color:#d7e9f3}#result{min-height:24px;margin-top:14px;font-weight:700}</style></head><body><main class="card"><h1>Mise a jour logicielle</h1><p>Ce test redemarre AquaLook en mode maintenance minimal, verifie l'acces HTTPS a GitHub, puis revient automatiquement au fonctionnement normal.</p><div class="warning">Le test est refuse si une zone d'arrosage est active. Aucune partition OTA n'est ecrite.</div><button id="probe" onclick="startProbe()">Tester GitHub maintenant</button><div id="result"></div><a href="/index.html">Retour a AquaLook</a></main><script>async function startProbe(){const b=document.getElementById('probe'),r=document.getElementById('result');if(!confirm('AquaLook va redemarrer pour tester GitHub. Continuer ?'))return;b.disabled=true;r.textContent='Preparation du redemarrage...';try{const x=await fetch('/api/maintenance/probe-github',{method:'POST'});const j=await x.json().catch(()=>({}));if(!x.ok){r.textContent=j.error==='watering-active'?'Test refuse : arrosage en cours.':'Erreur : '+(j.error||x.status);b.disabled=false;return}r.textContent='Demande acceptee. Redemarrage en cours...';setTimeout(()=>{r.textContent='Test en cours. AquaLook reviendra automatiquement.'},1500)}catch(e){r.textContent='Connexion interrompue : le module redemarre probablement.'}}</script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mise a jour</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101820;color:#eef;font-family:Arial,sans-serif}.card{box-sizing:border-box;width:92%;max-width:560px;padding:24px;background:#172532;border:1px solid #385064;border-radius:12px;box-shadow:0 10px 30px #0008}h1{margin:0 0 8px;font-size:24px}h2{margin:22px 0 8px;font-size:18px}p{line-height:1.5;color:#bed0dc}.warning,.probe-result{padding:12px;border-radius:8px}.warning{border:1px solid #d59b35;background:#3a2b13;color:#ffd88b}.probe-result{border:1px solid #385064;background:#101820;color:#d7e9f3}.probe-result.ok{border-color:#41956b}.probe-result.fail{border-color:#b75b5b}.row{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.label{color:#91aabd}.value{text-align:right;overflow-wrap:anywhere}button,a{box-sizing:border-box;display:block;width:100%;margin-top:14px;padding:12px;border-radius:7px;text-align:center;font-size:16px;text-decoration:none}button{border:0;background:#4fc3f7;color:#06141b;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}a{border:1px solid #526d80;color:#d7e9f3}#result{min-height:24px;margin-top:14px;font-weight:700}</style></head><body><main class="card"><h1>Mise a jour logicielle</h1><p>Ce test redemarre AquaLook en mode maintenance minimal, verifie l'acces HTTPS a GitHub, puis revient automatiquement au fonctionnement normal.</p><div class="warning">Le test est refuse si une zone d'arrosage est active. Aucune partition OTA n'est ecrite.</div><h2>Dernier test</h2><div id="last" class="probe-result">Chargement...</div><button id="probe" onclick="startProbe()">Tester GitHub maintenant</button><div id="result"></div><a href="/index.html">Retour a AquaLook</a></main><script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));async function loadLast(){const e=document.getElementById('last');try{const r=await fetch('/api/maintenance/last-result',{cache:'no-store'}),j=await r.json();if(!j.valid){e.className='probe-result';e.textContent='Aucun resultat enregistre.';return}e.className='probe-result '+(j.success?'ok':'fail');const rows=[['Etat',j.success?'Succes':'Echec'],['HTTP',j.httpLine||'Non disponible'],['Duree TLS',j.tlsDurationMs+' ms'],['Uptime maintenance',Math.round(j.recordedUptimeMs/1000)+' s'],['Heap minimale',j.minFreeHeap+' octets']];if(j.detail)rows.push(['Detail',j.detail]);e.innerHTML=rows.map(x=>'<div class="row"><span class="label">'+esc(x[0])+'</span><span class="value">'+esc(x[1])+'</span></div>').join('')}catch(_){e.className='probe-result fail';e.textContent='Resultat indisponible.'}}async function startProbe(){const b=document.getElementById('probe'),r=document.getElementById('result');if(!confirm('AquaLook va redemarrer pour tester GitHub. Continuer ?'))return;b.disabled=true;r.textContent='Preparation du redemarrage...';try{const x=await fetch('/api/maintenance/probe-github',{method:'POST'});const j=await x.json().catch(()=>({}));if(!x.ok){r.textContent=j.error==='watering-active'?'Test refuse : arrosage en cours.':'Erreur : '+(j.error||x.status);b.disabled=false;return}r.textContent='Demande acceptee. Redemarrage en cours...';setTimeout(()=>{r.textContent='Test en cours. Rechargez cette page apres le retour d AquaLook.'},1500)}catch(e){r.textContent='Connexion interrompue : le module redemarre probablement.'}}loadLast();</script></body></html>
 )rawliteral";
                 AsyncWebServerResponse* response = req->beginResponse(
                     200, "text/html; charset=utf-8", PAGE);
