@@ -176,32 +176,83 @@ Points d’architecture à étudier :
 
 Invariant impératif : l’absence d’Internet ou de réseau Wi-Fi externe ne doit jamais empêcher l’exécution des programmes déjà enregistrés ni l’accès local aux fonctions essentielles. Le passage en point d’accès ne doit provoquer ni redémarrages répétés, ni perte de configuration, ni interruption intempestive d’un cycle d’arrosage en cours.
 
-### Connexion à un cloud externe
+### Écosystème AquaLook — cloud, MQTT et application mobile
 
-Permettre au module AquaLook de se connecter de manière sécurisée à un service cloud externe afin de rendre le système accessible sans connexion directe au réseau local du module.
+Faire évoluer AquaLook vers une architecture à trois couches : module ESP32 autonome, applications clientes et services distants. Le document de référence `docs/architecture/SYSTEM_ARCHITECTURE.md` formalise les responsabilités et invariants de cette architecture.
 
-Objectifs fonctionnels :
+#### Phase A — validation MQTT avec HiveMQ Cloud
 
-- centraliser et historiser les logs techniques et fonctionnels du module ;
-- consulter à distance l’état du programmateur, des zones, des cycles et des éventuelles erreurs ;
-- piloter l’application et envoyer des commandes au module depuis une interface distante ;
-- modifier certains paramètres ou programmes d’arrosage à distance ;
-- conserver un fonctionnement local autonome si la connexion Internet ou le service cloud est indisponible ;
-- synchroniser les données accumulées localement après une interruption de connexion.
+- utiliser HiveMQ Cloud comme broker MQTT de développement ;
+- établir une connexion MQTT/TLS sortante depuis AquaLook ;
+- définir et versionner l’arborescence des topics ;
+- publier les états, événements et diagnostics utiles ;
+- recevoir des demandes de commande distantes ;
+- ajouter un identifiant de corrélation et un acquittement explicite pour chaque commande ;
+- tester la reconnexion, les coupures réseau et la reprise après indisponibilité du broker ;
+- limiter le volume, la fréquence et la taille des messages afin de préserver la stabilité de l’ESP32 ;
+- rendre les contrats de messages indépendants du fournisseur de broker.
 
-Points d’architecture à étudier :
+#### Phase B — application mobile Flutter
 
-- protocole de communication sortant initié par le module, par exemple MQTT sécurisé ou HTTPS ;
-- authentification forte du module et des utilisateurs ;
-- chiffrement TLS des échanges ;
-- gestion des droits d’accès et protection contre les commandes non autorisées ;
-- file locale persistante pour les logs et commandes en attente ;
-- limitation du volume et de la fréquence des remontées afin de préserver la mémoire, la bande passante et la stabilité du firmware ;
-- choix entre une plateforme existante, un serveur auto-hébergé ou un service cloud dédié ;
-- mécanisme de mise à jour ou de révocation des identifiants du module ;
-- traçabilité des commandes distantes et confirmation de leur exécution réelle.
+- développer une base de code unique pour iOS et Android avec Flutter ;
+- afficher les états AquaLook en temps réel à partir de MQTT ;
+- consulter les zones, programmes, événements et diagnostics ;
+- envoyer des demandes de commande vers AquaLook via MQTT ;
+- afficher les commandes acceptées, refusées, expirées ou en erreur ;
+- recevoir et présenter les notifications ;
+- préparer la gestion multi-modules et multi-sites ;
+- préparer une intégration OTA contrôlée sans donner à l’application l’autorité directe sur le moteur local.
 
-Invariant impératif : le cloud doit rester une extension du système. Le planificateur, la sécurité des relais et les cycles d’arrosage doivent continuer à fonctionner localement et de manière autonome en cas de perte du cloud ou d’Internet.
+#### Phase C — migration vers un VPS OVHcloud
+
+Après validation du fonctionnement avec HiveMQ Cloud et mesure des besoins :
+
+- migrer le broker vers un VPS OVHcloud maîtrisé ;
+- déployer Mosquitto comme broker MQTT ;
+- utiliser Node-RED pour les scénarios de test, les diagnostics et certaines intégrations ;
+- ajouter une base de données pour l’historique ;
+- préparer une API AquaLook et les services de notifications ;
+- mettre en place supervision, sauvegardes, mises à jour de sécurité et journalisation ;
+- conserver les mêmes contrats MQTT ou gérer leur évolution par version ;
+- éviter toute dépendance du firmware à une adresse, un certificat ou un fournisseur figé sans mécanisme de renouvellement.
+
+#### Phase D — plateforme AquaLook
+
+- gestion multi-utilisateurs ;
+- gestion multi-sites ;
+- association de plusieurs modules à une installation ;
+- supervision centralisée ;
+- historique et statistiques ;
+- tableaux de bord ;
+- notifications avancées ;
+- administration Web ;
+- gestion de flotte et préparation des déploiements OTA contrôlés ;
+- ouverture vers les consommations d’eau, sondes, météo et recommandations d’arrosage.
+
+Principes d’architecture :
+
+- l’ESP32 reste l’autorité locale et temps réel ;
+- le cloud transporte, historise et supervise mais ne pilote jamais directement un relais ;
+- Flutter présente les données et émet des demandes, mais n’embarque pas la logique métier critique ;
+- MQTT transporte les messages et ne devient pas le moteur d’arrosage ;
+- toute commande distante est validée localement, bornée, tracée et acquittée ;
+- la perte d’Internet, du broker, du VPS ou de l’application ne doit pas empêcher les cycles locaux ;
+- HiveMQ sert à valider le concept, puis la migration vers OVHcloud doit rester possible sans réécriture du moteur local.
+
+Ordre de réalisation proposé :
+
+1. documenter les topics et les schémas de messages ;
+2. connecter un prototype AquaLook à HiveMQ Cloud en lecture seule ;
+3. valider publication, reconnexion, charge mémoire et stabilité ;
+4. ajouter des commandes non critiques avec acquittement ;
+5. réaliser un premier tableau de bord Flutter ;
+6. valider les commandes d’équipements avec les règles d’autorité locales ;
+7. ajouter notifications, historique et gestion multi-modules ;
+8. mesurer les besoins réels d’exploitation ;
+9. migrer vers un VPS OVHcloud avec Mosquitto et Node-RED ;
+10. développer progressivement les services de plateforme.
+
+Invariant impératif : le cloud et l’application mobile restent des extensions du système. Le planificateur, la sécurité des relais, les cycles d’arrosage et la validation des commandes restent locaux. Une indisponibilité du broker MQTT, de l’application, d’Internet ou du VPS ne doit jamais provoquer l’arrêt du système, une commande intempestive ou une modification silencieuse d’un programme.
 
 ### Mesure de la consommation d’eau par voie
 
