@@ -43,6 +43,19 @@ Pour une évolution significative, lire aussi :
 
 ## Règles impératives
 
+### Numérotation des réponses de l’agent
+
+Afin de rendre visible la profondeur d’un échange, de détecter les conversations devenues trop longues et de faciliter les références croisées :
+
+- toute réponse principale de l’agent dans un échange relatif à AquaLook commence par un identifiant au format `AQL-RNNN`, par exemple `AQL-R001` ;
+- la numérotation commence à `AQL-R001` au début de chaque nouveau chat AquaLook et progresse de une unité à chaque nouvelle réponse principale ;
+- les messages intermédiaires appartenant à la même réponse utilisent le même numéro suivi d’un suffixe, par exemple `AQL-R004.1`, `AQL-R004.2` ;
+- le numéro est affiché au tout début du message, avant le titre ou le contenu ;
+- les réponses très courtes, les confirmations et les bilans sont également numérotés ;
+- un checkpoint ou un document de reprise peut mentionner le dernier numéro atteint afin d’indiquer la profondeur de la conversation source ;
+- lorsque la conversation dépasse environ `AQL-R030`, l’agent doit signaler que le chat devient profond et proposer ou préparer un checkpoint autonome avant que la longueur du contexte ne dégrade la qualité ou les performances ;
+- cette numérotation sert uniquement au suivi conversationnel et ne remplace ni les numéros de runs, ni les versions, ni les commits Git, ni les identifiants d’issues ou de pull requests.
+
 ### Versionnement et espace À propos
 
 - Tout projet exécutable ou publiable doit posséder un numéro de version proposé et maintenu.
