@@ -16,6 +16,9 @@
 *.hex
 *.map
 
+# Sorties locales de build-all
+dist/
+
 # Fichiers temporaires
 *.tmp
 *.bak
