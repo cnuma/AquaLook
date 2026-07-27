@@ -1,153 +1,196 @@
 # AquaLook Engineering Reference — Diagnostic et observabilité
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : pilier Observabilité, checkpoints Runtime et EventLog
-- Composants : EventLog, profiler, diagnostics mémoire, réseau, stockage, relais
-- Maturité : D3
+- Source de code : `src/SystemDiagnostics.h`, `src/SystemDiagnostics.cpp`, `src/RuntimeProfiler.*`, `src/WebManager.*`, `src/EventLog.*`
+- Composants : diagnostic système, Runtime, Web, mémoire, Wi-Fi, EventLog
+- Maturité : D4
 
 ## Mission
 
-L’observabilité rend l’état réel d’AquaLook compréhensible sans devenir une dépendance du moteur d’arrosage.
+`SystemDiagnostics` collecte des métriques légères en RAM, sans tâche dédiée ni écriture Flash périodique. Les données sont exposées par `GET /api/diagnostics` et complétées par `RuntimeProfiler::fillJson()`.
 
-## Types de données
+## API publique confirmée
 
-- événement : changement ou incident horodaté ;
-- métrique : valeur numérique avec unité et fréquence ;
-- état de santé : `OK`, `DEGRADED`, `FAULT` ou `UNKNOWN` ;
-- trace d’action : origine, demande, décision, exécution et résultat ;
-- diagnostic : données techniques destinées à l’analyse.
-
-## Minimum embarqué
-
-- identité du build et uptime ;
-- cause du dernier redémarrage ;
-- heap libre et plus grand bloc contigu ;
-- état Wi-Fi, RSSI et synchronisation temporelle ;
-- état NVS, LittleFS et microSD ;
-- état des relais et cycle actif ;
-- erreurs récentes ;
-- compteur d’incidents critiques ;
-- mesures du profiler Runtime.
-
-## EventLog
-
-Le journal centralise les événements significatifs. Avant NTP, l’ordre relatif est fourni par `millis()`. Après synchronisation, l’heure absolue prend le relais pour les nouveaux événements. Le changement de source temporelle est traçable.
-
-Les événements ne doivent pas contenir de secrets et la journalisation doit rester non bloquante.
-
-## Profiler Runtime
-
-Les mesures de l’étape 6 sont qualifiées en temps mural. Une pause peut inclure du temps d’ordonnancement et ne doit pas être attribuée automatiquement au composant actif.
-
-`yield()` reste mesuré dans les diagnostics mais est exclu des alertes de lenteur métier. Les pauses proches de 136 ms observées sont considérées comme potentiellement liées à l’ordonnanceur tant qu’une mesure plus précise ne prouve pas une cause applicative.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  COMP[Composants] --> EVT[EventLog]
-  COMP --> MET[Metrics]
-  COMP --> HEALTH[Health]
-  EVT --> LOCAL[Diagnostic local]
-  MET --> LOCAL
-  HEALTH --> LOCAL
-  LOCAL --> FUTURE[Export distant sécurisé prévu]
+```cpp
+static void begin();
+static void loopEnter();
+static void loopExit();
+static void noteWebResponse(const char* uri,
+                            uint16_t statusCode,
+                            size_t responseBytes,
+                            uint32_t generationUs);
+static void fillJson(JsonDocument& doc, const WiFiManager* wifi);
 ```
 
-## Interfaces exposées
+Seuils :
 
-Les routes HTTP réellement présentes sont inventoriées dans `09_WEB_AND_HTTP_INTERFACES.md`. Les pages ou API de diagnostic supplémentaires ne doivent être ajoutées qu’après extraction du code.
+```cpp
+LOOP_OVERRUN_THRESHOLD_US = 100000;
+LOOP_OVERRUN_LOG_INTERVAL_MS = 5000;
+```
 
-Les futurs topics MQTT de télémétrie restent préliminaires jusqu’à versionnement de leur cartographie.
+Une boucle dépassant 100 ms incrémente le compteur d’overruns. Le log d’avertissement est limité à une occurrence toutes les 5 secondes afin d’éviter une tempête de logs.
 
-## Politique de collecte
+## Instrumentation du Runtime
 
-Chaque métrique documente :
+`src/main.cpp` appelle `SystemDiagnostics::loopEnter()` au début de `loop()` et `loopExit()` à la fin. `loopExit()` mesure le temps mural avec `micros()`, maintient les valeurs courantes, maximales et moyennes, puis journalise les dépassements hors section critique.
 
-- nom ;
-- unité ;
-- source ;
-- fréquence ;
-- plage attendue ;
-- seuils ;
-- rétention ;
-- coût mémoire et CPU ;
-- caractère sensible.
+## Instrumentation Web
 
-Les collectes et écritures sont bornées et non bloquantes.
+`noteWebResponse()` conserve :
 
-## États inconnus et données anciennes
+- nombre total de réponses ;
+- nombre de statuts `>= 400` ;
+- dernière URI ;
+- dernier statut ;
+- taille de la dernière réponse ;
+- dernière et maximale durée de génération ;
+- âge de la dernière réponse.
 
-Une donnée non mesurée, invalide ou trop ancienne est présentée comme `UNKNOWN` ou périmée. Elle ne doit pas être affichée comme normale par défaut.
+## Schéma JSON confirmé
 
-## Modes dégradés
+`SystemDiagnostics::fillJson()` produit les objets suivants.
 
-### microSD absente
+### `system`
 
-Le diagnostic local et un journal mémoire limité restent disponibles.
+```text
+uptimeSec
+cpuMhz
+sdk
+chipRevision
+resetReason
+loopCore
+```
 
-### réseau absent
+### `build`
 
-Les mesures locales continuent ; aucun export distant n’est requis.
+```text
+version
+number
+gitSha
+gitBranch
+relayBackend
+compiledDate
+compiledTime
+```
 
-### stockage saturé
+`relayBackend` vaut `legacy` ou `v4` selon les macros de compilation.
 
-Une politique de rotation ou de limitation s’applique. Les événements critiques sont prioritaires.
+### `memory`
 
-### mémoire faible
+```text
+heapFree
+heapMin
+heapLargestBlock
+heapSize
+psramSize
+psramFree
+loopStackHighWaterWords
+```
 
-Les fonctions d’observation réduisent leur collecte avant de compromettre le Runtime.
+### `loop`
 
-## Sécurité
+```text
+count
+lastDurationUs
+maxDurationUs
+lastPeriodUs
+maxPeriodUs
+ageMs
+averageDurationUs
+healthy
+overrunThresholdUs
+overrunCount
+lastOverrunUs
+lastOverrunAgeMs
+cpuStatsAvailable
+```
 
-Ne jamais journaliser : mots de passe, clés privées, jetons complets, données de session réutilisables ou secrets de publication.
+`healthy` est vrai lorsque l’âge du dernier passage de boucle est inférieur à 2 secondes.
 
-Les identifiants techniques sont tronqués lorsque leur valeur complète n’est pas nécessaire.
+### `web`
+
+```text
+responses
+errors
+lastUri
+lastStatus
+lastBytes
+lastGenerationUs
+maxGenerationUs
+lastAgeMs
+```
+
+### `wifi`
+
+```text
+state
+connected
+captive
+rssi
+ip
+channel
+mac
+```
+
+`RuntimeProfiler::fillJson(doc)` ajoute ensuite ses propres structures au même document.
+
+## EventLog et défauts
+
+- `/api/logs` expose le buffer mémoire `EventLog` ;
+- `/api/logs/ack` acquitte les erreurs historiques ;
+- `/api/faults` retourne `active`, `unacknowledged` et `mask` ;
+- `/logs` fournit une page embarquée de consultation.
+
+Le journal actuel conserve des timestamps relatifs `millis()` uniquement. Il n’embarque pas de timestamp NTP absolu.
+
+## Cause de redémarrage
+
+`resetReasonStr()` traduit notamment : mise sous tension, reset externe, redémarrage logiciel, panic, watchdog, sortie de veille, brownout et reset SDIO.
 
 ## Invariants
 
-### INV-OBS-001
+- `INV-OBS-001` : aucune écriture Flash périodique n’est réalisée par `SystemDiagnostics`.
+- `INV-OBS-002` : les métriques sont collectées sous section critique et journalisées hors section critique.
+- `INV-OBS-003` : un overrun est qualifié en temps mural, pas en temps CPU strict.
+- `INV-OBS-004` : la limitation des logs évite d’aggraver le ralentissement observé.
+- `INV-OBS-005` : les diagnostics restent consultables sans microSD.
+- `INV-OBS-006` : l’identité du build provient des macros générées, avec valeur `unknown` en absence de génération.
 
-L’observabilité ne bloque jamais le Scheduler ou la chaîne de commande.
+## Limites
 
-### INV-OBS-002
+- métriques volatiles après redémarrage ;
+- aucune rétention historique longue ;
+- pas de statistiques CPU FreeRTOS lorsque `configGENERATE_RUN_TIME_STATS` est désactivé ;
+- les mesures Web concernent la génération de réponse instrumentée, pas nécessairement le transfert réseau complet ;
+- la sortie EventLog série peut influencer le temps mural mesuré.
 
-Chaque métrique possède une unité, une source et une fréquence explicites.
+## Validation
 
-### INV-OBS-003
-
-Un état inconnu n’est jamais converti implicitement en état sain.
-
-### INV-OBS-004
-
-Les diagnostics restent partiellement accessibles sans Internet ni microSD.
-
-### INV-OBS-005
-
-Le résultat rapporté est cohérent avec l’effet matériel réellement observé lorsque celui-ci est disponible.
-
-## Tests
-
-- fonctionnement sans réseau ;
-- fonctionnement sans microSD ;
-- journal saturé ;
-- heap faible ;
-- redémarrage et conservation des incidents critiques ;
-- absence de secrets ;
-- cohérence EventLog / relais ;
-- impact du profiler sur le Runtime.
+- accès à `/api/diagnostics` ;
+- présence et type de chaque champ ;
+- build legacy et V4 ;
+- test d’overrun supérieur à 100 ms ;
+- limitation du log à 5 secondes ;
+- requêtes HTTP 2xx et 4xx ;
+- comportement sans Wi-Fi et sans SD ;
+- cohérence des compteurs Web et du journal ;
+- absence de secrets.
 
 ## Références
 
-- `docs/architecture/OBSERVABILITY.md` ;
+- `src/SystemDiagnostics.h` ;
+- `src/SystemDiagnostics.cpp` ;
+- `src/RuntimeProfiler.h` et `.cpp` ;
+- `src/WebManager.h` et `.cpp` ;
+- `src/EventLog.h` et `.cpp` ;
 - `docs/engineering/10_TIME_AND_EVENTLOG.md` ;
-- `docs/engineering/15_RUNTIME_AND_PROFILING.md` ;
-- checkpoint de clôture de l’étape 6.
+- `docs/engineering/15_RUNTIME_AND_PROFILING.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation du diagnostic et de l’observabilité.
+Consolidation D4 avec API, seuils et schéma JSON réellement produits par le firmware.

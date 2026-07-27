@@ -1,106 +1,157 @@
 # AquaLook Engineering Reference — Web et interfaces HTTP
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : `AGENTS.md`, checkpoints Web/SD, ressources `data/`, code du dépôt
+- Source de code : `src/WebManager.h`, `src/WebManager.cpp`, `src/main.cpp`, `src/SdStaticHandler.*`
 - Composant : `WebManager`
-- Maturité : D3
+- Maturité : D4
 
 ## Mission
 
-`WebManager` expose l’interface locale, sert les ressources Web, reçoit les commandes HTTP et délègue leur traitement aux composants propriétaires. Il ne pilote pas directement le matériel et ne modifie pas directement la persistance.
+`WebManager` expose le service HTTP local sur le port `80`, sert les ressources statiques, reçoit les commandes JSON et délègue aux propriétaires métier. Le verrouillage administrateur actuel reste visuel côté navigateur et ne constitue pas une authentification serveur.
 
-## Contraintes
+## Initialisation confirmée
 
-- préserver les routes existantes sauf décision explicite ;
-- préserver les identifiants HTML consommés par `app.js` ;
-- après une modification d’affichage, activer le mécanisme de rafraîchissement prévu, notamment `EventBus::displayDirty` ;
-- répondre au client avant un redémarrage ;
-- surveiller la taille de LittleFS après changement de `data/` ;
-- considérer le verrouillage administrateur actuel comme visuel, et non comme une authentification forte.
+Dans `src/main.cpp`, avant `begin()` :
 
-## Architecture
-
-```mermaid
-flowchart LR
-  B[Browser] --> WM[WebManager]
-  WM --> CFG[ConfigManager]
-  WM --> SCH[ScheduleManager]
-  WM --> DISP[DisplayManager]
-  WM --> STAT[État / diagnostics]
-  SD[SD si disponible] --> WM
-  LFS[LittleFS secours] --> WM
+```cpp
+webMgr.setOutputAdapter(&outputAdapter);
+webMgr.registerSdStaticHandler(&storageMgr);
+webMgr.registerFaultRoutes();
+webMgr.begin(&ntpMgr, &weatherMgr, &relaisMgr,
+             &scheduleMgr, &configMgr, &wifiMgr);
 ```
 
-## Routes confirmées par l’historique du projet
+`begin()` enregistre les routes, démarre `AsyncWebServer _server{80}` puis appelle `_server.begin()`.
 
-| URL | Méthode historique | Usage |
-|---|---|---|
-| `/` | GET | Page principale |
-| `/edit` | GET | Édition de configuration |
-| `/etat` | GET | État courant |
-| `/programmes` | GET | Gestion des programmes |
-| `/save` | POST | Enregistrement de configuration |
-| `/reset-page` | GET | Confirmation de réinitialisation |
-| `/reset` | à vérifier | Réinitialisation contrôlée |
-| `/etat-led` | GET | État de l’indicateur ou sortie associée |
-| `/status` | GET | État synthétique |
-| `/site.css` | GET | Feuille de style historique |
-| `/api/display` | GET | Lecture de la configuration d’affichage |
-| `/api/display` | POST | Sauvegarde de la configuration d’affichage |
+## Routes GET confirmées
 
-Cette liste doit être régénérée depuis les déclarations de routes du firmware à chaque consolidation majeure. Les routes non confirmées ne sont pas ajoutées au référentiel.
+| URL | Traitement |
+|---|---|
+| `/` | redirection vers `/index.html` |
+| `/setup` | portail captif embarqué |
+| `/api/status` | état fonctionnel principal |
+| `/api/adminStatus` | état d’administration |
+| `/api/diagnostics` | diagnostic JSON système |
+| `/api/zone?z=N` | créneaux d’une zone |
+| `/api/display` | lecture de la configuration d’affichage |
+| `/api/wifi/scan` | scan Wi-Fi |
+| `/api/logs` | journal d’événements |
+| `/api/faults` | état synthétique des défauts |
+| `/logs` | page de consultation du journal |
+
+Routes de détection captive redirigées vers `/setup` :
+
+```text
+/hotspot-detect.html
+/generate_204
+/gen_204
+/connecttest.txt
+/redirect
+/success.txt
+/ncsi.txt
+/canonical.html
+/chat
+```
+
+En mode captif, `onNotFound` redirige vers `/setup`; sinon il renvoie `404 Not found`.
+
+## Routes POST JSON confirmées
+
+| URL | Handler |
+|---|---|
+| `/api/mode` | `handleSetMode` |
+| `/api/interval` | `handleSetInterval` |
+| `/api/intervalAnchor` | `handleSetIntervalAnchor` |
+| `/api/deleteInterval` | `handleDeleteIntervalProgramming` |
+| `/api/dayslot` | `handleSetDaySlot` |
+| `/api/intervalslot` | `handleSetIntervalSlot` |
+| `/api/rain` | `handleSetRain` |
+| `/api/manual` | `handleManual` |
+| `/api/manualDuration` | `handleSetManualDuration` |
+| `/api/saveSchedule` | `handleSaveSchedule` |
+| `/api/wifi` | `handleSetWifi` |
+| `/api/touch` | `handleSetTouch` |
+| `/api/ntp` | `handleSetNtp` |
+| `/api/owm` | `handleSetOwm` |
+| `/api/system` | `handleSetSystem` |
+| `/api/zoneName` | `handleSetZoneName` |
+| `/api/display` | `handleSetDisplay` |
+
+Autres routes POST :
+
+| URL | Traitement |
+|---|---|
+| `/api/captive` | activation du mode captif |
+| `/api/resetConfig` | réinitialisation de la configuration |
+| `/api/logs/ack` | acquittement des erreurs sans effacer le journal |
 
 ## Ressources statiques
 
-Les ressources sont servies depuis LittleFS ou depuis la carte SD selon l’état de migration. Le démarrage, le portail captif et le diagnostic minimal doivent rester disponibles sans carte SD.
+`registerSdStaticHandler()` ajoute `SdStaticHandler` avant le démarrage du serveur. `setupRoutes()` ajoute ensuite :
 
-## Séquence de modification
-
-```mermaid
-sequenceDiagram
-  participant B as Navigateur
-  participant W as WebManager
-  participant C as ConfigManager
-  participant E as EventBus
-  B->>W: POST de modification
-  W->>C: validation et persistance
-  C-->>W: résultat
-  W->>E: displayDirty si affichage concerné
-  W-->>B: réponse HTTP
+```cpp
+_server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 ```
+
+L’ordre des handlers permet le service SD lorsqu’il est disponible, puis LittleFS. Les fallbacks firmware spécialisés restent documentés dans `14_SD_AND_STATIC_RESOURCES.md`.
+
+## Écritures différées et redémarrage
+
+Les modifications système ne sont pas écrites depuis le callback AsyncTCP. `handleSetSystem()` copie la demande dans une structure protégée, répond au client, puis `WebManager::update()` applique la sauvegarde dans la tâche Arduino. Un redémarrage éventuel est différé après la réponse HTTP.
+
+`handleSetWifi()` répond également avant `ConfigManager::setWifi()`, qui sauvegarde en NVS et redémarre.
+
+## Rafraîchissement de l’affichage
+
+Les handlers de planning et de configuration d’affichage positionnent `EventBus::displayDirty` lorsque nécessaire. Les transitions de relais réussies utilisent un rafraîchissement dynamique plutôt qu’un redraw complet.
+
+## Diagnostics HTTP
+
+`sendJson()`, `sendOk()` et `sendError()` constituent les helpers de réponse. `SystemDiagnostics::noteWebResponse()` enregistre l’URI, le statut, la taille, la durée de génération et les compteurs d’erreurs HTTP.
 
 ## Sécurité actuelle
 
-Le verrouillage administrateur côté navigateur ne constitue pas une authentification. Une exposition hors du réseau local exige une authentification réelle, des sessions, une validation stricte des entrées et un canal sécurisé selon l’architecture cybersécurité.
+- HTTP local non chiffré sur le port 80 ;
+- aucune authentification serveur forte confirmée ;
+- validation des paramètres effectuée dans les handlers ;
+- secrets à exclure des réponses et journaux ;
+- aucune exposition Internet directe autorisée par cette architecture.
 
-## Modes dégradés
+Une observation de code reste à corriger : `handleSetWifi()` imprime actuellement le mot de passe en clair sur la sortie série de diagnostic. Ce comportement est incompatible avec la politique de secrets et doit être traité dans un chantier de sécurité distinct.
 
-- SD absente : ressources de secours depuis LittleFS ;
-- Wi-Fi station indisponible : portail captif selon la logique existante ;
-- ressource absente : réponse d’erreur sans blocage du Runtime ;
-- redémarrage requis : réponse envoyée avant reboot.
+## Invariants
 
-## Tests
+- `INV-WEB-001` : les routes confirmées ne sont pas renommées sans décision documentée.
+- `INV-WEB-002` : le client reçoit une réponse avant tout redémarrage.
+- `INV-WEB-003` : aucune écriture persistante lourde n’est exécutée directement dans le callback AsyncTCP.
+- `INV-WEB-004` : les actions matérielles passent par le Scheduler ou l’adaptateur de sorties.
+- `INV-WEB-005` : l’absence de SD ne supprime pas le portail captif ni les ressources minimales.
+- `INV-WEB-006` : le verrouillage navigateur n’est pas présenté comme une authentification.
 
-- chargement de chaque URL ;
-- cohérence des IDs HTML et de `app.js` ;
-- GET/POST de `/api/display` ;
+## Validation
+
+- requête de chaque route GET ;
+- tests positifs et négatifs de chaque POST JSON ;
+- réponse avant reboot ;
 - fonctionnement avec et sans SD ;
-- portail captif ;
-- taille et compilation LittleFS ;
-- absence de duplication HTML/CSS/JS.
+- portail captif iOS, Android et Windows ;
+- contrôle de `EventBus::displayDirty` ;
+- absence de secrets dans les logs ;
+- `pio run -e ProgrammeArrosage -t buildfs` après modification du contenu LittleFS.
 
 ## Références
 
-- `AGENTS.md` — sections Web, LittleFS et validation ;
-- checkpoints de migration Web vers SD ;
-- `docs/security/CYBERSECURITY_ARCHITECTURE.md` ;
-- code de déclaration des routes dans `WebManager`.
+- `src/WebManager.h` ;
+- `src/WebManager.cpp` ;
+- `src/main.cpp` ;
+- `src/SdStaticHandler.h` et `.cpp` ;
+- `docs/engineering/14_SD_AND_STATIC_RESOURCES.md` ;
+- `docs/security/CYBERSECURITY_ARCHITECTURE.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation des interfaces HTTP confirmées.
+Consolidation D4 avec inventaire exhaustif des routes et méthodes enregistrées par le firmware courant.

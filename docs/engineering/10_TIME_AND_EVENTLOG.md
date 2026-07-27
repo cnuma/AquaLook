@@ -1,107 +1,133 @@
 # AquaLook Engineering Reference — Temps et journalisation
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : checkpoints EventLog/NTP, code du dépôt
-- Composants : gestion NTP, horodatage, EventLog centralisé
-- Maturité : D3
+- Source de code : `src/EventLog.h`, `src/EventLog.cpp`, `src/NTPManager.*`, `src/WebManager.*`
+- Composants : NTP, chronologie relative, `EventLog`, `FaultManager`
+- Maturité : D4
 
 ## Mission
 
-La gestion du temps fournit une chronologie continue dès le boot. L’EventLog centralise les événements significatifs et conserve leur ordre, leur origine et leur gravité sans bloquer le Runtime.
+La gestion du temps fournit l’heure calendaire au Scheduler après synchronisation NTP. `EventLog` fournit un journal mémoire borné et une chronologie relative depuis le boot.
 
-## Politique d’horodatage
+## Correction de référence
 
-### Avant synchronisation NTP
+Dans l’implémentation actuelle, les entrées `EventLog` stockent uniquement `millis()` dans `LogEntry::ms`. Elles ne basculent pas vers un timestamp absolu après synchronisation NTP. L’heure absolue est utilisée par les composants qui interrogent `NTPManager`, mais elle n’est pas persistée dans chaque entrée du journal.
 
-Les événements utilisent `millis()` comme temps relatif depuis le démarrage. Cette référence permet d’ordonner le boot et les incidents réseau initiaux.
+Toute évolution vers un double horodatage `uptime_ms` + timestamp absolu devra modifier explicitement la structure `LogEntry` et ses consommateurs.
 
-### Après synchronisation NTP
+## Modèle de données réel
 
-Dès qu’une synchronisation valide est obtenue, les nouveaux événements utilisent l’heure absolue. Le changement de source temporelle doit être identifiable dans les logs.
+```cpp
+enum LogLevel : uint8_t {
+    LOG_INFO = 0,
+    LOG_WARN = 1,
+    LOG_ERROR = 2
+};
 
-La conservation conjointe d’un `uptime_ms` et d’un horodatage absolu, lorsqu’il est disponible, évite qu’une correction d’horloge détruise l’information de durée.
+static constexpr uint8_t LOG_CAPACITY = 60;
+static constexpr uint8_t LOG_MSG_LEN = 72;
 
-## Politique de synchronisation
+struct LogEntry {
+    uint32_t ms;
+    LogLevel level;
+    char msg[LOG_MSG_LEN];
+};
+```
 
-- première tentative après connexion Wi-Fi stable ;
-- serveur historique : `pool.ntp.org` ;
-- resynchronisation de référence : toutes les six heures ;
-- nouvelle tentative après reconnexion réseau ;
-- échec NTP : conservation de l’horloge locale et poursuite du fonctionnement ;
-- correction significative : journalisation du delta.
+Le stockage est un buffer circulaire statique de 60 entrées. Lorsque la capacité est atteinte, la plus ancienne entrée est remplacée.
 
-La valeur exacte de l’intervalle doit rester centralisée dans le code ou la configuration, et non dupliquée dans plusieurs modules.
+## API publique confirmée
 
-## EventLog
+```cpp
+static void log(LogLevel level, const char* fmt, ...);
+static uint8_t count();
+static const LogEntry& get(uint8_t i);
+static void clear();
+static bool hasErrors();
+static void ackErrors();
+static void msToHms(uint32_t ms, char* buf, uint8_t len);
+static const char* levelStr(LogLevel level);
+static uint16_t levelColor(LogLevel level);
+```
 
-L’EventLog reçoit des événements provenant du boot, de la planification, des relais, du stockage, du réseau, du Web, de l’OTA et de la sécurité.
+`get(0)` retourne l’entrée la plus récente.
 
-Structure minimale attendue :
+## Fonctionnement de `log()`
 
-| Champ | Usage |
-|---|---|
-| identifiant | unicité ou séquence |
-| source | composant émetteur |
-| type/code | classification stable |
-| gravité | information, avertissement, erreur, critique |
-| `uptime_ms` | chronologie monotone depuis le boot |
-| timestamp absolu | présent après synchronisation |
-| message/contexte | données de diagnostic |
+1. formate le message dans un buffer local de 72 caractères ;
+2. capture `millis()` ;
+3. ajoute l’entrée au buffer circulaire ;
+4. positionne `_hasErrors` pour `LOG_ERROR` ;
+5. appelle `FaultManager::notifyError()` pour une erreur ;
+6. émet la ligne sur `Serial` au format relatif `HH:MM:SS.mmm`.
+
+Préfixes série : `[INF]`, `[WRN]`, `[ERR]`.
+
+## Acquittement et effacement
+
+- `ackErrors()` efface l’alarme historique et appelle `FaultManager::acknowledge()` sans supprimer les entrées ;
+- `clear()` vide le buffer, efface l’alarme historique et acquitte `FaultManager` ;
+- les défauts encore actifs restent gérés séparément par `FaultManager`.
+
+Routes associées :
+
+| Route | Méthode | Fonction |
+|---|---|---|
+| `/api/logs` | GET | consultation du buffer |
+| `/api/logs/ack` | POST | `EventLog::ackErrors()` |
+| `/logs` | GET | page embarquée de consultation |
+| `/api/faults` | GET | défauts actifs et non acquittés |
+
+## Politique NTP confirmée
+
+`src/main.cpp` appelle `ntpMgr.update()` uniquement lorsque le Wi-Fi est connecté. Le Scheduler n’est évalué que lorsque `ntpMgr.isSynced()` est vrai.
+
+La configuration NTP vient de `CfgNtp` : serveur, `gmtOffset` et `dstOffset`. La valeur par défaut est `pool.ntp.org`. L’intervalle réel de resynchronisation doit être lu dans `NTPManager` et ne doit pas être déduit d’un document historique.
 
 ## Invariants
 
-### INV-TIME-001
+- `INV-TIME-001` : les événements de boot sont journalisés avant toute synchronisation réseau.
+- `INV-TIME-002` : le Scheduler n’utilise l’heure calendaire qu’après `isSynced()`.
+- `INV-EVT-001` : le journal mémoire est borné à `LOG_CAPACITY`.
+- `INV-EVT-002` : un message est tronqué à `LOG_MSG_LEN - 1` plutôt que d’allouer dynamiquement.
+- `INV-EVT-003` : une erreur notifie `FaultManager`.
+- `INV-EVT-004` : acquitter une erreur ne supprime pas les défauts encore actifs.
+- `INV-EVT-005` : le journal courant est relatif au boot ; aucun timestamp absolu n’est revendiqué.
 
-Le système commence à journaliser avant la disponibilité du réseau.
+## Limites connues
 
-### INV-TIME-002
+- journal volatil en RAM ;
+- aucune persistance après redémarrage ;
+- aucune source ou code d’événement structuré ;
+- messages limités à 71 caractères utiles ;
+- `log()` n’utilise pas de section critique ; la sécurité en cas d’appels concurrents doit être évaluée avant multiplication des tâches ;
+- sortie série synchrone susceptible d’ajouter du temps mural sous forte rafale.
 
-La perte du NTP ne bloque ni le Scheduler ni les relais.
+## Validation
 
-### INV-TIME-003
-
-Le passage de `millis()` à l’heure absolue est traçable.
-
-### INV-EVT-001
-
-La journalisation ne bloque pas la boucle principale.
-
-### INV-EVT-002
-
-Les événements critiques restent disponibles même lorsque les canaux distants sont indisponibles.
-
-## Modes dégradés
-
-- NTP indisponible : chronologie relative et horloge locale ;
-- SD absente : journal réduit ou persistance alternative selon le checkpoint ;
-- stockage saturé : politique de rétention et signalement ;
-- service de notification indisponible : conservation locale de l’événement.
-
-## Interfaces
-
-Les URL de consultation des logs ne sont pas déclarées ici tant qu’elles ne sont pas extraites du code courant. Les routes envisagées dans les conversations ne constituent pas des interfaces confirmées.
-
-## Tests
-
-- événements avant connexion Wi-Fi ;
-- passage à l’heure NTP ;
-- resynchronisation après six heures ou reconnexion ;
-- échec NTP ;
-- correction de date importante ;
-- absence de blocage sous rafale d’événements ;
-- comportement sans SD.
+- remplissage au-delà de 60 entrées ;
+- ordre récent vers ancien ;
+- troncature des messages ;
+- `LOG_ERROR` et notification `FaultManager` ;
+- acquittement sans effacement ;
+- effacement complet ;
+- consultation HTTP ;
+- journalisation avant Wi-Fi et NTP ;
+- vérification d’absence de secrets.
 
 ## Références
 
-- checkpoints de centralisation de l’EventLog ;
-- checkpoints de diagnostic TLS/ntfy ;
-- documents Observabilité et Cybersécurité ;
-- implémentation NTP du dépôt.
+- `src/EventLog.h` ;
+- `src/EventLog.cpp` ;
+- `src/FaultManager.h` et `.cpp` ;
+- `src/WebManager.h` et `.cpp` ;
+- `src/main.cpp` ;
+- `docs/engineering/24_DIAGNOSTICS_AND_OBSERVABILITY.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation de la chronologie et de l’EventLog.
+Consolidation D4 avec structure, capacité, API, routes et correction de la politique d’horodatage réellement implémentée.
