@@ -1,78 +1,110 @@
 # AquaLook Engineering Reference — Matrice de test et anti-régression
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : AGENTS.md, checkpoints et stratégie qualité
-- Maturité : D3
+- Sources : `platformio.ini`, bancs `src/test_*.cpp`, code des managers et checkpoints
+- Maturité : D4
 
 ## Objet
 
-Cette matrice relie les domaines critiques aux contrôles minimaux exigés avant intégration.
+Cette matrice relie chaque domaine critique aux environnements PlatformIO, aux contrôles fonctionnels, aux tests dégradés et au niveau de preuve attendu.
 
-## Matrice
+## Matrice consolidée
 
-| Domaine | Validation statique | Test fonctionnel | Test dégradé | Preuve attendue |
+| Domaine | Build obligatoire | Test nominal | Test dégradé | Preuve minimale |
 |---|---|---|---|---|
-| Scheduler | compilation, invariants | déclenchement et fin | sans Wi-Fi / NTP | logs et observation |
-| relais | compilation, logique directe/inverse | activation d’une zone courte | contrôleur absent | mesure matérielle |
-| configuration | schéma et bornes | sauvegarde / relecture | NVS invalide | état après reboot |
-| Web | routes et IDs | GET/POST réel | ressource absente | réponse HTTP et effet |
-| affichage | chemin de redraw | rendu et hot-reload | tactile ou écran indisponible | observation LCD |
-| tactile | initialisation SPI | coordonnées et actions | contrôleur absent | test matériel |
-| SD / LittleFS | `buildfs` si `data/` change | résolution des ressources | SD retirée | chargement des fallbacks |
-| NTP / EventLog | compilation | bascule `millis()` vers heure absolue | serveur NTP absent | chronologie des logs |
-| Runtime | analyse du point d’appel | boucle non bloquante | services distants absents | profiler et fonctionnement |
-| sécurité | revue des secrets et entrées | succès et refus | heure ou stockage absent | journaux sans secrets |
-| OTA / MQTT | contrat et menaces | selon implémentation | réseau interrompu | preuve de repli |
+| Scheduler | legacy + V4 | déclenchement, fin, simultanéité | Wi-Fi/NTP absents | P4, P5 si relais |
+| configuration/NVS | legacy + V4 | sauvegarde, relecture, reboot | schéma invalide ou valeurs hors bornes | P4 |
+| relais/topologie | legacy + V4 + `test_relais` | voie unique, logique et mapping | carte absente, erreur I²C | P5 |
+| moteur V4 | V4 + `test_execution_engine` | plans start/stop | lien ou équipement invalide | P4 |
+| Web/API | legacy + V4 | chaque GET/POST et effet | JSON invalide, ressource absente | P4 |
+| affichage | legacy + V4 | vues, refresh, hot-reload | écran en veille, état réseau absent | P5 |
+| tactile | `calibration` + firmware | coordonnées et actions | dalle absente/non calibrée | P5 |
+| SD/LittleFS | firmware + `buildfs` si besoin | résolution SD/LittleFS/firmware | SD absente ou retirée | P4/P5 |
+| Wi-Fi | firmware | connexion et portail | SSID absent, 5 échecs, retour réseau | P4 |
+| NTP/EventLog | firmware | synchro et chronologie réelle | NTP absent | P4 |
+| météo | legacy + V4 | fetch et données 5 jours | clé absente, HTTP KO, JSON invalide | P4 |
+| sécurité | builds impactés | succès autorisé | refus, secret absent, entrée hostile | P4 |
 
-## Chaîne obligatoire
+## Environnements de test réels
+
+- `test_execution_engine` : moteur passif, sans runtime ni relais physique ;
+- `test_relais` : diagnostic I²C et séquence relais ;
+- `calibration` : acquisition et calibration XPT2046 ;
+- `debug_boot` : diagnostic interactif du démarrage ;
+- `ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` : firmwares complets à comparer.
+
+## Contrôles transverses obligatoires
 
 ```powershell
+git diff --check
 pio run -e ProgrammeArrosage_legacy
 pio run -e ProgrammeArrosage_v4
 ```
 
-Pour un upload matériel :
+Selon le périmètre :
 
 ```powershell
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM3
-pio device monitor --port COM3 --baud 115200
-```
-
-Si `data/` est modifié :
-
-```powershell
+pio run -e test_execution_engine
+pio run -e test_relais
+pio run -e calibration
 pio run -e ProgrammeArrosage -t buildfs
 ```
 
-Les noms d’environnements et ports sont confirmés dans le checkpoint courant avant exécution.
+## Règles anti-régression
 
-## Contrôles anti-régression
+- vérifier le point d’appel réel de toute fonction ajoutée ;
+- tester tous les modes affectés, pas seulement le chemin nominal ;
+- préserver le fallback legacy tant que son retrait n’est pas explicitement validé ;
+- comparer les comportements legacy et V4 sur les cas communs ;
+- ne jamais confondre dry-run pompe et commande physique ;
+- vérifier les routes, méthodes, champs JSON et codes HTTP ;
+- vérifier les priorités SD/LittleFS/firmware ;
+- contrôler les secrets dans le diff et les logs série ;
+- archiver le commit, les commandes et les observations dans le checkpoint.
 
-- vérifier le point d’appel de toute fonction ajoutée ;
-- vérifier les modes concernés, pas seulement le cas nominal ;
-- examiner `git diff --check` ;
-- rechercher les duplications HTML, CSS, JS et IDs ;
-- contrôler la taille LittleFS ;
-- conserver les fallbacks legacy tant que leur retrait n’est pas validé ;
-- documenter les tests matériels non réalisables ;
-- ne jamais confondre compilation, upload et validation fonctionnelle.
+## Corrections de référence
+
+L’ancien libellé « bascule EventLog de `millis()` vers heure absolue » est retiré : le code courant stocke uniquement un timestamp relatif `millis()`. Le test porte sur ce comportement réel tant qu’une évolution d’horodatage n’est pas implémentée.
 
 ## Critères de blocage
 
-Une intégration est bloquée si :
+- compilation requise en échec ;
+- test ciblé non exécuté alors qu’il est disponible ;
+- sécurité de durée relais supprimée ou contournée ;
+- divergence legacy/V4 non expliquée ;
+- route ou schéma persistant modifié sans contrat mis à jour ;
+- secret présent dans le diff, les logs ou les captures ;
+- changement matériel sans preuve P5 ou mention explicite non validée ;
+- documentation D4 contredite par le code.
 
-- la compilation requise échoue ;
-- un secret apparaît dans le diff ;
-- une sécurité relais est supprimée ;
-- une route ou un schéma persistant change sans documentation ;
-- le résultat fonctionnel demandé n’est pas relié à un point d’exécution ;
-- un fichier livré n’a pas été validé avec l’outil cible alors que cela était possible.
+## Traçabilité exigée
+
+Chaque bilan de test indique :
+
+- commit testé ;
+- environnement ;
+- commande exacte ;
+- cible et port ;
+- résultat de compilation ;
+- résultat d’upload ;
+- observation fonctionnelle ;
+- tests dégradés ;
+- limites et tests non réalisés.
 
 ## Références
 
+- `platformio.ini` ;
 - `17_BUILD_DEPLOYMENT_AND_HARDWARE_VALIDATION.md` ;
+- `src/test_execution_engine.cpp` ;
+- `src/test_relais.cpp` ;
+- `src/calibration_touch.cpp` ;
 - `docs/architecture/QUALITY.md` ;
-- `docs/codex/06_ANTI_REGRESSION.md` ;
-- `AGENTS.md`.
+- `docs/codex/06_ANTI_REGRESSION.md`.
+
+## Historique
+
+### 1.1
+
+Consolidation D4 des environnements, preuves et critères d’anti-régression.
