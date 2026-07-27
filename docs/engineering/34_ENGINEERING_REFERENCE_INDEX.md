@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Index global
 
-- Version documentaire : 1.0
+- Version documentaire : 1.1
 - Statut : point d’entrée principal
 - Dernière consolidation : 2026-07-27
 - Maturité : D4
@@ -25,6 +25,8 @@
 | sauvegarder ou restaurer | `25_BACKUP_RESTORE_AND_MAINTENANCE.md` |
 | retrouver un terme | `32_GLOSSARY.md` |
 | évaluer la documentation | `33_DOCUMENT_MATURITY_MATRIX.md` |
+| relier une affirmation au code | `35_CODE_TRACEABILITY_REGISTER.md` |
+| consolider un tome depuis le code | `CODE_LINKED_REFERENCE_PROCESS.md` |
 
 ## Registres spécialisés
 
@@ -44,13 +46,16 @@
 - OTA : `21_OTA.md` ;
 - stockages et fichiers : `27_FILE_AND_STORAGE_MAP.md` ;
 - composants matériels : `28_HARDWARE_COMPONENT_CATALOG.md` ;
-- composants logiciels : `29_SOFTWARE_COMPONENT_CATALOG.md`.
+- composants logiciels : `29_SOFTWARE_COMPONENT_CATALOG.md` ;
+- ancrages vers le code : `35_CODE_TRACEABILITY_REGISTER.md`.
 
 ## Règle de vérité
 
 L’ordre de confiance est : code du commit ciblé, checkpoint correspondant, invariants et décisions versionnés, référentiel d’ingénierie, architectures spécialisées, roadmaps, conversations.
 
 Une interface future n’est jamais ajoutée comme active avant extraction du code et validation.
+
+Une affirmation D4 ou D5 doit être reliée à un ancrage de code et à un niveau de preuve dans `35_CODE_TRACEABILITY_REGISTER.md`.
 
 ## Maintenance
 
@@ -60,4 +65,5 @@ Une interface future n’est jamais ajoutée comme active avant extraction du co
 2. vérifier les URL, fichiers, interfaces et composants ;
 3. réviser la matrice de maturité ;
 4. mettre à jour l’index des checkpoints ;
-5. vérifier cet index global.
+5. mettre à jour le registre de traçabilité ;
+6. vérifier cet index global.
