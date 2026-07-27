@@ -40,7 +40,8 @@ EquipmentExecutionShadowRuntime::update
 RelaisManager::update
 WebManager::update
 DisplayManager::update
-DisplayPlanningDecor\ nFaultManager::update
+DisplayPlanningDecor
+FaultManager::update
 yield
 SystemDiagnostics::loopExit
 ```
