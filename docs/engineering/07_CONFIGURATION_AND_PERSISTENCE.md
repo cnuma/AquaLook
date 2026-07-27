@@ -1,105 +1,123 @@
 # AquaLook Engineering Reference — Configuration et persistance
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : `AGENTS.md`, checkpoints NVS/LittleFS/SD, code du dépôt
-- Composants : `ConfigManager`, NVS, LittleFS, SD
-- Maturité : D3
+- Source de code : `src/ConfigManager.h`, `src/ConfigManager.cpp`, `src/main.cpp`, `platformio.ini`
+- Composants : `ConfigManager`, NVS, LittleFS
+- Maturité : D4
 
 ## Mission
 
-`ConfigManager` fournit la configuration validée aux autres composants et possède le cycle de persistance. Il est l’unique propriétaire du montage LittleFS. La configuration persistante active est stockée en NVS. LittleFS fournit principalement les ressources Web et le splash en lecture seule, hors migration historique contrôlée.
+`ConfigManager` possède le chargement, la validation et la persistance de la configuration. Il est l’unique propriétaire du montage LittleFS. La configuration active est stockée en NVS ; l’ancien `/config.json` LittleFS n’est utilisé que pour une migration historique contrôlée.
 
-## Responsabilités
+## Constantes persistantes confirmées
 
-- charger la configuration ;
-- appliquer les valeurs par défaut nécessaires ;
-- valider les plages et la cohérence ;
-- lire et écrire la NVS ;
-- gérer le montage LittleFS ;
-- publier une configuration cohérente ;
-- préparer une migration lorsqu’un schéma change.
+Définies dans `src/ConfigManager.h` :
+
+```cpp
+#define CFG_PATH "/config.json"
+#define CFG_VERSION 2
+#define CFG_NVS_NAMESPACE "aqualook"
+#define CFG_NVS_KEY "config"
+#define CFG_NVS_INTERVAL_ANCHORS_KEY "intAnchors"
+#define CFG_NVS_SCHEMA 1
+```
+
+## Structures confirmées
+
+- `CfgWifi` : SSID et mot de passe ;
+- `CfgTouch` : calibration tactile ;
+- `CfgManual` : durée manuelle ;
+- `CfgNtp` : serveur, décalage GMT et DST ;
+- `CfgOwm` : clé API, coordonnées, unités, ville et pays ;
+- `CfgSystem` : durée maximale, écran, zones, relais, logique et contrôleur ;
+- `CfgZone` : nom, mode, intervalle, pluie et créneaux ;
+- `CfgDisplay` : couleurs, dimensions, cadences et options météo.
+
+La limite fonctionnelle active est `MAX_ACTIVE_ZONES = 8`; les structures internes préservent `MAX_ZONES`.
+
+## API publique confirmée
+
+```cpp
+void begin();
+void save();
+void resetPersistent();
+void applyToSchedule(ScheduleManager& sched) const;
+const CfgWifi& wifi() const;
+const CfgTouch& touch() const;
+const CfgManual& manual() const;
+const CfgNtp& ntp() const;
+const CfgOwm& owm() const;
+const CfgSystem& system() const;
+const CfgZone& zone(uint8_t z) const;
+uint32_t intervalAnchorDay(uint8_t z) const;
+const CfgDisplay& display() const;
+uint8_t nbZones() const;
+uint8_t nbRelais() const;
+uint8_t relayLogic() const;
+uint8_t relayController() const;
+bool isLoaded() const;
+```
+
+Les setters enregistrent immédiatement selon les commentaires du fichier. `setWifi()` implique sauvegarde puis redémarrage ; les paramètres d’affichage sont conçus pour le hot-reload via `EventBus::displayDirty`.
+
+## Séquence réelle au boot
+
+Dans `src/main.cpp` :
+
+```cpp
+configMgr.begin();
+...
+relaisMgr.begin(&configMgr);
+...
+configMgr.applyToSchedule(scheduleMgr);
+wifiMgr.begin(configMgr.wifi().ssid, configMgr.wifi().password);
+ntpMgr.begin(&configMgr);
+weatherMgr.begin(&configMgr);
+```
+
+La configuration est donc chargée avant l’initialisation des relais, du Scheduler et des services réseau.
+
+## LittleFS et build
+
+`platformio.ini` fixe :
+
+```ini
+[platformio]
+data_dir = littlefs
+board_build.filesystem = littlefs
+```
+
+Le répertoire `littlefs/` contient uniquement les secours techniques. `data/` reste la source complète destinée à la carte SD.
 
 ## Invariants
 
-### INV-CFG-001
-
-Une configuration consommée par le Runtime est validée.
-
-### INV-CFG-002
-
-Toute évolution du schéma NVS est versionnée et accompagnée d’une migration ou d’un repli explicite.
-
-### INV-CFG-003
-
-Les managers ne montent pas LittleFS indépendamment de `ConfigManager`.
-
-### INV-CFG-004
-
-Les ressources Web et le splash ne sont pas des données métier persistantes.
-
-## Répartition actuelle des supports
-
-| Support | Usage de référence |
-|---|---|
-| NVS | Configuration active et paramètres critiques |
-| LittleFS | Ressources Web et splash, lecture seule en fonctionnement normal |
-| microSD | Ressources volumineuses, récupération et extensions documentées par les checkpoints |
-| RAM | État courant, caches et exécution volatile |
-
-La carte SD reste optionnelle pour le démarrage minimal et le fonctionnement local essentiel.
-
-## Séquence de chargement
-
-```mermaid
-flowchart TD
-  BOOT[Boot] --> FS[Montage LittleFS par ConfigManager]
-  BOOT --> NVS[Ouverture NVS]
-  NVS --> LOAD[Chargement configuration]
-  LOAD --> VAL[Validation / valeurs par défaut]
-  VAL --> PUB[Publication aux managers]
-  FS --> WEB[Ressources Web et splash]
-```
-
-## Modes dégradés
-
-- NVS illisible : application de la stratégie de repli documentée, sans inventer de migration silencieuse ;
-- LittleFS indisponible : diagnostic et interface minimale selon le firmware ;
-- SD absente : maintien du cœur d’arrosage et des ressources de secours ;
-- configuration partielle : rejet ou complétion contrôlée selon le schéma réellement implémenté.
-
-## Interfaces HTTP associées
-
-| URL | Méthode | Usage confirmé ou historique |
-|---|---|---|
-| `/edit` | GET | Édition de configuration dans l’interface historique |
-| `/save` | POST | Enregistrement depuis l’interface historique |
-| `/reset-page` | GET | Page de confirmation de réinitialisation |
-| `/reset` | POST ou GET selon version | Réinitialisation contrôlée |
-| `/api/display` | GET/POST | Lecture et sauvegarde de la configuration d’affichage |
-
-La méthode exacte de `/reset` et les autres routes doivent être vérifiées dans le firmware du checkpoint ciblé.
+- `INV-CFG-001` : `LittleFS.begin()` appartient à `ConfigManager`.
+- `INV-CFG-002` : la configuration active est persistée en NVS versionnée.
+- `INV-CFG-003` : `/config.json` est un format historique de migration, pas la source active.
+- `INV-CFG-004` : toute évolution de `CFG_NVS_SCHEMA` exige migration ou repli explicite.
+- `INV-CFG-005` : aucune configuration n’est appliquée directement au matériel sans validation.
 
 ## Validation
 
-Après modification de `data/`, exécuter :
-
-```text
-pio run -e ProgrammeArrosage -t buildfs
-```
-
-Après modification de la persistance, vérifier : premier boot, redémarrage, conservation des valeurs, valeurs invalides, migration et retour aux valeurs sûres.
+- premier boot sans NVS ;
+- sauvegarde puis redémarrage ;
+- conservation des zones, relais et paramètres d’affichage ;
+- rejet ou repli sur données invalides ;
+- migration depuis `/config.json` ;
+- `pio run -e ProgrammeArrosage -t buildfs` après modification de `littlefs/`.
 
 ## Références
 
-- `AGENTS.md` — sections LittleFS et Persistance ;
-- `docs/codex/03_INVARIANTS.md` ;
-- checkpoints de migration LittleFS vers NVS ;
-- checkpoints de migration progressive des ressources Web vers SD.
+- `src/ConfigManager.h` ;
+- `src/ConfigManager.cpp` ;
+- `src/main.cpp` ;
+- `platformio.ini` ;
+- `docs/engineering/35_CODE_TRACEABILITY_REGISTER.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation de la configuration et de la persistance.
+Consolidation D4 avec clés NVS, schéma, structures et séquence de consommation extraits du code.

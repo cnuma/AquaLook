@@ -1,126 +1,104 @@
 # AquaLook Engineering Reference — Runtime et profiling
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : checkpoint `CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md`, code du dépôt
-- Composants : boucle principale, Runtime V4, profiler, EventLog
-- Maturité : D3
+- Source de code : `src/main.cpp`, `src/RuntimeProfiler.*`, `src/SystemDiagnostics.*`
+- Composants : `setup()`, `loop()`, Runtime V4, profiler, EventLog
+- Maturité : D4
 
 ## Mission
 
-Le Runtime coordonne les composants actifs du firmware. Le profiler mesure le temps mural observé autour des traitements afin d’identifier les pauses, blocages et dérives de cadence.
+Le Runtime est câblé dans `src/main.cpp`. Il initialise les managers dans un ordre déterministe puis exécute une boucle coopérative instrumentée par `RuntimeProfiler`.
 
-## État validé
+## Ordre d’initialisation confirmé
 
-À la clôture de l’étape 6 :
+1. série, `FaultManager`, `EventLog`, `SystemDiagnostics` ;
+2. bus I²C et scan ;
+3. `ConfigManager` et configuration Runtime des équipements ;
+4. TFT puis `StorageManager` ;
+5. `RelaisManager`, backend legacy ou pilote V4, `EquipmentManager` ;
+6. `ScheduleManager`, callback relais et application de la configuration ;
+7. Wi-Fi, NTP, Web et météo ;
+8. `DisplayManager`.
 
-- le backend V4 est fonctionnel ;
-- le fallback legacy est conservé ;
-- la météo fonctionne de manière non bloquante ;
-- les redraws ont été réduits ;
-- le journal EventLog est horodaté ;
-- le profiler qualifie explicitement ses mesures en temps mural ;
-- des pauses proches de 136 ms ont été observées ;
-- ces pauses peuvent provenir de l’ordonnanceur et ne sont pas attribuées automatiquement au composant actif ;
-- `yield()` reste mesuré mais est exclu des alertes de lenteur métier.
+Les sorties sont initialisées avant l’activation du Scheduler.
 
-## Cycle Runtime
+## Boucle principale réelle
 
-```mermaid
-flowchart TD
-  LOOP[Cycle principal] --> INPUT[Collecte événements et entrées]
-  INPUT --> SCHED[Planification et exécution]
-  SCHED --> SERVICES[Services non bloquants]
-  SERVICES --> DISPLAY[Affichage si nécessaire]
-  DISPLAY --> PROF[Mesure et diagnostic]
-  PROF --> YIELD[yield / ordonnanceur]
-  YIELD --> LOOP
+L’ordre instrumenté dans `loop()` est :
+
+```text
+SystemDiagnostics::loopEnter
+FaultManager::update
+StorageManager::update
+WiFiManager::update
+NTPManager::update si connecté
+WeatherManager::update(true) si connecté
+ScheduleManager::update si NTP synchronisé
+EquipmentExecutionShadowRuntime::update
+RelaisManager::update
+WebManager::update
+DisplayManager::update
+DisplayPlanningDecor
+FaultManager::update
+yield
+SystemDiagnostics::loopExit
 ```
 
-L’ordre exact et les composants appelés sont définis par le code du commit ciblé.
+Chaque segment utilise :
 
-## Principes
+```cpp
+uint32_t startedUs = RuntimeProfiler::start();
+RuntimeProfiler::stop(RuntimeProfiler::Component::<COMPONENT>, startedUs);
+```
 
-- éviter les traitements réseau bloquants ;
-- réduire les redraws complets ;
-- conserver les fonctions essentielles locales lorsque les services distants sont indisponibles ;
-- mesurer avant d’attribuer une lenteur ;
-- distinguer temps CPU, temps mural et temps cédé à l’ordonnanceur ;
-- ne pas masquer une pause sous prétexte qu’elle se produit autour de `yield()`.
+## Chaîne de commande des zones
 
-## Profiler
+`ScheduleManager` appelle `onRelayRequest(zone, state)`. Cette fonction :
 
-Le profiler produit une mesure de temps mural. Une durée inclut potentiellement :
+1. construit et soumet un plan au runtime shadow ;
+2. appelle `equipmentMgr.startZone()` ou `stopZone()` ;
+3. demande un rafraîchissement dynamique si l’action réussit ;
+4. journalise l’échec ;
+5. utilise `outputAdapter.setZoneValve()` comme repli.
 
-- le temps d’exécution du composant ;
-- les interruptions ;
-- les changements de tâche ;
-- les délais introduits par l’ordonnanceur ;
-- les attentes système.
+Le mode physique de la pompe reste bloqué ; la configuration est forcée en exécution shadow passive.
 
-Une mesure longue n’est donc pas une preuve suffisante qu’un composant est intrinsèquement lent.
+## Profiling
 
-## Traitement de `yield()`
-
-`yield()` est conservé dans les mesures de diagnostic pour observer le cycle complet. Il est exclu des alertes de lenteur métier afin d’éviter de classer comme anomalie applicative un délai lié à l’ordonnanceur.
+Les mesures basées sur `micros()` sont du temps mural. Elles peuvent inclure interruptions, préemptions FreeRTOS et attente système. `yield()` est mesuré mais exclu des alertes de lenteur métier.
 
 ## Invariants
 
-### INV-RUN-001
+- `INV-RUN-001` : l’ordre des managers dans `loop()` reste explicite et non bloquant.
+- `INV-RUN-002` : le Scheduler n’est évalué qu’après `ntpMgr.isSynced()`.
+- `INV-RUN-003` : le fallback legacy est conservé tant que la migration V4 n’est pas validée.
+- `INV-RUN-004` : les mesures du profiler ne sont pas interprétées comme du temps CPU strict.
+- `INV-RUN-005` : `FaultManager::update()` encadre le cycle avant et après les services.
+- `INV-RUN-006` : le Runtime shadow ne pilote pas physiquement la pompe.
 
-Les services optionnels ne bloquent pas la planification et la sécurité des relais.
+## Validation
 
-### INV-RUN-002
-
-Une alerte de performance distingue le composant mesuré du temps mural observé.
-
-### INV-RUN-003
-
-Les optimisations de rendu ne doivent pas supprimer un rafraîchissement fonctionnel requis.
-
-### INV-RUN-004
-
-Le fallback legacy reste présent tant que sa suppression n’est pas explicitement validée.
-
-## Interfaces de diagnostic
-
-Les sorties exactes du profiler doivent être extraites du code lors du passage à D4. Elles doivent identifier au minimum :
-
-- le composant ou segment mesuré ;
-- la durée murale ;
-- le seuil d’alerte ;
-- le contexte Runtime ;
-- l’exclusion éventuelle des alertes métier.
-
-Les routes Web de diagnostic confirmées sont recensées dans `09_WEB_AND_HTTP_INTERFACES.md`.
-
-## Tests
-
-- cycle Runtime sans réseau ;
-- météo non bloquante ;
+- compilation legacy ;
+- compilation et upload V4 ;
+- démarrage matériel ;
+- diagnostics Runtime ;
+- fonctionnement hors réseau ;
 - synchronisation NTP sans redraw complet ;
-- mesure du profiler pendant charge Web ;
-- mesure autour de `yield()` ;
-- confirmation qu’une pause ne provoque pas de défaut de durée maximale des relais ;
-- validation de l’affichage et du tactile pendant les diagnostics.
-
-## Risques
-
-- attribution erronée d’une pause à un composant actif ;
-- instrumentation trop lourde modifiant le comportement observé ;
-- logs trop abondants perturbant le temps réel ;
-- optimisation d’affichage masquant une mise à jour nécessaire.
+- tests relais sur une zone ;
+- observation du profiler sous charge Web et météo.
 
 ## Références
 
-- `docs/checkpoints/CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md` ;
-- `10_TIME_AND_EVENTLOG.md` ;
-- `13_DISPLAY_AND_TOUCH.md` ;
-- profiler et boucle Runtime du commit ciblé.
+- `src/main.cpp` ;
+- `src/RuntimeProfiler.h` et `.cpp` ;
+- `src/SystemDiagnostics.h` et `.cpp` ;
+- `docs/checkpoints/CHECKPOINT_2026-07-13_STEP6_RUN6-26.md` ;
+- `docs/engineering/35_CODE_TRACEABILITY_REGISTER.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation du Runtime non bloquant et du profiler qualifié en temps mural.
+Consolidation D4 avec ordre exact de `setup()`, ordre instrumenté de `loop()` et chaîne réelle de commande.
