@@ -1,113 +1,126 @@
 # AquaLook Engineering Reference — Relais et commande des équipements
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : `AGENTS.md`, checkpoints relais, topologie matérielle, code du dépôt
-- Composants : `RelaisManager`, XL9535-K2V5, bus I²C
-- Maturité : D3
+- Source de code : `src/RelaisManager.h`, `src/RelaisManager.cpp`, `src/RelayTopology.*`, `src/main.cpp`
+- Composants : `RelaisManager`, `RelayTopology`, XL9535, MCP23017, backend legacy/V4
+- Maturité : D4
 
 ## Mission
 
-La chaîne de commande transforme une demande logique de zone en état physique d’une sortie, tout en préservant les sécurités de durée et l’indépendance entre planification et matériel.
+La chaîne relais transforme une demande logique de zone ou d’équipement en écriture physique I²C validée. Le Scheduler ne connaît ni le contrôleur, ni l’adresse, ni la logique électrique.
 
-## Plateforme actuelle
+## API publique confirmée
 
-- contrôleur d’E/S : XL9535-K2V5 ;
-- adresse I²C actuelle : `0x20` ;
-- logique directe : `1` correspond à l’état actif ;
-- bus I²C : SDA `27`, SCL `22` ;
-- nombre de zones actives : 1 à 8.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  SCH[ScheduleManager] -->|callback / demande| MAIN[Chaîne câblée dans main.cpp]
-  MAIN --> REL[RelaisManager]
-  REL --> I2C[Bus I²C]
-  I2C --> XL[XL9535-K2V5 0x20]
-  XL --> OUT[Relais / électrovannes]
+```cpp
+void begin(ConfigManager* config = nullptr);
+void update();
+void setXl9535SharedOutputState(Xl9535SharedOutputState* state);
+void mirrorZoneState(uint8_t zone, bool state, uint32_t nowMs);
+void setRelay(uint8_t zone, bool state);
+bool getState(uint8_t zone) const;
+bool setAssignment(uint8_t assignmentIndex, bool state);
+bool getAssignmentState(uint8_t assignmentIndex) const;
+const RelayTopologyConfig& topology() const;
 ```
 
-## Responsabilités
+`setRelay()` conserve l’API historique par index de zone. `setAssignment()` applique une affectation matérielle générique validée par `RelayTopology::resolveAssignment()`.
 
-- initialiser les sorties dans un état sûr ;
-- convertir une affectation logique en canal physique ;
-- activer et désactiver les sorties ;
-- conserver un état logiciel cohérent ;
-- appliquer la durée maximale de sécurité ;
-- remonter les erreurs de communication.
+## Construction de la topologie
 
-## Responsabilités exclues
+`RelaisManager::begin()` appelle `buildRuntimeTopology()`. Cette fonction lit dans `ConfigManager` :
 
-- calcul d’occurrence ;
-- interprétation météo ;
-- décision de démarrage ;
-- modification de la configuration persistante.
+- `nbZones()` ;
+- `nbRelais()` ;
+- `relayController()` ;
+- `relayLogic()`.
+
+Elle appelle ensuite `RelayTopology::buildLegacyCompatibleTopology()`. Les doublons de mapping sont détectés par `RelayTopology::hasDuplicateMappings()`.
+
+## Contrôleurs pris en charge
+
+| Contrôleur | Registres utilisés | Adresse par défaut documentée |
+|---|---|---|
+| XL9535 | sorties `0x02/0x03`, configuration `0x06/0x07` | fournie par `RelayTopology` |
+| MCP23017 | `IODIRA/B` `0x00/0x01`, `OLATA/B` `0x14/0x15` | `0x20` |
+
+Le choix réel est issu de la configuration et de la topologie. Une adresse générique ne doit pas être supposée sans lecture de la topologie active.
+
+## Initialisation sûre
+
+Au démarrage :
+
+1. les états logiciels de zones et d’affectations sont remis à `false` ;
+2. les registres miroirs sont initialisés à `0x00` en logique directe ou `0xFF` en logique inversée ;
+3. l’état partagé XL9535 est amorcé lorsqu’il est présent ;
+4. chaque carte valide est initialisée ;
+5. `FaultManager::RELAY_I2C` reflète le résultat matériel.
+
+Les sorties sont initialisées avant `ScheduleManager::begin()` dans `src/main.cpp`.
+
+## Chaîne d’appel réelle
+
+```text
+ScheduleManager
+  -> onRelayRequest(zone, state)
+  -> EquipmentManager::startZone/stopZone
+  -> EquipmentOutputRuntimeAdapter
+  -> backend V4 si actif, sinon RelaisManagerBackend
+  -> RelaisManager::setRelay ou setAssignment
+  -> applyBoard
+  -> writeReg I2C
+```
+
+En cas d’échec du modèle d’équipements, `onRelayRequest()` utilise `outputAdapter.setZoneValve()` comme repli. Le profil de compilation sélectionne le backend par `AQUALOOK_RELAY_BACKEND_LEGACY` et `AQUALOOK_RELAY_BACKEND_V4`.
+
+## Application d’une affectation
+
+`setAssignment()` :
+
+1. résout et valide le mapping ;
+2. refuse la commande si la carte n’est pas prête ;
+3. convertit l’état logique en niveau physique selon `LOGIC_DIRECT` ou `LOGIC_INVERTED` ;
+4. met à jour l’état partagé XL9535 ou le registre miroir local ;
+5. écrit la carte avec `applyBoard()` ;
+6. met à jour `FaultManager`, l’état d’affectation et l’EventLog.
+
+Une erreur positionne `EventBus::displayDirty`. Une transition réussie ne force pas un redraw complet.
+
+## Sécurité de durée maximale
+
+`RelaisManager::update()` compare chaque zone active à `maxWateringMs()`. Lorsque la durée est dépassée, il journalise l’incident puis appelle `setRelay(zone, false)`.
 
 ## Invariants
 
-### INV-REL-001
+- `INV-REL-001` : le Scheduler ne pilote jamais directement le matériel.
+- `INV-REL-002` : une affectation invalide ou une carte absente conduit à un refus, jamais à une voie arbitraire.
+- `INV-REL-003` : la logique directe/inverse est appliquée avant écriture physique.
+- `INV-REL-004` : la sécurité de durée maximale reste active dans `update()`.
+- `INV-REL-005` : les sorties sont placées dans leur état sûr avant activation du Scheduler.
+- `INV-REL-006` : toute modification de contrôleur, adresse, mapping ou logique exige une validation matérielle.
 
-Le Scheduler ne pilote jamais directement le matériel.
-
-### INV-REL-002
-
-Une modification de logique directe/inverse ou de contrôleur est critique et exige un test matériel.
-
-### INV-REL-003
-
-La sécurité de durée maximale ne doit pas être supprimée.
-
-### INV-REL-004
-
-Au démarrage, les sorties sont placées dans l’état sûr prévu avant toute exécution.
-
-### INV-REL-005
-
-Les tests matériels commencent par une seule zone et une durée courte, sous surveillance.
-
-## Modes dégradés
-
-- périphérique I²C absent : refus de commande pour les sorties concernées ;
-- erreur bus : journalisation et tentative de récupération selon le code ;
-- configuration de topologie invalide : absence d’activation plutôt qu’activation sur une voie non déterminée.
-
-## Interfaces matérielles
-
-| Interface | Valeur actuelle | Usage |
-|---|---:|---|
-| I²C SDA | GPIO 27 | Données vers le contrôleur relais |
-| I²C SCL | GPIO 22 | Horloge du bus |
-| Adresse | `0x20` | XL9535-K2V5 actuel |
-| Logique | directe | `1` = ON |
-
-## Tests
-
-- scan I²C et détection à `0x20` ;
-- activation d’une seule voie ;
-- correspondance zone/voie ;
-- arrêt à la durée maximale ;
-- redémarrage avec toutes les sorties sûres ;
-- modes 1 à 8 zones ;
-- récupération après erreur I²C.
-
-Environnement ciblé :
+## Validation
 
 ```text
 pio run -e test_relais
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM3
 ```
+
+Tests matériels : scan I²C, une zone, durée courte, correspondance zone/voie, logique directe/inverse, arrêt de sécurité, carte absente et redémarrage sûr.
 
 ## Références
 
-- `AGENTS.md` — section Relais et sécurité ;
-- documents de topologie relais ;
-- checkpoints matériels validés ;
-- roadmap des extensions I²C et des futurs MCP23017.
+- `src/RelaisManager.h` ;
+- `src/RelaisManager.cpp` ;
+- `src/RelayTopology.h` et `.cpp` ;
+- `src/main.cpp` ;
+- `platformio.ini` ;
+- `docs/checkpoints/CHECKPOINT_2026-07-13_STEP6_RUN6-26.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation de la chaîne de commande des équipements.
+Consolidation D4 de l’API, de la topologie, des contrôleurs, de la logique électrique et de la chaîne d’appel physique.
