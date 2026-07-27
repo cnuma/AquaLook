@@ -38,6 +38,15 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 | `23_SECURITY_OPERATIONS.md` | secrets, vulnérabilités, révocation et incidents | D3 |
 | `24_DIAGNOSTICS_AND_OBSERVABILITY.md` | métriques, santé, EventLog et profiler | D3 |
 | `25_BACKUP_RESTORE_AND_MAINTENANCE.md` | sauvegarde, restauration, remplacement et maintenance | D3 |
+| `26_DATA_MODEL_AND_JSON.md` | familles de données, validation et contrats JSON | D2 |
+| `27_FILE_AND_STORAGE_MAP.md` | cartographie Flash, NVS, LittleFS, SD, RAM et dépôt | D3 |
+| `28_HARDWARE_COMPONENT_CATALOG.md` | catalogue des composants matériels | D2 |
+| `29_SOFTWARE_COMPONENT_CATALOG.md` | catalogue des composants logiciels | D3 |
+| `30_TEST_AND_ANTI_REGRESSION_MATRIX.md` | matrice de validation et critères de blocage | D3 |
+| `31_CHECKPOINT_INDEX.md` | index des états de reprise | D3 |
+| `32_GLOSSARY.md` | définitions communes | D3 |
+| `33_DOCUMENT_MATURITY_MATRIX.md` | maturité D0 à D5 et conditions de progression | D4 |
+| `34_ENGINEERING_REFERENCE_INDEX.md` | point d’entrée global du référentiel | D4 |
 
 ## Références spécialisées
 
