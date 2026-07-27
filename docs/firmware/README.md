@@ -31,6 +31,15 @@ Ce dossier décrit **comment le code existant fonctionne**. Chaque fiche est rel
 | `FW-013_NTPManager.md` | synchronisation et accès à l’heure système |
 | `FW-014_FaultManager.md` | défauts actifs, erreurs et acquittement |
 
+## Lot F4
+
+| Référence | Composant |
+|---|---|
+| `FW-015_V4PilotRuntime.md` | assemblage du pilote et du backend physique V4 |
+| `FW-016_EquipmentExecutionEngine_et_ShadowRuntime.md` | exécution passive par zone et comparaison shadow |
+| `FW-017_EquipmentRuntimeConfigStore.md` | persistance et valeurs sûres de la configuration V4 |
+| `FW-018_Adaptateurs_backends_et_etat_partage_XL9535.md` | coexistence legacy/V4 et image commune des sorties |
+
 ## Règle de maintenance
 
 Toute modification majeure d’un composant met à jour sa fiche Firmware, le tome Engineering associé, le guide Developer concerné et le checkpoint.
