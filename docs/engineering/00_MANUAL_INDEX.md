@@ -30,6 +30,14 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 | `15_RUNTIME_AND_PROFILING.md` | Runtime non bloquant, temps mural et profiler | D3 |
 | `16_V4_EQUIPMENT_MODEL_AND_WEATHER.md` | backend V4, fallback legacy, équipements, pompe shadow et météo | D2 |
 | `17_BUILD_DEPLOYMENT_AND_HARDWARE_VALIDATION.md` | compilation, upload, buildfs et validation matérielle | D3 |
+| `18_NETWORK_AND_WIFI.md` | réseau local, Wi-Fi, reconnexion et modes hors ligne | D3 |
+| `19_HTTPS_AND_SESSIONS.md` | état HTTP actuel et cible HTTPS avec sessions | D2 |
+| `20_MQTT.md` | contrat architectural MQTT préliminaire | D2 |
+| `21_OTA.md` | intégrité, signature, partitions et rollback OTA | D2 |
+| `22_NOTIFICATIONS.md` | diffusion multi-canal issue de l’EventLog | D2 |
+| `23_SECURITY_OPERATIONS.md` | secrets, vulnérabilités, révocation et incidents | D3 |
+| `24_DIAGNOSTICS_AND_OBSERVABILITY.md` | métriques, santé, EventLog et profiler | D3 |
+| `25_BACKUP_RESTORE_AND_MAINTENANCE.md` | sauvegarde, restauration, remplacement et maintenance | D3 |
 
 ## Références spécialisées
 
