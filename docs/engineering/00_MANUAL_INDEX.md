@@ -47,6 +47,8 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 | `32_GLOSSARY.md` | définitions communes | D3 |
 | `33_DOCUMENT_MATURITY_MATRIX.md` | maturité D0 à D5 et conditions de progression | D4 |
 | `34_ENGINEERING_REFERENCE_INDEX.md` | point d’entrée global du référentiel | D4 |
+| `35_CODE_TRACEABILITY_REGISTER.md` | ancrages code, niveaux de preuve et écarts ouverts | D4 |
+| `CODE_LINKED_REFERENCE_PROCESS.md` | processus obligatoire de consolidation depuis le code | D4 |
 
 ## Références spécialisées
 
@@ -63,6 +65,8 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 ## Règle de consolidation
 
 Les checkpoints sont les sources principales pour consolider l’état réellement validé. Le code du commit ciblé prime en cas de divergence. Les roadmaps décrivent les évolutions ; elles ne doivent pas être recopiées comme fonctionnalités présentes.
+
+Toute évolution fonctionnelle doit désormais mettre à jour les documents impactés et le registre `35_CODE_TRACEABILITY_REGISTER.md`. Les chemins, symboles, interfaces et tests exacts doivent être vérifiés dans le code du commit ciblé.
 
 ## Niveaux de maturité documentaire
 
