@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Matrice de maturité documentaire
 
-- Version documentaire : 1.5
+- Version documentaire : 1.6
 - Statut : active
 - Dernière consolidation : 2026-07-27
 - Maturité : D4
@@ -24,34 +24,35 @@
 | Scheduler | 06 | D4 | API, structures et callback extraits | tests automatisés complets |
 | configuration | 07 | D4 | clés NVS, schéma, structures et boot extraits | tests de migration archivés |
 | Runtime | 15 | D4 | ordre exact `setup()`/`loop()` et chaîne de commande | seuils profiler et tests automatisés |
-| relais | 08 | D4 | API, topologie, contrôleurs, logique et chaîne physique extraits | matrice matérielle par topologie et preuves P5 |
-| Web | 09 | D4 | inventaire exhaustif des routes et méthodes | tests automatisés de contrat et sécurité |
+| relais | 08 | D4 | API, topologie, contrôleurs, logique et chaîne physique extraits | matrice matérielle et preuves P5 |
+| Web | 09 | D4 | inventaire exhaustif des routes et méthodes | tests HTTP négatifs sur cible |
 | temps et EventLog | 10 | D4 | structure, capacité, API, routes et horodatage réel | tests de concurrence |
 | observabilité | 24 | D4 | API, seuils et schéma JSON | tests de contrat JSON et de charge |
 | affichage et tactile | 13 | D4 | API, bus, modes, cadences, tactile et redraw | tests automatisés et calibration P5 |
-| réseau | 18 | D4 | machine d’états, délais, retries, portail et scan | sécurisation AP et tests automatiques |
-| SD et ressources | 14, 27 | D4 | API, états, sentinelle, manifeste URL/support, MIME et fallbacks | manifeste de carte versionné |
-| modèle V4 et météo | 16, 36 | D4 | structures, relations, validations, plans, limites pompe et tâche météo | persistance stabilisée, HTTPS et tests automatiques |
-| build et validation | 17, 30 | D4 | environnements, filtres, commandes, preuves et blocages extraits | CI et preuves archivées |
-| HTTPS et sessions | 19 | D2 | architecture cible | implémentation et tests négatifs |
+| réseau | 18 | D4 | machine d’états, délais, retries, portail et scan | correction AP et tests sur cible |
+| SD et ressources | 14, 27 | D4 | API, sentinelle, manifeste URL/support, MIME et fallbacks | manifeste de carte versionné |
+| modèle V4 et météo | 16, 36 | D4 | structures, relations, validations, plans et tâche météo | HTTPS, persistance stabilisée et tests |
+| build et validation | 17, 30 | D4 | environnements, commandes, preuves et blocages | preuves CI et matérielles archivées |
+| HTTPS et sessions | 19 | D3 | état réel audité, menaces et dettes exécutables | authentification/session et tests négatifs |
+| contrats sécurité | 37 | D4 | unittest + workflow CI sans secret | correction des expected failures et preuves cible |
 | MQTT | 20 | D2 | architecture cible | topics et schémas confirmés |
 | OTA | 21 | D2 | architecture cible | partitions et signature validées |
-| sécurité | 23 | D3 | registre de risques | corrections firmware et procédures testées |
+| sécurité opérationnelle | 23 | D4 | procédures, registre et contrats CI | corrections firmware et exercice incident |
 | maintenance | 25 | D3 | procédure documentaire | exercice de restauration |
-| catalogues et index | 28 à 36 | D4 | index, registre et schéma détaillé | automatisation ou checkpoint |
+| catalogues et index | 28 à 37 | D4 | index, registre, schéma et contrats | automatisation ou checkpoint |
 
 ## Priorités suivantes
 
-1. correction firmware des écarts de cybersécurité confirmés ;
-2. contrats automatisés HTTP, stockage, réseau et météo ;
-3. persistance/versionnement du modèle d’équipements ;
-4. manifeste versionné de la carte SD de référence ;
-5. passage D5 des domaines disposant de preuves reproductibles.
+1. corriger les trois `expectedFailure` : log Wi-Fi, AP ouvert, OWM HTTP ;
+2. ajouter des tests HTTP négatifs sur firmware réel ;
+3. implémenter authentification et sessions côté serveur ;
+4. ajouter scan de secrets et suivi des dépendances ;
+5. passer en D5 les domaines disposant de preuves reproductibles.
 
 ## Règles de progression
 
 - aucun D4 sans fichiers et symboles réels ;
 - aucun D5 sans tests exécutés et preuve archivée ;
 - tout comportement matériel exige une preuve P5 ;
-- une modification du code peut faire redescendre temporairement la maturité ;
-- une incohérence découverte pendant la consolidation doit être documentée, pas masquée.
+- un `expectedFailure` interdit la fermeture du risque correspondant ;
+- une incohérence découverte est documentée, pas masquée.
