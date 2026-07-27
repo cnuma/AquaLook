@@ -8,6 +8,23 @@
 - Tant que le backend V4 n’est pas réellement câblé dans `main.cpp` et qu’aucune zone n’est migrée, un essai avec le profil V4 ne doit pas être présenté comme un test complet du chemin V4.
 - Le profil `ProgrammeArrosage` reste un alias nominal historique pendant la phase de migration ; pour éviter toute ambiguïté, utiliser les noms explicites `_legacy` et `_v4` dans les procédures de développement.
 
+## Port série obligatoire avant la première compilation
+
+Avant de proposer ou d’exécuter la première chaîne de compilation, de téléversement ou de surveillance série d’une nouvelle session de travail, l’agent doit demander explicitement sur quel port série se trouve la carte.
+
+Exemple de question :
+
+> Sur quel port COM la carte AquaLook est-elle connectée sur cette machine (`COM3`, `COM9`, etc.) ?
+
+Règles :
+
+- ne jamais supposer que le port défini dans `platformio.ini` est celui de la machine courante ;
+- ne jamais recopier automatiquement un ancien port COM provenant d’une autre machine ou d’une ancienne session ;
+- conserver le port confirmé pour toutes les commandes suivantes de la session ;
+- utiliser le marqueur `<PORT_COM>` tant que le port n’a pas été confirmé ;
+- si le port change ou si la carte n’est plus détectée, demander une nouvelle confirmation ;
+- lorsque nécessaire, proposer la commande `pio device list` pour identifier les ports disponibles.
+
 ## Chaîne obligatoire pour un nouveau code
 
 ### 1. Précontrôles Git
@@ -18,24 +35,34 @@ git diff --check
 git diff --stat
 ```
 
-### 2. Compilation de contrôle
+### 2. Compilation de contrôle Legacy
 
-Toute modification de code embarqué doit compiler dans les deux profils :
+Toute modification de code embarqué doit préserver la compilation Legacy :
 
 ```powershell
 pio run -e ProgrammeArrosage_legacy
+```
+
+Cette compilation vérifie que les fichiers communs n’ont pas cassé le firmware historique et que le retour arrière reste disponible.
+
+### 3. Compilation et téléversement V4 en une seule commande
+
+Pour les essais matériels courants, la commande `upload` compile automatiquement le profil V4 avant de le téléverser. Il n’est donc pas nécessaire d’exécuter séparément `pio run -e ProgrammeArrosage_v4` juste avant le téléversement :
+
+```powershell
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+Cette commande unique valide la compilation V4 puis téléverse le binaire produit. Si la compilation échoue, le téléversement n’est pas effectué.
+
+Lorsqu’aucun téléversement n’est prévu, notamment dans une validation automatisée ou documentaire, compiler séparément V4 :
+
+```powershell
 pio run -e ProgrammeArrosage_v4
 ```
 
-Cette double compilation vérifie :
-
-- que le nouveau chemin V4 reste constructible ;
-- que les fichiers communs n’ont pas cassé le firmware Legacy ;
-- que le retour arrière reste disponible.
-
-Elle ne remplace pas les tests fonctionnels.
-
-### 3. LittleFS lorsque les ressources embarquées changent
+### 4. LittleFS lorsque les ressources embarquées changent
 
 Le dépôt utilise `littlefs/` comme `data_dir` PlatformIO. Après toute modification de `littlefs/` :
 
@@ -50,14 +77,7 @@ pio run -e ProgrammeArrosage_legacy -t buildfs
 pio run -e ProgrammeArrosage_v4 -t buildfs
 ```
 
-### 4. Firmware à charger pour les essais courants
-
-Les nouveaux développements et les fonctions migrées doivent être essayés en priorité avec le profil V4 :
-
-```powershell
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM9
-pio device monitor -p COM9 -b 115200
-```
+### 5. Chargement Legacy uniquement si nécessaire
 
 Le profil Legacy n’est chargé que dans les cas suivants :
 
@@ -67,16 +87,27 @@ Le profil Legacy n’est chargé que dans les cas suivants :
 - campagne explicite de non-régression Legacy.
 
 ```powershell
-pio run -e ProgrammeArrosage_legacy -t upload --upload-port COM9
-pio device monitor -p COM9 -b 115200
+pio run -e ProgrammeArrosage_legacy -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
 ```
 
-### 5. Validation avant checkpoint ou livraison
+### 6. Validation avant checkpoint ou livraison
+
+Sans téléversement matériel :
 
 ```powershell
 git diff --check
 pio run -e ProgrammeArrosage_legacy
 pio run -e ProgrammeArrosage_v4
+```
+
+Avec essai matériel V4 :
+
+```powershell
+git diff --check
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
 ```
 
 Ajouter selon le périmètre :
@@ -100,6 +131,7 @@ Une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que 
 Pour chaque fonction testée, consigner au minimum :
 
 - le profil flashé ;
+- le port série utilisé ;
 - le fichier et la fonction concernés ;
 - le point d’entrée exécuté ;
 - la zone ou le matériel utilisé ;
@@ -169,10 +201,11 @@ Boot sûr, direct, inverse, XL9535, MCP23017 lorsque disponible, zone 1, derniè
 
 Une livraison n’est pas valide sans :
 
-- compilation `SUCCESS` des profils Legacy et V4 pour tout changement de firmware ;
+- compilation `SUCCESS` du profil Legacy pour tout changement de firmware ;
+- compilation `SUCCESS` du profil V4, obtenue soit par compilation seule, soit par la commande combinée compilation-téléversement ;
 - buildfs `SUCCESS` si `littlefs/` change ;
 - diff contrôlé ;
 - état Git explicite ;
-- profil réellement flashé indiqué ;
+- port série et profil réellement flashé indiqués ;
 - liste des tests matériels exécutés et non exécutés ;
 - absence de déclaration « validé V4 » lorsque le chemin V4 n’est pas réellement actif ou testé.
