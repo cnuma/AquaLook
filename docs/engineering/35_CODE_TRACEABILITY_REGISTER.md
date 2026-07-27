@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Registre de traçabilité vers le code
 
-- Version documentaire : 1.5
+- Version documentaire : 1.6
 - Statut : actif
 - Dernière consolidation : 2026-07-27
 - Source : branche stable `main` et code du commit ciblé
@@ -25,29 +25,30 @@ Ce registre relie les affirmations d’architecture aux fichiers, symboles, cha�
 | Stockage | `14_SD_AND_STATIC_RESOURCES.md` | `src/StorageManager.*`, `src/SdStaticHandler.*` | SD avant LittleFS, sentinelle et fallbacks | P3/P5 |
 | Modèle V4 | `16`, `36` | `src/EquipmentModel.*`, `src/EquipmentManager.*` | validation, dépendances, plans et exécution valve | P3/P5 |
 | Météo | `16` | `src/WeatherManager.*` | tâche FreeRTOS, HTTP et JSON filtré | P3/P4 |
-| Build/tests | `17`, `30` | `platformio.ini`, `src/test_execution_engine.cpp`, `src/test_relais.cpp`, `src/calibration_touch.cpp` | profils complets et bancs ciblés | P3/P5 |
+| Build/tests | `17`, `30` | `platformio.ini`, bancs `src/test_*.cpp` | profils complets et bancs ciblés | P3/P5 |
+| Contrats sécurité | `19`, `23`, `37` | `tests/contracts/test_security_contracts.py`, `.github/workflows/security-contracts.yml` | source → assertion statique → CI | P4 |
 
 ## Éléments D4 du lot courant
 
-- profils `ProgrammeArrosage`, legacy, V4, `test_execution_engine`, `calibration`, `test_relais` et `debug_boot` ;
-- distinction `littlefs/` pour `buildfs` et `data/` pour la carte SD ;
-- matrice modification → build → test → preuve ;
-- structures `EquipmentConfig`, `ZoneEquipmentLink` et `EquipmentConfigSet` ;
-- huit types d’équipements et rôles relais attendus ;
-- validation des index, types, noms, liens de zone et pompe optionnelle ;
-- limite confirmée : électrovannes exécutables, pompe en dry-run.
+- workflow GitHub Actions à permissions `contents: read` et timeout de cinq minutes ;
+- contrats Python sans dépendance externe ;
+- contrôles actifs sur traversée de chemin, masquage `/api/`, cache diagnostic, timeout météo et routes POST JSON ;
+- trois dettes représentées par `expectedFailure` : secret Wi-Fi journalisé, AP ouvert et météo HTTP ;
+- règle interdisant la fermeture d’un risque tant que son `expectedFailure` subsiste ;
+- ajout de `SEC-019` pour le transport météo et l’exposition de la clé OWM.
 
 ## Incohérences et risques ouverts
 
 - mot de passe Wi-Fi journalisé en clair ;
 - portail captif sans mot de passe ;
 - OWM en HTTP avec clé dans l’URL ;
+- absence d’authentification et de sessions côté serveur ;
 - seuil météo issu de la zone 0 ;
 - actions pompe non exécutées ;
 - `EventLog` sans protection de concurrence ;
 - `GRID4` dormant ;
-- absence de CI et de manifeste SD versionné ;
-- champs `minOnSec`/`minOffSec` présents mais application Runtime à confirmer.
+- manifeste SD versionné absent ;
+- tests CI statiques ne remplaçant pas les tests sur firmware réel.
 
 ## Niveaux de preuve
 
@@ -60,12 +61,9 @@ Ce registre relie les affirmations d’architecture aux fichiers, symboles, cha�
 
 ## Références
 
-- `platformio.ini` ;
-- `src/EquipmentModel.h` et `.cpp` ;
-- `src/EquipmentManager.h` et `.cpp` ;
-- `src/test_execution_engine.cpp` ;
-- `src/test_relais.cpp` ;
-- `src/calibration_touch.cpp` ;
-- `17_BUILD_DEPLOYMENT_AND_HARDWARE_VALIDATION.md` ;
-- `30_TEST_AND_ANTI_REGRESSION_MATRIX.md` ;
-- `36_DETAILED_EQUIPMENT_MODEL_SCHEMA.md`.
+- `tests/contracts/test_security_contracts.py` ;
+- `.github/workflows/security-contracts.yml` ;
+- `19_HTTPS_AND_SESSIONS.md` ;
+- `23_SECURITY_OPERATIONS.md` ;
+- `37_SECURITY_CONTRACTS_AND_CI.md` ;
+- `docs/security/SECURITY_RISK_REGISTER.md`.
