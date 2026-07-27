@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Matrice de maturité documentaire
 
-- Version documentaire : 1.4
+- Version documentaire : 1.5
 - Statut : active
 - Dernière consolidation : 2026-07-27
 - Maturité : D4
@@ -25,28 +25,28 @@
 | configuration | 07 | D4 | clés NVS, schéma, structures et boot extraits | tests de migration archivés |
 | Runtime | 15 | D4 | ordre exact `setup()`/`loop()` et chaîne de commande | seuils profiler et tests automatisés |
 | relais | 08 | D4 | API, topologie, contrôleurs, logique et chaîne physique extraits | matrice matérielle par topologie et preuves P5 |
-| Web | 09 | D4 | inventaire exhaustif des routes et méthodes du firmware courant | tests automatisés de contrat et sécurité |
-| temps et EventLog | 10 | D4 | structure, capacité, API, routes et horodatage réel extraits | tests de concurrence et évolution double horodatage éventuelle |
-| observabilité | 24 | D4 | API, seuils et schéma JSON extraits | tests automatiques du contrat JSON et de charge |
-| affichage et tactile | 13 | D4 | API, bus, modes, cadences, tactile et redraw extraits | tests automatisés et preuves de calibration P5 |
-| réseau | 18 | D4 | machine d’états, délais, retries, portail et scan extraits | tests automatisés et sécurisation du portail captif |
-| SD et ressources | 14, 27 | D4 | API, états, sentinelle, manifeste URL/support, MIME et fallbacks extraits | manifeste de carte versionné et tests automatiques |
-| modèle V4 et météo | 16 | D4 | API EquipmentManager, plans, limites pompe, tâche météo et endpoint extraits | schéma EquipmentModel versionné, HTTPS et tests automatiques |
-| build et validation | 17, 30 | D3 | commandes réelles documentées | CI et preuves archivées |
+| Web | 09 | D4 | inventaire exhaustif des routes et méthodes | tests automatisés de contrat et sécurité |
+| temps et EventLog | 10 | D4 | structure, capacité, API, routes et horodatage réel | tests de concurrence |
+| observabilité | 24 | D4 | API, seuils et schéma JSON | tests de contrat JSON et de charge |
+| affichage et tactile | 13 | D4 | API, bus, modes, cadences, tactile et redraw | tests automatisés et calibration P5 |
+| réseau | 18 | D4 | machine d’états, délais, retries, portail et scan | sécurisation AP et tests automatiques |
+| SD et ressources | 14, 27 | D4 | API, états, sentinelle, manifeste URL/support, MIME et fallbacks | manifeste de carte versionné |
+| modèle V4 et météo | 16, 36 | D4 | structures, relations, validations, plans, limites pompe et tâche météo | persistance stabilisée, HTTPS et tests automatiques |
+| build et validation | 17, 30 | D4 | environnements, filtres, commandes, preuves et blocages extraits | CI et preuves archivées |
 | HTTPS et sessions | 19 | D2 | architecture cible | implémentation et tests négatifs |
 | MQTT | 20 | D2 | architecture cible | topics et schémas confirmés |
 | OTA | 21 | D2 | architecture cible | partitions et signature validées |
-| sécurité | 23 | D3 | registre de risques | suppression des secrets dans les logs, protection AP, HTTPS OWM et procédures testées |
+| sécurité | 23 | D3 | registre de risques | corrections firmware et procédures testées |
 | maintenance | 25 | D3 | procédure documentaire | exercice de restauration |
-| catalogues et index | 28 à 35 | D4 | index et registre de traçabilité | mise à jour automatique ou checkpoint |
+| catalogues et index | 28 à 36 | D4 | index, registre et schéma détaillé | automatisation ou checkpoint |
 
 ## Priorités suivantes
 
-1. build, tests et matrice anti-régression ;
-2. schéma détaillé du modèle d’équipements ;
-3. correction des écarts de cybersécurité détectés ;
-4. contrats automatisés HTTP, stockage, réseau et météo ;
-5. passage D5 des composants disposant déjà de preuves matérielles.
+1. correction firmware des écarts de cybersécurité confirmés ;
+2. contrats automatisés HTTP, stockage, réseau et météo ;
+3. persistance/versionnement du modèle d’équipements ;
+4. manifeste versionné de la carte SD de référence ;
+5. passage D5 des domaines disposant de preuves reproductibles.
 
 ## Règles de progression
 

@@ -1,158 +1,135 @@
 # AquaLook Engineering Reference — Compilation, déploiement et validation matérielle
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : checkpoint `CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md`, `AGENTS.md`, `platformio.ini`
-- Composants : PlatformIO, environnements legacy et V4, upload série, buildfs, tests matériels
-- Maturité : D3
+- Sources : `platformio.ini`, `aqualook_partitions.csv`, `tools/version_build.py`, sources de test et checkpoints
+- Composants : PlatformIO, profils legacy/V4, bancs ciblés, LittleFS, upload série
+- Maturité : D4
 
 ## Objet
 
-Ce document définit la chaîne de compilation, d’upload et de validation utilisée pour reprendre AquaLook depuis le checkpoint de clôture de l’étape 6.
+Ce document définit la chaîne de compilation, de déploiement et de validation applicable au dépôt courant. Les noms d’environnements, filtres de sources et options sont ceux de `platformio.ini`.
 
-## Préconditions
+## Socle commun
 
-- dépôt synchronisé sur la branche ciblée ;
-- état Git propre ;
-- PlatformIO installé ;
-- carte ESP32 connectée ;
-- port série identifié ;
-- `platformio.ini` du commit ciblé présent ;
-- aucun secret ou fichier local non versionné utilisé comme dépendance implicite.
+- plateforme : `espressif32 @ 6.13.0` ;
+- carte : `esp32dev` ;
+- framework : Arduino ;
+- moniteur série : `115200` bauds ;
+- upload nominal configuré à `921600` bauds ;
+- partitions : `aqualook_partitions.csv` ;
+- système de fichiers : LittleFS ;
+- source LittleFS : dossier `littlefs/`, défini par `data_dir = littlefs`.
 
-## Synchronisation Git
+Le dossier `data/` reste la source complète destinée à la carte SD ; il n’est pas utilisé directement par `buildfs` dans le profil courant.
 
-```powershell
-git switch main
-git fetch --prune
-git pull --ff-only origin main
-git status
-git log -3 --oneline
-```
+## Environnements confirmés
 
-État attendu : branche à jour et répertoire de travail propre.
+| Environnement | Finalité | Sources particulières | Backend |
+|---|---|---|---|
+| `ProgrammeArrosage` | firmware nominal | toutes les sources sauf bancs et variantes de main | legacy |
+| `ProgrammeArrosage_legacy` | alias explicite nominal | hérite de `ProgrammeArrosage` | legacy |
+| `ProgrammeArrosage_v4` | firmware avec sélection V4 | même runtime principal | V4 activé à la compilation |
+| `test_execution_engine` | banc déterministe passif | `EquipmentExecutionEngine.cpp`, `test_execution_engine.cpp` uniquement | aucun backend physique |
+| `calibration` | calibration tactile | `calibration_touch.cpp` uniquement | sans runtime nominal |
+| `test_relais` | diagnostic I²C et relais | `test_relais.cpp` uniquement | banc matériel |
+| `debug_boot` | diagnostic boot interactif | runtime avec exclusion de `main_nominal.cpp` | legacy |
 
-## Environnements validés
+Le profil V4 active `AQUALOOK_RELAY_BACKEND_V4=1` et désactive le backend legacy. Les interfaces V4 autorisées sont GPIO, I²C et VIRTUAL ; SPI, UART, OneWire, CAN, RS-485 et REMOTE restent désactivées.
 
-Le checkpoint confirme :
-
-- compilation de `ProgrammeArrosage_legacy` ;
-- compilation et upload de `ProgrammeArrosage_v4` ;
-- essais matériels après upload.
-
-Les noms exacts des environnements sont ceux de `platformio.ini`.
-
-## Commandes de référence
+## Commandes de compilation
 
 ```powershell
+pio run -e ProgrammeArrosage
 pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM3
-pio device monitor --port COM3 --baud 115200
+pio run -e ProgrammeArrosage_v4
+pio run -e test_execution_engine
+pio run -e calibration
+pio run -e test_relais
 ```
 
-Le port `COM3` est un exemple issu du checkpoint. Il doit être remplacé par le port réel de la machine.
+Les trois dernières commandes compilent des firmwares de banc. Leur réussite ne valide pas le firmware nominal.
 
-La commande d’upload compile déjà l’environnement V4. Une compilation V4 séparée avant l’upload n’est pas requise pour cette procédure.
+## Upload et moniteur
 
-## Ressources LittleFS
+```powershell
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM9
+pio device monitor --port COM9 --baud 115200
+```
 
-Après toute modification du dossier `data/` :
+`COM9` est la valeur locale actuellement inscrite dans `platformio.ini`. Elle doit être remplacée par le port réel de la machine et ne constitue pas un invariant du projet.
+
+## LittleFS
 
 ```powershell
 pio run -e ProgrammeArrosage -t buildfs
+pio run -e ProgrammeArrosage -t uploadfs --upload-port COM9
 ```
 
-L’environnement exact utilisé pour `buildfs` doit être confirmé dans `platformio.ini`. Le résultat doit être consigné dans le bilan de livraison.
+Une modification de `littlefs/` impose `buildfs`. Une modification de `data/` concerne le contenu SD de référence et exige une validation séparée du manifeste SD.
 
-## Validation fonctionnelle
+## Chaîne de validation par type de modification
 
-Une compilation réussie ne suffit pas. La validation couvre toute la chaîne :
+| Modification | Compilations minimales | Validation supplémentaire |
+|---|---|---|
+| logique Scheduler/configuration | legacy + V4 | scénario fonctionnel et reboot |
+| backend/relais/topologie | legacy + V4 + `test_relais` | mesure matérielle P5 |
+| modèle V4/moteur | V4 + `test_execution_engine` | scénarios déterministes |
+| écran/tactile | firmware concerné + `calibration` si calibration | test sur dalle réelle |
+| LittleFS | firmware + `buildfs` | chargement des fallbacks |
+| SD/ressources Web | firmware | matrice SD/LittleFS/firmware |
+| Web/API | legacy + V4 | tests GET/POST et effets observables |
+| sécurité | environnements impactés | tests négatifs et absence de secrets |
 
-1. inclusion et instanciation ;
-2. appel réel depuis `setup()`, `loop()`, tâche, callback ou route ;
-3. conditions d’entrée ;
-4. effet observable ;
-5. absence d’annulation par un cache, redraw ou rechargement ;
-6. vérification de tous les modes concernés.
+## Preuves attendues
 
-## Validation matérielle minimale
+Une livraison distingue explicitement :
 
-- démarrage sans activation intempestive ;
-- écran fonctionnel ;
-- tactile fonctionnel ;
-- serveur Web accessible ;
-- NTP fonctionnel lorsque le réseau est disponible ;
-- relais testés sur une seule zone, durée courte et sous surveillance ;
-- ressources SD et fallbacks vérifiés ;
-- EventLog et profiler observés ;
-- aucune régression du fallback legacy.
+1. compilation réussie ;
+2. upload réussi ;
+3. boot observé ;
+4. test fonctionnel exécuté ;
+5. test dégradé exécuté ;
+6. test matériel P5 lorsqu’un comportement électrique change.
 
-## Tests ciblés
+Une compilation ou un upload ne vaut pas validation fonctionnelle.
 
-Les environnements ou commandes dédiés présents dans le dépôt sont utilisés lorsque le périmètre le nécessite, notamment :
+## Critères de blocage
 
-- calibration tactile ;
-- test relais ;
-- diagnostic stockage ;
-- suivi série du boot et du Runtime.
+L’intégration est bloquée si :
 
-Les noms exacts des environnements doivent être extraits de `platformio.ini`.
-
-## Critères de livraison
-
-- `git diff --check` propre ;
-- compilation réussie des environnements concernés ;
-- `buildfs` réussi si `data/` a changé ;
-- validation matérielle réalisée ou explicitement marquée non réalisée ;
-- diff final relu ;
-- aucune duplication HTML, CSS ou JavaScript ;
-- aucune route ou structure persistée modifiée sans décision ;
-- documentation et checkpoint consolidés.
-
-## Gestion des échecs
-
-Un échec de compilation, upload, montage SD, tactile ou relais est indiqué sans ambiguïté. Il n’est jamais remplacé par une supposition de réussite.
-
-Lorsque Windows ou OneDrive bloque un changement de branche ou la suppression de dossiers temporaires :
-
-1. interrompre la boucle de nouvelle tentative ;
-2. fermer les fichiers dans VS Code et l’Explorateur ;
-3. renommer temporairement le dossier bloqué ;
-4. refaire le changement de branche ;
-5. supprimer ensuite les sauvegardes temporaires.
+- un environnement requis ne compile pas ;
+- `git diff --check` échoue ;
+- le firmware nominal n’est pas distingué d’un banc de test ;
+- un changement LittleFS n’a pas été validé par `buildfs` ;
+- une modification matérielle n’a pas de preuve P5 ou de mention explicite « non testée » ;
+- une route, un schéma NVS ou un contrat JSON change sans mise à jour documentaire ;
+- un secret apparaît dans le diff, les logs ou les artefacts ;
+- la documentation impactée n’est pas consolidée au checkpoint.
 
 ## Invariants
 
-### INV-BLD-001
-
-Aucun code non compilé n’est poussé comme état validé.
-
-### INV-BLD-002
-
-Un test matériel n’est déclaré réussi qu’après observation réelle.
-
-### INV-BLD-003
-
-Une modification de `data/` impose `buildfs`.
-
-### INV-BLD-004
-
-La branche `main` reste stable ; les évolutions utilisent une branche dédiée.
-
-### INV-BLD-005
-
-Le checkpoint référence le commit exact utilisé pour compiler et tester.
+- `INV-BLD-001` : aucun code non compilé n’est déclaré validé.
+- `INV-BLD-002` : les profils legacy et V4 restent compilables tant que la coexistence est maintenue.
+- `INV-BLD-003` : un banc ciblé ne remplace jamais la compilation du firmware nominal.
+- `INV-BLD-004` : une modification matérielle exige une validation sur cible.
+- `INV-BLD-005` : le checkpoint référence le commit exact, les environnements et les tests exécutés.
+- `INV-BLD-006` : `littlefs/` est la source actuelle de `buildfs`; `data/` est traité comme contenu SD.
 
 ## Références
 
-- `docs/checkpoints/CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md` ;
-- `AGENTS.md` — procédure avant livraison ;
 - `platformio.ini` ;
+- `aqualook_partitions.csv` ;
+- `tools/version_build.py` ;
+- `src/test_execution_engine.cpp` ;
+- `src/test_relais.cpp` ;
+- `src/calibration_touch.cpp` ;
+- `30_TEST_AND_ANTI_REGRESSION_MATRIX.md` ;
 - `11_CHECKPOINT_CONSOLIDATION.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation de la chaîne de compilation, d’upload et de validation matérielle.
+Consolidation D4 des profils, filtres de sources, commandes, preuves et critères de blocage.
