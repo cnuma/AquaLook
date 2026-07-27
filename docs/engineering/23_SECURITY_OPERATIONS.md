@@ -1,20 +1,20 @@
 # AquaLook Engineering Reference — Exploitation cybersécurité
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée aux contrôles exécutables
 - Dernière consolidation : 2026-07-27
-- Sources : architecture cybersécurité, registre des risques, cycle de vie sécurité
-- Composants : firmware, Web, Wi-Fi, MQTT, OTA, VPS, Git, secrets
-- Maturité : D3
+- Sources : architecture cybersécurité, registre des risques, contrats CI
+- Composants : firmware, Web, Wi-Fi, météo, MQTT, OTA, VPS, Git, secrets
+- Maturité : D4
 
 ## Objet
 
-Ce document traduit les principes de cybersécurité en procédures d’exploitation. Il complète l’architecture sans recopier le registre des risques.
+Ce document traduit les principes de cybersécurité en procédures d’exploitation et relie les risques aux contrôles automatisables du dépôt.
 
 ## Responsabilités d’exploitation
 
-- inventorier les équipements, versions et identités ;
-- contrôler les comptes et secrets actifs ;
+- inventorier équipements, versions et identités ;
+- contrôler comptes, certificats et secrets actifs ;
 - appliquer les mises à jour de sécurité ;
 - surveiller les échecs d’authentification et anomalies ;
 - sauvegarder et tester les restaurations ;
@@ -22,131 +22,102 @@ Ce document traduit les principes de cybersécurité en procédures d’exploita
 - conserver la traçabilité des changements ;
 - préparer la fin de support.
 
-## Inventaire minimal
-
-Pour chaque installation :
-
-- identifiant de l’équipement ;
-- matériel et révision ;
-- version firmware et SHA ;
-- version documentaire applicable ;
-- identités Wi-Fi, MQTT et certificats ;
-- propriétaire ;
-- emplacement ;
-- date de mise en service ;
-- statut de support ;
-- date de dernière revue.
-
 ## Gestion des secrets
 
-Pour chaque secret : propriétaire, emplacement, méthode de provisionnement, durée de vie, rotation, révocation et comportement après perte.
+Pour chaque secret : propriétaire, emplacement, provisionnement, durée de vie, rotation, révocation et comportement après perte.
 
 Interdictions :
 
-- secret dans Git ;
-- secret dans une archive de checkpoint ;
-- secret dans un log ;
+- secret dans Git, un checkpoint ou une archive ;
+- secret complet dans un log série ou EventLog ;
 - clé privée dans les ressources Web ou sur une SD distribuée ;
-- identifiant universel partagé entre tous les appareils.
+- identifiant universel partagé entre appareils ;
+- clé API exposée dans une URL journalisée ou un diagnostic.
 
-## Revues périodiques
+## Contrats automatisables
 
-### À chaque checkpoint
+La commande de référence est :
 
-- vérifier les nouvelles interfaces ;
+```powershell
+python -m unittest discover -s tests/contracts -p "test_*.py" -v
+```
+
+Le workflow `.github/workflows/security-contracts.yml` exécute ces contrôles sur les pull requests et sur `main`.
+
+Les contrats actifs couvrent notamment :
+
+- traversées de chemin SD ;
+- exclusion des routes `/api/` du handler statique ;
+- absence de cache sur les diagnostics de stockage ;
+- timeout borné de la météo ;
+- déclaration POST JSON des routes sensibles.
+
+Les tests `expectedFailure` représentent des dettes confirmées, pas des succès : mot de passe Wi-Fi journalisé, AP ouvert et météo HTTP. Ils doivent devenir bloquants dans le commit qui corrige le firmware.
+
+## Revue à chaque checkpoint
+
+- exécuter les contrats statiques ;
+- compiler les environnements impactés ;
+- vérifier les nouvelles interfaces et entrées ;
+- rechercher les secrets dans diff, logs et artefacts ;
 - réviser les risques concernés ;
-- contrôler les fichiers et archives ;
-- documenter les dépendances modifiées ;
-- vérifier les journaux et modes dégradés.
-
-### À chaque release
-
-- identifier le firmware par version et SHA ;
-- vérifier les artefacts ;
-- revoir les secrets de publication ;
-- publier les instructions de mise à jour et de repli.
-
-### Périodiquement en exploitation
-
-- vérifier l’expiration des certificats ;
-- appliquer les correctifs VPS ;
-- revoir les comptes ;
-- tester une restauration ;
-- contrôler les alertes de dépendances ;
-- revoir les risques ouverts.
+- documenter les tests négatifs et modes dégradés ;
+- mettre à jour `35_CODE_TRACEABILITY_REGISTER.md` et `37_SECURITY_CONTRACTS_AND_CI.md`.
 
 ## Réponse à incident
 
-```mermaid
-flowchart TD
-  DET[Détection] --> CONTAIN[Confinement]
-  CONTAIN --> REVOKE[Révocation / rotation]
-  REVOKE --> ANALYSE[Analyse et preuves]
-  ANALYSE --> RESTORE[Restauration]
-  RESTORE --> VERIFY[Validation]
-  VERIFY --> UPDATE[Mise à jour risques et documentation]
-```
-
-### Actions immédiates possibles
-
-- isoler l’équipement du réseau ;
-- fermer un port ou service ;
-- révoquer un certificat ou compte ;
-- changer les secrets ;
-- suspendre une source OTA ;
-- préserver les journaux ;
-- revenir à une version validée.
+1. détecter et qualifier ;
+2. confiner l’équipement ou le service ;
+3. révoquer ou faire tourner les secrets ;
+4. préserver les preuves ;
+5. restaurer depuis un état validé ;
+6. vérifier les fonctions locales et sécurités relais ;
+7. mettre à jour risques, contrats et documentation.
 
 La mise en sécurité des relais et la continuité locale restent prioritaires.
 
-## Gestion des vulnérabilités
+## Critères de fermeture d’un risque
 
-Une alerte concernant une dépendance est analysée selon : composant affecté, version, exposition, exploitabilité, impact, mesure compensatoire et calendrier de correction.
+Un risque n’est fermé qu’après :
 
-Une mise à jour de bibliothèque ne doit pas être fusionnée sans compilation et tests de non-régression.
+- implémentation ;
+- test nominal et négatif ;
+- documentation ;
+- observabilité ;
+- récupération testée ;
+- preuve archivée dans un checkpoint.
 
-## Sauvegarde et restauration
-
-Les sauvegardes contenant des secrets ou configurations sensibles sont protégées, inventoriées et testées. Une sauvegarde non testée ne réduit pas le risque `SEC-018`.
+Un `expectedFailure` encore présent interdit de déclarer le risque correspondant fermé.
 
 ## Risques prioritaires
 
 - `SEC-001` : authentification Web ;
-- `SEC-003` : commandes MQTT ;
-- `SEC-004` : intégrité OTA ;
-- `SEC-006` : secrets dans les artefacts ;
-- `SEC-008` : durcissement VPS ;
+- `SEC-002` : point d’accès captif ;
+- `SEC-006` et `SEC-011` : secrets et journaux ;
 - `SEC-009` : dépendances vulnérables ;
+- `SEC-010` : épuisement des ressources ;
+- `SEC-012` : récupération utilisée comme porte dérobée ;
 - `SEC-017` : révocation ;
 - `SEC-018` : restauration.
 
 ## Invariants
 
-### INV-OPS-SEC-001
-
-Un incident de service distant ne désactive pas les sécurités locales.
-
-### INV-OPS-SEC-002
-
-Toute compromission présumée déclenche une rotation ou révocation adaptée.
-
-### INV-OPS-SEC-003
-
-Un risque n’est fermé qu’après implémentation, test, documentation, observabilité et récupération.
-
-### INV-OPS-SEC-004
-
-Les archives de reprise excluent les secrets.
+- `INV-OPS-SEC-001` : un incident distant ne désactive pas les sécurités locales.
+- `INV-OPS-SEC-002` : toute compromission présumée déclenche une rotation ou révocation adaptée.
+- `INV-OPS-SEC-003` : un risque n’est fermé qu’après implémentation, test, documentation, observabilité et récupération.
+- `INV-OPS-SEC-004` : les archives de reprise excluent les secrets.
+- `INV-OPS-SEC-005` : les contrats CI visibles ne sont pas supprimés pour masquer une dette.
 
 ## Références
 
+- `19_HTTPS_AND_SESSIONS.md` ;
+- `37_SECURITY_CONTRACTS_AND_CI.md` ;
 - `docs/security/CYBERSECURITY_ARCHITECTURE.md` ;
 - `docs/security/SECURITY_RISK_REGISTER.md` ;
-- `docs/roadmap/CYBERSECURITY_LIFECYCLE.md` ;
-- `AGENTS.md`.
+- `docs/roadmap/CYBERSECURITY_LIFECYCLE.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation des procédures de sécurité opérationnelle.
+Ajout des contrats CI, des dettes exécutables et des règles de fermeture associées.
