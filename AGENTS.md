@@ -132,22 +132,20 @@ Pendant la migration du backend d’exécution :
 - toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée ;
 - ne pas accumuler de nouvelles évolutions importantes tant que les fonctions V4 déjà intégrées n’ont pas été testées.
 
-Pour tout nouveau code embarqué, la chaîne minimale de compilation est :
+Avant la première compilation, le premier téléversement ou l’ouverture du moniteur série d’une nouvelle session, demander explicitement à l’utilisateur sur quel port COM la carte est connectée. Ne jamais supposer que le port de `platformio.ini`, d’une autre machine ou d’une ancienne session est encore valable. Tant que le port n’est pas confirmé, utiliser le marqueur `<PORT_COM>` dans les commandes et proposer `pio device list` si nécessaire.
+
+Pour tout nouveau code embarqué destiné à être testé sur matériel, la chaîne minimale est :
 
 ```powershell
 git diff --check
 pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
 ```
 
-Pour l’essai matériel courant du nouveau chemin :
+La cible `upload` compile automatiquement V4 avant le téléversement. Ne pas lancer une compilation V4 séparée juste avant cette commande, sauf besoin explicite de diagnostic. Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_v4` pour la validation de compilation.
 
-```powershell
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM9
-pio device monitor -p COM9 -b 115200
-```
-
-Consigner le profil réellement flashé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
+Consigner le profil réellement flashé, le port série utilisé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
 
 ### LittleFS
 
@@ -206,13 +204,15 @@ Consigner le profil réellement flashé, le point d’entrée exécuté, le mat�
 3. Énoncer les invariants à préserver.
 4. Faire la modification minimale.
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
-6. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy` et `pio run -e ProgrammeArrosage_v4`.
-7. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
-8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
-9. Pour tout nouveau chemin V4 actif, flasher `ProgrammeArrosage_v4`, ouvrir le moniteur série et effectuer le test matériel correspondant.
-10. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-11. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
-12. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
+6. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
+7. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy`.
+8. Si un essai matériel V4 est prévu, exécuter directement `pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>` ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_v4`.
+9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
+10. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
+11. Pour tout nouveau chemin V4 actif, ouvrir le moniteur série sur `<PORT_COM>` et effectuer le test matériel correspondant.
+12. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
+13. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
+14. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
 
 ## Livrables
 
