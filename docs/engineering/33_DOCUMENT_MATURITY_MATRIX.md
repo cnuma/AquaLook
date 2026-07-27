@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Matrice de maturité documentaire
 
-- Version documentaire : 1.3
+- Version documentaire : 1.4
 - Statut : active
 - Dernière consolidation : 2026-07-27
 - Maturité : D4
@@ -30,23 +30,23 @@
 | observabilité | 24 | D4 | API, seuils et schéma JSON extraits | tests automatiques du contrat JSON et de charge |
 | affichage et tactile | 13 | D4 | API, bus, modes, cadences, tactile et redraw extraits | tests automatisés et preuves de calibration P5 |
 | réseau | 18 | D4 | machine d’états, délais, retries, portail et scan extraits | tests automatisés et sécurisation du portail captif |
-| SD et ressources | 14, 27 | D3 | handlers et ordre de fallback identifiés | manifeste et tests automatisés |
-| modèle V4 et météo | 16 | D2 | objets Runtime identifiés | frontières et données stabilisées |
+| SD et ressources | 14, 27 | D4 | API, états, sentinelle, manifeste URL/support, MIME et fallbacks extraits | manifeste de carte versionné et tests automatiques |
+| modèle V4 et météo | 16 | D4 | API EquipmentManager, plans, limites pompe, tâche météo et endpoint extraits | schéma EquipmentModel versionné, HTTPS et tests automatiques |
 | build et validation | 17, 30 | D3 | commandes réelles documentées | CI et preuves archivées |
 | HTTPS et sessions | 19 | D2 | architecture cible | implémentation et tests négatifs |
 | MQTT | 20 | D2 | architecture cible | topics et schémas confirmés |
 | OTA | 21 | D2 | architecture cible | partitions et signature validées |
-| sécurité | 23 | D3 | registre de risques | suppression des secrets dans les logs, protection AP et procédures testées |
+| sécurité | 23 | D3 | registre de risques | suppression des secrets dans les logs, protection AP, HTTPS OWM et procédures testées |
 | maintenance | 25 | D3 | procédure documentaire | exercice de restauration |
 | catalogues et index | 28 à 35 | D4 | index et registre de traçabilité | mise à jour automatique ou checkpoint |
 
 ## Priorités suivantes
 
-1. SD, ressources statiques et manifeste ;
-2. modèle V4 et météo ;
-3. build, tests et matrice anti-régression ;
-4. correction des écarts de cybersécurité détectés ;
-5. automatisation des contrats D4.
+1. build, tests et matrice anti-régression ;
+2. schéma détaillé du modèle d’équipements ;
+3. correction des écarts de cybersécurité détectés ;
+4. contrats automatisés HTTP, stockage, réseau et météo ;
+5. passage D5 des composants disposant déjà de preuves matérielles.
 
 ## Règles de progression
 

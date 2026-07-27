@@ -1,137 +1,175 @@
 # AquaLook Engineering Reference — Backend V4, modèle d’équipements et météo
 
-- Version documentaire : 1.0
-- Statut : référence initiale
+- Version documentaire : 1.1
+- Statut : référence reliée au code
 - Dernière consolidation : 2026-07-27
-- Sources : checkpoint `CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md`, code du dépôt
-- Composants : backend V4, fallback legacy, modèle d’équipements transitoire, pompe shadow, météo
-- Maturité : D2
+- Source de code : `src/EquipmentManager.*`, `src/EquipmentModel.*`, `src/EquipmentOutputRuntimeAdapter.*`, `src/WeatherManager.*`, `src/main.cpp`, `platformio.ini`
+- Composants : backend V4, fallback legacy, modèle d’équipements, pompe shadow, OpenWeatherMap
+- Maturité : D4
 
 ## Objet
 
-Ce document consolide l’état validé du backend V4 à la clôture de l’étape 6. Il décrit uniquement les capacités confirmées et renvoie les évolutions aux roadmaps existantes.
+Ce document décrit les frontières réellement implémentées entre le modèle d’équipements, la chaîne de sortie et la collecte météo. Il distingue les sorties exécutables des fonctions encore limitées au plan ou au dry-run.
 
-## État validé
+## Sélection du backend
 
-- backend V4 fonctionnel ;
-- fallback legacy conservé ;
-- modèle d’équipements transitoire opérationnel ;
-- scénario pompe shadow passif disponible selon configuration ;
-- météo non bloquante fonctionnelle ;
-- compilation et upload de l’environnement V4 réussis ;
-- essais matériels associés réussis.
+Les profils de compilation utilisent les macros `AQUALOOK_RELAY_BACKEND_LEGACY` et `AQUALOOK_RELAY_BACKEND_V4`. Le Runtime conserve un chemin de repli vers l’adaptateur de sorties lorsque `EquipmentManager::startZone()` ou `stopZone()` échoue.
 
-## Backend V4
+Chaîne principale :
 
-Le backend V4 introduit une couche d’évolution du moteur sans supprimer immédiatement les comportements legacy validés. Le choix entre chemins V4 et legacy dépend de la configuration et du code du commit ciblé.
-
-### Invariants
-
-#### INV-V4-001
-
-Le fallback legacy est conservé tant que sa suppression n’est pas validée explicitement.
-
-#### INV-V4-002
-
-Un équipement transitoire ne contourne pas la chaîne de commande matérielle et les sécurités de durée.
-
-#### INV-V4-003
-
-Une capacité V4 n’est déclarée active que si son chemin d’exécution est câblé et testé.
-
-## Modèle d’équipements transitoire
-
-Le modèle d’équipements permet de représenter des fonctions matérielles sans figer immédiatement l’architecture cible complète.
-
-Les éléments consolidés sont :
-
-- identification d’équipements ;
-- association à une fonction ;
-- utilisation par le backend V4 ;
-- coexistence avec les structures legacy ;
-- préparation de scénarios tels que la pompe shadow.
-
-Les structures exactes, identifiants et relations doivent être extraits du code lors du passage à D3.
-
-## Pompe shadow passive
-
-Le scénario pompe shadow est disponible selon configuration. Son rôle est d’accompagner l’exécution sans introduire un pilotage autonome non validé.
-
-Une pompe shadow passive :
-
-- dépend de l’état d’exécution configuré ;
-- ne crée pas seule un programme ;
-- ne contourne pas le RelayManager ;
-- conserve les sécurités de durée maximale ;
-- produit des diagnostics exploitables.
-
-## Météo non bloquante
-
-La météo est intégrée sous une forme streaming ou progressive afin de ne pas immobiliser le Runtime pendant une opération réseau.
-
-### Invariants météo
-
-#### INV-WEA-001
-
-L’indisponibilité de la météo ne bloque pas le moteur local.
-
-#### INV-WEA-002
-
-Une opération météo ne provoque pas de traitement réseau long dans la boucle critique.
-
-#### INV-WEA-003
-
-Les données météo ne commandent pas directement les relais.
-
-## Séquence simplifiée
-
-```mermaid
-flowchart LR
-  CFG[Configuration] --> V4[Backend V4]
-  LEG[Fallback legacy] --> EXEC[Chaîne d’exécution]
-  V4 --> EXEC
-  MODEL[Modèle d’équipements] --> V4
-  WEATHER[Météo non bloquante] --> V4
-  EXEC --> RELAY[Commande matérielle sécurisée]
-  EXEC --> SHADOW[Pompe shadow si configurée]
+```text
+ScheduleManager
+  -> callback onRelayRequest(zone, state)
+  -> EquipmentManager::startZone/stopZone
+  -> EquipmentOutputRuntimeAdapter
+  -> backend sélectionné
+  -> RelaisManager / topologie I2C
 ```
 
-## Modes dégradés
+## API confirmée d’EquipmentManager
 
-### météo indisponible
+```cpp
+void begin(const EquipmentConfigSet* model,
+           const RelayTopologyConfig* topology,
+           uint8_t nbZones,
+           RelaisManager* relayExecutor = nullptr);
+void setRelayExecutor(RelaisManager* executor);
+void setOutputAdapter(EquipmentOutputRuntimeAdapter* adapter);
+bool isInitialized() const;
+ZoneResolution resolveZone(uint8_t zone) const;
+ZoneDependencyResolution resolveZoneDependencies(uint8_t zone) const;
+ZoneExecutionPlan buildZoneStartPlan(uint8_t zone) const;
+ZoneExecutionPlan buildZoneStopPlan(uint8_t zone) const;
+ActionResult dryRunZoneStartPlan(uint8_t zone) const;
+ActionResult dryRunZoneStopPlan(uint8_t zone) const;
+ActionResult startZone(uint8_t zone);
+ActionResult stopZone(uint8_t zone);
+```
 
-Le système conserve son fonctionnement local selon les règles déjà validées. L’erreur est journalisée sans blocage.
+## Résultats et plans
 
-### configuration V4 incomplète
+`ActionResult` distingue notamment : non initialisé, zone invalide, lien ou équipement absent, mapping relais absent, rôle incompatible, exécuteur absent et échec d’exécution.
 
-Le système applique le repli explicitement prévu. Aucun fallback ne doit être supposé s’il n’est pas présent dans le code.
+Un `ZoneExecutionPlan` contient au maximum quatre étapes. Actions possibles :
 
-### équipement absent
+- `VALVE_ON` ;
+- `VALVE_OFF` ;
+- `PUMP_ON` ;
+- `PUMP_OFF` ;
+- `WAIT`.
 
-La fonction associée est indisponible ou dégradée. Les autres fonctions restent actives lorsqu’elles ne dépendent pas de cet équipement.
+Le plan indique la zone, la nécessité d’une pompe et les délais associés.
 
-## Tests de référence
+## Limite actuelle du modèle
 
-- compilation V4 ;
-- upload V4 ;
-- démarrage avec fallback legacy ;
-- fonctionnement du modèle transitoire ;
-- scénario pompe shadow selon configuration ;
-- météo disponible ;
-- météo indisponible ;
-- absence de blocage du Runtime ;
-- vérification des relais et de la durée maximale.
+Le commentaire contractuel de `EquipmentManager` est explicite : seules les électrovannes de zones sont exécutables. Les dépendances pompe sont résolues, planifiées et observables en dry-run, mais aucune action pompe n’est actuellement exécutée.
+
+La pompe shadow est donc une capacité d’analyse et de préparation, pas une commande matérielle active. Elle ne doit pas être présentée comme opérationnelle tant que `PUMP_ON/PUMP_OFF` ne sont pas reliés à un exécuteur validé.
+
+## Météo : API et données
+
+`WeatherManager` expose :
+
+```cpp
+void begin(ConfigManager* config = nullptr);
+void update(bool wifiConnected);
+bool isRainExpected() const;
+float getRainMm() const;
+float getTempC() const;
+bool hasFetched() const;
+String getStatusStr() const;
+ForecastDay getForecastDay(uint8_t offset) const;
+```
+
+Chaque `ForecastDay` contient pluie, températures min/max et ressentie, vent, rafales, direction, probabilité de pluie, humidité, nébulosité, pression moyenne, description, icône et validité pour cinq jours.
+
+## Exécution météo non bloquante
+
+`update()` reste dans la boucle principale et :
+
+1. traite un changement de configuration via `EventBus::configDirty` ;
+2. applique un résultat déjà produit ;
+3. vérifie le Wi-Fi et l’échéance ;
+4. copie la configuration utile ;
+5. crée une tâche FreeRTOS `weather-fetch`.
+
+La tâche utilise une pile de `12288` octets et une priorité `1`. La configuration n’est pas lue depuis la tâche : elle est copiée dans `FetchRequest` avant lancement. Les échanges entre tâche et Runtime sont protégés par `g_weatherMux`.
+
+## Source distante réelle
+
+Endpoint utilisé :
+
+```text
+http://api.openweathermap.org/data/2.5/forecast
+```
+
+Paramètres selon la configuration : coordonnées ou `ville,pays`, `appid`, `units`, `cnt=40`.
+
+Le transport est actuellement HTTP non chiffré. La clé API apparaît dans l’URL construite en mémoire. Ce point constitue un écart de cybersécurité.
+
+Timeout HTTP : `8000 ms`. En cas d’échec, la prochaine tentative est préparée après `60000 ms`. Après une absence de clé, le prochain contrôle utilise `OWM_CHECK_INTERVAL_MS`.
+
+## Traitement JSON
+
+La réponse est désérialisée directement depuis le flux HTTP avec un filtre ArduinoJson limité aux champs utilisés. Cette stratégie évite de dupliquer la réponse complète en RAM.
+
+Les 40 créneaux de trois heures sont regroupés sur cinq jours. L’algorithme utilise le fuseau renvoyé par OWM lorsqu’une époque valide est disponible ; sinon il replie les entrées par groupes de huit.
+
+La description et l’icône retenues correspondent au créneau le plus proche de midi local. Les vents sont convertis de m/s en km/h. La probabilité `pop` est convertie en pourcentage.
+
+## Influence météo
+
+`WeatherManager` produit des données et un indicateur `rainExpected`. Il ne pilote jamais directement les relais. Les décisions d’annulation ou de report appartiennent au Scheduler et à sa configuration de pluie.
+
+La pluie utilisée pour `rainExpected` est comparée au seuil copié depuis la configuration de la zone 0. Ce choix doit être considéré comme une limite actuelle lorsque plusieurs zones possèdent des seuils différents.
+
+## Invariants
+
+- `INV-V4-001` : le fallback legacy reste disponible tant que sa suppression n’est pas explicitement validée.
+- `INV-V4-002` : seules les actions réellement reliées à un exécuteur sont déclarées exécutables.
+- `INV-V4-003` : une résolution ou un mapping invalide conduit à un résultat d’erreur, jamais à une sortie arbitraire.
+- `INV-V4-004` : les plans pompe restent passifs tant que leur exécution n’est pas câblée et testée.
+- `INV-WEA-001` : l’absence de réseau, de clé ou de réponse météo ne bloque pas le Runtime.
+- `INV-WEA-002` : HTTP et désérialisation s’exécutent hors de la boucle critique.
+- `INV-WEA-003` : la configuration est copiée avant lancement de la tâche météo.
+- `INV-WEA-004` : la météo ne commande pas directement les sorties.
+
+## Validation
+
+- compilation et boot legacy puis V4 ;
+- résolution de zone valide et invalide ;
+- mapping absent et exécuteur absent ;
+- construction et dry-run des plans avec et sans pompe ;
+- confirmation qu’aucune sortie pompe n’est activée ;
+- météo sans Wi-Fi et sans clé ;
+- timeout et erreur HTTP ;
+- réponse JSON filtrée ;
+- cinq jours et fuseau local ;
+- reconfiguration OWM ;
+- absence de blocage de la boucle principale.
+
+## Écarts ouverts
+
+- remplacer l’appel OWM HTTP par HTTPS et protéger la clé API ;
+- décider si le seuil pluie doit être global ou calculé par zone ;
+- versionner le schéma complet `EquipmentModel` et ses identifiants ;
+- câbler ou supprimer les étapes pompe passives ;
+- archiver des tests automatiques sur les plans et les résultats d’erreur ;
+- préciser la politique de conservation des dernières données valides après échec ;
+- vérifier le coût de la tâche et du buffer JSON sur les variantes matérielles sans PSRAM.
 
 ## Références
 
-- `docs/checkpoints/CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md` ;
-- `06_SCHEDULER.md` ;
-- `08_RELAY_AND_EQUIPMENT_CONTROL.md` ;
-- `15_RUNTIME_AND_PROFILING.md` ;
-- roadmaps V4 et modèle d’équipements existantes.
+- `src/EquipmentManager.h` et `.cpp` ;
+- `src/EquipmentModel.h` et `.cpp` ;
+- `src/EquipmentOutputRuntimeAdapter.h` et `.cpp` ;
+- `src/WeatherManager.h` et `.cpp` ;
+- `src/main.cpp` ;
+- `platformio.ini` ;
+- `docs/checkpoints/CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md`.
 
 ## Historique
 
-### 1.0
+### 1.1
 
-Première consolidation du backend V4, du modèle d’équipements transitoire, de la pompe shadow et de la météo non bloquante.
+Consolidation D4 des APIs, plans d’exécution, limites de la pompe shadow, tâche météo, endpoint, timeout et traitement JSON.
