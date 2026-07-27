@@ -22,6 +22,15 @@ Ce dossier décrit **comment le code existant fonctionne**. Chaque fiche est rel
 | `FW-009_WiFiManager.md` | Wi-Fi STA/AP, reconnexion et portail captif |
 | `FW-010_EquipmentManager.md` | modèle V4, plans et backends |
 
+## Lot F3
+
+| Référence | Composant |
+|---|---|
+| `FW-011_RelaisManager_et_RelayTopology.md` | topologie, mappings et commandes I²C des relais |
+| `FW-012_WeatherManager.md` | récupération et agrégation météo non bloquantes |
+| `FW-013_NTPManager.md` | synchronisation et accès à l’heure système |
+| `FW-014_FaultManager.md` | défauts actifs, erreurs et acquittement |
+
 ## Règle de maintenance
 
 Toute modification majeure d’un composant met à jour sa fiche Firmware, le tome Engineering associé, le guide Developer concerné et le checkpoint.
