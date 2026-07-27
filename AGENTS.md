@@ -73,7 +73,7 @@ Afin de rendre visible la profondeur d’un échange, de détecter les conversat
 Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiquement la procédure suivante sans attendre de demande complémentaire :
 
 1. Identifier la branche active, le commit courant et l’état Git.
-2. Vérifier que le code validé est compilé, que buildfs est validé si data/ a changé, et que le dépôt ne contient aucune modification non validée.
+2. Vérifier que le code validé est compilé, que buildfs est validé si `littlefs/` a changé, et que le dépôt ne contient aucune modification non validée.
 3. Créer le document :
    docs/checkpoints/CHECKPOINT_YYYY-MM-DD_<sha-court>.md
 4. Le document doit être autonome et inclure :
@@ -90,7 +90,7 @@ Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiqu
 6. Utiliser le nouveau commit documentaire comme commit officiel de reprise.
 7. Générer ensuite un checkpoint complet nommé :
    AquaLook_YYYY-MM-DD_<branche>_checkpoint_complet_<sha-court>.zip
-8. Inclure dans le ZIP les sources, data, documentation, AGENTS.md, platformio.ini et le document de reprise.
+8. Inclure dans le ZIP les sources, `data/`, `littlefs/`, documentation, AGENTS.md, platformio.ini et le document de reprise.
 9. Exclure .git, .pio, sauvegardes, logs, secrets et fichiers temporaires.
 10. Calculer et fournir le SHA-256.
 11. Fournir enfin un bloc minimal de reprise prêt à copier dans un nouveau chat.
@@ -118,11 +118,44 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 - Avant livraison, identifier pour chaque demande le fichier, la fonction, le point d’appel et le résultat attendu.
 - Si la vérification matérielle n’a pas été effectuée, le signaler explicitement.
 
+### Qualification Legacy / V4
+
+Pendant la migration du backend d’exécution :
+
+- `ProgrammeArrosage_legacy` est la référence historique et la solution de repli ;
+- `ProgrammeArrosage_v4` est le profil à qualifier en priorité pour les nouveaux développements ;
+- une compilation V4 réussie ne signifie jamais que la fonction est validée en V4 ;
+- une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que si son chemin V4 est réellement instancié, appelé et testé sur la carte avec un effet observable ;
+- tant que `V4RelayPhysicalBackend` n’est pas câblé dans `main.cpp` pour la fonction ou la zone concernée, indiquer explicitement que le test V4 n’est pas représentatif, même si la compilation réussit ;
+- les essais matériels courants doivent être réalisés avec `ProgrammeArrosage_v4` dès que le chemin concerné est actif ;
+- le firmware Legacy ne doit être chargé que pour comparaison, diagnostic de régression, campagne de non-régression ou retour temporaire à la référence stable ;
+- toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée ;
+- ne pas accumuler de nouvelles évolutions importantes tant que les fonctions V4 déjà intégrées n’ont pas été testées.
+
+Pour tout nouveau code embarqué, la chaîne minimale de compilation est :
+
+```powershell
+git diff --check
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4
+```
+
+Pour l’essai matériel courant du nouveau chemin :
+
+```powershell
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port COM9
+pio device monitor -p COM9 -b 115200
+```
+
+Consigner le profil réellement flashé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
+
 ### LittleFS
 
-- `data/` contient uniquement les ressources embarquées réellement nécessaires.
-- Ne jamais déposer dans `data/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
-- Après toute modification de `data/`, exécuter obligatoirement `pio run -e ProgrammeArrosage -t buildfs`.
+- `data/` contient les ressources complètes destinées notamment à la carte SD.
+- `littlefs/` contient uniquement les secours techniques embarqués réellement nécessaires et constitue le `data_dir` PlatformIO.
+- Ne jamais déposer dans `littlefs/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
+- Après toute modification de `littlefs/`, exécuter obligatoirement `pio run -e ProgrammeArrosage_v4 -t buildfs`.
+- Avant checkpoint ou livraison nécessitant un repli complet, valider aussi `pio run -e ProgrammeArrosage_legacy -t buildfs`.
 - Un changement Web doit avoir un bilan de taille maîtrisé. La partition est proche de sa limite.
 
 ### Persistance
@@ -173,12 +206,13 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 3. Énoncer les invariants à préserver.
 4. Faire la modification minimale.
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
-6. Exécuter `git diff --check` puis `pio run -e ProgrammeArrosage`.
-7. Si `data/` est modifié, exécuter `pio run -e ProgrammeArrosage -t buildfs`.
-8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration` ou `pio run -e test_relais`.
-9. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-10. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
-11. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
+6. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy` et `pio run -e ProgrammeArrosage_v4`.
+7. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
+8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
+9. Pour tout nouveau chemin V4 actif, flasher `ProgrammeArrosage_v4`, ouvrir le moniteur série et effectuer le test matériel correspondant.
+10. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
+11. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
+12. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
 
 ## Livrables
 
