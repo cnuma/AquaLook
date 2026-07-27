@@ -1,0 +1,32 @@
+name: Security contracts
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/contracts/**"
+      - ".github/workflows/security-contracts.yml"
+      - "docs/security/**"
+      - "docs/engineering/19_HTTPS_AND_SESSIONS.md"
+      - "docs/engineering/23_SECURITY_OPERATIONS.md"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/contracts/**"
+      - ".github/workflows/security-contracts.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run static security contracts
+        run: python -m unittest discover -s tests/contracts -p "test_*.py" -v
