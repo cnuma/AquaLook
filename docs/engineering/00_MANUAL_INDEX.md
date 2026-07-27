@@ -23,6 +23,13 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 | `08_RELAY_AND_EQUIPMENT_CONTROL.md` | relais, topologie et sécurités matérielles | D3 |
 | `09_WEB_AND_HTTP_INTERFACES.md` | WebManager et inventaire des URL confirmées | D3 |
 | `10_TIME_AND_EVENTLOG.md` | politique NTP, `millis()` et EventLog centralisé | D3 |
+| `11_CHECKPOINT_CONSOLIDATION.md` | consolidation obligatoire du référentiel à chaque checkpoint | D4 |
+| `12_HARDWARE_PLATFORM.md` | plateforme CYD, SPI, écran, tactile, microSD et modes dégradés | D3 |
+| `13_DISPLAY_AND_TOUCH.md` | rendu LCD, redraws, EventBus et tactile XPT2046 | D3 |
+| `14_SD_AND_STATIC_RESOURCES.md` | ressources Web SD, fallback LittleFS et SVG firmware | D3 |
+| `15_RUNTIME_AND_PROFILING.md` | Runtime non bloquant, temps mural et profiler | D3 |
+| `16_V4_EQUIPMENT_MODEL_AND_WEATHER.md` | backend V4, fallback legacy, équipements, pompe shadow et météo | D2 |
+| `17_BUILD_DEPLOYMENT_AND_HARDWARE_VALIDATION.md` | compilation, upload, buildfs et validation matérielle | D3 |
 
 ## Références spécialisées
 
