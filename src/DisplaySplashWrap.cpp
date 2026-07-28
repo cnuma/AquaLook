@@ -10,6 +10,8 @@
 
 namespace {
 
+constexpr uint32_t SPLASH_READABILITY_DELAY_MS = 250U;
+
 bool containsIgnoreCase(const char* text, const char* token) {
     if (!text || !token || !token[0]) return false;
     String haystack(text);
@@ -96,4 +98,8 @@ extern "C" void __wrap__ZN14DisplayManager10showSplashEhPKc(
 ) {
     __real__ZN14DisplayManager10showSplashEhPKc(display, step, label);
     if (display) drawIdentityOverlay(*display, step, label);
+
+    // Délai volontairement court et borné pour rendre chaque étape lisible.
+    // Il n'est appliqué que pendant setup(), avant l'entrée dans le runtime.
+    delay(SPLASH_READABILITY_DELAY_MS);
 }
