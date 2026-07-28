@@ -53,28 +53,73 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         return false;
     }
 
+    const bool isVersionCheck = strcmp(result.command, "check_version") == 0;
+    const bool successfulVersionCheck = isVersionCheck && result.success;
+
+    const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
+    const bool previousNotificationPending = preferences.getBool("notify", false);
+    const String previousAvailableVersion = preferences.getString("available", "");
+
+    bool updateAvailable = result.updateAvailable;
+    bool notificationPending = result.notificationPending;
+    uint32_t manifestSize = result.manifestSize;
+    uint32_t firmwareSize = result.firmwareSize;
+    String installedVersion = result.installedVersion;
+    String availableVersion = result.availableVersion;
+    String channel = result.channel;
+    String target = result.target;
+    String environment = result.environment;
+    String board = result.board;
+    String firmwareUrl = result.firmwareUrl;
+    String sha256 = result.sha256;
+
+    if (!successfulVersionCheck) {
+        // Un probe GitHub ou un CHECK_VERSION en échec ne doit pas effacer une
+        // disponibilité déjà validée. La signalisation locale et mobile reste
+        // fondée sur le dernier manifeste entièrement validé.
+        updateAvailable = previousUpdateAvailable;
+        notificationPending = previousNotificationPending;
+        manifestSize = preferences.getULong("manifest_sz", 0U);
+        firmwareSize = preferences.getULong("firmware_sz", 0U);
+        installedVersion = preferences.getString("installed", "");
+        availableVersion = previousAvailableVersion;
+        channel = preferences.getString("channel", "");
+        target = preferences.getString("target", "");
+        environment = preferences.getString("env", "");
+        board = preferences.getString("board", "");
+        firmwareUrl = preferences.getString("fw_url", "");
+        sha256 = preferences.getString("sha256", "");
+    } else if (result.updateAvailable &&
+               previousUpdateAvailable &&
+               previousAvailableVersion == result.availableVersion &&
+               !previousNotificationPending) {
+        // La même version a déjà été livrée au téléphone. Une nouvelle
+        // vérification manuelle ne doit pas recréer la notification.
+        notificationPending = false;
+    }
+
     bool ok = true;
     ok = preferences.putBool("valid", result.valid) == 1U && ok;
     ok = preferences.putBool("success", result.success) == 1U && ok;
-    ok = preferences.putBool("upd_avail", result.updateAvailable) == 1U && ok;
-    ok = preferences.putBool("notify", result.notificationPending) == 1U && ok;
+    ok = preferences.putBool("upd_avail", updateAvailable) == 1U && ok;
+    ok = preferences.putBool("notify", notificationPending) == 1U && ok;
     ok = preferences.putULong("tls_ms", result.tlsDurationMs) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("uptime_ms", result.recordedUptimeMs) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("heap_min", result.minFreeHeap) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("manifest_sz", result.manifestSize) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("firmware_sz", result.firmwareSize) == sizeof(uint32_t) && ok;
+    ok = preferences.putULong("manifest_sz", manifestSize) == sizeof(uint32_t) && ok;
+    ok = preferences.putULong("firmware_sz", firmwareSize) == sizeof(uint32_t) && ok;
 
     preferences.putString("command", result.command);
     preferences.putString("http", result.httpLine);
     preferences.putString("detail", result.detail);
-    preferences.putString("installed", result.installedVersion);
-    preferences.putString("available", result.availableVersion);
-    preferences.putString("channel", result.channel);
-    preferences.putString("target", result.target);
-    preferences.putString("env", result.environment);
-    preferences.putString("board", result.board);
-    preferences.putString("fw_url", result.firmwareUrl);
-    preferences.putString("sha256", result.sha256);
+    preferences.putString("installed", installedVersion);
+    preferences.putString("available", availableVersion);
+    preferences.putString("channel", channel);
+    preferences.putString("target", target);
+    preferences.putString("env", environment);
+    preferences.putString("board", board);
+    preferences.putString("fw_url", firmwareUrl);
+    preferences.putString("sha256", sha256);
 
     preferences.end();
     return ok;
