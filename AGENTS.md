@@ -155,7 +155,7 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 - La fin du boot doit produire un bilan synthétique comprenant au minimum la version, la cible active, la durée de démarrage, l’état réseau ou l’adresse IP lorsqu’elle est disponible, le nombre de zones et la mémoire libre utile.
 - Les messages de boot doivent permettre de diagnostiquer rapidement où le démarrage s’est arrêté, sans exiger l’activation de logs de développement supplémentaires.
 - Toute nouvelle étape d’initialisation ajoutée au runtime doit être intégrée à cette progression de boot ou être explicitement documentée comme volontairement silencieuse.
-- La lisibilité du splash ne doit pas être obtenue au prix d’un allongement artificiel du boot ; aucun délai ne doit être ajouté uniquement pour laisser le temps de lire une étape.
+- Aucun délai long ou non borné ne doit être ajouté uniquement pour l’esthétique. Une temporisation courte de lisibilité du splash est autorisée lorsqu’elle est explicitement demandée ou configurée, documentée dans le code, bornée par une constante et appliquée uniquement pendant `setup()`, sans retarder une action de sécurité ni le contrôle des relais.
 - Avant livraison, vérifier les sorties des environnements `ProgrammeArrosage` et `ProgrammeArrosage_v4` afin de confirmer que l’identité affichée correspond réellement au binaire compilé.
 
 ### Validation obligatoire des fichiers livrés
@@ -201,8 +201,8 @@ Quand plus de deux fichiers sont modifiés :
 
 ## Style de travail Codex
 
-- Expliquer les hypothèses.
-- Signaler les incertitudes.
-- Ne pas masquer un échec de compilation ou de test.
-- Ne pas inventer un résultat matériel.
-- Pour une tâche, produire un plan court, appliquer, tester, puis faire un bilan factuel.
+- Expliquer clairement les hypothèses et limites.
+- Préserver les décisions déjà validées.
+- Ne jamais masquer une régression sous une simplification.
+- Utiliser des commits petits, explicites et réversibles.
+- Documenter toute dette technique introduite volontairement.
