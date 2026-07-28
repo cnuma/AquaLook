@@ -32,7 +32,7 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
     constexpr int16_t overlayH = 45;
 
     const bool degraded = isDegradedStep(label);
-    const uint16_t accent = degraded ? TFT_ORANGE : Theme::SPLASH_ACCENT;
+    const uint16_t accent = degraded ? Theme::AMBER : Theme::SPLASH_ACCENT;
 
     tft.fillRect(0, overlayY, 320, overlayH, TFT_WHITE);
     tft.drawFastHLine(0, overlayY, 320, Theme::SPLASH_TRACK);
@@ -74,7 +74,7 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
         static_cast<unsigned>(DisplayManager::SPLASH_STEPS),
         label ? label : "Initialisation"
     );
-    tft.setTextColor(degraded ? TFT_RED : Theme::SPLASH_MUTED2, TFT_WHITE);
+    tft.setTextColor(degraded ? Theme::RED : Theme::SPLASH_MUTED2, TFT_WHITE);
     tft.drawString(stateLine, 160, overlayY + 31);
     tft.setTextDatum(TL_DATUM);
 }
