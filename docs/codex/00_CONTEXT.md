@@ -18,8 +18,10 @@ AquaLook est un programmateur d’arrosage autonome sur ESP32. Il regroupe :
 
 - ESP32, cible PlatformIO `esp32dev`
 - Flash : 4 Mo
-- Partition : `min_spiffs.csv`
-- Système de fichiers : LittleFS
+- Partition : table double OTA validée sur la branche
+- Système de fichiers minimal : LittleFS
+- Ressources Web principales : carte SD, répertoire `/www`
+- PSRAM : absente
 
 ### Affichage
 
@@ -49,9 +51,17 @@ AquaLook est un programmateur d’arrosage autonome sur ESP32. Il regroupe :
 
 ## État de référence
 
-Le présent socle a été construit après inspection du dépôt GitHub réel, de la branche `main`, du commit `a2cf490aa446c7006557f8df62e1f995f6767359`, du checkpoint complet du 27 juin 2026 et de l’arborescence PlatformIO.
+Pour la branche `work/storage-sd-recovery`, la source de vérité fonctionnelle validée est le commit `f16be3c0279643e4c4ae09144484be9e54b4f499`.
 
-## Fonctionnalités actuelles
+Le commit documentaire précédent est `e46c39261a7fe3adf18a0a6a6584d0cfe2662e86`.
+
+Le checkpoint détaillé associé est :
+
+`docs/checkpoints/CHECKPOINT_2026-07-23_work-storage-sd-recovery_notifications-zones-valides.md`
+
+Un nouveau checkpoint officiel de reprise est créé le 28 juillet 2026 selon la procédure définie dans `AGENTS.md`.
+
+## Fonctionnalités actuelles validées sur cette branche
 
 - 1 à 8 zones actives
 - 5 créneaux maximum par jour et par zone
@@ -60,12 +70,47 @@ Le présent socle a été construit après inspection du dépôt GitHub réel, d
 - démarrage et arrêt manuel
 - seuil de pluie par zone
 - fenêtre météo par zone
-- journal d’événements en RAM
+- journal d’événements en RAM et route texte `/api/logs.txt`
 - portail captif
 - configuration utilisateur et administrateur
 - personnalisation LCD et Web
 - conservation de la configuration en NVS
-- migration depuis l’ancien `/config.json` LittleFS
+- migration NVS schéma 1 vers schéma 2
+- récupération automatique de la carte SD
+- persistance des incidents SD en NVS
+- ressources Web principales servies depuis `/www` sur la carte SD
+- configuration ntfy persistée en NVS
+- transport ntfy HTTP sans TLS validé
+- notification configurable par zone au démarrage et à l’arrêt
+- déclenchement ntfy uniquement après succès réel du backend physique
+
+## Notifications ntfy
+
+Le TLS direct sur le contrôleur principal reste interdit dans cette architecture, car le handshake échoue par fragmentation mémoire malgré une heap libre suffisante en valeur totale.
+
+Le transport validé est temporairement :
+
+`AquaLook -> HTTP port 80 -> ntfy.sh -> téléphone`
+
+Limites :
+
+- contenu et topic non chiffrés ;
+- ne pas utiliser de jeton sensible ;
+- ne jamais libérer les sprites pour tenter de rendre TLS possible ;
+- une future passerelle locale, MQTT, Home Assistant ou ESP32-S2 reste recommandée.
+
+## Ressources Web et diagnostic
+
+Les ressources complètes sont servies depuis la carte SD. Après modification de `data/app.js` ou `data/logs.html`, les fichiers doivent être copiés dans `/www` sur la carte SD ; `uploadfs` ne réalise pas cette opération.
+
+Avant de conclure à une régression Web :
+
+1. vérifier `/api/status` ;
+2. vérifier directement `/app.js` ;
+3. contrôler la cohérence firmware / SD / cache navigateur ;
+4. effectuer `Ctrl+F5` ;
+5. tester en navigation privée ;
+6. consulter la console JavaScript.
 
 ## Interface administrateur
 
@@ -75,8 +120,10 @@ Ce mécanisme n’est pas une authentification serveur. Il ne doit pas être pr�
 
 ## Contraintes fortes
 
-- LittleFS est très proche de sa limite.
-- Toute ressource déposée dans `data/` est embarquée.
-- Les fichiers de sauvegarde dans `data/` provoquent une saturation.
-- Le matériel relais peut être activé au boot si la logique est incorrecte.
-- Les modifications de persistance exigent une compatibilité avec les données existantes.
+- Le contrôleur principal ne dispose pas de PSRAM.
+- Les ressources Web SD et le firmware doivent rester compatibles.
+- L’absence ou le retrait de la SD ne doit pas bloquer l’arrosage ni l’accès de secours.
+- Toute évolution de persistance exige une compatibilité avec les données existantes.
+- Une notification ne doit jamais bloquer ni conditionner une commande de relais.
+- Toute transition de zone notifiée doit avoir été confirmée par le backend réel.
+- Le tactile, le portail captif et les sprites sont des invariants anti-régression.
