@@ -7,6 +7,7 @@
 
 #include "EventLog.h"
 #include "ConfigManager.h"
+#include "MaintenanceResult.h"
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_notify";
@@ -60,6 +61,8 @@ volatile NotificationManager::WorkType g_work =
     NotificationManager::WorkType::NONE;
 NotificationManager::WorkType g_retryWork = NotificationManager::WorkType::NONE;
 volatile bool g_testPending = false;
+volatile bool g_updatePending = false;
+MaintenanceResult g_updateResult;
 uint32_t g_attempts = 0U;
 uint32_t g_nextAttemptMs = 0U;
 int g_lastHttpCode = 0;
@@ -118,12 +121,47 @@ int parseHttpStatus(const String& statusLine) {
     }
     return statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
 }
+
+void loadPendingUpdateNotification() {
+    g_updateResult = MaintenanceResultStore::load();
+    g_updatePending =
+        g_updateResult.valid &&
+        g_updateResult.success &&
+        g_updateResult.updateAvailable &&
+        g_updateResult.notificationPending &&
+        strcmp(g_updateResult.command, "check_version") == 0 &&
+        g_updateResult.availableVersion[0] != '\0';
+
+    if (g_updatePending) {
+        EventLog::log(
+            LOG_INFO,
+            "Notification: mise a jour en attente installed=%s available=%s",
+            g_updateResult.installedVersion,
+            g_updateResult.availableVersion
+        );
+    }
+}
+
+bool markUpdateNotificationDelivered() {
+    MaintenanceResult result = MaintenanceResultStore::load();
+    if (!result.valid || strcmp(result.command, "check_version") != 0) {
+        return false;
+    }
+    result.notificationPending = false;
+    const bool saved = MaintenanceResultStore::save(result);
+    if (saved) {
+        g_updateResult = result;
+        g_updatePending = false;
+    }
+    return saved;
+}
 }
 
 void NotificationManager::begin() {
     if (g_started) return;
     g_started = true;
     loadConfig();
+    loadPendingUpdateNotification();
 
     const BaseType_t created = xTaskCreatePinnedToCore(
         supervisorTask, "notify-supervisor", SUPERVISOR_STACK, nullptr,
@@ -138,9 +176,10 @@ void NotificationManager::begin() {
 
     EventLog::log(
         LOG_INFO,
-        "Notification: pret enabled=%s configured=%s",
+        "Notification: pret enabled=%s configured=%s updatePending=%s",
         g_config.enabled ? "yes" : "no",
-        validServer(g_config.server) && validTopic(g_config.topic) ? "yes" : "no"
+        validServer(g_config.server) && validTopic(g_config.topic) ? "yes" : "no",
+        g_updatePending ? "yes" : "no"
     );
 }
 
@@ -167,6 +206,7 @@ NotificationStatus NotificationManager::status() {
     value.enabled = g_config.enabled;
     value.workerRunning = g_result == WorkerResult::RUNNING;
     value.testPending = g_testPending;
+    value.updatePending = g_updatePending;
     value.pendingMask = IncidentManager::storageSd().pendingNotifications;
     value.pendingZoneEvents = g_zoneEventCount;
     value.attempts = g_attempts;
@@ -363,6 +403,10 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
                 g_zoneEventCount--;
             }
             portEXIT_CRITICAL(&g_mux);
+        } else if (g_work == WorkType::UPDATE_AVAILABLE) {
+            if (!markUpdateNotificationDelivered()) {
+                EventLog::log(LOG_WARN, "Notification: livraison update non acquittee en NVS");
+            }
         } else {
             IncidentManager::markStorageSdNotificationDelivered(
                 incidentNotificationFor(g_work)
@@ -421,6 +465,7 @@ NotificationManager::WorkType NotificationManager::nextWork() {
         return WorkType::INCIDENT_RECOVERY;
     }
     if (g_testPending) return WorkType::MANUAL_TEST;
+    if (g_updatePending) return WorkType::UPDATE_AVAILABLE;
     if (g_zoneEventCount > 0U) return WorkType::ZONE_EVENT;
     return WorkType::NONE;
 }
@@ -538,12 +583,28 @@ bool NotificationManager::sendCurrentWork() {
             message += zoneEvent.name;
             message += zoneEvent.active ? " démarrée" : " arrêtée";
             break;
+        case WorkType::UPDATE_AVAILABLE:
+            title = "AquaLook - nouvelle version disponible";
+            message = "Version installee : ";
+            message += g_updateResult.installedVersion;
+            message += "\nVersion disponible : ";
+            message += g_updateResult.availableVersion;
+            message += "\nCanal : ";
+            message += g_updateResult.channel[0] ? g_updateResult.channel : "stable";
+            message += "\nCible : ";
+            message += g_updateResult.target;
+            message += "\nLa mise a jour n'a pas ete telechargee ni installee.";
+            priority = "default";
+            tags = "arrow_up,package";
+            break;
         default:
             client.stop();
             return false;
     }
 
-    if (g_work != WorkType::MANUAL_TEST && g_work != WorkType::ZONE_EVENT) {
+    if (g_work != WorkType::MANUAL_TEST &&
+        g_work != WorkType::ZONE_EVENT &&
+        g_work != WorkType::UPDATE_AVAILABLE) {
         message += " Occurrences: ";
         message += incident.occurrences;
         message += ". Cause: ";
@@ -644,6 +705,7 @@ const char* NotificationManager::workCode(WorkType type) {
         case WorkType::INCIDENT_RECOVERY: return "sd-recovery";
         case WorkType::MANUAL_TEST: return "manual-test";
         case WorkType::ZONE_EVENT: return "zone-event";
+        case WorkType::UPDATE_AVAILABLE: return "update-available";
         default: return "none";
     }
 }
