@@ -25,6 +25,7 @@ struct NotificationStatus {
     bool enabled = false;
     bool workerRunning = false;
     bool testPending = false;
+    bool updatePending = false;
     uint8_t pendingMask = 0;
     uint8_t pendingZoneEvents = 0;
     uint32_t attempts = 0;
@@ -41,7 +42,8 @@ public:
         INCIDENT_ESCALATION,
         INCIDENT_RECOVERY,
         MANUAL_TEST,
-        ZONE_EVENT
+        ZONE_EVENT,
+        UPDATE_AVAILABLE
     };
 
     enum class WorkerResult : uint8_t {
