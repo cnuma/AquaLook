@@ -60,6 +60,14 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     const bool previousNotificationPending = preferences.getBool("notify", false);
     const String previousAvailableVersion = preferences.getString("available", "");
 
+    const bool explicitNotificationAck =
+        previousUpdateAvailable &&
+        previousNotificationPending &&
+        result.updateAvailable &&
+        !result.notificationPending &&
+        result.availableVersion[0] != '\0' &&
+        previousAvailableVersion == result.availableVersion;
+
     bool updateAvailable = result.updateAvailable;
     bool notificationPending = result.notificationPending;
     uint32_t manifestSize = result.manifestSize;
@@ -78,7 +86,9 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         // disponibilité déjà validée. La signalisation locale et mobile reste
         // fondée sur le dernier manifeste entièrement validé.
         updateAvailable = previousUpdateAvailable;
-        notificationPending = previousNotificationPending;
+        notificationPending = explicitNotificationAck
+            ? false
+            : previousNotificationPending;
         manifestSize = preferences.getULong("manifest_sz", 0U);
         firmwareSize = preferences.getULong("firmware_sz", 0U);
         installedVersion = preferences.getString("installed", "");
