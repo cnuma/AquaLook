@@ -12,9 +12,11 @@
 
 La configuration active est stockée en NVS. Toute évolution de structure exige schéma, compatibilité et stratégie de migration.
 
-## D004 — LittleFS en lecture pour les ressources
+## D004 — LittleFS minimal et ressources Web principales sur SD
 
-LittleFS sert le Web et le splash. ConfigManager est l’unique propriétaire du montage. Aucun fichier de travail dans `data/`.
+`ConfigManager` reste l’unique propriétaire du montage LittleFS. LittleFS conserve les ressources minimales de démarrage et de secours.
+
+Les ressources Web complètes sont servies prioritairement depuis `/www` sur la carte SD. La SD ne doit jamais devenir une dépendance critique pour le démarrage, l’arrosage local, le portail captif ou le diagnostic minimal.
 
 ## D005 — Activation relais par callback
 
@@ -24,9 +26,9 @@ ScheduleManager reste indépendant du matériel. Le callback est câblé dans `m
 
 Les communications transversales utilisent des flags statiques. Ne pas créer de second bus global.
 
-## D007 — Interface Web statique embarquée
+## D007 — Interface Web statique légère
 
-Chaque octet compte. Les gros frameworks frontend sont exclus et `buildfs` est obligatoire après changement.
+Chaque octet compte. Les gros frameworks frontend sont exclus. Les ressources Web SD doivent rester compatibles avec le contrat des routes exposées par le firmware.
 
 ## D008 — Limite fonctionnelle à 8 zones
 
@@ -60,3 +62,38 @@ Cette identité est réutilisée sans duplication manuelle par :
 - les futurs exports de diagnostic.
 
 La vue Web « À propos » doit être facilement accessible depuis l’interface principale. Elle fait partie des ressources complètes servies prioritairement depuis la SD, mais une information de version minimale doit rester consultable lorsque l’interface de secours LittleFS est utilisée.
+
+## D014 — TLS ntfy déporté hors du contrôleur principal
+
+Le contrôleur AquaLook principal ne doit plus tenter d’établir directement une session TLS pour ntfy dans l’architecture actuelle.
+
+Motif validé : fragmentation mémoire, avec environ 74 Ko de heap libre mais seulement environ 39 Ko dans le plus grand bloc contigu. La tentative de libération des sprites a provoqué une régression tactile et portail captif et ne doit pas être réintroduite.
+
+Le transport actuel validé est HTTP port 80, provisoire et non chiffré. Une future architecture robuste devra déporter TLS vers une passerelle locale, Home Assistant, MQTT, un ESP32-S2 ou un service intermédiaire.
+
+## D015 — Notification attachée au succès physique réel
+
+Une notification de démarrage ou d’arrêt de zone est émise uniquement après réussite du backend physique et uniquement si l’état demandé diffère de l’état précédent.
+
+Conséquences :
+
+- une intention du planificateur ne suffit pas ;
+- le shadow orchestrator ne produit pas de notification ;
+- une commande répétée vers le même état ne produit pas de doublon ;
+- un échec matériel ne produit pas de notification ;
+- la commande de relais ne dépend jamais de la livraison ntfy.
+
+## D016 — Préférences de notification par zone
+
+Chaque zone possède un masque persistant extensible :
+
+- bit 0 : notification au démarrage ;
+- bit 1 : notification à l’arrêt.
+
+La migration NVS du schéma 1 vers le schéma 2 initialise ces options à zéro pour préserver un comportement sûr et silencieux sur les configurations existantes.
+
+## D017 — Diagnostic Web avant correction du code
+
+Lorsqu’une interface paraît vide ou incohérente, vérifier d’abord le contrat backend et les ressources réellement servies : `/api/status`, `/app.js`, contenu `/www` sur SD, cache navigateur, navigation privée et console JavaScript.
+
+Aucune correction de code ne doit être engagée avant d’avoir exclu une incohérence entre firmware, carte SD et cache navigateur.
