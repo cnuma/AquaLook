@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <time.h>
 #include "FaultManager.h"
+#include "OtaBuildIdentity.h"
 
 enum LogLevel : uint8_t {
     LOG_INFO  = 0,
@@ -29,6 +30,36 @@ public:
         va_start(args, fmt);
         vsnprintf(buf, sizeof(buf), fmt, args);
         va_end(args);
+
+        // Compatibilite transitoire : main.cpp contenait historiquement un
+        // libelle "AquaLook v2.0 demarrage" ecrit en dur. Tant que ce point
+        // d'appel n'est pas supprime, ne jamais publier cette fausse version.
+        const bool legacyBootMessage =
+            strcmp(buf, "AquaLook v2.0 demarrage") == 0;
+        if (legacyBootMessage) {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "%s %s demarrage target=%s build=%s sha=%s",
+                OtaBuildIdentity::PRODUCT,
+                OtaBuildIdentity::VERSION,
+                OtaBuildIdentity::OTA_TARGET,
+                OtaBuildIdentity::BUILD_NUMBER,
+                OtaBuildIdentity::GIT_SHA
+            );
+
+            Serial.println();
+            Serial.println("============================================================");
+            Serial.println("AquaLook - demarrage firmware");
+            Serial.printf("Version       : %s\n", OtaBuildIdentity::VERSION);
+            Serial.printf("Cible OTA     : %s\n", OtaBuildIdentity::OTA_TARGET);
+            Serial.printf("Environnement : %s\n", OtaBuildIdentity::PLATFORMIO_ENVIRONMENT);
+            Serial.printf("Build         : %s\n", OtaBuildIdentity::BUILD_NUMBER);
+            Serial.printf("Git SHA       : %s\n", OtaBuildIdentity::GIT_SHA);
+            Serial.printf("Branche       : %s\n", OtaBuildIdentity::GIT_BRANCH);
+            Serial.printf("Carte         : %s\n", OtaBuildIdentity::BOARD);
+            Serial.println("============================================================");
+        }
 
         const uint32_t nowMs = millis();
         const time_t nowEpoch = validWallClockEpoch();
