@@ -11,6 +11,10 @@ void copyText(char* destination, size_t destinationSize, const String& source) {
     std::strncpy(destination, source.c_str(), destinationSize - 1U);
     destination[destinationSize - 1U] = '\0';
 }
+
+String readOptionalString(Preferences& preferences, const char* key) {
+    return preferences.isKey(key) ? preferences.getString(key) : String();
+}
 }
 
 MaintenanceResult MaintenanceResultStore::load() {
@@ -30,17 +34,17 @@ MaintenanceResult MaintenanceResultStore::load() {
         result.minFreeHeap = preferences.getULong("heap_min", 0U);
         result.manifestSize = preferences.getULong("manifest_sz", 0U);
         result.firmwareSize = preferences.getULong("firmware_sz", 0U);
-        copyText(result.command, sizeof(result.command), preferences.getString("command", ""));
-        copyText(result.httpLine, sizeof(result.httpLine), preferences.getString("http", ""));
-        copyText(result.detail, sizeof(result.detail), preferences.getString("detail", ""));
-        copyText(result.installedVersion, sizeof(result.installedVersion), preferences.getString("installed", ""));
-        copyText(result.availableVersion, sizeof(result.availableVersion), preferences.getString("available", ""));
-        copyText(result.channel, sizeof(result.channel), preferences.getString("channel", ""));
-        copyText(result.target, sizeof(result.target), preferences.getString("target", ""));
-        copyText(result.environment, sizeof(result.environment), preferences.getString("env", ""));
-        copyText(result.board, sizeof(result.board), preferences.getString("board", ""));
-        copyText(result.firmwareUrl, sizeof(result.firmwareUrl), preferences.getString("fw_url", ""));
-        copyText(result.sha256, sizeof(result.sha256), preferences.getString("sha256", ""));
+        copyText(result.command, sizeof(result.command), readOptionalString(preferences, "command"));
+        copyText(result.httpLine, sizeof(result.httpLine), readOptionalString(preferences, "http"));
+        copyText(result.detail, sizeof(result.detail), readOptionalString(preferences, "detail"));
+        copyText(result.installedVersion, sizeof(result.installedVersion), readOptionalString(preferences, "installed"));
+        copyText(result.availableVersion, sizeof(result.availableVersion), readOptionalString(preferences, "available"));
+        copyText(result.channel, sizeof(result.channel), readOptionalString(preferences, "channel"));
+        copyText(result.target, sizeof(result.target), readOptionalString(preferences, "target"));
+        copyText(result.environment, sizeof(result.environment), readOptionalString(preferences, "env"));
+        copyText(result.board, sizeof(result.board), readOptionalString(preferences, "board"));
+        copyText(result.firmwareUrl, sizeof(result.firmwareUrl), readOptionalString(preferences, "fw_url"));
+        copyText(result.sha256, sizeof(result.sha256), readOptionalString(preferences, "sha256"));
     }
 
     preferences.end();
@@ -58,7 +62,7 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
 
     const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
     const bool previousNotificationPending = preferences.getBool("notify", false);
-    const String previousAvailableVersion = preferences.getString("available", "");
+    const String previousAvailableVersion = readOptionalString(preferences, "available");
 
     const bool explicitNotificationAck =
         previousUpdateAvailable &&
@@ -91,14 +95,14 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
             : previousNotificationPending;
         manifestSize = preferences.getULong("manifest_sz", 0U);
         firmwareSize = preferences.getULong("firmware_sz", 0U);
-        installedVersion = preferences.getString("installed", "");
+        installedVersion = readOptionalString(preferences, "installed");
         availableVersion = previousAvailableVersion;
-        channel = preferences.getString("channel", "");
-        target = preferences.getString("target", "");
-        environment = preferences.getString("env", "");
-        board = preferences.getString("board", "");
-        firmwareUrl = preferences.getString("fw_url", "");
-        sha256 = preferences.getString("sha256", "");
+        channel = readOptionalString(preferences, "channel");
+        target = readOptionalString(preferences, "target");
+        environment = readOptionalString(preferences, "env");
+        board = readOptionalString(preferences, "board");
+        firmwareUrl = readOptionalString(preferences, "fw_url");
+        sha256 = readOptionalString(preferences, "sha256");
     } else if (result.updateAvailable &&
                previousUpdateAvailable &&
                previousAvailableVersion == result.availableVersion &&
