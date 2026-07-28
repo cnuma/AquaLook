@@ -126,10 +126,8 @@ void loadPendingUpdateNotification() {
     g_updateResult = MaintenanceResultStore::load();
     g_updatePending =
         g_updateResult.valid &&
-        g_updateResult.success &&
         g_updateResult.updateAvailable &&
         g_updateResult.notificationPending &&
-        strcmp(g_updateResult.command, "check_version") == 0 &&
         g_updateResult.availableVersion[0] != '\0';
 
     if (g_updatePending) {
@@ -144,7 +142,9 @@ void loadPendingUpdateNotification() {
 
 bool markUpdateNotificationDelivered() {
     MaintenanceResult result = MaintenanceResultStore::load();
-    if (!result.valid || strcmp(result.command, "check_version") != 0) {
+    if (!result.valid ||
+        !result.updateAvailable ||
+        result.availableVersion[0] == '\0') {
         return false;
     }
     result.notificationPending = false;
