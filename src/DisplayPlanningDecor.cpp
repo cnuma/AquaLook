@@ -27,7 +27,6 @@ HomeMode s_lastMode = HomeMode::GRID4;
 uint8_t s_lastGrid4View = 255;
 bool s_updateStateLoaded = false;
 bool s_updateAvailable = false;
-char s_availableVersion[24] = "";
 
 uint16_t tempBg(float tempC) {
     if (tempC < 5.0f)  return 0x11A9;
@@ -254,7 +253,7 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
 
     uint16_t zoneH = (198 - 28) / nbZ;
     if (zoneH < 4) zoneH = 4;
-    const uint16_t dayW = 42;
+    const uint16_t dayW = (320 - 22) / 7;
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
 
     for (uint8_t zi = 0; zi < nbZ; ++zi) {
@@ -280,10 +279,8 @@ void simplifyWideButtons(DisplayManager& d) {
 void loadUpdateState() {
     const MaintenanceResult result = MaintenanceResultStore::load();
     s_updateAvailable = result.valid &&
-                        result.success &&
                         result.updateAvailable &&
-                        strcmp(result.command, "check_version") == 0;
-    strlcpy(s_availableVersion, result.availableVersion, sizeof(s_availableVersion));
+                        result.availableVersion[0] != '\0';
     s_updateStateLoaded = true;
 }
 
