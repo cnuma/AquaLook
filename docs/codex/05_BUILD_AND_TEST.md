@@ -1,35 +1,166 @@
 # 05 — Compilation et tests
 
-## Environnements PlatformIO
+## Statut des profils firmware
 
-```powershell
-pio run -e ProgrammeArrosage
-pio run -e ProgrammeArrosage -t buildfs
-pio run -e ProgrammeArrosage -t upload
-pio run -e ProgrammeArrosage -t uploadfs
-pio run -e calibration
-pio run -e test_relais
-```
+- `ProgrammeArrosage_legacy` est la référence historique et le firmware de repli.
+- `ProgrammeArrosage_v4` est le profil de migration à qualifier en priorité sur matériel.
+- Une compilation V4 réussie ne constitue pas une validation fonctionnelle ou matérielle.
+- Tant que le backend V4 n’est pas réellement câblé dans `main.cpp` et qu’aucune zone n’est migrée, un essai avec le profil V4 ne doit pas être présenté comme un test complet du chemin V4.
+- Le profil `ProgrammeArrosage` reste un alias nominal historique pendant la phase de migration ; pour éviter toute ambiguïté, utiliser les noms explicites `_legacy` et `_v4` dans les procédures de développement.
 
-## Précontrôles Git
+## Port série obligatoire avant la première compilation
+
+Avant de proposer ou d’exécuter la première chaîne de compilation, de téléversement ou de surveillance série d’une nouvelle session de travail, l’agent doit demander explicitement sur quel port série se trouve la carte.
+
+Exemple de question :
+
+> Sur quel port COM la carte AquaLook est-elle connectée sur cette machine (`COM3`, `COM9`, etc.) ?
+
+Règles :
+
+- ne jamais supposer que le port défini dans `platformio.ini` est celui de la machine courante ;
+- ne jamais recopier automatiquement un ancien port COM provenant d’une autre machine ou d’une ancienne session ;
+- conserver le port confirmé pour toutes les commandes suivantes de la session ;
+- utiliser le marqueur `<PORT_COM>` tant que le port n’a pas été confirmé ;
+- si le port change ou si la carte n’est plus détectée, demander une nouvelle confirmation ;
+- lorsque nécessaire, proposer la commande `pio device list` pour identifier les ports disponibles.
+
+## Chaîne obligatoire pour un nouveau code
+
+### 1. Précontrôles Git
 
 ```powershell
 git status
 git diff --check
 git diff --stat
-git diff
 ```
+
+### 2. Compilation de contrôle Legacy
+
+Toute modification de code embarqué doit préserver la compilation Legacy :
+
+```powershell
+pio run -e ProgrammeArrosage_legacy
+```
+
+Cette compilation vérifie que les fichiers communs n’ont pas cassé le firmware historique et que le retour arrière reste disponible.
+
+### 3. Compilation et téléversement V4 en une seule commande
+
+Pour les essais matériels courants, la commande `upload` compile automatiquement le profil V4 avant de le téléverser. Il n’est donc pas nécessaire d’exécuter séparément `pio run -e ProgrammeArrosage_v4` juste avant le téléversement :
+
+```powershell
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+Cette commande unique valide la compilation V4 puis téléverse le binaire produit. Si la compilation échoue, le téléversement n’est pas effectué.
+
+Lorsqu’aucun téléversement n’est prévu, notamment dans une validation automatisée ou documentaire, compiler séparément V4 :
+
+```powershell
+pio run -e ProgrammeArrosage_v4
+```
+
+### 4. LittleFS lorsque les ressources embarquées changent
+
+Le dépôt utilise `littlefs/` comme `data_dir` PlatformIO. Après toute modification de `littlefs/` :
+
+```powershell
+pio run -e ProgrammeArrosage_v4 -t buildfs
+```
+
+Avant un checkpoint ou une livraison nécessitant un repli Legacy vérifié :
+
+```powershell
+pio run -e ProgrammeArrosage_legacy -t buildfs
+pio run -e ProgrammeArrosage_v4 -t buildfs
+```
+
+### 5. Chargement Legacy uniquement si nécessaire
+
+Le profil Legacy n’est chargé que dans les cas suivants :
+
+- comparaison d’un comportement douteux ;
+- confirmation d’une régression ;
+- retour temporaire à la référence stable ;
+- campagne explicite de non-régression Legacy.
+
+```powershell
+pio run -e ProgrammeArrosage_legacy -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+### 6. Validation avant checkpoint ou livraison
+
+Sans téléversement matériel :
+
+```powershell
+git diff --check
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4
+```
+
+Avec essai matériel V4 :
+
+```powershell
+git diff --check
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+Ajouter selon le périmètre :
+
+```powershell
+pio run -e ProgrammeArrosage_v4 -t buildfs
+pio run -e test_execution_engine
+pio run -e calibration
+pio run -e test_relais
+```
+
+## Règle de qualification V4
+
+Une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que si les quatre conditions suivantes sont réunies :
+
+1. elle compile dans `ProgrammeArrosage_v4` ;
+2. son chemin V4 est réellement instancié et appelé dans le runtime ;
+3. elle a été testée sur la carte avec un effet observable ;
+4. son résultat a été comparé au comportement Legacy ou à un résultat attendu documenté.
+
+Pour chaque fonction testée, consigner au minimum :
+
+- le profil flashé ;
+- le port série utilisé ;
+- le fichier et la fonction concernés ;
+- le point d’entrée exécuté ;
+- la zone ou le matériel utilisé ;
+- le résultat attendu ;
+- le résultat observé ;
+- les écarts et risques restants.
+
+Si le backend V4 n’est pas encore câblé pour la fonction concernée, noter explicitement :
+
+> Compilation V4 réussie, mais test fonctionnel V4 non applicable ou non représentatif à ce stade.
+
+## Stratégie de test pendant la migration
+
+- Les essais matériels courants se font en V4 dès que le chemin concerné est réellement actif.
+- Legacy reste la référence de comparaison et la solution de repli.
+- Les nouvelles évolutions importantes ne doivent pas s’accumuler tant que les fonctions V4 déjà intégrées n’ont pas été testées.
+- Les tests commencent sur une seule zone, avec une durée courte et sous surveillance.
+- Toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée.
 
 ## Matrice de validation minimale
 
-| Type de changement | Firmware | buildfs | Test Web | Test LCD | Test matériel |
+| Type de changement | Legacy compile | V4 compile | buildfs | Test V4 sur carte | Comparaison Legacy |
 |---|---:|---:|---:|---:|---:|
-| C++ métier | Oui | Si data touché | Selon impact | Selon impact | Selon impact |
-| HTML/JS/CSS | Oui | Oui | Oui | Si config partagée | Non |
-| Config NVS | Oui | Oui | Oui | Oui | Souvent |
-| Relais | Oui | Non sauf UI | Selon API | Selon UI | Obligatoire |
-| TFT/touch | Oui | Non sauf assets | Non | Obligatoire | Obligatoire |
-| Documentation | Non | Non | Non | Non | Non |
+| C++ métier partagé | Oui | Oui | Si ressources touchées | Selon impact | Selon impact |
+| Backend ou relais V4 | Oui | Oui | Non sauf UI | Obligatoire | Obligatoire |
+| HTML/JS/CSS | Oui | Oui | Oui | Oui | Selon impact |
+| Config NVS | Oui | Oui | Si ressources touchées | Oui | Obligatoire |
+| TFT/touch | Oui | Oui | Si assets touchés | Obligatoire | Selon impact |
+| Documentation seule | Non | Non | Non | Non | Non |
 
 ## Tests Web de non-régression
 
@@ -68,4 +199,13 @@ Boot sûr, direct, inverse, XL9535, MCP23017 lorsque disponible, zone 1, derniè
 
 ## Critères de livraison
 
-Une livraison n’est pas valide sans compilation `SUCCESS`, buildfs `SUCCESS` si `data/` change, diff contrôlé, état Git explicite et liste des tests matériels non exécutés.
+Une livraison n’est pas valide sans :
+
+- compilation `SUCCESS` du profil Legacy pour tout changement de firmware ;
+- compilation `SUCCESS` du profil V4, obtenue soit par compilation seule, soit par la commande combinée compilation-téléversement ;
+- buildfs `SUCCESS` si `littlefs/` change ;
+- diff contrôlé ;
+- état Git explicite ;
+- port série et profil réellement flashé indiqués ;
+- liste des tests matériels exécutés et non exécutés ;
+- absence de déclaration « validé V4 » lorsque le chemin V4 n’est pas réellement actif ou testé.

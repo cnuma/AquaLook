@@ -43,6 +43,19 @@ Pour une évolution significative, lire aussi :
 
 ## Règles impératives
 
+### Numérotation des réponses de l’agent
+
+Afin de rendre visible la profondeur d’un échange, de détecter les conversations devenues trop longues et de faciliter les références croisées :
+
+- toute réponse principale de l’agent dans un échange relatif à AquaLook commence par un identifiant au format `AQL-RNNN`, par exemple `AQL-R001` ;
+- la numérotation commence à `AQL-R001` au début de chaque nouveau chat AquaLook et progresse de une unité à chaque nouvelle réponse principale ;
+- les messages intermédiaires appartenant à la même réponse utilisent le même numéro suivi d’un suffixe, par exemple `AQL-R004.1`, `AQL-R004.2` ;
+- le numéro est affiché au tout début du message, avant le titre ou le contenu ;
+- les réponses très courtes, les confirmations et les bilans sont également numérotés ;
+- un checkpoint ou un document de reprise peut mentionner le dernier numéro atteint afin d’indiquer la profondeur de la conversation source ;
+- lorsque la conversation dépasse environ `AQL-R030`, l’agent doit signaler que le chat devient profond et proposer ou préparer un checkpoint autonome avant que la longueur du contexte ne dégrade la qualité ou les performances ;
+- cette numérotation sert uniquement au suivi conversationnel et ne remplace ni les numéros de runs, ni les versions, ni les commits Git, ni les identifiants d’issues ou de pull requests.
+
 ### Versionnement et espace À propos
 
 - Tout projet exécutable ou publiable doit posséder un numéro de version proposé et maintenu.
@@ -60,7 +73,7 @@ Pour une évolution significative, lire aussi :
 Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiquement la procédure suivante sans attendre de demande complémentaire :
 
 1. Identifier la branche active, le commit courant et l’état Git.
-2. Vérifier que le code validé est compilé, que buildfs est validé si data/ a changé, et que le dépôt ne contient aucune modification non validée.
+2. Vérifier que le code validé est compilé, que buildfs est validé si `littlefs/` a changé, et que le dépôt ne contient aucune modification non validée.
 3. Créer le document :
    docs/checkpoints/CHECKPOINT_YYYY-MM-DD_<sha-court>.md
 4. Le document doit être autonome et inclure :
@@ -77,7 +90,7 @@ Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiqu
 6. Utiliser le nouveau commit documentaire comme commit officiel de reprise.
 7. Générer ensuite un checkpoint complet nommé :
    AquaLook_YYYY-MM-DD_<branche>_checkpoint_complet_<sha-court>.zip
-8. Inclure dans le ZIP les sources, data, documentation, AGENTS.md, platformio.ini et le document de reprise.
+8. Inclure dans le ZIP les sources, `data/`, `littlefs/`, documentation, AGENTS.md, platformio.ini et le document de reprise.
 9. Exclure .git, .pio, sauvegardes, logs, secrets et fichiers temporaires.
 10. Calculer et fournir le SHA-256.
 11. Fournir enfin un bloc minimal de reprise prêt à copier dans un nouveau chat.
@@ -105,11 +118,42 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 - Avant livraison, identifier pour chaque demande le fichier, la fonction, le point d’appel et le résultat attendu.
 - Si la vérification matérielle n’a pas été effectuée, le signaler explicitement.
 
+### Qualification Legacy / V4
+
+Pendant la migration du backend d’exécution :
+
+- `ProgrammeArrosage_legacy` est la référence historique et la solution de repli ;
+- `ProgrammeArrosage_v4` est le profil à qualifier en priorité pour les nouveaux développements ;
+- une compilation V4 réussie ne signifie jamais que la fonction est validée en V4 ;
+- une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que si son chemin V4 est réellement instancié, appelé et testé sur la carte avec un effet observable ;
+- tant que `V4RelayPhysicalBackend` n’est pas câblé dans `main.cpp` pour la fonction ou la zone concernée, indiquer explicitement que le test V4 n’est pas représentatif, même si la compilation réussit ;
+- les essais matériels courants doivent être réalisés avec `ProgrammeArrosage_v4` dès que le chemin concerné est actif ;
+- le firmware Legacy ne doit être chargé que pour comparaison, diagnostic de régression, campagne de non-régression ou retour temporaire à la référence stable ;
+- toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée ;
+- ne pas accumuler de nouvelles évolutions importantes tant que les fonctions V4 déjà intégrées n’ont pas été testées.
+
+Avant la première compilation, le premier téléversement ou l’ouverture du moniteur série d’une nouvelle session, demander explicitement à l’utilisateur sur quel port COM la carte est connectée. Ne jamais supposer que le port de `platformio.ini`, d’une autre machine ou d’une ancienne session est encore valable. Tant que le port n’est pas confirmé, utiliser le marqueur `<PORT_COM>` dans les commandes et proposer `pio device list` si nécessaire.
+
+Pour tout nouveau code embarqué destiné à être testé sur matériel, la chaîne minimale est :
+
+```powershell
+git diff --check
+pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+La cible `upload` compile automatiquement V4 avant le téléversement. Ne pas lancer une compilation V4 séparée juste avant cette commande, sauf besoin explicite de diagnostic. Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_v4` pour la validation de compilation.
+
+Consigner le profil réellement flashé, le port série utilisé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
+
 ### LittleFS
 
-- `data/` contient uniquement les ressources embarquées réellement nécessaires.
-- Ne jamais déposer dans `data/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
-- Après toute modification de `data/`, exécuter obligatoirement `pio run -e ProgrammeArrosage -t buildfs`.
+- `data/` contient les ressources complètes destinées notamment à la carte SD.
+- `littlefs/` contient uniquement les secours techniques embarqués réellement nécessaires et constitue le `data_dir` PlatformIO.
+- Ne jamais déposer dans `littlefs/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
+- Après toute modification de `littlefs/`, exécuter obligatoirement `pio run -e ProgrammeArrosage_v4 -t buildfs`.
+- Avant checkpoint ou livraison nécessitant un repli complet, valider aussi `pio run -e ProgrammeArrosage_legacy -t buildfs`.
 - Un changement Web doit avoir un bilan de taille maîtrisé. La partition est proche de sa limite.
 
 ### Persistance
@@ -175,12 +219,15 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 3. Énoncer les invariants à préserver.
 4. Faire la modification minimale.
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
-6. Exécuter `git diff --check` puis `pio run -e ProgrammeArrosage`.
-7. Si `data/` est modifié, exécuter `pio run -e ProgrammeArrosage -t buildfs`.
-8. Pour une modification matérielle ciblée, utiliser `pio run -e calibration` ou `pio run -e test_relais`.
-9. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-10. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
-11. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation, statut LittleFS, tests matériels restant à faire, risques et incertitudes.
+6. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
+7. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy`.
+8. Si un essai matériel V4 est prévu, exécuter directement `pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>` ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_v4`.
+9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
+10. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
+11. Pour tout nouveau chemin V4 actif, ouvrir le moniteur série sur `<PORT_COM>` et effectuer le test matériel correspondant.
+12. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
+13. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
+14. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
 
 ## Livrables
 
