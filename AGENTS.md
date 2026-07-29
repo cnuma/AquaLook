@@ -41,6 +41,26 @@ Pour une évolution significative, lire aussi :
 - `docs/codex/08_RISKS_AND_DEBT.md`
 - `docs/codex/10_TASK_HANDOFF.md`
 
+### Checklist automatique au début de chaque chat AquaLook
+
+Cette checklist est une obligation de l’agent. L’utilisateur ne doit pas avoir à demander sa relecture ni à rappeler les commandes, profils ou conventions déjà consignés dans le dépôt.
+
+Avant toute analyse technique, proposition de modification, commande Git, compilation, téléversement ou test matériel dans un nouveau chat AquaLook, l’agent doit automatiquement :
+
+1. commencer la numérotation conversationnelle à `AQL-R001` ;
+2. identifier le dépôt, la branche ou le checkpoint de reprise réellement demandé ;
+3. lire la version courante de `AGENTS.md` depuis Git, sans utiliser la mémoire de conversation comme substitut ;
+4. exécuter l’ordre de lecture obligatoire défini ci-dessus ;
+5. vérifier le dernier checkpoint applicable et ne pas repartir d’un ancien extrait ou d’une branche supposée ;
+6. relire `platformio.ini` avant de proposer des commandes de build, d’upload, de buildfs ou de monitoring ;
+7. confirmer les noms exacts des environnements PlatformIO et les commandes imposées par le profil actif ;
+8. demander le port COM courant avant toute commande qui en dépend, sans reprendre automatiquement celui d’une ancienne session ou de `platformio.ini` ;
+9. regrouper toutes les commandes Git, compilation, téléversement et monitoring dans un seul bloc continu, dans l’ordre exact d’exécution ;
+10. signaler immédiatement toute divergence entre la branche de travail, `main`, le checkpoint et les règles documentaires applicables ;
+11. ne commencer aucune modification tant que cette passe de démarrage n’est pas terminée.
+
+Une reprise fournie par l’utilisateur peut accélérer l’identification du checkpoint, mais ne dispense jamais de relire les fichiers de gouvernance et de configuration dans leur version Git courante.
+
 ## Règles impératives
 
 ### Numérotation des réponses de l’agent
