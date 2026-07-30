@@ -207,6 +207,21 @@ Consigner le profil réellement flashé, le port série utilisé, le point d’e
 - Préserver le fonctionnement hot-reload des paramètres d’affichage.
 - Ne pas ajouter de polices GFXFF par includes séparés si elles sont déjà fournies par TFT_eSPI.
 
+#### Identité et progression de démarrage obligatoires
+
+Cette règle s’applique à tout développement AquaLook qui crée, modifie ou remplace un chemin de démarrage, un environnement PlatformIO, un profil matériel, un splash, une sortie série de boot ou une initialisation de service.
+
+- La sortie série de démarrage doit identifier explicitement le produit, la version fonctionnelle, la cible ou le profil matériel actif, l’environnement PlatformIO, le numéro de build, le SHA Git court et, lorsque disponible, la branche Git.
+- Ces informations doivent provenir de la source unique d’identité de build définie par le projet ; il est interdit de conserver ou d’ajouter un numéro de version, une cible ou un nom d’environnement écrit en dur dans `main.cpp`, un splash, un log ou une page Web.
+- Le splash doit afficher au minimum le nom du produit, la version fonctionnelle, la cible active (`LEGACY`, `V4` ou futur profil explicite), l’identifiant de build ou le SHA court, l’étape courante et une progression lisible.
+- Chaque étape significative du boot doit produire une information cohérente sur le splash et dans la sortie série, avec un état distinguant au minimum : en cours, réussi, dégradé et échec.
+- Un mode dégradé ou un fallback matériel doit être nommé explicitement ; il ne doit jamais être présenté comme un démarrage nominal.
+- La fin du boot doit produire un bilan synthétique comprenant au minimum la version, la cible active, la durée de démarrage, l’état réseau ou l’adresse IP lorsqu’elle est disponible, le nombre de zones et la mémoire libre utile.
+- Les messages de boot doivent permettre de diagnostiquer rapidement où le démarrage s’est arrêté, sans exiger l’activation de logs de développement supplémentaires.
+- Toute nouvelle étape d’initialisation ajoutée au runtime doit être intégrée à cette progression de boot ou être explicitement documentée comme volontairement silencieuse.
+- Aucun délai long ou non borné ne doit être ajouté uniquement pour l’esthétique. Une temporisation courte de lisibilité du splash est autorisée lorsqu’elle est explicitement demandée ou configurée, documentée dans le code, bornée par une constante et appliquée uniquement pendant `setup()`, sans retarder une action de sécurité ni le contrôle des relais.
+- Avant livraison, vérifier les sorties des environnements `ProgrammeArrosage` et `ProgrammeArrosage_v4` afin de confirmer que l’identité affichée correspond réellement au binaire compilé.
+
 ### Validation obligatoire des fichiers livrés
 
 - Tout patch, diff, script, archive, fichier de configuration ou fichier de transformation destiné à être appliqué par l’utilisateur doit être testé avant livraison avec l’outil exact prévu.
@@ -253,8 +268,8 @@ Quand plus de deux fichiers sont modifiés :
 
 ## Style de travail Codex
 
-- Expliquer les hypothèses.
-- Signaler les incertitudes.
-- Ne pas masquer un échec de compilation ou de test.
-- Ne pas inventer un résultat matériel.
-- Pour une tâche, produire un plan court, appliquer, tester, puis faire un bilan factuel.
+- Expliquer clairement les hypothèses et limites.
+- Préserver les décisions déjà validées.
+- Ne jamais masquer une régression sous une simplification.
+- Utiliser des commits petits, explicites et réversibles.
+- Documenter toute dette technique introduite volontairement.

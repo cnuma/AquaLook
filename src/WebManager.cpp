@@ -202,6 +202,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
     POST_JSON("/api/zoneName",      handleSetZoneName);
+    POST_JSON("/api/zoneNotifications", handleSetZoneNotifications);
     POST_JSON("/api/display",       handleSetDisplay);
 
 #undef POST_JSON
@@ -218,8 +219,11 @@ void WebManager::setupRoutes() {
     });
 
     // Journal d'événements — lien caché, diagnostic uniquement
-    _server.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    _server.on("/api/logs.txt", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleGetLogs(req);
+    });
+    _server.on("/api/logs", HTTP_GET, [](AsyncWebServerRequest* req) {
+        req->redirect("/api/logs.txt");
     });
 
     // Fichiers statiques LittleFS
@@ -276,6 +280,12 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         zo["schedActive"] = _schedule ? _schedule->isZoneActive(z) : false;
         zo["reason"]   = _schedule ? _schedule->getLastReason(z).c_str() : "";
         if (_config) zo["name"] = _config->zone(z).name;
+        if (_config) {
+            const uint8_t notifyMask = _config->zoneNotificationMask(z);
+            zo["notificationMask"] = notifyMask;
+            zo["notifyStart"] = (notifyMask & ZONE_NOTIFY_START) != 0U;
+            zo["notifyStop"] = (notifyMask & ZONE_NOTIFY_STOP) != 0U;
+        }
 
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
 
@@ -681,6 +691,18 @@ void WebManager::handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc
     sendOk(req);
 }
 
+void WebManager::handleSetZoneNotifications(AsyncWebServerRequest* req,
+                                             JsonDocument& doc) {
+    if (!_config) { sendError(req, "config indisponible"); return; }
+    const uint8_t zone = doc["zone"] | 255U;
+    if (zone >= _config->nbZones()) { sendError(req, "zone invalide"); return; }
+    uint8_t mask = 0U;
+    if (doc["notifyStart"] | false) mask |= ZONE_NOTIFY_START;
+    if (doc["notifyStop"] | false) mask |= ZONE_NOTIFY_STOP;
+    _config->setZoneNotificationMask(zone, mask);
+    sendOk(req);
+}
+
 void WebManager::handleStartCaptive(AsyncWebServerRequest* req) {
     sendOk(req);
     EventBus::captiveRequested = true;  // WiFiManager le consomme dans update()
@@ -881,84 +903,21 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  GET /api/logs — journal d'événements session courante
-//
-//  Retourne une page HTML auto-rafraîchie (10s) listant toutes
-//  les entrées INFO/WARN/ERROR depuis le démarrage.
-//  URL non référencée dans l'interface — accès par lien direct.
-//  Lien : http://<ip>/api/logs
+//  GET /api/logs.txt — journal texte de la session courante.
+//  /api/logs reste un alias de compatibilite par redirection HTTP.
 // ═══════════════════════════════════════════════════════════════
 void WebManager::handleGetLogs(AsyncWebServerRequest* req) {
-    // Construire la page HTML dans un String (taille max ~8KB pour 60 entrées)
-    String html;
-    html.reserve(4096);
-
-    html += F("<!DOCTYPE html><html lang='fr'><head>"
-              "<meta charset='UTF-8'>"
-              "<meta http-equiv='refresh' content='10'>"
-              "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-              "<title>AquaLook — Logs</title>"
-              "<style>"
-              "body{font-family:monospace;background:#0a0a0a;color:#ccc;margin:0;padding:1rem}"
-              "h2{color:#4fc3f7;margin-bottom:.5rem}"
-              ".sub{color:#556;font-size:.8rem;margin-bottom:1rem}"
-              "table{width:100%;border-collapse:collapse;font-size:.85rem}"
-              "th{text-align:left;color:#556;padding:.3rem .5rem;border-bottom:1px solid #222}"
-              "td{padding:.3rem .5rem;border-bottom:1px solid #181818;vertical-align:top}"
-              ".e{color:#f44336}.w{color:#ff9800}.i{color:#9e9e9e}"
-              ".tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.75rem;margin-right:4px}"
-              ".te{background:#f4433622;color:#f44336}"
-              ".tw{background:#ff980022;color:#ff9800}"
-              ".ti{background:#33333344;color:#9e9e9e}"
-              "</style></head><body>");
-
-    html += F("<h2>&#128220; Journal AquaLook</h2>");
-    html += "<div class='sub'>Session courante &mdash; ";
-    html += EventLog::count();
-    html += " entr&eacute;e(s) &mdash; auto-refresh 10s</div>";
-
-    if (EventLog::count() == 0) {
-        html += F("<p style='color:#556'>Aucun &eacute;v&eacute;nement enregistr&eacute;.</p>");
-    } else {
-        html += F("<table><tr><th>T+</th><th>Niveau</th><th>Message</th></tr>");
-
-        for (uint8_t i = 0; i < EventLog::count(); i++) {
-            const LogEntry& e = EventLog::get(i);
-
-            // Temps depuis démarrage HH:MM:SS
-            char tBuf[10];
-            EventLog::msToHms(e.ms, tBuf, sizeof(tBuf));
-
-            const char* lvlClass  = (e.level == LOG_ERROR) ? "e" :
-                                    (e.level == LOG_WARN)  ? "w" : "i";
-            const char* tagClass  = (e.level == LOG_ERROR) ? "te" :
-                                    (e.level == LOG_WARN)  ? "tw" : "ti";
-
-            html += "<tr><td style='color:#556;white-space:nowrap'>";
-            html += tBuf;
-            html += "</td><td><span class='tag ";
-            html += tagClass;
-            html += "'>";
-            html += EventLog::levelStr(e.level);
-            html += "</span></td><td class='";
-            html += lvlClass;
-            html += "'>";
-            html += e.msg;
-            html += "</td></tr>";
-        }
-        html += F("</table>");
+    AsyncResponseStream* response =
+        req->beginResponseStream("text/plain; charset=utf-8", 4096U);
+    response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    for (uint8_t i = 0; i < EventLog::count(); ++i) {
+        const LogEntry& entry = EventLog::get(i);
+        char timeText[10];
+        EventLog::msToHms(entry.ms, timeText, sizeof(timeText));
+        response->printf("[%s] [%s] %s\n", timeText,
+                         EventLog::levelStr(entry.level), entry.msg);
     }
-
-    // Uptime + heap en pied de page
-    char upBuf[10];
-    EventLog::msToHms(millis(), upBuf, sizeof(upBuf));
-    html += F("<div style='margin-top:1.5rem;color:#334;font-size:.75rem'>Uptime : ");
-    html += upBuf;
-    html += F(" &mdash; Heap libre : ");
-    html += ESP.getFreeHeap();
-    html += F(" octets</div></body></html>");
-
-    req->send(200, "text/html; charset=utf-8", html);
+    req->send(response);
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -61,6 +61,73 @@ Ordre de réalisation imposé :
 
 Invariant impératif : l’absence, le retrait ou la corruption de la carte SD ne doit jamais empêcher le démarrage du programmateur, l’exécution locale des cycles, l’accès à la première configuration ni l’utilisation d’une interface minimale de diagnostic et de récupération.
 
+### Mise à jour distante du firmware par GitHub Releases
+
+Permettre la mise à jour d’un module AquaLook à distance, sans présence physique à proximité du programmateur et sans connexion au même réseau local, en utilisant GitHub Releases comme source officielle des firmwares OTA.
+
+Objectifs fonctionnels :
+
+- publier les firmwares validés sous forme de fichiers binaires dans une GitHub Release ;
+- publier avec chaque version un manifeste décrivant au minimum la version, la compatibilité matérielle, la taille, l’URL de téléchargement et l’empreinte SHA-256 du firmware ;
+- permettre au module de vérifier manuellement ou périodiquement si une version plus récente est disponible ;
+- télécharger la mise à jour par une connexion HTTPS sortante initiée par le module ;
+- vérifier l’intégrité et l’authenticité du firmware avant toute installation ;
+- installer le firmware dans la partition OTA inactive puis redémarrer sur la nouvelle version ;
+- conserver une possibilité de retour automatique à la version précédente lorsque le nouveau firmware ne confirme pas un démarrage sain ;
+- afficher dans l’interface la version installée, la version disponible, la date de la dernière vérification et le résultat de la dernière tentative ;
+- permettre une vérification manuelle et, après validation de la stratégie de sécurité, une installation déclenchée depuis l’interface locale ou un mécanisme distant autorisé ;
+- journaliser toutes les étapes : découverte, téléchargement, validation, installation, redémarrage, confirmation ou retour arrière.
+
+GitHub comme infrastructure OTA :
+
+- GitHub Releases constitue la source officielle des versions publiées ;
+- une release ne doit être utilisée par les modules que lorsqu’elle est explicitement marquée comme compatible et déployable ;
+- les versions de développement, préversions et binaires non validés doivent être ignorés par défaut ;
+- le manifeste OTA doit permettre de distinguer les variantes matérielles, les schémas de partitions et les versions minimales compatibles ;
+- aucune clé GitHub disposant de droits d’écriture ne doit être stockée dans le module ;
+- l’accès à un dépôt privé, s’il est retenu, devra utiliser un mécanisme dédié qui n’expose pas durablement un jeton personnel dans le firmware ;
+- la stratégie finale devra décider entre dépôt public pour les seuls binaires publiés, dépôt privé avec relais sécurisé, ou serveur intermédiaire alimenté depuis GitHub Releases.
+
+Notifications associées — méthode à valider :
+
+- prévoir une abstraction de notification indépendante du fournisseur retenu ;
+- notifier au minimum la disponibilité d’une nouvelle version, le début de la mise à jour, la réussite, l’échec et un éventuel retour arrière ;
+- étudier ntfy comme première solution, en tenant compte du diagnostic TLS et de la fragmentation mémoire déjà observés sur la carte principale ;
+- comparer ntfy direct depuis le module, passerelle ESP32-S2, relais local, MQTT, Home Assistant ou service cloud intermédiaire ;
+- ne pas rendre la réussite de la mise à jour dépendante de la disponibilité du service de notification ;
+- conserver localement le résultat et le motif détaillé lorsque la notification ne peut pas être envoyée.
+
+Points d’architecture à étudier :
+
+- table de partitions compatible avec deux emplacements OTA, NVS et les besoins résiduels de LittleFS ;
+- taille maximale du firmware après migration des ressources Web vers la carte SD ;
+- capacité réelle de la carte à effectuer durablement les connexions HTTPS nécessaires avec une mémoire fragmentée ;
+- validation cryptographique du manifeste et du firmware, avec signature numérique à privilégier au-delà du seul contrôle SHA-256 ;
+- gestion des certificats racine, de leur expiration et de leur renouvellement ;
+- stratégie de déploiement progressif, de canal stable ou bêta et de blocage d’une version défectueuse ;
+- définition d’un état de démarrage sain avant confirmation définitive du nouveau firmware ;
+- conservation des configurations NVS, des programmes, des journaux et des données présentes sur la carte SD ;
+- compatibilité ascendante et migration contrôlée des structures de données persistantes ;
+- comportement lorsque la carte SD est absente, le réseau instable, le téléchargement interrompu ou l’alimentation coupée ;
+- politique concernant les cycles d’arrosage en cours : interdiction, report ou fenêtre de maintenance explicite ;
+- mécanisme de récupération local lorsque plusieurs démarrages du nouveau firmware échouent ;
+- limitation de fréquence des vérifications afin de ne pas perturber le planificateur ni surcharger GitHub.
+
+Ordre de réalisation proposé :
+
+1. valider l’occupation flash après migration des ressources Web vers la carte SD ;
+2. définir et tester une table de partitions OTA compatible avec le matériel ;
+3. définir le format du manifeste et la chaîne de publication GitHub Releases ;
+4. implémenter la vérification de version et le téléchargement sans installation ;
+5. ajouter les contrôles d’intégrité, de signature et de compatibilité ;
+6. intégrer l’installation OTA, la confirmation de démarrage et le rollback ;
+7. ajouter l’interface locale, les journaux et les commandes autorisées ;
+8. valider la méthode de notification puis l’intégrer sans couplage fort ;
+9. tester les coupures réseau et électriques, les images invalides et les retours arrière ;
+10. seulement après validation, autoriser un déclenchement distant contrôlé.
+
+Invariant impératif : aucune mise à jour ne doit pouvoir activer ou désactiver une voie de manière intempestive, interrompre silencieusement un cycle en cours, effacer la configuration ou rendre le module irrécupérable. Le module doit rester fonctionnel sur la version précédente tant que la nouvelle version n’a pas été téléchargée, vérifiée, démarrée et explicitement confirmée comme saine. Les notifications restent informatives et ne doivent jamais constituer une dépendance critique du processus OTA.
+
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
 Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
@@ -109,32 +176,83 @@ Points d’architecture à étudier :
 
 Invariant impératif : l’absence d’Internet ou de réseau Wi-Fi externe ne doit jamais empêcher l’exécution des programmes déjà enregistrés ni l’accès local aux fonctions essentielles. Le passage en point d’accès ne doit provoquer ni redémarrages répétés, ni perte de configuration, ni interruption intempestive d’un cycle d’arrosage en cours.
 
-### Connexion à un cloud externe
+### Écosystème AquaLook — cloud, MQTT et application mobile
 
-Permettre au module AquaLook de se connecter de manière sécurisée à un service cloud externe afin de rendre le système accessible sans connexion directe au réseau local du module.
+Faire évoluer AquaLook vers une architecture à trois couches : module ESP32 autonome, applications clientes et services distants. Le document de référence `docs/architecture/SYSTEM_ARCHITECTURE.md` formalise les responsabilités et invariants de cette architecture.
 
-Objectifs fonctionnels :
+#### Phase A — validation MQTT avec HiveMQ Cloud
 
-- centraliser et historiser les logs techniques et fonctionnels du module ;
-- consulter à distance l’état du programmateur, des zones, des cycles et des éventuelles erreurs ;
-- piloter l’application et envoyer des commandes au module depuis une interface distante ;
-- modifier certains paramètres ou programmes d’arrosage à distance ;
-- conserver un fonctionnement local autonome si la connexion Internet ou le service cloud est indisponible ;
-- synchroniser les données accumulées localement après une interruption de connexion.
+- utiliser HiveMQ Cloud comme broker MQTT de développement ;
+- établir une connexion MQTT/TLS sortante depuis AquaLook ;
+- définir et versionner l’arborescence des topics ;
+- publier les états, événements et diagnostics utiles ;
+- recevoir des demandes de commande distantes ;
+- ajouter un identifiant de corrélation et un acquittement explicite pour chaque commande ;
+- tester la reconnexion, les coupures réseau et la reprise après indisponibilité du broker ;
+- limiter le volume, la fréquence et la taille des messages afin de préserver la stabilité de l’ESP32 ;
+- rendre les contrats de messages indépendants du fournisseur de broker.
 
-Points d’architecture à étudier :
+#### Phase B — application mobile Flutter
 
-- protocole de communication sortant initié par le module, par exemple MQTT sécurisé ou HTTPS ;
-- authentification forte du module et des utilisateurs ;
-- chiffrement TLS des échanges ;
-- gestion des droits d’accès et protection contre les commandes non autorisées ;
-- file locale persistante pour les logs et commandes en attente ;
-- limitation du volume et de la fréquence des remontées afin de préserver la mémoire, la bande passante et la stabilité du firmware ;
-- choix entre une plateforme existante, un serveur auto-hébergé ou un service cloud dédié ;
-- mécanisme de mise à jour ou de révocation des identifiants du module ;
-- traçabilité des commandes distantes et confirmation de leur exécution réelle.
+- développer une base de code unique pour iOS et Android avec Flutter ;
+- afficher les états AquaLook en temps réel à partir de MQTT ;
+- consulter les zones, programmes, événements et diagnostics ;
+- envoyer des demandes de commande vers AquaLook via MQTT ;
+- afficher les commandes acceptées, refusées, expirées ou en erreur ;
+- recevoir et présenter les notifications ;
+- préparer la gestion multi-modules et multi-sites ;
+- préparer une intégration OTA contrôlée sans donner à l’application l’autorité directe sur le moteur local.
 
-Invariant impératif : le cloud doit rester une extension du système. Le planificateur, la sécurité des relais et les cycles d’arrosage doivent continuer à fonctionner localement et de manière autonome en cas de perte du cloud ou d’Internet.
+#### Phase C — migration vers un VPS OVHcloud
+
+Après validation du fonctionnement avec HiveMQ Cloud et mesure des besoins :
+
+- migrer le broker vers un VPS OVHcloud maîtrisé ;
+- déployer Mosquitto comme broker MQTT ;
+- utiliser Node-RED pour les scénarios de test, les diagnostics et certaines intégrations ;
+- ajouter une base de données pour l’historique ;
+- préparer une API AquaLook et les services de notifications ;
+- mettre en place supervision, sauvegardes, mises à jour de sécurité et journalisation ;
+- conserver les mêmes contrats MQTT ou gérer leur évolution par version ;
+- éviter toute dépendance du firmware à une adresse, un certificat ou un fournisseur figé sans mécanisme de renouvellement.
+
+#### Phase D — plateforme AquaLook
+
+- gestion multi-utilisateurs ;
+- gestion multi-sites ;
+- association de plusieurs modules à une installation ;
+- supervision centralisée ;
+- historique et statistiques ;
+- tableaux de bord ;
+- notifications avancées ;
+- administration Web ;
+- gestion de flotte et préparation des déploiements OTA contrôlés ;
+- ouverture vers les consommations d’eau, sondes, météo et recommandations d’arrosage.
+
+Principes d’architecture :
+
+- l’ESP32 reste l’autorité locale et temps réel ;
+- le cloud transporte, historise et supervise mais ne pilote jamais directement un relais ;
+- Flutter présente les données et émet des demandes, mais n’embarque pas la logique métier critique ;
+- MQTT transporte les messages et ne devient pas le moteur d’arrosage ;
+- toute commande distante est validée localement, bornée, tracée et acquittée ;
+- la perte d’Internet, du broker, du VPS ou de l’application ne doit pas empêcher les cycles locaux ;
+- HiveMQ sert à valider le concept, puis la migration vers OVHcloud doit rester possible sans réécriture du moteur local.
+
+Ordre de réalisation proposé :
+
+1. documenter les topics et les schémas de messages ;
+2. connecter un prototype AquaLook à HiveMQ Cloud en lecture seule ;
+3. valider publication, reconnexion, charge mémoire et stabilité ;
+4. ajouter des commandes non critiques avec acquittement ;
+5. réaliser un premier tableau de bord Flutter ;
+6. valider les commandes d’équipements avec les règles d’autorité locales ;
+7. ajouter notifications, historique et gestion multi-modules ;
+8. mesurer les besoins réels d’exploitation ;
+9. migrer vers un VPS OVHcloud avec Mosquitto et Node-RED ;
+10. développer progressivement les services de plateforme.
+
+Invariant impératif : le cloud et l’application mobile restent des extensions du système. Le planificateur, la sécurité des relais, les cycles d’arrosage et la validation des commandes restent locaux. Une indisponibilité du broker MQTT, de l’application, d’Internet ou du VPS ne doit jamais provoquer l’arrêt du système, une commande intempestive ou une modification silencieuse d’un programme.
 
 ### Mesure de la consommation d’eau par voie
 

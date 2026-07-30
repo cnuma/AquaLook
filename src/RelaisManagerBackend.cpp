@@ -27,8 +27,7 @@ bool RelaisManagerBackend::setZoneValve(
         return false;
     }
 
-    _relais->setRelay(zoneIndex, active);
-    return true;
+    return _relais->setRelay(zoneIndex, active);
 }
 
 bool RelaisManagerBackend::getZoneValveState(

@@ -182,6 +182,8 @@ function openZoneConfigModal(zoneIdx) {
   const anchorIso = epochDayToIso(anchorDay || todayEpochDay());
   const thresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
   const hours  = z.rain?.hours    ?? z.rainHours  ?? 24;
+  const notifyStart = z.notifyStart ?? ((z.notificationMask & 1) !== 0);
+  const notifyStop  = z.notifyStop  ?? ((z.notificationMask & 2) !== 0);
   document.getElementById('modal-title-text').textContent = `Config -- ${name}`;
   document.getElementById('modal-body').innerHTML = `
     <div class="zone-cfg-modal-header">
@@ -223,6 +225,12 @@ function openZoneConfigModal(zoneIdx) {
         <input type="number" id="zcfg-hours" min="1" max="48" value="${hours}">
       </div>
     </div>
+    <hr class="zone-cfg-sep">
+    <div class="zone-cfg-field">
+      <label>Notifications ntfy</label>
+      <label><input type="checkbox" id="zcfg-notify-start" ${notifyStart?'checked':''}> Notifier au démarrage</label>
+      <label><input type="checkbox" id="zcfg-notify-stop" ${notifyStop?'checked':''}> Notifier à l'arrêt</label>
+    </div>
     <button class="btn-full" onclick="saveZoneConfig(${zoneIdx})">Enregistrer</button>
   `;
   document.getElementById('modal').classList.add('open');
@@ -239,12 +247,15 @@ async function saveZoneConfig(zoneIdx) {
   const anchorDay = isoToEpochDay(anchorIso);
   const thresh = parseFloat(document.getElementById('zcfg-thresh').value) || 0;
   const hours  = parseInt(document.getElementById('zcfg-hours').value)    || 24;
+  const notifyStart = document.getElementById('zcfg-notify-start').checked;
+  const notifyStop = document.getElementById('zcfg-notify-stop').checked;
   if (mode === 1 && !anchorDay) {
     toast('Date de debut requise', true);
     return;
   }
   if (name) await api('/api/zoneName', { zone: zoneIdx, name });
   await api('/api/rain', { zone: zoneIdx, threshold: thresh, hours });
+  await api('/api/zoneNotifications', { zone: zoneIdx, notifyStart, notifyStop });
   if (mode === 1) {
     await api('/api/intervalAnchor', { zone: zoneIdx, anchorDay });
     await api('/api/interval', { zone: zoneIdx, interval: intD });

@@ -11,6 +11,7 @@
 #include "ConfigManager.h"
 #include "ScreenManager.h"
 #include "Theme.h"
+#include "MaintenanceResult.h"
 
 #define private public
 #include "DisplayManager.h"
@@ -24,6 +25,8 @@ uint32_t s_lastDecorMs = 0;
 Screen s_lastScreen = Screen::SYSTEM;
 HomeMode s_lastMode = HomeMode::GRID4;
 uint8_t s_lastGrid4View = 255;
+bool s_updateStateLoaded = false;
+bool s_updateAvailable = false;
 
 uint16_t tempBg(float tempC) {
     if (tempC < 5.0f)  return 0x11A9;
@@ -272,6 +275,33 @@ void simplifyWideButtons(DisplayManager& d) {
     // y+65..y+79 coupait le texte "Appuyer pour arroser" après la fin d'un cycle.
     (void)d;
 }
+
+void loadUpdateState() {
+    const MaintenanceResult result = MaintenanceResultStore::load();
+    s_updateAvailable = result.valid &&
+                        result.updateAvailable &&
+                        result.availableVersion[0] != '\0';
+    s_updateStateLoaded = true;
+}
+
+void drawUpdateAvailableIcon(DisplayManager& d) {
+    if (!s_updateStateLoaded) loadUpdateState();
+    if (!s_updateAvailable) return;
+
+    // Bande réservée à gauche du sprite signal (x=300..319).
+    // L'icône d'erreur conserve sa propre position et peut rester visible.
+    const uint16_t headerH = d._homeMode == HomeMode::GRID4 ? 20U :
+                             (d._homeMode == HomeMode::GRID2 ? 25U : 28U);
+    const int16_t cx = 285;
+    const int16_t cy = headerH / 2;
+    const int16_t radius = headerH <= 20 ? 7 : 8;
+
+    d._tft.fillCircle(cx, cy, radius, Theme::BLUE);
+    d._tft.drawFastVLine(cx, cy - 4, 7, Theme::TEXT);
+    d._tft.drawLine(cx, cy - 5, cx - 3, cy - 2, Theme::TEXT);
+    d._tft.drawLine(cx, cy - 5, cx + 3, cy - 2, Theme::TEXT);
+    d._tft.drawFastHLine(cx - 4, cy + 4, 9, Theme::TEXT);
+}
 }
 
 void displayPlanningDecorDraw(DisplayManager& display) {
@@ -308,4 +338,6 @@ void displayPlanningDecorDraw(DisplayManager& display) {
             hatchIntervalDaysGrid4(display);
             break;
     }
+
+    drawUpdateAvailableIcon(display);
 }

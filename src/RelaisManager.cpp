@@ -169,14 +169,11 @@ int16_t RelaisManager::findZoneAssignment(uint8_t zone, uint8_t nbZones) const {
     return -1;
 }
 
-void RelaisManager::setRelay(uint8_t relay, bool state) {
+bool RelaisManager::setRelay(uint8_t relay, bool state) {
     if (relay >= MAX_ZONES) {
         EventLog::log(LOG_ERROR, "Relais: index zone invalide %u", relay);
-        return;
+        return false;
     }
-
-    _state[relay] = state;
-    _startMs[relay] = state ? millis() : 0;
 
     const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
     const int16_t assignmentIndex = findZoneAssignment(relay, nbZ);
@@ -189,10 +186,14 @@ void RelaisManager::setRelay(uint8_t relay, bool state) {
             state ? "ON" : "OFF"
         );
         EventBus::displayDirty = true;
-        return;
+        return false;
     }
-
-    setAssignment(static_cast<uint8_t>(assignmentIndex), state);
+    const bool applied = setAssignment(static_cast<uint8_t>(assignmentIndex), state);
+    if (applied) {
+        _state[relay] = state;
+        _startMs[relay] = state ? millis() : 0U;
+    }
+    return applied;
 }
 
 bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {

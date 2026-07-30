@@ -7,6 +7,7 @@
 #include "FaultManager.h"
 #include "WiFiManager.h"
 #include "NTPManager.h"
+#include "NotificationManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "RelaisManagerBackend.h"
@@ -23,6 +24,7 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "EquipmentExecutionShadowRuntime.h"
 #include "EquipmentRuntimeConfigStore.h"
+#include "EquipmentOrchestrator.h"
 #include "domain/Xl9535SharedOutputState.h"
 
 WiFiManager wifiMgr;
@@ -44,10 +46,85 @@ RelayTopology::RelayTopologyConfig shadowRelayTopology;
 AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
 AquaLook::Runtime::EquipmentRuntimeConfigStore equipmentConfigStore;
+AquaLook::Application::EquipmentOrchestrator equipmentOrchestrator;
 AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
+static bool equipmentOrchestratorShadowReady = false;
+enum class OrchestratorAuthorityMode : uint8_t {
+    Disabled = 0U,
+    Controlled
+};
+
+enum class OrchestratorFallbackReason : uint8_t {
+    None = 0U,
+    AuthorityDisabled,
+    OrchestratorUnavailable,
+    PlanNotFromOrchestrator,
+    InvalidPlan
+};
+
+struct OrchestratorAuthorityDecision {
+    bool useOrchestrator = false;
+    OrchestratorFallbackReason fallbackReason =
+        OrchestratorFallbackReason::AuthorityDisabled;
+};
+
+// RUN7.10: decision layer only. Physical authority remains disabled until
+// compilation, bench and hardware validation have all succeeded.
+static constexpr OrchestratorAuthorityMode ORCHESTRATOR_AUTHORITY_MODE =
+    OrchestratorAuthorityMode::Disabled;
+
+static OrchestratorAuthorityDecision decideOrchestratorAuthority(
+    OrchestratorAuthorityMode mode,
+    bool orchestratorReady,
+    bool planFromOrchestrator,
+    const EquipmentManager::ZoneExecutionPlan& plan
+) {
+    if (mode == OrchestratorAuthorityMode::Disabled) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::AuthorityDisabled;
+        return decision;
+    }
+    if (!orchestratorReady) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::OrchestratorUnavailable;
+        return decision;
+    }
+    if (!planFromOrchestrator) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::PlanNotFromOrchestrator;
+        return decision;
+    }
+    if (!plan.valid()) {
+        OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = false;
+        decision.fallbackReason = OrchestratorFallbackReason::InvalidPlan;
+        return decision;
+    }
+    OrchestratorAuthorityDecision decision;
+        decision.useOrchestrator = true;
+        decision.fallbackReason = OrchestratorFallbackReason::None;
+        return decision;
+}
+
+static const char* orchestratorFallbackReasonName(
+    OrchestratorFallbackReason reason
+) {
+    switch (reason) {
+        case OrchestratorFallbackReason::None: return "none";
+        case OrchestratorFallbackReason::AuthorityDisabled: return "authority_disabled";
+        case OrchestratorFallbackReason::OrchestratorUnavailable: return "orchestrator_unavailable";
+        case OrchestratorFallbackReason::PlanNotFromOrchestrator: return "plan_not_from_orchestrator";
+        case OrchestratorFallbackReason::InvalidPlan: return "invalid_plan";
+    }
+    return "unknown";
+}
+
 
 static int16_t findZoneAssignmentIndex(
     const RelayTopology::RelayTopologyConfig& topology,
@@ -272,11 +349,69 @@ static bool buildShadowPumpScenario(
 static void onRelayRequest(uint8_t zone, bool state) {
     if (equipmentRuntimeReady) {
         const uint32_t nowMs = millis();
-        const EquipmentManager& shadowPlanManager =
-            shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
-        const EquipmentManager::ZoneExecutionPlan shadowPlan = state
-            ? shadowPlanManager.buildZoneStartPlan(zone)
-            : shadowPlanManager.buildZoneStopPlan(zone);
+        EquipmentManager::ZoneExecutionPlan shadowPlan;
+        bool shadowPlanFromOrchestrator = false;
+
+        if (equipmentOrchestratorShadowReady) {
+            const AquaLook::Application::EquipmentOrchestrator::Preview orchestratorPreview = state
+                ? equipmentOrchestrator.previewStartZone(zone)
+                : equipmentOrchestrator.previewStopZone(zone);
+            const AquaLook::Application::EquipmentOrchestrator::ObservationStats& orchestratorStats =
+                equipmentOrchestrator.stats();
+            EventLog::log(
+                orchestratorPreview.ready() ? LOG_INFO : LOG_WARN,
+                "Orchestrator shadow: zone=%u intent=%s status=%u plan=%u steps=%u pump=%s authority=no stats=%lu/%lu/%lu ready=%lu rejected=%lu pumpPlans=%lu plannedSteps=%lu",
+                zone + 1U,
+                state ? "START" : "STOP",
+                static_cast<unsigned>(orchestratorPreview.status),
+                static_cast<unsigned>(orchestratorPreview.planResult),
+                static_cast<unsigned>(orchestratorPreview.stepCount),
+                orchestratorPreview.requiresPump ? "yes" : "no",
+                static_cast<unsigned long>(orchestratorStats.totalRequests),
+                static_cast<unsigned long>(orchestratorStats.startRequests),
+                static_cast<unsigned long>(orchestratorStats.stopRequests),
+                static_cast<unsigned long>(orchestratorStats.readyPlans),
+                static_cast<unsigned long>(orchestratorStats.rejectedPlans),
+                static_cast<unsigned long>(orchestratorStats.plansWithPump),
+                static_cast<unsigned long>(orchestratorStats.plannedSteps)
+            );
+            shadowPlan = orchestratorPreview.plan;
+            shadowPlanFromOrchestrator = true;
+        } else {
+            const EquipmentManager& shadowPlanManager =
+                shadowPumpScenarioReady ? shadowEquipmentMgr : equipmentMgr;
+            shadowPlan = state
+                ? shadowPlanManager.buildZoneStartPlan(zone)
+                : shadowPlanManager.buildZoneStopPlan(zone);
+        }
+
+        EventLog::log(
+            shadowPlan.valid() ? LOG_INFO : LOG_WARN,
+            "Orchestrator handoff: zone=%u intent=%s source=%s result=%u steps=%u pump=%s authority=no",
+            zone + 1U,
+            state ? "START" : "STOP",
+            shadowPlanFromOrchestrator ? "orchestrator" : "legacy_shadow_builder",
+            static_cast<unsigned>(shadowPlan.result),
+            static_cast<unsigned>(shadowPlan.stepCount),
+            shadowPlan.requiresPump ? "yes" : "no"
+        );
+        const OrchestratorAuthorityDecision authorityDecision =
+            decideOrchestratorAuthority(
+                ORCHESTRATOR_AUTHORITY_MODE,
+                equipmentOrchestratorShadowReady,
+                shadowPlanFromOrchestrator,
+                shadowPlan
+            );
+        EventLog::log(
+            authorityDecision.useOrchestrator ? LOG_INFO : LOG_WARN,
+            "Orchestrator authority: zone=%u intent=%s authority=%s path=%s fallback=%s",
+            zone + 1U,
+            state ? "START" : "STOP",
+            authorityDecision.useOrchestrator ? "yes" : "no",
+            authorityDecision.useOrchestrator ? "orchestrator" : "legacy",
+            orchestratorFallbackReasonName(authorityDecision.fallbackReason)
+        );
+
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
         const EquipmentManager::ActionResult result = state
@@ -297,7 +432,6 @@ static void onRelayRequest(uint8_t zone, bool state) {
     outputAdapter.setZoneValve(zone, state, millis());
     displayMgr.requestDynamicRefresh();
 }
-
 static uint8_t _splashStep = 0;
 
 static void splashStep(const char* label) {
@@ -328,6 +462,7 @@ void setup() {
                   "I2C: scan termine, %u peripherique(s)", found);
 
     configMgr.begin();
+    NotificationManager::bindConfig(&configMgr);
     const bool equipmentConfigStoreReady = equipmentConfigStore.begin();
     const AquaLook::Runtime::EquipmentRuntimeConfig& equipmentConfig =
         equipmentConfigStore.config();
@@ -425,6 +560,18 @@ void setup() {
                 : "Shadow pump: desactive par configuration NVS")
     );
 
+    EquipmentManager* orchestratorShadowManager = shadowPumpScenarioReady
+        ? &shadowEquipmentMgr
+        : &equipmentMgr;
+    equipmentOrchestrator.begin(orchestratorShadowManager, nbZones);
+    equipmentOrchestratorShadowReady = equipmentOrchestrator.isInitialized();
+    EventLog::log(
+        equipmentOrchestratorShadowReady ? LOG_INFO : LOG_WARN,
+        "Orchestrator shadow: status=%s source=%s authority=no zones=%u",
+        equipmentOrchestratorShadowReady ? "ready" : "unavailable",
+        shadowPumpScenarioReady ? "pump_shadow" : "runtime_model",
+        static_cast<unsigned>(nbZones)
+    );
     executionShadowRuntime.begin(equipmentRuntimeReady ? nbZones : 0U);
     splashStep("Relais");
 
