@@ -12,6 +12,8 @@ struct MaintenanceResult {
     uint32_t minFreeHeap = 0U;
     uint32_t manifestSize = 0U;
     uint32_t firmwareSize = 0U;
+    uint32_t downloadedSize = 0U;
+    uint32_t downloadDurationMs = 0U;
     char command[24] = "";
     char httpLine[96] = "";
     char detail[128] = "";
@@ -23,6 +25,7 @@ struct MaintenanceResult {
     char board[32] = "";
     char firmwareUrl[192] = "";
     char sha256[65] = "";
+    char calculatedSha256[65] = "";
 };
 
 class MaintenanceResultStore {
