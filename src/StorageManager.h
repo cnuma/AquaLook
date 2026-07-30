@@ -27,7 +27,9 @@ public:
 
     bool isSdAvailable() const { return _sdAvailable; }
     bool areWebAssetsAvailable() const {
-        return _status == StorageStatus::READY && _sdAvailable;
+        return _status == StorageStatus::READY &&
+               _sdAvailable &&
+               !_webReadQuarantined;
     }
 
     StorageStatus status() const { return _status; }
@@ -48,7 +50,9 @@ public:
     uint64_t usedBytes() const { return _usedBytes; }
 
     bool existsOnSd(const char* path);
+    bool isWebReadQuarantined() const { return _webReadQuarantined; }
     bool openRead(const char* path, FsFile& file);
+    void releaseWebRead();
     void reportReadError(const char* path);
     const char* cardTypeName() const;
 
@@ -70,6 +74,7 @@ private:
     void scheduleSlowRecovery(uint32_t nowMs);
     void startRecoveryTask(uint32_t nowMs);
     void processRecoveryTaskResult(uint32_t nowMs);
+    void resetWebReadState();
     void logMounted(bool recovered, uint32_t downtimeMs);
 
     static void recoveryTaskEntry(void* parameter);
@@ -98,6 +103,14 @@ private:
 
     volatile RecoveryTaskResult _recoveryTaskResult = RecoveryTaskResult::NONE;
     TaskHandle_t _recoveryTaskHandle = nullptr;
+
+    portMUX_TYPE _webReadMux = portMUX_INITIALIZER_UNLOCKED;
+    volatile uint32_t _activeWebReads = 0;
+    volatile bool _webReadQuarantined = false;
+    volatile bool _readErrorPending = false;
+    bool _drainWarningLogged = false;
+    uint32_t _quarantineStartedMs = 0;
+    char _pendingReadErrorPath[96] = {};
 
     const char* _lastMountFailureReason = "not_attempted";
 };
