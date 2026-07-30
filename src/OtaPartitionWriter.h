@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
 
 class OtaPartitionWriter {
 public:
@@ -16,6 +17,8 @@ public:
         WRITE_OVERFLOW,
         OTA_WRITE_FAILED,
         SIZE_MISMATCH,
+        SHA256_INIT_FAILED,
+        SHA256_UPDATE_FAILED,
         SHA256_FINALIZE_FAILED,
         SHA256_MISMATCH,
         OTA_END_FAILED
@@ -56,6 +59,6 @@ private:
     esp_ota_handle_t _otaHandle;
     bool _started;
     bool _shaStarted;
-    struct mbedtls_sha256_context* _shaContext;
+    mbedtls_sha256_context _shaContext;
     Result _result;
 };
