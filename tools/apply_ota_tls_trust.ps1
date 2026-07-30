@@ -27,6 +27,20 @@ function Replace-Exact(
     return $Content.Replace($Old, $New)
 }
 
+function Replace-Regex(
+    [string]$Content,
+    [string]$Pattern,
+    [string]$Replacement,
+    [int]$ExpectedCount,
+    [string]$Label
+) {
+    $matches = [regex]::Matches($Content, $Pattern)
+    if ($matches.Count -ne $ExpectedCount) {
+        throw "$Label : $($matches.Count) occurrence(s) trouvee(s), $ExpectedCount attendue(s). Aucun fichier modifie."
+    }
+    return [regex]::Replace($Content, $Pattern, $Replacement)
+}
+
 $trustHeader = Join-Path $RepositoryRoot 'src\OtaTlsTrust.h'
 $maintenanceBoot = Join-Path $RepositoryRoot 'src\MaintenanceBoot.cpp'
 $downloadTest = Join-Path $RepositoryRoot 'src\OtaDownloadTest.cpp'
@@ -39,11 +53,12 @@ foreach ($path in @($trustHeader, $maintenanceBoot, $downloadTest)) {
 
 $bootOriginal = Read-Utf8File $maintenanceBoot
 $downloadOriginal = Read-Utf8File $downloadTest
+$newLine = if ($bootOriginal.Contains("`r`n")) { "`r`n" } else { "`n" }
 
 $bootUpdated = Replace-Exact `
     $bootOriginal `
     '#include "OtaBuildIdentity.h"' `
-    "#include `"OtaBuildIdentity.h`"`r`n#include `"OtaTlsTrust.h`"" `
+    ('#include "OtaBuildIdentity.h"' + $newLine + '#include "OtaTlsTrust.h"') `
     1 `
     'MaintenanceBoot include'
 
@@ -54,17 +69,22 @@ $bootUpdated = Replace-Exact `
     2 `
     'MaintenanceBoot setInsecure'
 
+$downloadNewLine = if ($downloadOriginal.Contains("`r`n")) { "`r`n" } else { "`n" }
 $downloadUpdated = Replace-Exact `
     $downloadOriginal `
     '#include "EventLog.h"' `
-    "#include `"EventLog.h`"`r`n#include `"OtaTlsTrust.h`"" `
+    ('#include "EventLog.h"' + $downloadNewLine + '#include "OtaTlsTrust.h"') `
     1 `
     'OtaDownloadTest include'
 
-$downloadUpdated = Replace-Exact `
+$trustPattern = '(?m)^\s*// OTA-3\.0 ne réalise aucune écriture flash\. La validation CA/signature\r?\n\s*// reste obligatoire avant STAGE_UPDATE et INSTALL_UPDATE\.\r?\n\s*client\.setInsecure\(\);'
+$trustReplacement = '    // La chaine TLS utilise les ancres DigiCert verifiees et generees par outil.' + $downloadNewLine +
+                    '    // Ce controle authentifie le serveur mais ne remplace pas la validation SHA-256.' + $downloadNewLine +
+                    '    OtaTlsTrust::configure(client);'
+$downloadUpdated = Replace-Regex `
     $downloadUpdated `
-    '    // OTA-3.0 ne realise aucune ecriture flash. La validation CA/signature`r`n    // reste obligatoire avant STAGE_UPDATE et INSTALL_UPDATE.`r`n    client.setInsecure();' `
-    '    // La chaine TLS utilise les ancres DigiCert verifiees et generees par outil.`r`n    // Ce controle authentifie le serveur mais ne remplace pas la validation SHA-256.`r`n    OtaTlsTrust::configure(client);' `
+    $trustPattern `
+    $trustReplacement `
     1 `
     'OtaDownloadTest trust block'
 
