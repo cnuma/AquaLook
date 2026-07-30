@@ -28,19 +28,6 @@ def read_version(project_dir):
     return version
 
 
-def config_manager_middleware(source_env, node):
-    source_path = Path(node.get_path())
-    if source_path.name != "ConfigManager.cpp":
-        return source_env
-
-    scoped_env = source_env.Clone()
-    recovery_header = Path(project_dir) / "src" / "AquaLookPreferencesRecovery.h"
-    scoped_env.Append(
-        CXXFLAGS=["-include", str(recovery_header)]
-    )
-    return scoped_env
-
-
 project_dir = env.subst("$PROJECT_DIR")
 version = read_version(project_dir)
 build_number = git_value(["rev-list", "--count", "HEAD"], "local")
@@ -54,8 +41,6 @@ elif pio_environment in ("ProgrammeArrosage", "ProgrammeArrosage_legacy"):
     ota_target = "legacy"
 else:
     ota_target = "unsupported"
-
-env.AddBuildMiddleware(config_manager_middleware, "*/ConfigManager.cpp")
 
 env.Append(
     CPPDEFINES=[
