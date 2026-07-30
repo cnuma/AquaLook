@@ -93,15 +93,18 @@ void StorageManager::end() {
     }
 
     uint32_t activeWebReads = 0;
+    bool healthCheckActive = false;
     portENTER_CRITICAL(&_webReadMux);
     activeWebReads = _activeWebReads;
+    healthCheckActive = _healthCheckActive;
     portEXIT_CRITICAL(&_webReadMux);
 
-    if (activeWebReads != 0U) {
+    if (activeWebReads != 0U || healthCheckActive) {
         EventLog::log(
             LOG_WARN,
-            "Stockage: fermeture ignoree lectures Web actives=%lu",
-            static_cast<unsigned long>(activeWebReads)
+            "Stockage: fermeture ignoree lectures Web=%lu controle=%s",
+            static_cast<unsigned long>(activeWebReads),
+            healthCheckActive ? "actif" : "inactif"
         );
         return;
     }
@@ -202,7 +205,26 @@ void StorageManager::update() {
     if (nowMs - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
     _lastHealthCheckMs = nowMs;
 
-    if (_sd.exists("/www/index.html")) {
+    bool runHealthCheck = false;
+    portENTER_CRITICAL(&_webReadMux);
+    if (_activeWebReads == 0U &&
+        !_healthCheckActive &&
+        !_webReadQuarantined &&
+        !_readErrorPending) {
+        _healthCheckActive = true;
+        runHealthCheck = true;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (!runHealthCheck) return;
+
+    const bool indexAvailable = _sd.exists("/www/index.html");
+
+    portENTER_CRITICAL(&_webReadMux);
+    _healthCheckActive = false;
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (indexAvailable) {
         _healthFailureCount = 0;
         return;
     }
@@ -225,12 +247,24 @@ void StorageManager::update() {
 }
 
 bool StorageManager::existsOnSd(const char* path) {
-    return !_webReadQuarantined &&
-           _sdAvailable &&
-           _status == StorageStatus::READY &&
-           path &&
-           path[0] == '/' &&
-           _sd.exists(path);
+    if (!path || path[0] != '/') return false;
+
+    bool leaseAcquired = false;
+    portENTER_CRITICAL(&_webReadMux);
+    if (!_healthCheckActive &&
+        !_webReadQuarantined &&
+        _sdAvailable &&
+        _status == StorageStatus::READY) {
+        _activeWebReads++;
+        leaseAcquired = true;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (!leaseAcquired) return false;
+
+    const bool exists = _sd.exists(path);
+    releaseWebRead();
+    return exists;
 }
 
 bool StorageManager::openRead(const char* path, FsFile& file) {
@@ -240,7 +274,8 @@ bool StorageManager::openRead(const char* path, FsFile& file) {
 
     bool leaseAcquired = false;
     portENTER_CRITICAL(&_webReadMux);
-    if (!_webReadQuarantined &&
+    if (!_healthCheckActive &&
+        !_webReadQuarantined &&
         _sdAvailable &&
         _status == StorageStatus::READY) {
         _activeWebReads++;
@@ -293,6 +328,7 @@ void StorageManager::reportReadError(const char* path) {
 void StorageManager::resetWebReadState() {
     portENTER_CRITICAL(&_webReadMux);
     _activeWebReads = 0;
+    _healthCheckActive = false;
     _webReadQuarantined = false;
     _readErrorPending = false;
     _drainWarningLogged = false;
@@ -497,6 +533,7 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
         _restartRecommended = false;
 
         portENTER_CRITICAL(&_webReadMux);
+        _healthCheckActive = false;
         _webReadQuarantined = false;
         _readErrorPending = false;
         _drainWarningLogged = false;
