@@ -61,6 +61,18 @@ Avant toute analyse technique, proposition de modification, commande Git, compil
 
 Une reprise fournie par l’utilisateur peut accélérer l’identification du checkpoint, mais ne dispense jamais de relire les fichiers de gouvernance et de configuration dans leur version Git courante.
 
+### Répartition permanente agent / utilisateur
+
+Le développement AquaLook suit un flux Git distant obligatoire :
+
+- l’agent inspecte la branche distante, modifie les fichiers concernés, crée les commits candidats et les pousse sur la branche de travail ;
+- l’agent ne demande jamais à l’utilisateur de télécharger ou d’appliquer manuellement un patch, une archive ou des fichiers de remplacement lorsque Git est disponible ;
+- l’utilisateur récupère les commits avec `git pull --ff-only`, puis réalise localement les compilations PlatformIO, les téléversements et les tests matériels ;
+- l’agent fournit les commandes Git et PlatformIO dans un bloc PowerShell continu conforme au profil actif ;
+- un commit poussé par l’agent avant compilation est explicitement qualifié de **candidat non validé** ;
+- seul le retour explicite de l’utilisateur permet de consigner les compilations, buildfs, téléversements et tests matériels comme réussis ;
+- aucun commit candidat ne doit être fusionné vers `main`, tagué, publié comme release ou utilisé comme checkpoint fonctionnel avant la validation locale requise.
+
 ## Règles impératives
 
 ### Numérotation des réponses de l’agent
@@ -154,7 +166,7 @@ Pendant la migration du backend d’exécution :
 
 Avant la première compilation, le premier téléversement ou l’ouverture du moniteur série d’une nouvelle session, demander explicitement à l’utilisateur sur quel port COM la carte est connectée. Ne jamais supposer que le port de `platformio.ini`, d’une autre machine ou d’une ancienne session est encore valable. Tant que le port n’est pas confirmé, utiliser le marqueur `<PORT_COM>` dans les commandes et proposer `pio device list` si nécessaire.
 
-Pour tout nouveau code embarqué destiné à être testé sur matériel, la chaîne minimale est :
+Pour tout nouveau code embarqué destiné à être testé sur matériel, la chaîne minimale exécutée localement par l’utilisateur après `git pull --ff-only` est :
 
 ```powershell
 git diff --check
@@ -231,6 +243,7 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 - Pour un script, exécuter au minimum un test syntaxique ou un mode non destructif lorsque l’environnement le permet.
 - Ne jamais demander à l’utilisateur de valider en premier un fichier que l’agent pouvait vérifier lui-même.
 - Si la validation complète est impossible dans l’environnement disponible, l’indiquer avant livraison et fournir une méthode de contrôle locale minimale.
+- Lorsque Git est disponible, ne pas livrer de patch, d’archive ou de fichiers à remplacer manuellement : pousser les modifications sur la branche de travail et fournir les commandes `git pull` et de validation locale.
 
 ## Procédure obligatoire avant livraison
 
@@ -239,31 +252,34 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 3. Énoncer les invariants à préserver.
 4. Faire la modification minimale.
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
-6. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
-7. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy`.
-8. Si un essai matériel V4 est prévu, exécuter directement `pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>` ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_v4`.
-9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
-10. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
-11. Pour tout nouveau chemin V4 actif, ouvrir le moniteur série sur `<PORT_COM>` et effectuer le test matériel correspondant.
-12. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
-13. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
-14. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
+6. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
+7. Créer et pousser sur la branche de travail un commit candidat explicitement identifié comme non validé localement.
+8. Fournir à l’utilisateur un bloc PowerShell continu commençant par `git pull --ff-only`, puis les commandes de contrôle, compilation, buildfs éventuel, téléversement et monitoring.
+9. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
+10. L’utilisateur exécute `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy`.
+11. Si un essai matériel V4 est prévu, l’utilisateur exécute directement `pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>` ; cette commande assure compilation et téléversement. Sinon, il exécute `pio run -e ProgrammeArrosage_v4`.
+12. Si `littlefs/` est modifié, l’utilisateur exécute `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, il valide aussi le buildfs Legacy.
+13. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
+14. Pour tout nouveau chemin V4 actif, ouvrir le moniteur série sur `<PORT_COM>` et effectuer le test matériel correspondant.
+15. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut communiqué des compilations Legacy et V4, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
+16. Ne qualifier le commit de validé et ne préparer fusion, tag, release ou checkpoint fonctionnel qu’après retour explicite de l’utilisateur.
 
 ## Livrables
 
 Quand plus de deux fichiers sont modifiés :
 
-- fournir directement tous les fichiers complets concernés ou un package complet ;
+- pousser directement tous les fichiers concernés sur la branche de travail ;
 - ne pas attendre que l’utilisateur le redemande ;
-- indiquer l’emplacement exact de chaque fichier dans le dépôt.
+- indiquer l’emplacement exact de chaque fichier dans le dépôt ;
+- ne pas substituer au flux Git un téléchargement manuel, un ZIP ou un patch à appliquer.
 
 ## Git
 
 - `main` est stable.
 - Une évolution est développée sur une branche dédiée `feature/...`, `fix/...` ou `docs/...`.
 - Les commits doivent être petits, explicites et testables.
-- Ne pas pousser un code non compilé.
-- Ne pas fusionner vers `main` avant validation firmware et LittleFS.
+- L’agent peut pousser un commit candidat non compilé sur la branche de travail afin que l’utilisateur le récupère et le compile localement ; ce commit reste explicitement non validé.
+- Ne pas fusionner vers `main`, taguer, publier une release ou créer un checkpoint fonctionnel avant validation firmware et LittleFS requise par l’utilisateur.
 - Les checkpoints doivent inclure l’origine dans leur nom.
 
 ## Style de travail Codex
