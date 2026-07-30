@@ -10,7 +10,8 @@ enum class MaintenanceRequest : uint8_t {
     CHECK_VERSION = 2U,
     INSTALL_UPDATE = 3U,
     RECOVERY = 4U,
-    FACTORY_RESET = 5U
+    FACTORY_RESET = 5U,
+    DOWNLOAD_UPDATE_TEST = 6U
 };
 
 class MaintenanceRequestStore {
