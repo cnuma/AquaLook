@@ -180,6 +180,8 @@ public:
                     doc["detail"] = result.detail;
                     doc["manifestSize"] = result.manifestSize;
                     doc["firmwareSize"] = result.firmwareSize;
+                    doc["downloadedSize"] = result.downloadedSize;
+                    doc["downloadDurationMs"] = result.downloadDurationMs;
                     doc["updateAvailable"] = result.updateAvailable;
                     doc["notificationPending"] = result.notificationPending;
                     doc["installedVersion"] = result.installedVersion;
@@ -190,6 +192,7 @@ public:
                     doc["board"] = result.board;
                     doc["firmwareUrl"] = result.firmwareUrl;
                     doc["sha256"] = result.sha256;
+                    doc["calculatedSha256"] = result.calculatedSha256;
                 }
                 String body;
                 serializeJson(doc, body);
@@ -203,7 +206,7 @@ public:
         _server.on("/ota", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 static const char PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mise a jour</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101820;color:#eef;font-family:Arial,sans-serif}.card{box-sizing:border-box;width:92%;max-width:640px;padding:24px;background:#172532;border:1px solid #385064;border-radius:12px;box-shadow:0 10px 30px #0008}h1{margin:0 0 8px;font-size:24px}h2{margin:22px 0 8px;font-size:18px}p{line-height:1.5;color:#bed0dc}.warning,.result-box{padding:12px;border-radius:8px}.warning{border:1px solid #d59b35;background:#3a2b13;color:#ffd88b}.result-box{border:1px solid #385064;background:#101820;color:#d7e9f3}.result-box.ok{border-color:#41956b}.result-box.fail{border-color:#b75b5b}.result-box.update{border-color:#4fc3f7}.row{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.label{color:#91aabd}.value{text-align:right;overflow-wrap:anywhere}button,a{box-sizing:border-box;display:block;width:100%;margin-top:14px;padding:12px;border-radius:7px;text-align:center;font-size:16px;text-decoration:none}button{border:0;background:#4fc3f7;color:#06141b;font-weight:700;cursor:pointer}button.secondary{background:#526d80;color:#eef}button:disabled{opacity:.55;cursor:wait}a{border:1px solid #526d80;color:#d7e9f3}#action{min-height:24px;margin-top:14px;font-weight:700}</style></head><body><main class="card"><h1>Mise a jour logicielle</h1><p>La verification redemarre AquaLook en mode maintenance minimal, lit le manifeste GitHub puis revient automatiquement au fonctionnement normal.</p><div class="warning">Operation refusee pendant un arrosage. Aucun firmware n'est telecharge ou installe et aucune partition OTA n'est ecrite.</div><h2>Derniere operation</h2><div id="last" class="result-box">Chargement...</div><button id="check" onclick="startMaintenance('check')">Verifier la version disponible</button><button id="probe" class="secondary" onclick="startMaintenance('probe')">Tester uniquement la connexion GitHub</button><div id="action"></div><a href="/index.html">Retour a AquaLook</a></main><script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const row=(a,b)=>'<div class="row"><span class="label">'+esc(a)+'</span><span class="value">'+esc(b)+'</span></div>';async function loadLast(){const e=document.getElementById('last');try{const r=await fetch('/api/maintenance/last-result',{cache:'no-store'}),j=await r.json();if(!j.valid){e.className='result-box';e.textContent='Aucun resultat enregistre.';return}let cls=j.success?'ok':'fail';if(j.command==='check_version'&&j.success&&j.updateAvailable)cls='update';e.className='result-box '+cls;const rows=[['Operation',j.command||'Inconnue'],['Etat',j.success?'Succes':'Echec'],['HTTP',j.httpLine||'Non disponible'],['Duree TLS',j.tlsDurationMs+' ms'],['Heap minimale',j.minFreeHeap+' octets']];if(j.command==='check_version'){rows.push(['Version installee',j.installedVersion||'-'],['Version disponible',j.availableVersion||'-'],['Mise a jour',j.updateAvailable?'Disponible':'Non'],['Canal',j.channel||'-'],['Cible',j.target||'-'],['Environnement',j.environment||'-'],['Carte',j.board||'-'],['Taille manifeste',(j.manifestSize||0)+' octets'],['Taille firmware',(j.firmwareSize||0)+' octets']);}if(j.detail)rows.push(['Detail',j.detail]);e.innerHTML=rows.map(x=>row(x[0],x[1])).join('')}catch(_){e.className='result-box fail';e.textContent='Resultat indisponible.'}}async function startMaintenance(kind){const check=document.getElementById('check'),probe=document.getElementById('probe'),out=document.getElementById('action');const isCheck=kind==='check';const uri=isCheck?'/api/maintenance/check-version':'/api/maintenance/probe-github';const question=isCheck?'AquaLook va redemarrer pour verifier la version disponible. Continuer ?':'AquaLook va redemarrer pour tester GitHub. Continuer ?';if(!confirm(question))return;check.disabled=true;probe.disabled=true;out.textContent='Preparation du redemarrage...';try{const x=await fetch(uri,{method:'POST'});const j=await x.json().catch(()=>({}));if(!x.ok){out.textContent=j.error==='watering-active'?'Operation refusee : arrosage en cours.':'Erreur : '+(j.error||x.status);check.disabled=false;probe.disabled=false;return}out.textContent='Demande acceptee. Redemarrage en cours...';setTimeout(()=>{out.textContent='Operation en cours. Rechargez cette page apres le retour d AquaLook.'},1500)}catch(_){out.textContent='Connexion interrompue : le module redemarre probablement.'}}loadLast();</script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mise a jour</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101820;color:#eef;font-family:Arial,sans-serif}.card{box-sizing:border-box;width:92%;max-width:640px;padding:24px;background:#172532;border:1px solid #385064;border-radius:12px;box-shadow:0 10px 30px #0008}h1{margin:0 0 8px;font-size:24px}h2{margin:22px 0 8px;font-size:18px}p{line-height:1.5;color:#bed0dc}.warning,.result-box{padding:12px;border-radius:8px}.warning{border:1px solid #d59b35;background:#3a2b13;color:#ffd88b}.result-box{border:1px solid #385064;background:#101820;color:#d7e9f3}.result-box.ok{border-color:#41956b}.result-box.fail{border-color:#b75b5b}.result-box.update{border-color:#4fc3f7}.row{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.label{color:#91aabd}.value{text-align:right;overflow-wrap:anywhere}button,a{box-sizing:border-box;display:block;width:100%;margin-top:14px;padding:12px;border-radius:7px;text-align:center;font-size:16px;text-decoration:none}button{border:0;background:#4fc3f7;color:#06141b;font-weight:700;cursor:pointer}button.secondary{background:#526d80;color:#eef}button:disabled{opacity:.55;cursor:wait}a{border:1px solid #526d80;color:#d7e9f3}#action{min-height:24px;margin-top:14px;font-weight:700}</style></head><body><main class="card"><h1>Mise a jour logicielle</h1><p>La verification redemarre AquaLook en mode maintenance minimal, lit le manifeste GitHub puis revient automatiquement au fonctionnement normal.</p><div class="warning">Operation refusee pendant un arrosage. Aucun firmware n'est telecharge ou installe et aucune partition OTA n'est ecrite.</div><h2>Derniere operation</h2><div id="last" class="result-box">Chargement...</div><button id="check" onclick="startMaintenance('check')">Verifier la version disponible</button><button id="download" onclick="startMaintenance('download')">Tester le telechargement et le SHA-256</button><button id="probe" class="secondary" onclick="startMaintenance('probe')">Tester uniquement la connexion GitHub</button><div id="action"></div><a href="/index.html">Retour a AquaLook</a></main><script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const row=(a,b)=>'<div class="row"><span class="label">'+esc(a)+'</span><span class="value">'+esc(b)+'</span></div>';async function loadLast(){const e=document.getElementById('last');try{const r=await fetch('/api/maintenance/last-result',{cache:'no-store'}),j=await r.json();if(!j.valid){e.className='result-box';e.textContent='Aucun resultat enregistre.';return}let cls=j.success?'ok':'fail';if(j.command==='check_version'&&j.success&&j.updateAvailable)cls='update';e.className='result-box '+cls;const rows=[['Operation',j.command||'Inconnue'],['Etat',j.success?'Succes':'Echec'],['HTTP',j.httpLine||'Non disponible'],['Duree TLS',j.tlsDurationMs+' ms'],['Heap minimale',j.minFreeHeap+' octets']];if(j.command==='check_version'||j.command==='download_update_test'){rows.push(['Version installee',j.installedVersion||'-'],['Version disponible',j.availableVersion||'-'],['Mise a jour',j.updateAvailable?'Disponible':'Non'],['Canal',j.channel||'-'],['Cible',j.target||'-'],['Environnement',j.environment||'-'],['Carte',j.board||'-'],['Taille manifeste',(j.manifestSize||0)+' octets'],['Taille firmware',(j.firmwareSize||0)+' octets']);}if(j.command==='download_update_test'){rows.push(['Octets telecharges',(j.downloadedSize||0)+' octets'],['Duree telechargement',(j.downloadDurationMs||0)+' ms'],['SHA-256 calcule',j.calculatedSha256||'-']);}if(j.detail)rows.push(['Detail',j.detail]);e.innerHTML=rows.map(x=>row(x[0],x[1])).join('')}catch(_){e.className='result-box fail';e.textContent='Resultat indisponible.'}}async function startMaintenance(kind){const check=document.getElementById('check'),download=document.getElementById('download'),probe=document.getElementById('probe'),out=document.getElementById('action');const uri=kind==='check'?'/api/maintenance/check-version':kind==='download'?'/api/maintenance/download-update-test':'/api/maintenance/probe-github';const question=kind==='check'?'AquaLook va redemarrer pour verifier la version disponible. Continuer ?':kind==='download'?'Le firmware complet sera telecharge et verifie sans etre installe. Continuer ?':'AquaLook va redemarrer pour tester GitHub. Continuer ?';if(!confirm(question))return;check.disabled=true;download.disabled=true;probe.disabled=true;out.textContent='Preparation du redemarrage...';try{const x=await fetch(uri,{method:'POST'});const j=await x.json().catch(()=>({}));if(!x.ok){out.textContent=j.error==='watering-active'?'Operation refusee : arrosage en cours.':'Erreur : '+(j.error||x.status);check.disabled=false;download.disabled=false;probe.disabled=false;return}out.textContent='Demande acceptee. Redemarrage en cours...';setTimeout(()=>{out.textContent='Operation en cours. Rechargez cette page apres le retour d AquaLook.'},1500)}catch(_){out.textContent='Connexion interrompue : le module redemarre probablement.'}}loadLast();</script></body></html>
 )rawliteral";
                 AsyncWebServerResponse* response = req->beginResponse(
                     200, "text/html; charset=utf-8", PAGE);
@@ -273,6 +276,40 @@ public:
                 _restartPending = true;
                 _restartAtMs = millis() + 750U;
                 req->send(202, "application/json", "{\"ok\":true,\"restart\":true,\"command\":\"check_version\"}");
+            }
+        );
+
+        _server.on("/api/maintenance/download-update-test", HTTP_POST,
+            [this](AsyncWebServerRequest* req) {
+                if (!_config || !_relais) {
+                    req->send(503, "application/json", "{\"ok\":false,\"error\":\"runtime-not-ready\"}");
+                    return;
+                }
+                for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
+                    if (_relais->getState(zone)) {
+                        EventLog::log(LOG_WARN,
+                                      "Maintenance Web: test telechargement refuse, zone %u active",
+                                      static_cast<unsigned>(zone + 1U));
+                        req->send(409, "application/json", "{\"ok\":false,\"error\":\"watering-active\"}");
+                        return;
+                    }
+                }
+                const MaintenanceResult previous = MaintenanceResultStore::load();
+                if (!previous.valid || !previous.success || !previous.updateAvailable ||
+                    previous.firmwareUrl[0] == '\0' || previous.firmwareSize == 0U ||
+                    previous.sha256[0] == '\0') {
+                    req->send(409, "application/json", "{\"ok\":false,\"error\":\"check-version-required\"}");
+                    return;
+                }
+                if (!MaintenanceRequestStore::save(MaintenanceRequest::DOWNLOAD_UPDATE_TEST)) {
+                    req->send(500, "application/json", "{\"ok\":false,\"error\":\"nvs-write-failed\"}");
+                    return;
+                }
+                EventLog::log(LOG_WARN,
+                              "Maintenance Web: test telechargement demande, redemarrage programme");
+                _restartPending = true;
+                _restartAtMs = millis() + 750U;
+                req->send(202, "application/json", "{\"ok\":true,\"restart\":true,\"command\":\"download_update_test\"}");
             }
         );
 

@@ -12,6 +12,7 @@
 #include "EventLog.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
+#include "OtaDownloadTest.h"
 #include "OtaBuildIdentity.h"
 
 namespace {
@@ -477,7 +478,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     }
 
     if (request != MaintenanceRequest::PROBE_GITHUB &&
-        request != MaintenanceRequest::CHECK_VERSION) {
+        request != MaintenanceRequest::CHECK_VERSION &&
+        request != MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         EventLog::log(LOG_WARN, "Maintenance: commande refusee type=%s implementation=absente",
                       MaintenanceRequestStore::name(request));
         return false;
@@ -506,7 +508,7 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         const GithubProbeOutcome outcome = probeGithub();
         persistProbeResult(outcome);
         success = outcome.success;
-    } else {
+    } else if (request == MaintenanceRequest::CHECK_VERSION) {
         const String manifestUrl = String("https://") + OtaBuildIdentity::MANIFEST_HOST +
                                    OtaBuildIdentity::MANIFEST_PATH;
         const ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
@@ -520,6 +522,19 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                       result.success ? "yes" : "no", result.installedVersion,
                       result.availableVersion[0] ? result.availableVersion : "n/a",
                       result.updateAvailable ? "yes" : "no", result.detail);
+    } else {
+        const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
+        const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
+        success = result.success;
+        if (!MaintenanceResultStore::save(result)) {
+            EventLog::log(LOG_ERROR,
+                          "Maintenance: echec sauvegarde resultat DOWNLOAD_UPDATE_TEST");
+        }
+        EventLog::log(result.success ? LOG_INFO : LOG_ERROR,
+                      "Maintenance: DOWNLOAD_UPDATE_TEST success=%s bytes=%lu expected=%lu detail=%s otaWrite=no",
+                      result.success ? "yes" : "no",
+                      static_cast<unsigned long>(result.downloadedSize),
+                      static_cast<unsigned long>(result.firmwareSize), result.detail);
     }
 
     EventLog::log(success ? LOG_INFO : LOG_ERROR,
