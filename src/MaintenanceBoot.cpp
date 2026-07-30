@@ -14,6 +14,7 @@
 #include "MaintenanceResult.h"
 #include "OtaDownloadTest.h"
 #include "OtaBuildIdentity.h"
+#include "OtaTlsTrust.h"
 
 namespace {
 constexpr char HTTPS_HOST[] = "api.github.com";
@@ -120,7 +121,7 @@ GithubProbeOutcome probeGithub() {
     logMemory("before-client");
 
     WiFiClientSecure client;
-    client.setInsecure();
+    OtaTlsTrust::configure(client);
     client.setHandshakeTimeout(10U);
     client.setTimeout(RESPONSE_TIMEOUT_MS / 1000U);
 
@@ -184,7 +185,7 @@ ManifestFetchOutcome fetchManifestUrl(const String& url, uint8_t redirectCount) 
     }
 
     WiFiClientSecure client;
-    client.setInsecure();
+    OtaTlsTrust::configure(client);
     client.setHandshakeTimeout(10U);
     client.setTimeout(RESPONSE_TIMEOUT_MS / 1000U);
 

@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "EventLog.h"
+#include "OtaTlsTrust.h"
 
 namespace {
 constexpr uint16_t HTTPS_PORT = 443U;
@@ -82,7 +83,7 @@ MaintenanceResult downloadUrl(const MaintenanceResult& manifest,
     WiFiClientSecure client;
     // OTA-3.0 ne réalise aucune écriture flash. La validation CA/signature
     // reste obligatoire avant STAGE_UPDATE et INSTALL_UPDATE.
-    client.setInsecure();
+    OtaTlsTrust::configure(client);
     client.setHandshakeTimeout(10U);
     client.setTimeout(RESPONSE_TIMEOUT_MS / 1000U);
 
