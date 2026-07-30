@@ -1,12 +1,6 @@
 name: OTA3 finalize branch
 
 on:
-  push:
-    branches:
-      - agent/ota-3.0-download-test-v591
-    paths:
-      - .github/ota3-finalize.patch
-      - .github/workflows/ota3-finalize.yml
   workflow_dispatch:
 
 permissions:
