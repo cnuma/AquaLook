@@ -1,6 +1,9 @@
 name: OTA3 finalize branch
 
 on:
+  push:
+    branches:
+      - agent/ota-3.0-download-test-v591
   workflow_dispatch:
 
 permissions:
@@ -48,26 +51,26 @@ jobs:
               "MaintenanceBoot check branch"
           )
           marker = '''        EventLog::log(result.success ? LOG_INFO : LOG_ERROR,
-                      "Maintenance: CHECK_VERSION success=%s installed=%s available=%s update=%s detail=%s otaWrite=no",
-                      result.success ? "yes" : "no", result.installedVersion,
-                      result.availableVersion[0] ? result.availableVersion : "n/a",
-                      result.updateAvailable ? "yes" : "no", result.detail);
-    }
+                        "Maintenance: CHECK_VERSION success=%s installed=%s available=%s update=%s detail=%s otaWrite=no",
+                        result.success ? "yes" : "no", result.installedVersion,
+                        result.availableVersion[0] ? result.availableVersion : "n/a",
+                        result.updateAvailable ? "yes" : "no", result.detail);
+      }
 '''
           replacement = marker[:-6] + '''    } else {
-        const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
-        const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
-        success = result.success;
-        if (!MaintenanceResultStore::save(result)) {
-            EventLog::log(LOG_ERROR,
-                          "Maintenance: echec sauvegarde resultat DOWNLOAD_UPDATE_TEST");
-        }
-        EventLog::log(result.success ? LOG_INFO : LOG_ERROR,
-                      "Maintenance: DOWNLOAD_UPDATE_TEST success=%s bytes=%lu expected=%lu detail=%s otaWrite=no",
-                      result.success ? "yes" : "no",
-                      static_cast<unsigned long>(result.downloadedSize),
-                      static_cast<unsigned long>(result.firmwareSize), result.detail);
-    }
+          const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
+          const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
+          success = result.success;
+          if (!MaintenanceResultStore::save(result)) {
+              EventLog::log(LOG_ERROR,
+                            "Maintenance: echec sauvegarde resultat DOWNLOAD_UPDATE_TEST");
+          }
+          EventLog::log(result.success ? LOG_INFO : LOG_ERROR,
+                        "Maintenance: DOWNLOAD_UPDATE_TEST success=%s bytes=%lu expected=%lu detail=%s otaWrite=no",
+                        result.success ? "yes" : "no",
+                        static_cast<unsigned long>(result.downloadedSize),
+                        static_cast<unsigned long>(result.firmwareSize), result.detail);
+      }
 '''
           boot = replace_once(boot, marker, replacement, "MaintenanceBoot download branch")
           boot_path.write_text(boot, encoding="utf-8")
@@ -112,38 +115,38 @@ jobs:
           route_marker = '''        _server.on("/logs", HTTP_GET,
 '''
           route = '''        _server.on("/api/maintenance/download-update-test", HTTP_POST,
-            [this](AsyncWebServerRequest* req) {
-                if (!_config || !_relais) {
-                    req->send(503, "application/json", "{\\"ok\\":false,\\"error\\":\\"runtime-not-ready\\"}");
-                    return;
-                }
-                for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
-                    if (_relais->getState(zone)) {
-                        EventLog::log(LOG_WARN,
-                                      "Maintenance Web: test telechargement refuse, zone %u active",
-                                      static_cast<unsigned>(zone + 1U));
-                        req->send(409, "application/json", "{\\"ok\\":false,\\"error\\":\\"watering-active\\"}");
-                        return;
-                    }
-                }
-                const MaintenanceResult previous = MaintenanceResultStore::load();
-                if (!previous.valid || !previous.success || !previous.updateAvailable ||
-                    previous.firmwareUrl[0] == '\\0' || previous.firmwareSize == 0U ||
-                    previous.sha256[0] == '\\0') {
-                    req->send(409, "application/json", "{\\"ok\\":false,\\"error\\":\\"check-version-required\\"}");
-                    return;
-                }
-                if (!MaintenanceRequestStore::save(MaintenanceRequest::DOWNLOAD_UPDATE_TEST)) {
-                    req->send(500, "application/json", "{\\"ok\\":false,\\"error\\":\\"nvs-write-failed\\"}");
-                    return;
-                }
-                EventLog::log(LOG_WARN,
-                              "Maintenance Web: test telechargement demande, redemarrage programme");
-                _restartPending = true;
-                _restartAtMs = millis() + 750U;
-                req->send(202, "application/json", "{\\"ok\\":true,\\"restart\\":true,\\"command\\":\\"download_update_test\\"}");
-            }
-        );
+              [this](AsyncWebServerRequest* req) {
+                  if (!_config || !_relais) {
+                      req->send(503, "application/json", "{\\"ok\\":false,\\"error\\":\\"runtime-not-ready\\"}");
+                      return;
+                  }
+                  for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
+                      if (_relais->getState(zone)) {
+                          EventLog::log(LOG_WARN,
+                                        "Maintenance Web: test telechargement refuse, zone %u active",
+                                        static_cast<unsigned>(zone + 1U));
+                          req->send(409, "application/json", "{\\"ok\\":false,\\"error\\":\\"watering-active\\"}");
+                          return;
+                      }
+                  }
+                  const MaintenanceResult previous = MaintenanceResultStore::load();
+                  if (!previous.valid || !previous.success || !previous.updateAvailable ||
+                      previous.firmwareUrl[0] == '\\0' || previous.firmwareSize == 0U ||
+                      previous.sha256[0] == '\\0') {
+                      req->send(409, "application/json", "{\\"ok\\":false,\\"error\\":\\"check-version-required\\"}");
+                      return;
+                  }
+                  if (!MaintenanceRequestStore::save(MaintenanceRequest::DOWNLOAD_UPDATE_TEST)) {
+                      req->send(500, "application/json", "{\\"ok\\":false,\\"error\\":\\"nvs-write-failed\\"}");
+                      return;
+                  }
+                  EventLog::log(LOG_WARN,
+                                "Maintenance Web: test telechargement demande, redemarrage programme");
+                  _restartPending = true;
+                  _restartAtMs = millis() + 750U;
+                  req->send(202, "application/json", "{\\"ok\\":true,\\"restart\\":true,\\"command\\":\\"download_update_test\\"}");
+              }
+          );
 
 '''
           web = replace_once(web, route_marker, route + route_marker, "Web download route")
