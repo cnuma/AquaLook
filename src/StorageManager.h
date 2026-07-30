@@ -106,6 +106,7 @@ private:
 
     portMUX_TYPE _webReadMux = portMUX_INITIALIZER_UNLOCKED;
     volatile uint32_t _activeWebReads = 0;
+    volatile bool _healthCheckActive = false;
     volatile bool _webReadQuarantined = false;
     volatile bool _readErrorPending = false;
     bool _drainWarningLogged = false;
