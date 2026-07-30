@@ -9,6 +9,7 @@ constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
 constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 2U;
 constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
 constexpr uint32_t SD_SLOW_RECOVERY_INTERVAL_MS = 10UL * 60UL * 1000UL;
+constexpr uint32_t SD_WEB_DRAIN_WARNING_MS = 15000U;
 constexpr uint32_t SD_RECOVERY_TASK_STACK = 4096U;
 constexpr UBaseType_t SD_RECOVERY_TASK_PRIORITY = 1U;
 constexpr BaseType_t SD_RECOVERY_TASK_CORE = 0;
@@ -51,6 +52,7 @@ void StorageManager::begin() {
     _slowRecoveryCount = 0;
     _recoveryTaskResult = RecoveryTaskResult::NONE;
     _recoveryTaskHandle = nullptr;
+    resetWebReadState();
     _lastMountFailureReason = "not_attempted";
 
     pinMode(SD_CS_PIN, OUTPUT);
@@ -90,6 +92,20 @@ void StorageManager::end() {
         return;
     }
 
+    uint32_t activeWebReads = 0;
+    portENTER_CRITICAL(&_webReadMux);
+    activeWebReads = _activeWebReads;
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (activeWebReads != 0U) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: fermeture ignoree lectures Web actives=%lu",
+            static_cast<unsigned long>(activeWebReads)
+        );
+        return;
+    }
+
     _sd.end();
     resetCardMetadata();
 
@@ -105,6 +121,7 @@ void StorageManager::end() {
     _slowRecoveryCount = 0;
     _recoveryTaskResult = RecoveryTaskResult::NONE;
     _recoveryTaskHandle = nullptr;
+    resetWebReadState();
     _lastMountFailureReason = "not_attempted";
 
     if (g_registeredStorage == this) {
@@ -114,6 +131,52 @@ void StorageManager::end() {
 
 void StorageManager::update() {
     const uint32_t nowMs = millis();
+    bool readErrorPending = false;
+    bool logDrainWarning = false;
+    uint32_t activeWebReads = 0;
+    char pendingPath[sizeof(_pendingReadErrorPath)] = {};
+
+    portENTER_CRITICAL(&_webReadMux);
+    readErrorPending = _readErrorPending;
+    activeWebReads = _activeWebReads;
+
+    if (readErrorPending &&
+        activeWebReads != 0U &&
+        !_drainWarningLogged &&
+        nowMs - _quarantineStartedMs >= SD_WEB_DRAIN_WARNING_MS) {
+        _drainWarningLogged = true;
+        logDrainWarning = true;
+    }
+
+    if (readErrorPending && activeWebReads == 0U) {
+        strncpy(
+            pendingPath,
+            _pendingReadErrorPath[0] ? _pendingReadErrorPath : "inconnu",
+            sizeof(pendingPath) - 1U
+        );
+        pendingPath[sizeof(pendingPath) - 1U] = '\0';
+        _readErrorPending = false;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (logDrainWarning) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: quarantaine SD en attente lectures Web actives=%lu",
+            static_cast<unsigned long>(activeWebReads)
+        );
+    }
+
+    if (readErrorPending) {
+        if (activeWebReads != 0U) return;
+
+        markUnavailable(
+            StorageStatus::READ_ERROR,
+            "read_error",
+            pendingPath
+        );
+        return;
+    }
 
     if (_recoveryState == StorageRecoveryState::WAITING_RETRY) {
         if (deadlineReached(nowMs, _nextRecoveryAttemptMs)) {
@@ -158,15 +221,12 @@ void StorageManager::update() {
         return;
     }
 
-    markUnavailable(
-        StorageStatus::READ_ERROR,
-        "health_check_failed",
-        "/www/index.html"
-    );
+    reportReadError("/www/index.html");
 }
 
 bool StorageManager::existsOnSd(const char* path) {
-    return _sdAvailable &&
+    return !_webReadQuarantined &&
+           _sdAvailable &&
            _status == StorageStatus::READY &&
            path &&
            path[0] == '/' &&
@@ -174,30 +234,71 @@ bool StorageManager::existsOnSd(const char* path) {
 }
 
 bool StorageManager::openRead(const char* path, FsFile& file) {
-    if (!_sdAvailable ||
-        _status != StorageStatus::READY ||
-        !path ||
-        path[0] != '/') {
+    if (!path || path[0] != '/') {
         return false;
     }
 
+    bool leaseAcquired = false;
+    portENTER_CRITICAL(&_webReadMux);
+    if (!_webReadQuarantined &&
+        _sdAvailable &&
+        _status == StorageStatus::READY) {
+        _activeWebReads++;
+        leaseAcquired = true;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
+
+    if (!leaseAcquired) return false;
+
     if (file.isOpen()) file.close();
     file = _sd.open(path, O_RDONLY);
-    return file.isOpen();
+    if (file.isOpen()) return true;
+
+    releaseWebRead();
+    return false;
+}
+
+void StorageManager::releaseWebRead() {
+    portENTER_CRITICAL(&_webReadMux);
+    if (_activeWebReads != 0U) {
+        _activeWebReads--;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
 }
 
 void StorageManager::reportReadError(const char* path) {
-    if (_recoveryState != StorageRecoveryState::IDLE ||
-        !_sdAvailable ||
-        _status != StorageStatus::READY) {
-        return;
-    }
+    const uint32_t nowMs = millis();
 
-    markUnavailable(
-        StorageStatus::READ_ERROR,
-        "read_error",
-        path
-    );
+    portENTER_CRITICAL(&_webReadMux);
+    if (_recoveryState == StorageRecoveryState::IDLE &&
+        _sdAvailable &&
+        _status == StorageStatus::READY) {
+        if (!_readErrorPending) {
+            _quarantineStartedMs = nowMs;
+            _drainWarningLogged = false;
+            strncpy(
+                _pendingReadErrorPath,
+                path ? path : "inconnu",
+                sizeof(_pendingReadErrorPath) - 1U
+            );
+            _pendingReadErrorPath[sizeof(_pendingReadErrorPath) - 1U] = '\0';
+        }
+
+        _webReadQuarantined = true;
+        _readErrorPending = true;
+    }
+    portEXIT_CRITICAL(&_webReadMux);
+}
+
+void StorageManager::resetWebReadState() {
+    portENTER_CRITICAL(&_webReadMux);
+    _activeWebReads = 0;
+    _webReadQuarantined = false;
+    _readErrorPending = false;
+    _drainWarningLogged = false;
+    _quarantineStartedMs = 0;
+    _pendingReadErrorPath[0] = '\0';
+    portEXIT_CRITICAL(&_webReadMux);
 }
 
 bool StorageManager::mountSd(bool publishAvailability) {
@@ -395,6 +496,14 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
         _nextRecoveryAttemptMs = 0;
         _restartRecommended = false;
 
+        portENTER_CRITICAL(&_webReadMux);
+        _webReadQuarantined = false;
+        _readErrorPending = false;
+        _drainWarningLogged = false;
+        _quarantineStartedMs = 0;
+        _pendingReadErrorPath[0] = '\0';
+        portEXIT_CRITICAL(&_webReadMux);
+
         FaultManager::setActive(FaultId::STORAGE_SD, false);
         IncidentManager::recoverStorageSd(
             _slowRecoveryMode ? "slow_recovery_success" : "recovery_success"
@@ -483,6 +592,11 @@ const char* StorageManager::statusCode() const {
 }
 
 const char* StorageManager::statusMessage() const {
+    if (_webReadQuarantined) {
+        return "Carte SD en quarantaine. Les lectures Web actives sont terminees "
+               "avant la recuperation automatique.";
+    }
+
     if (_slowRecoveryMode) {
         return "Carte SD toujours indisponible apres les essais rapides. "
                "Une tentative automatique est effectuee toutes les 10 minutes; "
