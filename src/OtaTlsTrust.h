@@ -5,7 +5,7 @@
 // Fichier genere par tools/generate_ota_tls_trust.ps1.
 // Sources officielles DigiCert et empreintes SHA-256 controlees avant generation.
 namespace OtaTlsTrust {
-inline constexpr char ROOT_CA_PEM[] = R"AQLCERT(
+static const char ROOT_CA_PEM[] = R"AQLCERT(
 -----BEGIN CERTIFICATE-----
 MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3

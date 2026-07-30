@@ -57,6 +57,7 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
 
     const bool isVersionCheck = strcmp(result.command, "check_version") == 0;
     const bool isDownloadTest = strcmp(result.command, "download_update_test") == 0;
+    const bool isStageTest = strcmp(result.command, "stage_update_test") == 0;
     const bool successfulVersionCheck = isVersionCheck && result.success;
     const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
     const bool previousNotificationPending = preferences.getBool("notify", false);
@@ -94,7 +95,7 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         board = readOptionalString(preferences, "board");
         firmwareUrl = readOptionalString(preferences, "fw_url");
         sha256 = readOptionalString(preferences, "sha256");
-        if (!isDownloadTest) {
+        if (!isDownloadTest && !isStageTest) {
             downloadedSize = preferences.getULong("download_sz", 0U);
             downloadDurationMs = preferences.getULong("download_ms", 0U);
             calculatedSha256 = readOptionalString(preferences, "calc_sha");

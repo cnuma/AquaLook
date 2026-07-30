@@ -8,7 +8,7 @@ constexpr char NVS_REQUEST_KEY[] = "request";
 }
 
 bool MaintenanceRequestStore::isValid(uint8_t rawValue) {
-    return rawValue <= static_cast<uint8_t>(MaintenanceRequest::DOWNLOAD_UPDATE_TEST);
+    return rawValue <= static_cast<uint8_t>(MaintenanceRequest::STAGE_UPDATE_TEST);
 }
 
 MaintenanceRequest MaintenanceRequestStore::load() {
@@ -62,6 +62,7 @@ const char* MaintenanceRequestStore::name(MaintenanceRequest request) {
         case MaintenanceRequest::RECOVERY: return "recovery";
         case MaintenanceRequest::FACTORY_RESET: return "factory_reset";
         case MaintenanceRequest::DOWNLOAD_UPDATE_TEST: return "download_update_test";
+        case MaintenanceRequest::STAGE_UPDATE_TEST: return "stage_update_test";
     }
     return "invalid";
 }

@@ -13,6 +13,7 @@
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
 #include "OtaDownloadTest.h"
+#include "OtaStageUpdate.h"
 #include "OtaBuildIdentity.h"
 #include "OtaTlsTrust.h"
 
@@ -480,7 +481,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
 
     if (request != MaintenanceRequest::PROBE_GITHUB &&
         request != MaintenanceRequest::CHECK_VERSION &&
-        request != MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
+        request != MaintenanceRequest::DOWNLOAD_UPDATE_TEST &&
+        request != MaintenanceRequest::STAGE_UPDATE_TEST) {
         EventLog::log(LOG_WARN, "Maintenance: commande refusee type=%s implementation=absente",
                       MaintenanceRequestStore::name(request));
         return false;
@@ -523,7 +525,7 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                       result.success ? "yes" : "no", result.installedVersion,
                       result.availableVersion[0] ? result.availableVersion : "n/a",
                       result.updateAvailable ? "yes" : "no", result.detail);
-    } else {
+    } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
         const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
         success = result.success;
@@ -536,10 +538,24 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                       result.success ? "yes" : "no",
                       static_cast<unsigned long>(result.downloadedSize),
                       static_cast<unsigned long>(result.firmwareSize), result.detail);
+    } else {
+        const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
+        const MaintenanceResult result = OtaStageUpdate::run(validatedManifest);
+        success = result.success;
+        if (!MaintenanceResultStore::save(result)) {
+            EventLog::log(LOG_ERROR,
+                          "Maintenance: echec sauvegarde resultat STAGE_UPDATE_TEST");
+        }
+        EventLog::log(result.success ? LOG_INFO : LOG_ERROR,
+                      "Maintenance: STAGE_UPDATE_TEST success=%s bytes=%lu expected=%lu detail=%s otaActivate=no",
+                      result.success ? "yes" : "no",
+                      static_cast<unsigned long>(result.downloadedSize),
+                      static_cast<unsigned long>(result.firmwareSize), result.detail);
     }
 
+
     EventLog::log(success ? LOG_INFO : LOG_ERROR,
-                  "Maintenance: resultat command=%s success=%s otaWrite=no",
+                   "Maintenance: resultat command=%s success=%s otaWrite=no",
                   MaintenanceRequestStore::name(request), success ? "yes" : "no");
     restartToNormal();
     return true;
