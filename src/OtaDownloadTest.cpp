@@ -48,10 +48,10 @@ int parseHttpCode(const String& statusLine) {
 }
 
 void digestToHex(const unsigned char digest[32], char output[65]) {
-    static const char HEX[] = "0123456789abcdef";
+    static const char HEX_DIGITS[] = "0123456789abcdef";
     for (size_t index = 0U; index < 32U; ++index) {
-        output[index * 2U] = HEX[(digest[index] >> 4U) & 0x0FU];
-        output[index * 2U + 1U] = HEX[digest[index] & 0x0FU];
+        output[index * 2U] = HEX_DIGITS[(digest[index] >> 4U) & 0x0FU];
+        output[index * 2U + 1U] = HEX_DIGITS[digest[index] & 0x0FU];
     }
     output[64] = '\0';
 }
