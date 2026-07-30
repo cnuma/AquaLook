@@ -1,7 +1,6 @@
 #include "OtaPartitionWriter.h"
 
 #include <cstring>
-#include <mbedtls/sha256.h>
 
 namespace {
 constexpr size_t SHA256_HEX_LENGTH = 64U;
@@ -12,16 +11,13 @@ OtaPartitionWriter::OtaPartitionWriter()
       _targetPartition(nullptr),
       _otaHandle(0),
       _started(false),
-      _shaStarted(false),
-      _shaContext(new mbedtls_sha256_context()) {
-    mbedtls_sha256_init(_shaContext);
+      _shaStarted(false) {
+    mbedtls_sha256_init(&_shaContext);
 }
 
 OtaPartitionWriter::~OtaPartitionWriter() {
     abort();
-    mbedtls_sha256_free(_shaContext);
-    delete _shaContext;
-    _shaContext = nullptr;
+    mbedtls_sha256_free(&_shaContext);
 }
 
 bool OtaPartitionWriter::begin(uint32_t expectedSize) {
@@ -57,10 +53,10 @@ bool OtaPartitionWriter::begin(uint32_t expectedSize) {
         return false;
     }
 
-    mbedtls_sha256_free(_shaContext);
-    mbedtls_sha256_init(_shaContext);
-    if (mbedtls_sha256_starts_ret(_shaContext, 0) != 0) {
-        fail(Error::SHA256_FINALIZE_FAILED);
+    mbedtls_sha256_free(&_shaContext);
+    mbedtls_sha256_init(&_shaContext);
+    if (mbedtls_sha256_starts_ret(&_shaContext, 0) != 0) {
+        fail(Error::SHA256_INIT_FAILED);
         return false;
     }
     _shaStarted = true;
@@ -98,8 +94,8 @@ bool OtaPartitionWriter::write(const uint8_t* data, size_t length) {
         return false;
     }
 
-    if (mbedtls_sha256_update_ret(_shaContext, data, length) != 0) {
-        fail(Error::SHA256_FINALIZE_FAILED);
+    if (mbedtls_sha256_update_ret(&_shaContext, data, length) != 0) {
+        fail(Error::SHA256_UPDATE_FAILED);
         abort();
         return false;
     }
@@ -156,8 +152,8 @@ void OtaPartitionWriter::abort() {
     _runningPartition = nullptr;
     _targetPartition = nullptr;
     if (_shaStarted) {
-        mbedtls_sha256_free(_shaContext);
-        mbedtls_sha256_init(_shaContext);
+        mbedtls_sha256_free(&_shaContext);
+        mbedtls_sha256_init(&_shaContext);
     }
     _shaStarted = false;
 }
@@ -182,7 +178,9 @@ const char* OtaPartitionWriter::errorName(Error error) {
         case Error::WRITE_OVERFLOW: return "write-overflow";
         case Error::OTA_WRITE_FAILED: return "ota-write-failed";
         case Error::SIZE_MISMATCH: return "size-mismatch";
-        case Error::SHA256_FINALIZE_FAILED: return "sha256-failed";
+        case Error::SHA256_INIT_FAILED: return "sha256-init-failed";
+        case Error::SHA256_UPDATE_FAILED: return "sha256-update-failed";
+        case Error::SHA256_FINALIZE_FAILED: return "sha256-finalize-failed";
         case Error::SHA256_MISMATCH: return "sha256-mismatch";
         case Error::OTA_END_FAILED: return "ota-end-failed";
     }
@@ -197,7 +195,7 @@ void OtaPartitionWriter::fail(Error error, esp_err_t espError) {
 
 bool OtaPartitionWriter::finalizeSha256() {
     unsigned char digest[32] = {};
-    if (mbedtls_sha256_finish_ret(_shaContext, digest) != 0) {
+    if (mbedtls_sha256_finish_ret(&_shaContext, digest) != 0) {
         fail(Error::SHA256_FINALIZE_FAILED);
         return false;
     }
