@@ -33,6 +33,16 @@ Ce dossier explique **comment modifier et étendre le projet** sans casser ses i
 | `DEV-015_Modifier_la_boucle_Runtime_sans_la_bloquer.md` | intégrer un traitement court, borné et observable |
 | `DEV-016_Ajouter_un_contrat_de_cybersecurite_CI.md` | protéger une propriété de sécurité dans la CI |
 
+## Lot D4
+
+| Référence | Guide |
+|---|---|
+| `DEV-017_Qualifier_une_fonction_legacy_en_V4.md` | apporter une preuve complète du chemin V4 exécuté |
+| `DEV-018_Ajouter_un_scenario_shadow_V4.md` | comparer un plan V4 sans accès au matériel |
+| `DEV-019_Etendre_la_configuration_runtime_V4.md` | versionner, valider et migrer la configuration V4 |
+| `DEV-020_Ajouter_un_driver_binaire_V4.md` | intégrer un contrôleur au registre de drivers |
+| `DEV-021_Partager_un_expander_XL9535_sans_ecraser_les_sorties.md` | coordonner plusieurs chemins sur le même expander |
+
 ## Règle de maintenance
 
 Un guide est mis à jour lorsque la méthode de développement change. Les détails d’implémentation restent dans `docs/firmware/`, et l’architecture de référence dans `docs/engineering/`.
