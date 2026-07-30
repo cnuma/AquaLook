@@ -20,14 +20,14 @@ jobs:
           ref: agent/ota-3.0-download-test-v591
           fetch-depth: 0
 
-      - name: Integrate OTA-3.0
-        run: python .github/ota3_integrate.py
+      - name: Integrate automatic OTA page refresh
+        run: python .github/ota3_refresh.py
 
       - name: Commit integration
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/MaintenanceBoot.cpp src/WebManager.h
+          git add src/WebManager.h
           git diff --cached --check
-          git commit -m "feat(ota): integrate download verification flow"
+          git commit -m "feat(ota): refresh OTA page after maintenance reboot"
           git push origin HEAD:agent/ota-3.0-download-test-v591
