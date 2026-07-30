@@ -11,9 +11,19 @@ struct SdReadContext {
     FsFile file;
     StorageManager* storage = nullptr;
     String path;
+    bool leaseHeld = false;
+
+    void closeAndRelease() {
+        if (file.isOpen()) file.close();
+
+        if (leaseHeld && storage) {
+            storage->releaseWebRead();
+            leaseHeld = false;
+        }
+    }
 
     ~SdReadContext() {
-        if (file.isOpen()) file.close();
+        closeAndRelease();
     }
 };
 
@@ -113,10 +123,23 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
     context->path = sdPath;
 
     if (!_storage->openRead(sdPath.c_str(), context->file)) {
+        if (_storage->isWebReadQuarantined()) {
+            AsyncWebServerResponse* response = request->beginResponse(
+                503,
+                "text/plain",
+                "SD recovery in progress"
+            );
+            response->addHeader("Retry-After", "2");
+            response->addHeader("X-AquaLook-Storage", "SD-Quarantine");
+            request->send(response);
+            return;
+        }
+
         _storage->reportReadError(sdPath.c_str());
         request->send(503, "text/plain", "SD read error");
         return;
     }
+    context->leaseHeld = true;
 
     const char* contentType = contentTypeForPath(sdPath);
     AsyncWebServerResponse* response = request->beginChunkedResponse(
@@ -126,14 +149,14 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
 
             const int32_t count = context->file.read(buffer, maxLen);
             if (count < 0) {
-                if (context->storage) {
-                    context->storage->reportReadError(context->path.c_str());
-                }
-                context->file.close();
+                StorageManager* storage = context->storage;
+                const String path = context->path;
+                context->closeAndRelease();
+                if (storage) storage->reportReadError(path.c_str());
                 return 0;
             }
             if (count == 0) {
-                context->file.close();
+                context->closeAndRelease();
                 return 0;
             }
             return static_cast<size_t>(count);
