@@ -1,0 +1,37 @@
+name: OTA3 finalize branch
+
+on:
+  push:
+    branches:
+      - agent/ota-3.0-download-test-v591
+    paths:
+      - .github/ota3-finalize.patch
+      - .github/workflows/ota3-finalize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/ota-3.0-download-test-v591
+          fetch-depth: 0
+
+      - name: Apply OTA-3.0 final patch
+        shell: bash
+        run: |
+          if git apply --check .github/ota3-finalize.patch; then
+            git apply .github/ota3-finalize.patch
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/MaintenanceBoot.cpp src/WebManager.h
+            git commit -m "feat(ota): integrate download verification flow"
+            git push origin HEAD:agent/ota-3.0-download-test-v591
+          else
+            echo "Patch already applied or branch no longer matches; nothing to do."
+          fi
