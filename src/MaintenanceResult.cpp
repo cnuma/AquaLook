@@ -20,9 +20,7 @@ String readOptionalString(Preferences& preferences, const char* key) {
 MaintenanceResult MaintenanceResultStore::load() {
     MaintenanceResult result;
     Preferences preferences;
-    if (!preferences.begin(NVS_NAMESPACE, true)) {
-        return result;
-    }
+    if (!preferences.begin(NVS_NAMESPACE, true)) return result;
 
     result.valid = preferences.getBool("valid", false);
     if (result.valid) {
@@ -34,6 +32,8 @@ MaintenanceResult MaintenanceResultStore::load() {
         result.minFreeHeap = preferences.getULong("heap_min", 0U);
         result.manifestSize = preferences.getULong("manifest_sz", 0U);
         result.firmwareSize = preferences.getULong("firmware_sz", 0U);
+        result.downloadedSize = preferences.getULong("download_sz", 0U);
+        result.downloadDurationMs = preferences.getULong("download_ms", 0U);
         copyText(result.command, sizeof(result.command), readOptionalString(preferences, "command"));
         copyText(result.httpLine, sizeof(result.httpLine), readOptionalString(preferences, "http"));
         copyText(result.detail, sizeof(result.detail), readOptionalString(preferences, "detail"));
@@ -45,37 +45,32 @@ MaintenanceResult MaintenanceResultStore::load() {
         copyText(result.board, sizeof(result.board), readOptionalString(preferences, "board"));
         copyText(result.firmwareUrl, sizeof(result.firmwareUrl), readOptionalString(preferences, "fw_url"));
         copyText(result.sha256, sizeof(result.sha256), readOptionalString(preferences, "sha256"));
+        copyText(result.calculatedSha256, sizeof(result.calculatedSha256), readOptionalString(preferences, "calc_sha"));
     }
-
     preferences.end();
     return result;
 }
 
 bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     Preferences preferences;
-    if (!preferences.begin(NVS_NAMESPACE, false)) {
-        return false;
-    }
+    if (!preferences.begin(NVS_NAMESPACE, false)) return false;
 
     const bool isVersionCheck = strcmp(result.command, "check_version") == 0;
+    const bool isDownloadTest = strcmp(result.command, "download_update_test") == 0;
     const bool successfulVersionCheck = isVersionCheck && result.success;
-
     const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
     const bool previousNotificationPending = preferences.getBool("notify", false);
     const String previousAvailableVersion = readOptionalString(preferences, "available");
-
-    const bool explicitNotificationAck =
-        previousUpdateAvailable &&
-        previousNotificationPending &&
-        result.updateAvailable &&
-        !result.notificationPending &&
-        result.availableVersion[0] != '\0' &&
+    const bool explicitNotificationAck = previousUpdateAvailable && previousNotificationPending &&
+        result.updateAvailable && !result.notificationPending && result.availableVersion[0] != '\0' &&
         previousAvailableVersion == result.availableVersion;
 
     bool updateAvailable = result.updateAvailable;
     bool notificationPending = result.notificationPending;
     uint32_t manifestSize = result.manifestSize;
     uint32_t firmwareSize = result.firmwareSize;
+    uint32_t downloadedSize = result.downloadedSize;
+    uint32_t downloadDurationMs = result.downloadDurationMs;
     String installedVersion = result.installedVersion;
     String availableVersion = result.availableVersion;
     String channel = result.channel;
@@ -84,15 +79,11 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     String board = result.board;
     String firmwareUrl = result.firmwareUrl;
     String sha256 = result.sha256;
+    String calculatedSha256 = result.calculatedSha256;
 
     if (!successfulVersionCheck) {
-        // Un probe GitHub ou un CHECK_VERSION en échec ne doit pas effacer une
-        // disponibilité déjà validée. La signalisation locale et mobile reste
-        // fondée sur le dernier manifeste entièrement validé.
         updateAvailable = previousUpdateAvailable;
-        notificationPending = explicitNotificationAck
-            ? false
-            : previousNotificationPending;
+        notificationPending = explicitNotificationAck ? false : previousNotificationPending;
         manifestSize = preferences.getULong("manifest_sz", 0U);
         firmwareSize = preferences.getULong("firmware_sz", 0U);
         installedVersion = readOptionalString(preferences, "installed");
@@ -103,13 +94,19 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         board = readOptionalString(preferences, "board");
         firmwareUrl = readOptionalString(preferences, "fw_url");
         sha256 = readOptionalString(preferences, "sha256");
-    } else if (result.updateAvailable &&
-               previousUpdateAvailable &&
-               previousAvailableVersion == result.availableVersion &&
-               !previousNotificationPending) {
-        // La même version a déjà été livrée au téléphone. Une nouvelle
-        // vérification manuelle ne doit pas recréer la notification.
-        notificationPending = false;
+        if (!isDownloadTest) {
+            downloadedSize = preferences.getULong("download_sz", 0U);
+            downloadDurationMs = preferences.getULong("download_ms", 0U);
+            calculatedSha256 = readOptionalString(preferences, "calc_sha");
+        }
+    } else {
+        downloadedSize = 0U;
+        downloadDurationMs = 0U;
+        calculatedSha256 = "";
+        if (result.updateAvailable && previousUpdateAvailable &&
+            previousAvailableVersion == result.availableVersion && !previousNotificationPending) {
+            notificationPending = false;
+        }
     }
 
     bool ok = true;
@@ -122,7 +119,8 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     ok = preferences.putULong("heap_min", result.minFreeHeap) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("manifest_sz", manifestSize) == sizeof(uint32_t) && ok;
     ok = preferences.putULong("firmware_sz", firmwareSize) == sizeof(uint32_t) && ok;
-
+    ok = preferences.putULong("download_sz", downloadedSize) == sizeof(uint32_t) && ok;
+    ok = preferences.putULong("download_ms", downloadDurationMs) == sizeof(uint32_t) && ok;
     preferences.putString("command", result.command);
     preferences.putString("http", result.httpLine);
     preferences.putString("detail", result.detail);
@@ -134,16 +132,14 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     preferences.putString("board", board);
     preferences.putString("fw_url", firmwareUrl);
     preferences.putString("sha256", sha256);
-
+    preferences.putString("calc_sha", calculatedSha256);
     preferences.end();
     return ok;
 }
 
 bool MaintenanceResultStore::clear() {
     Preferences preferences;
-    if (!preferences.begin(NVS_NAMESPACE, false)) {
-        return false;
-    }
+    if (!preferences.begin(NVS_NAMESPACE, false)) return false;
     const bool ok = preferences.clear();
     preferences.end();
     return ok;
