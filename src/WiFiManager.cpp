@@ -101,6 +101,13 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             // sans couper la connexion HTTP du client associe au SoftAP.
             WiFi.mode(WIFI_AP_STA);
             WiFi.softAP(CAPTIVE_AP_SSID);
+            EventLog::log(
+                LOG_INFO,
+                "WiFi scan diag: AP_SET_MODE mode=%d status=%d apClients=%u",
+                (int)WiFi.getMode(),
+                (int)WiFi.status(),
+                (unsigned)WiFi.softAPgetStationNum()
+            );
             scheduleAction(
                 PendingAction::AP_FINALIZE,
                 now + WIFI_AP_SETTLE_MS
@@ -115,6 +122,13 @@ bool WiFiManager::processPendingAction(uint32_t now) {
                 "WiFi: AP '%s' IP=%s",
                 CAPTIVE_AP_SSID,
                 apIp.toString().c_str()
+            );
+            EventLog::log(
+                LOG_INFO,
+                "WiFi scan diag: AP_FINALIZE mode=%d status=%d apClients=%u",
+                (int)WiFi.getMode(),
+                (int)WiFi.status(),
+                (unsigned)WiFi.softAPgetStationNum()
             );
 
             _dnsServer.start(DNS_PORT, "*", apIp);
@@ -310,20 +324,69 @@ const char* WiFiManager::stateStr() const {
 }
 
 void WiFiManager::startScan() {
-    if (_scanPending) return;
+    if (_scanPending) {
+        EventLog::log(
+            LOG_WARN,
+            "WiFi scan diag: start ignore pending=yes complete=%d mode=%d status=%d apClients=%u",
+            (int)WiFi.scanComplete(),
+            (int)WiFi.getMode(),
+            (int)WiFi.status(),
+            (unsigned)WiFi.softAPgetStationNum()
+        );
+        return;
+    }
+
+    EventLog::log(
+        LOG_INFO,
+        "WiFi scan diag: start avant complete=%d mode=%d status=%d apClients=%u heap=%u",
+        (int)WiFi.scanComplete(),
+        (int)WiFi.getMode(),
+        (int)WiFi.status(),
+        (unsigned)WiFi.softAPgetStationNum(),
+        (unsigned)ESP.getFreeHeap()
+    );
 
     // Le portail est deja en WIFI_AP_STA : ne jamais changer de mode pendant
     // qu'un navigateur y est connecte.
-    WiFi.scanNetworks(true, false);
+    const int16_t launchResult = static_cast<int16_t>(WiFi.scanNetworks(true, false));
     _scanPending = true;
-    EventLog::log(LOG_INFO, "WiFi: scan reseau lance");
+    EventLog::log(
+        LOG_INFO,
+        "WiFi scan diag: lance result=%d complete=%d mode=%d status=%d apClients=%u heap=%u",
+        (int)launchResult,
+        (int)WiFi.scanComplete(),
+        (int)WiFi.getMode(),
+        (int)WiFi.status(),
+        (unsigned)WiFi.softAPgetStationNum(),
+        (unsigned)ESP.getFreeHeap()
+    );
 }
 
 int16_t WiFiManager::getScanCount() const {
-    if (!_scanPending) return 0;
+    if (!_scanPending) {
+        EventLog::log(
+            LOG_INFO,
+            "WiFi scan diag: poll pending=no mode=%d status=%d apClients=%u",
+            (int)WiFi.getMode(),
+            (int)WiFi.status(),
+            (unsigned)WiFi.softAPgetStationNum()
+        );
+        return 0;
+    }
 
-    const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
-    return n == WIFI_SCAN_RUNNING ? -1 : n;
+    const int16_t raw = static_cast<int16_t>(WiFi.scanComplete());
+    const int16_t result = raw == WIFI_SCAN_RUNNING ? -1 : raw;
+    EventLog::log(
+        raw == WIFI_SCAN_FAILED ? LOG_ERROR : LOG_INFO,
+        "WiFi scan diag: poll pending=yes raw=%d result=%d mode=%d status=%d apClients=%u heap=%u",
+        (int)raw,
+        (int)result,
+        (int)WiFi.getMode(),
+        (int)WiFi.status(),
+        (unsigned)WiFi.softAPgetStationNum(),
+        (unsigned)ESP.getFreeHeap()
+    );
+    return result;
 }
 
 WiFiManager::ScanEntry
@@ -334,7 +397,15 @@ WiFiManager::getScanEntry(uint8_t i) const {
     e.secured = false;
 
     const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
-    if (n <= 0 || i >= static_cast<uint8_t>(n)) return e;
+    if (n <= 0 || i >= static_cast<uint8_t>(n)) {
+        EventLog::log(
+            LOG_WARN,
+            "WiFi scan diag: entree invalide i=%u count=%d",
+            (unsigned)i,
+            (int)n
+        );
+        return e;
+    }
 
     const String s = WiFi.SSID(i);
     strlcpy(e.ssid, s.c_str(), sizeof(e.ssid));
@@ -342,11 +413,38 @@ WiFiManager::getScanEntry(uint8_t i) const {
     e.secured =
         WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
 
+    EventLog::log(
+        LOG_INFO,
+        "WiFi scan diag: entree i=%u/%d ssid='%s' rssi=%d secured=%s",
+        (unsigned)i,
+        (int)n,
+        e.ssid,
+        (int)e.rssi,
+        e.secured ? "yes" : "no"
+    );
     return e;
 }
 
 void WiFiManager::clearScan() {
+    EventLog::log(
+        LOG_INFO,
+        "WiFi scan diag: clear avant complete=%d mode=%d status=%d apClients=%u heap=%u",
+        (int)WiFi.scanComplete(),
+        (int)WiFi.getMode(),
+        (int)WiFi.status(),
+        (unsigned)WiFi.softAPgetStationNum(),
+        (unsigned)ESP.getFreeHeap()
+    );
     WiFi.scanDelete();
     _scanPending = false;
+    EventLog::log(
+        LOG_INFO,
+        "WiFi scan diag: clear apres complete=%d mode=%d status=%d apClients=%u heap=%u",
+        (int)WiFi.scanComplete(),
+        (int)WiFi.getMode(),
+        (int)WiFi.status(),
+        (unsigned)WiFi.softAPgetStationNum(),
+        (unsigned)ESP.getFreeHeap()
+    );
     // Rester en AP+STA : repasser en WIFI_AP couperait de nouveau le client.
 }
