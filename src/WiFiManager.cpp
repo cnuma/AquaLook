@@ -96,7 +96,10 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             return true;
 
         case PendingAction::AP_SET_MODE:
-            WiFi.mode(WIFI_AP);
+            // Garder l'interface STA active pendant toute la duree du portail.
+            // Un scan peut alors utiliser le STA sans changer le mode radio et
+            // sans couper la connexion HTTP du client associe au SoftAP.
+            WiFi.mode(WIFI_AP_STA);
             WiFi.softAP(CAPTIVE_AP_SSID);
             scheduleAction(
                 PendingAction::AP_FINALIZE,
@@ -309,10 +312,8 @@ const char* WiFiManager::stateStr() const {
 void WiFiManager::startScan() {
     if (_scanPending) return;
 
-    if (_state == State::CAPTIVE_PORTAL) {
-        WiFi.mode(WIFI_AP_STA);
-    }
-
+    // Le portail est deja en WIFI_AP_STA : ne jamais changer de mode pendant
+    // qu'un navigateur y est connecte.
     WiFi.scanNetworks(true, false);
     _scanPending = true;
     EventLog::log(LOG_INFO, "WiFi: scan reseau lance");
@@ -347,8 +348,5 @@ WiFiManager::getScanEntry(uint8_t i) const {
 void WiFiManager::clearScan() {
     WiFi.scanDelete();
     _scanPending = false;
-
-    if (_state == State::CAPTIVE_PORTAL) {
-        WiFi.mode(WIFI_AP);
-    }
+    // Rester en AP+STA : repasser en WIFI_AP couperait de nouveau le client.
 }
