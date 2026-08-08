@@ -9,6 +9,7 @@ static DNSServer _dnsServer;
 static bool _dnsStarted = false;
 static constexpr uint8_t DNS_PORT = 53;
 static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
+static constexpr const char* CAPTIVE_SCAN_AP_SSID = "AquaLook-Scan";
 
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid ? ssid : "", sizeof(_ssid));
@@ -90,14 +91,24 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             _lastActionMs = now;
             return true;
 
-        case PendingAction::CAPTIVE_SCAN_SET_MODE:
-            // Le scan materiel a deja ete valide en AP+STA sur cette carte.
-            // Aucun SoftAP n'est encore demarre ici : aucun client ne peut donc
-            // subir la perte de liaison pendant le balayage des canaux.
+        case PendingAction::CAPTIVE_SCAN_SET_MODE: {
+            // Les essais materiels montrent que le scan retourne 0 en STA seul
+            // et en AP+STA sans SoftAP actif, mais trouve les reseaux lorsqu'un
+            // SoftAP est reellement actif. On ouvre donc un AP temporaire masque
+            // avant le prescan. Aucun client ne peut le decouvrir pendant cette
+            // phase; il est supprime avant Arrosage-Setup.
             WiFi.mode(WIFI_AP_STA);
+            const bool hiddenApOk = WiFi.softAP(
+                CAPTIVE_SCAN_AP_SSID,
+                nullptr,
+                1,
+                1
+            );
             EventLog::log(
-                LOG_INFO,
-                "WiFi: prescan portail mode AP_STA sans SoftAP, stabilisation %lums",
+                hiddenApOk ? LOG_INFO : LOG_WARN,
+                "WiFi: prescan AP masque start=%s mode=%d stabilisation=%lums",
+                hiddenApOk ? "ok" : "echec",
+                static_cast<int>(WiFi.getMode()),
                 static_cast<unsigned long>(CAPTIVE_SCAN_MODE_SETTLE_MS)
             );
             scheduleAction(
@@ -105,6 +116,7 @@ bool WiFiManager::processPendingAction(uint32_t now) {
                 now + CAPTIVE_SCAN_MODE_SETTLE_MS
             );
             return true;
+        }
 
         case PendingAction::CAPTIVE_SCAN_START: {
             WiFi.scanDelete();
@@ -118,9 +130,10 @@ bool WiFiManager::processPendingAction(uint32_t now) {
 
             EventLog::log(
                 launch == WIFI_SCAN_FAILED ? LOG_WARN : LOG_INFO,
-                "WiFi: prescan portail lance result=%d mode=%d heap=%u",
+                "WiFi: prescan portail lance result=%d mode=%d apClients=%u heap=%u",
                 static_cast<int>(launch),
                 static_cast<int>(WiFi.getMode()),
+                static_cast<unsigned>(WiFi.softAPgetStationNum()),
                 static_cast<unsigned>(ESP.getFreeHeap())
             );
 
@@ -289,6 +302,10 @@ void WiFiManager::finalizeCaptiveScan(int16_t rawCount, bool timedOut) {
         static_cast<int>(rawCount),
         static_cast<unsigned>(_scanCacheCount)
     );
+
+    // Fermer l'AP technique avant d'exposer le vrai portail captif.
+    WiFi.softAPdisconnect(true);
+    EventLog::log(LOG_INFO, "WiFi: prescan AP masque arrete");
 
     _state = State::CAPTIVE_STARTING;
     scheduleAction(PendingAction::AP_SET_MODE, millis() + WIFI_MODE_SETTLE_MS);
