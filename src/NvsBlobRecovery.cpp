@@ -29,10 +29,11 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
 
     // Le remplacement d'un gros blob peut manquer d'espace temporaire car NVS
     // conserve l'ancienne valeur jusqu'au commit. Sauvegarder d'abord l'ancien
-    // blob en RAM afin que la reprise reste réversible.
+    // blob en RAM afin que la reprise reste reversible lorsqu'il est lisible.
     void* previous = nullptr;
     size_t previousLength = 0U;
     esp_err_t previousErr = nvs_get_blob(handle, key, nullptr, &previousLength);
+    bool previousUnreadable = false;
 
     if (previousErr == ESP_OK && previousLength > 0U) {
         if (previousLength > CONFIG_BACKUP_MAX_SIZE) {
@@ -48,10 +49,15 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
         previousErr = nvs_get_blob(handle, key, previous, &readLength);
         if (previousErr != ESP_OK || readLength != previousLength) {
             std::free(previous);
-            return firstErr;
+            previous = nullptr;
+            previousLength = 0U;
+            previousUnreadable = true;
         }
     } else if (previousErr != ESP_ERR_NVS_NOT_FOUND) {
-        return firstErr;
+        // La cle existe mais NVS ne sait deja plus la relire. Il n'existe alors
+        // aucune configuration valide a preserver. Autoriser sa reconstruction
+        // depuis le nouveau blob complet fourni par ConfigManager.
+        previousUnreadable = true;
     }
 
     esp_err_t err = nvs_erase_key(handle, key);
@@ -66,10 +72,10 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
         return ESP_OK;
     }
 
-    // La reprise a échoué : remettre l'ancien bloc avant de rendre l'erreur à
-    // Preferences. Ainsi une évolution ne transforme pas un échec d'écriture
-    // en perte silencieuse de la configuration précédente.
-    if (previous != nullptr && previousLength > 0U) {
+    // La reprise a echoue : remettre l'ancien bloc lorsqu'il etait lisible.
+    // Une cle deja illisible ne peut pas etre restauree et reste volontairement
+    // effacee plutot que de recreer une configuration corrompue.
+    if (!previousUnreadable && previous != nullptr && previousLength > 0U) {
         (void)__real_nvs_set_blob(handle, key, previous, previousLength);
     }
 
