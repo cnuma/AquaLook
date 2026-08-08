@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <cstdlib>
 #include <cstring>
 #include <nvs.h>
@@ -19,6 +20,16 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
                                           size_t length) {
     const esp_err_t firstErr = __real_nvs_set_blob(handle, key, value, length);
 
+    if (key != nullptr && std::strcmp(key, CONFIG_KEY) == 0) {
+        Serial.printf(
+            "[NVS-DIAG] set_blob key=%s len=%u firstErr=%d heap=%u\n",
+            key,
+            (unsigned)length,
+            (int)firstErr,
+            (unsigned)ESP.getFreeHeap()
+        );
+    }
+
     if (firstErr != ESP_ERR_NVS_NOT_ENOUGH_SPACE ||
         key == nullptr ||
         value == nullptr ||
@@ -27,26 +38,40 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
         return firstErr;
     }
 
-    // Le remplacement d'un gros blob peut manquer d'espace temporaire car NVS
-    // conserve l'ancienne valeur jusqu'au commit. Sauvegarder d'abord l'ancien
-    // blob en RAM afin que la reprise reste reversible lorsqu'il est lisible.
     void* previous = nullptr;
     size_t previousLength = 0U;
     esp_err_t previousErr = nvs_get_blob(handle, key, nullptr, &previousLength);
     bool previousUnreadable = false;
 
+    Serial.printf(
+        "[NVS-DIAG] recovery begin previousProbeErr=%d previousLen=%u\n",
+        (int)previousErr,
+        (unsigned)previousLength
+    );
+
     if (previousErr == ESP_OK && previousLength > 0U) {
         if (previousLength > CONFIG_BACKUP_MAX_SIZE) {
+            Serial.printf(
+                "[NVS-DIAG] recovery abort previousLenTooLarge=%u\n",
+                (unsigned)previousLength
+            );
             return firstErr;
         }
 
         previous = std::malloc(previousLength);
         if (previous == nullptr) {
+            Serial.printf("[NVS-DIAG] recovery abort malloc failed\n");
             return firstErr;
         }
 
         size_t readLength = previousLength;
         previousErr = nvs_get_blob(handle, key, previous, &readLength);
+        Serial.printf(
+            "[NVS-DIAG] recovery read previousErr=%d requested=%u read=%u\n",
+            (int)previousErr,
+            (unsigned)previousLength,
+            (unsigned)readLength
+        );
         if (previousErr != ESP_OK || readLength != previousLength) {
             std::free(previous);
             previous = nullptr;
@@ -54,29 +79,46 @@ extern "C" esp_err_t __wrap_nvs_set_blob(nvs_handle_t handle,
             previousUnreadable = true;
         }
     } else if (previousErr != ESP_ERR_NVS_NOT_FOUND) {
-        // La cle existe mais NVS ne sait deja plus la relire. Il n'existe alors
-        // aucune configuration valide a preserver. Autoriser sa reconstruction
-        // depuis le nouveau blob complet fourni par ConfigManager.
         previousUnreadable = true;
+        Serial.printf(
+            "[NVS-DIAG] recovery previous unreadable err=%d; reconstruction allowed\n",
+            (int)previousErr
+        );
     }
 
     esp_err_t err = nvs_erase_key(handle, key);
+    Serial.printf("[NVS-DIAG] recovery erase err=%d\n", (int)err);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         std::free(previous);
         return firstErr;
     }
 
     err = __real_nvs_set_blob(handle, key, value, length);
+    Serial.printf(
+        "[NVS-DIAG] recovery rewrite err=%d len=%u heap=%u\n",
+        (int)err,
+        (unsigned)length,
+        (unsigned)ESP.getFreeHeap()
+    );
     if (err == ESP_OK) {
         std::free(previous);
         return ESP_OK;
     }
 
-    // La reprise a echoue : remettre l'ancien bloc lorsqu'il etait lisible.
-    // Une cle deja illisible ne peut pas etre restauree et reste volontairement
-    // effacee plutot que de recreer une configuration corrompue.
     if (!previousUnreadable && previous != nullptr && previousLength > 0U) {
-        (void)__real_nvs_set_blob(handle, key, previous, previousLength);
+        const esp_err_t restoreErr =
+            __real_nvs_set_blob(handle, key, previous, previousLength);
+        Serial.printf(
+            "[NVS-DIAG] recovery restore err=%d len=%u\n",
+            (int)restoreErr,
+            (unsigned)previousLength
+        );
+    } else {
+        Serial.printf(
+            "[NVS-DIAG] recovery no restore previousUnreadable=%s previousLen=%u\n",
+            previousUnreadable ? "yes" : "no",
+            (unsigned)previousLength
+        );
     }
 
     std::free(previous);
