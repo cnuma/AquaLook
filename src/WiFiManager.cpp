@@ -10,6 +10,7 @@ static bool _dnsStarted = false;
 
 static constexpr uint8_t DNS_PORT = 53;
 static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
+static constexpr uint32_t WIFI_SCAN_MAX_MS_PER_CHAN = 120U;
 
 static uint32_t _scanDiagStartedMs = 0U;
 static uint32_t _scanDiagLastMs = 0U;
@@ -369,18 +370,22 @@ void WiFiManager::startScan() {
         (unsigned)ESP.getFreeHeap()
     );
 
-    // Le portail est deja en WIFI_AP_STA : ne jamais changer de mode pendant
-    // qu'un navigateur y est connecte.
-    const int16_t launchResult = static_cast<int16_t>(WiFi.scanNetworks(true, false));
+    // Balayage actif court : le STA quitte le canal du SoftAP pendant le scan.
+    // Limiter le temps par canal evite de laisser le navigateur captif sans
+    // reponse assez longtemps pour qu'il abandonne son polling HTTP.
+    const int16_t launchResult = static_cast<int16_t>(
+        WiFi.scanNetworks(true, false, false, WIFI_SCAN_MAX_MS_PER_CHAN)
+    );
     _scanPending = true;
     _scanDiagStartedMs = millis();
     _scanDiagLastMs = 0U;
     _scanDiagTicks = 0U;
     EventLog::log(
         LOG_INFO,
-        "WiFi scan diag: lance result=%d complete=%d mode=%d status=%d apClients=%u heap=%u",
+        "WiFi scan diag: lance result=%d complete=%d maxMsChan=%lu mode=%d status=%d apClients=%u heap=%u",
         (int)launchResult,
         (int)WiFi.scanComplete(),
+        (unsigned long)WIFI_SCAN_MAX_MS_PER_CHAN,
         (int)WiFi.getMode(),
         (int)WiFi.status(),
         (unsigned)WiFi.softAPgetStationNum(),
