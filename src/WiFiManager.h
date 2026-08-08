@@ -51,6 +51,7 @@ private:
         NONE,
         STA_SET_MODE,
         STA_BEGIN,
+        CAPTIVE_SCAN_SET_MODE,
         CAPTIVE_SCAN_START,
         AP_SET_MODE,
         AP_FINALIZE,
@@ -64,6 +65,7 @@ private:
     static constexpr uint32_t WIFI_MODE_SETTLE_MS = 50U;
     static constexpr uint32_t WIFI_AP_SETTLE_MS = 200U;
     static constexpr uint32_t WIFI_RESTART_SETTLE_MS = 200U;
+    static constexpr uint32_t CAPTIVE_SCAN_MODE_SETTLE_MS = 150U;
     static constexpr uint32_t CAPTIVE_SCAN_TIMEOUT_MS = 15000U;
     static constexpr uint8_t SCAN_CACHE_MAX = 32U;
 
