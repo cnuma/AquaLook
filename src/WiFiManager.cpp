@@ -91,10 +91,13 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             return true;
 
         case PendingAction::CAPTIVE_SCAN_SET_MODE:
-            WiFi.mode(WIFI_STA);
+            // Le scan materiel a deja ete valide en AP+STA sur cette carte.
+            // Aucun SoftAP n'est encore demarre ici : aucun client ne peut donc
+            // subir la perte de liaison pendant le balayage des canaux.
+            WiFi.mode(WIFI_AP_STA);
             EventLog::log(
                 LOG_INFO,
-                "WiFi: prescan portail mode STA, stabilisation %lums",
+                "WiFi: prescan portail mode AP_STA sans SoftAP, stabilisation %lums",
                 static_cast<unsigned long>(CAPTIVE_SCAN_MODE_SETTLE_MS)
             );
             scheduleAction(
