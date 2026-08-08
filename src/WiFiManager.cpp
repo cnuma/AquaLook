@@ -11,6 +11,10 @@ static bool _dnsStarted = false;
 static constexpr uint8_t DNS_PORT = 53;
 static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
 
+static uint32_t _scanDiagStartedMs = 0U;
+static uint32_t _scanDiagLastMs = 0U;
+static uint32_t _scanDiagTicks = 0U;
+
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid, sizeof(_ssid));
     strlcpy(_pwd, pwd, sizeof(_pwd));
@@ -34,6 +38,25 @@ void WiFiManager::begin(const char* ssid, const char* pwd) {
 
 void WiFiManager::update() {
     const uint32_t now = millis();
+
+    // Continue a observer le driver meme si le navigateur ne poll plus.
+    if (_scanPending &&
+        (_scanDiagLastMs == 0U || (now - _scanDiagLastMs) >= 1000U)) {
+        _scanDiagLastMs = now;
+        _scanDiagTicks++;
+        const int16_t raw = static_cast<int16_t>(WiFi.scanComplete());
+        EventLog::log(
+            raw == WIFI_SCAN_RUNNING ? LOG_INFO : LOG_WARN,
+            "WiFi scan diag: runtime tick=%lu elapsed=%lums raw=%d mode=%d status=%d apClients=%u heap=%u",
+            (unsigned long)_scanDiagTicks,
+            (unsigned long)(now - _scanDiagStartedMs),
+            (int)raw,
+            (int)WiFi.getMode(),
+            (int)WiFi.status(),
+            (unsigned)WiFi.softAPgetStationNum(),
+            (unsigned)ESP.getFreeHeap()
+        );
+    }
 
     if (processPendingAction(now)) {
         return;
@@ -350,6 +373,9 @@ void WiFiManager::startScan() {
     // qu'un navigateur y est connecte.
     const int16_t launchResult = static_cast<int16_t>(WiFi.scanNetworks(true, false));
     _scanPending = true;
+    _scanDiagStartedMs = millis();
+    _scanDiagLastMs = 0U;
+    _scanDiagTicks = 0U;
     EventLog::log(
         LOG_INFO,
         "WiFi scan diag: lance result=%d complete=%d mode=%d status=%d apClients=%u heap=%u",
@@ -437,6 +463,9 @@ void WiFiManager::clearScan() {
     );
     WiFi.scanDelete();
     _scanPending = false;
+    _scanDiagStartedMs = 0U;
+    _scanDiagLastMs = 0U;
+    _scanDiagTicks = 0U;
     EventLog::log(
         LOG_INFO,
         "WiFi scan diag: clear apres complete=%d mode=%d status=%d apClients=%u heap=%u",
