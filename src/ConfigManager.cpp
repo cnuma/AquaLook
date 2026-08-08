@@ -40,6 +40,54 @@ uint32_t crc32Bytes(const uint8_t* data, size_t len) {
     }
     return ~crc;
 }
+
+bool verifyPersistedWifi(const CfgWifi& expected) {
+    Preferences prefs;
+    if (!prefs.begin(CFG_NVS_NAMESPACE, true)) {
+        EventLog::log(LOG_ERROR, "Config: verification NVS impossible (ouverture)");
+        return false;
+    }
+
+    const size_t len = prefs.getBytesLength(CFG_NVS_KEY);
+    if (len != sizeof(PersistedConfig)) {
+        prefs.end();
+        EventLog::log(LOG_ERROR, "Config: verification NVS taille invalide (%u/%u)",
+                      (unsigned)len, (unsigned)sizeof(PersistedConfig));
+        return false;
+    }
+
+    PersistedConfig* blob = static_cast<PersistedConfig*>(malloc(sizeof(PersistedConfig)));
+    if (!blob) {
+        prefs.end();
+        EventLog::log(LOG_ERROR, "Config: verification NVS allocation impossible");
+        return false;
+    }
+
+    const size_t read = prefs.getBytes(CFG_NVS_KEY, blob, sizeof(PersistedConfig));
+    prefs.end();
+
+    bool valid = (read == sizeof(PersistedConfig)) &&
+                 (blob->magic == NVS_MAGIC) &&
+                 (blob->schema == CFG_NVS_SCHEMA) &&
+                 (blob->payloadSize == sizeof(PersistedConfig));
+    if (valid) {
+        const uint32_t expectedCrc = crc32Bytes(
+            reinterpret_cast<const uint8_t*>(blob),
+            offsetof(PersistedConfig, crc32)
+        );
+        valid = (expectedCrc == blob->crc32);
+    }
+    if (valid) {
+        valid = (strncmp(blob->wifi.ssid, expected.ssid, sizeof(expected.ssid)) == 0) &&
+                (strncmp(blob->wifi.password, expected.password, sizeof(expected.password)) == 0);
+    }
+
+    free(blob);
+    if (!valid) {
+        EventLog::log(LOG_ERROR, "Config: verification NVS WiFi ECHEC — redemarrage annule");
+    }
+    return valid;
+}
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -466,9 +514,17 @@ uint32_t ConfigManager::intervalAnchorDay(uint8_t z) const {
 // ═══════════════════════════════════════════════════════════════
 
 void ConfigManager::setWifi(const char* ssid, const char* pwd) {
+    const CfgWifi previous = _wifi;
     strlcpy(_wifi.ssid,     ssid, sizeof(_wifi.ssid));
     strlcpy(_wifi.password, pwd,  sizeof(_wifi.password));
     save();
+
+    if (!verifyPersistedWifi(_wifi)) {
+        _wifi = previous;
+        EventLog::log(LOG_ERROR, "WiFi: sauvegarde NVS non validee — redemarrage annule");
+        return;
+    }
+
     // Invariant I10 : l'appelant (WebManager) a déjà envoyé sendOk()
     ESP.restart();
 }
