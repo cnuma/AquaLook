@@ -50,7 +50,8 @@ env.Append(
         ("AQUALOOK_GIT_BRANCH", f'\\"{git_branch}\\"'),
         ("AQUALOOK_OTA_TARGET", f'\\"{ota_target}\\"'),
         ("AQUALOOK_PIO_ENV", f'\\"{pio_environment}\\"'),
-    ]
+    ],
+    LINKFLAGS=["-Wl,--wrap=nvs_set_blob"],
 )
 
 print(
