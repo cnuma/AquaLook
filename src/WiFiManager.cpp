@@ -90,8 +90,20 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             _lastActionMs = now;
             return true;
 
-        case PendingAction::CAPTIVE_SCAN_START: {
+        case PendingAction::CAPTIVE_SCAN_SET_MODE:
             WiFi.mode(WIFI_STA);
+            EventLog::log(
+                LOG_INFO,
+                "WiFi: prescan portail mode STA, stabilisation %lums",
+                static_cast<unsigned long>(CAPTIVE_SCAN_MODE_SETTLE_MS)
+            );
+            scheduleAction(
+                PendingAction::CAPTIVE_SCAN_START,
+                now + CAPTIVE_SCAN_MODE_SETTLE_MS
+            );
+            return true;
+
+        case PendingAction::CAPTIVE_SCAN_START: {
             WiFi.scanDelete();
             _scanCacheCount = 0U;
             _scanCacheReady = false;
@@ -103,8 +115,10 @@ bool WiFiManager::processPendingAction(uint32_t now) {
 
             EventLog::log(
                 launch == WIFI_SCAN_FAILED ? LOG_WARN : LOG_INFO,
-                "WiFi: prescan portail lance result=%d",
-                static_cast<int>(launch)
+                "WiFi: prescan portail lance result=%d mode=%d heap=%u",
+                static_cast<int>(launch),
+                static_cast<int>(WiFi.getMode()),
+                static_cast<unsigned>(ESP.getFreeHeap())
             );
 
             if (launch >= 0) {
@@ -299,7 +313,7 @@ void WiFiManager::startCaptivePortal() {
     _scanCacheCount = 0U;
     _state = State::CAPTIVE_STARTING;
     scheduleAction(
-        PendingAction::CAPTIVE_SCAN_START,
+        PendingAction::CAPTIVE_SCAN_SET_MODE,
         millis() + WIFI_DISCONNECT_SETTLE_MS
     );
 }
