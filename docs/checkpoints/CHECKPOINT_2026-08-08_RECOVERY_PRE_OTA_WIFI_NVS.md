@@ -1,4 +1,4 @@
-# Checkpoint AquaLook — Récupération pré-OTA / WiFi-NVS validé
+# Checkpoint AquaLook — Récupération pré-OTA / base matérielle revalidée
 
 Date : 8 août 2026
 
@@ -65,7 +65,7 @@ Validé sur matériel :
 - scan I2C ;
 - détection du XL9535 à l'adresse `0x20` ;
 - montage LittleFS ;
-- initialisation TFT et splash ;
+- initialisation TFT ;
 - initialisation relais Legacy ;
 - initialisation planning ;
 - démarrage serveur Web ;
@@ -73,7 +73,7 @@ Validé sur matériel :
 - initialisation écran ;
 - entrée dans la boucle principale.
 
-### Portail captif
+### Portail captif, scan WiFi et persistance
 
 Validé sur matériel avec NVS sans identifiants WiFi :
 
@@ -81,21 +81,10 @@ Validé sur matériel avec NVS sans identifiants WiFi :
 WiFi: pas de SSID, portail captif
 WiFi: demarrage portail captif
 WiFi: AP 'Arrosage-Setup' IP=192.168.4.1
-```
-
-Le point d'accès `Arrosage-Setup` a été accessible et le portail de configuration a permis de lancer un scan réseau.
-
-### Scan WiFi et sélection SSID
-
-Validé sur matériel :
-
-```text
 WiFi: scan reseau lance
 ```
 
-Le réseau souhaité a pu être sélectionné depuis l'interface de configuration et le mot de passe saisi.
-
-### Sauvegarde NVS
+Le point d'accès `Arrosage-Setup` a été accessible, le scan réseau a fonctionné et le SSID souhaité a pu être sélectionné.
 
 Un premier essai, avant effacement complet de la flash, a échoué avec :
 
@@ -104,24 +93,20 @@ nvs_set_blob fail: config NOT_ENOUGH_SPACE
 Config: ecriture NVS incomplete (0/4868)
 ```
 
-Cet état provenait d'une NVS ayant été utilisée par des développements ultérieurs. Après effacement complet de la flash et reflash du firmware de référence, la sauvegarde a réussi :
+Après effacement complet de la flash et reflash du firmware de référence, la sauvegarde a réussi :
 
 ```text
 WiFi: sauvegarde identifiants via NVS
 Config: sauvegarde NVS OK (4868 octets, schema 1)
 ```
 
-Conclusion : la sauvegarde du bloc NVS schéma 1 du checkpoint est fonctionnelle sur une flash propre.
-
-### Persistance après redémarrage et reconnexion WiFi
-
-Validé sur matériel après sauvegarde NVS et reboot :
+Après redémarrage, la configuration a été relue et la reconnexion automatique confirmée :
 
 ```text
 WiFi: connecte IP=192.168.1.198 RSSI=-64dBm, veille desactivee
 ```
 
-Le cycle complet suivant est donc validé :
+Le cycle complet suivant est validé :
 
 1. boot sans SSID ;
 2. démarrage du portail captif ;
@@ -134,26 +119,82 @@ Le cycle complet suivant est donc validé :
 9. reconnexion automatique au réseau WiFi ;
 10. obtention d'une adresse IP.
 
+### Web et ressources SD
+
+Validé sur matériel en fonctionnement nominal avec carte SD insérée :
+
+- montage de la SD ;
+- validation des ressources Web dans `/www` ;
+- page principale accessible ;
+- présentation/CSS normale ;
+- navigation Web fonctionnelle ;
+- affichage des zones ;
+- page planning ;
+- page paramètres ;
+- page logs fonctionnelle.
+
+### NTP et météo
+
+Validé sur matériel :
+
+```text
+NTP: synchronise 08/08/2026 21:31:07
+Meteo: HTTP 200 annonce=16664 lecture=stream type=inconnu
+Meteo: fetch termine taille=16664 pluie=0.0mm temp=26.4C statut=ok
+```
+
+La reconfiguration NTP et un nouveau fetch météo après modification de configuration ont également été observés avec succès.
+
+### Relais Legacy
+
+Validé sur matériel pour les deux zones actives :
+
+- zone 1 : activation puis arrêt manuel ;
+- zone 2 : activation puis arrêt manuel ;
+- commandes physiques envoyées au XL9535 `0x20` ;
+- logique directe ;
+- retours `ON` puis `OFF` observés dans les logs.
+
+Les essais ont été effectués sans charge réelle raccordée aux relais.
+
+### LCD, tactile et configuration persistée
+
+Validé par contrôle utilisateur sur matériel :
+
+- affichage LCD normal ;
+- réveil et navigation écran ;
+- tactile XPT2046 fonctionnel ;
+- navigation entre écrans fonctionnelle ;
+- modification d'un paramètre depuis le Web ;
+- prise en compte de la modification ;
+- redémarrage ;
+- persistance de la modification après reboot.
+
+### Planning
+
+Le planning s'initialise correctement avec 2 zones actives. Les paramètres de planning et de configuration sont accessibles et persistants. Un déclenchement automatique sur créneau horaire dédié n'a pas été rejoué pendant cette campagne, mais la chaîne manuelle ScheduleManager -> backend physique a été validée pour les deux zones.
+
 ## État des sous-systèmes
 
 | Sous-système | Statut au 8 août 2026 | Observation |
 |---|---|---|
 | Boot ESP32 | VALIDÉ | setup terminé et boucle démarrée |
-| I2C | VALIDÉ | périphérique `0x20` détecté |
-| Relais Legacy / initialisation | VALIDÉ PARTIELLEMENT | topologie initialisée ; commutation physique non retestée pendant cette reprise |
-| TFT / splash | VALIDÉ | affichage initialisé |
-| Planning / initialisation | VALIDÉ PARTIELLEMENT | initialisation OK ; exécution de créneaux non retestée |
+| I2C | VALIDÉ | XL9535 `0x20` détecté |
+| Relais Legacy | VALIDÉ | zones 1 et 2 ON/OFF manuellement |
+| TFT / LCD | VALIDÉ | affichage et navigation normaux |
+| Touch XPT2046 | VALIDÉ | navigation tactile confirmée |
+| Planning / configuration | VALIDÉ FONCTIONNELLEMENT | initialisation, configuration et persistance OK ; créneau automatique non rejoué |
 | Portail captif | VALIDÉ | AP `Arrosage-Setup` opérationnel |
-| Scan WiFi | VALIDÉ | scan lancé depuis le portail |
+| Scan WiFi | VALIDÉ | sélection SSID fonctionnelle |
 | Sauvegarde WiFi NVS | VALIDÉ | `4868 octets, schema 1` |
-| Persistance WiFi après reboot | VALIDÉ | reconnexion automatique confirmée |
-| Serveur Web / démarrage | VALIDÉ PARTIELLEMENT | serveur port 80 démarré ; matrice Web complète à retester |
-| Carte SD | À RETESTER | montage initial observé, mais une erreur de carte retirée/illisible a été vue lors d'un essai précédent |
-| LittleFS | VALIDÉ AU BOOT | montage réussi |
-| NTP | À RETESTER | initialisation observée, synchro complète non revalidée dans cette campagne |
-| OpenWeatherMap | À RETESTER | initialisation observée, récupération météo non revalidée dans cette campagne |
-| Touch XPT2046 | À RETESTER | non revalidé explicitement pendant cette campagne |
-| V4 | NON RETESTÉ | la reprise fonctionnelle actuelle utilise Legacy |
+| Persistance après reboot | VALIDÉ | WiFi et paramètres conservés |
+| Serveur Web | VALIDÉ | pages principales et logs accessibles |
+| Carte SD en fonctionnement nominal | VALIDÉ | montage et ressources `/www` opérationnels |
+| Retrait SD à chaud | ANOMALIE CONNUE / DIFFÉRÉE | peut provoquer un panic après détection du retrait |
+| LittleFS | VALIDÉ AU BOOT | montage réussi ; certains assets de secours absents |
+| NTP | VALIDÉ | synchronisation et reconfiguration observées |
+| OpenWeatherMap | VALIDÉ | HTTP 200, parsing en flux, statut OK |
+| V4 | NON RETESTÉ | la nouvelle base fonctionnelle est Legacy |
 
 ## Anomalies et risques observés
 
@@ -167,9 +208,15 @@ Ce comportement ne doit pas être confondu avec un défaut du portail captif : l
 
 Le firmware de cette époque journalise la valeur du mot de passe reçue par le formulaire WiFi. Ce comportement est considéré comme une dette de sécurité et devra être supprimé dans une correction dédiée. Aucun secret ne doit être copié dans un checkpoint ou un log versionné.
 
-### Carte SD
+### Retrait de la carte SD à chaud
 
-Lors d'un essai avant l'effacement complet, la SD avait d'abord été montée et les ressources `/www` validées, puis le runtime a signalé que la carte était retirée ou devenue illisible. La stabilité SD doit donc être explicitement retestée avant de déclarer la nouvelle base entièrement validée.
+Le retrait à chaud de la carte est détecté par le runtime, mais un essai a ensuite provoqué un panic `LoadProhibited` et un redémarrage de l'ESP32. Cette anomalie est volontairement laissée de côté pour le nouveau départ et devra faire l'objet d'une correction dédiée ultérieure.
+
+La présence et l'utilisation nominale de la SD avec les ressources `/www` sont validées. Seul le scénario de retrait/remise en place à chaud reste non fiable.
+
+### Ressources LittleFS de secours
+
+Après effacement complet de la flash et reflash du firmware seul, certains fichiers LittleFS de secours tels que `splash.jpg`, `logo.png`, `favicon.ico` ou certaines routes non statiques peuvent être absents. Le fonctionnement Web nominal depuis la SD reste validé. Une future campagne pourra vérifier séparément l'image LittleFS de secours et son `uploadfs`.
 
 ## Invariants confirmés
 
@@ -177,31 +224,28 @@ Lors d'un essai avant l'effacement complet, la SD avait d'abord été montée et
 - Les identifiants WiFi sont chargés depuis la configuration persistante.
 - Le portail captif et le mode connecté restent des états exclusifs.
 - La réponse de configuration WiFi précède le redémarrage.
-- Le profil matériel testé reste le backend Legacy.
+- Le profil matériel validé reste le backend Legacy.
+- Le pilotage relais passe par la chaîne applicative attendue jusqu'au backend physique.
+- La configuration reste persistante après reboot.
 - Aucun changement fonctionnel OTA n'est intégré à cette branche de récupération.
 
 ## Fichiers fonctionnels modifiés par ce checkpoint
 
 Aucun.
 
-Le seul ajout est le présent document :
+Le seul fichier documentaire modifié est :
 
 `docs/checkpoints/CHECKPOINT_2026-08-08_RECOVERY_PRE_OTA_WIFI_NVS.md`
 
-## Tests à réaliser avant nouveau développement
+## Points restant volontairement hors validation complète
 
-Ordre recommandé :
+1. retrait/remise en place de la SD à chaud ;
+2. image LittleFS de secours complète après `uploadfs` ;
+3. déclenchement automatique réel d'un créneau de planning ;
+4. sécurité de durée maximale sur un cycle volontairement prolongé ;
+5. profil V4.
 
-1. stabilité carte SD et ressources `/www` ;
-2. navigation Web complète et pages principales ;
-3. NTP et affichage de l'heure ;
-4. météo OpenWeatherMap ;
-5. touch XPT2046 et navigation TFT ;
-6. démarrage/arrêt manuel d'une zone avec durée courte ;
-7. validation de la logique directe/inverse si nécessaire ;
-8. planning avec un créneau contrôlé ;
-9. sécurité de durée maximale ;
-10. seulement ensuite décider du nouveau point de départ de développement.
+Ces points ne bloquent pas l'utilisation du firmware Legacy comme nouvelle base fonctionnelle de développement, mais doivent être conservés dans la dette de validation.
 
 ## Procédure de reprise
 
@@ -225,6 +269,6 @@ Si la carte a précédemment exécuté une branche récente avec une structure o
 
 ## Statut
 
-**Checkpoint de récupération WiFi/NVS : VALIDÉ SUR MATÉRIEL.**
+**BASE DE RÉCUPÉRATION LEGACY : VALIDÉE FONCTIONNELLEMENT SUR MATÉRIEL LE 8 AOÛT 2026.**
 
-La base n'est pas encore déclarée entièrement validée pour tous les sous-systèmes. Les tests SD, Web complet, NTP, météo, touch, relais et planning restent à exécuter avant reprise du développement fonctionnel.
+Cette branche devient le nouveau point de départ de référence pour les développements AquaLook qui doivent repartir de l'état fonctionnel pré-OTA. Toute évolution doit préserver les comportements revalidés ci-dessus et être développée par petits incréments avec test matériel.
