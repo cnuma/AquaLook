@@ -12,8 +12,27 @@ void storageHealthUpdate() {
     if (g_registeredStorage) g_registeredStorage->update();
 }
 
+bool StorageManager::lockSd(TickType_t waitTicks) {
+    return _sdMutex && xSemaphoreTake(_sdMutex, waitTicks) == pdTRUE;
+}
+
+void StorageManager::unlockSd() {
+    if (_sdMutex) xSemaphoreGive(_sdMutex);
+}
+
 void StorageManager::begin() {
     g_registeredStorage = this;
+
+    if (!_sdMutex) {
+        _sdMutex = xSemaphoreCreateMutex();
+        if (!_sdMutex) {
+            _status = StorageStatus::SD_UNAVAILABLE;
+            FaultManager::setActive(FaultId::STORAGE_SD, true);
+            EventLog::log(LOG_ERROR, "Stockage: mutex SD impossible a creer");
+            return;
+        }
+    }
+
     end();
 
     pinMode(SD_CS_PIN, OUTPUT);
@@ -26,7 +45,16 @@ void StorageManager::begin() {
         &_softSpi
     );
 
-    if (!_sd.begin(sdConfig)) {
+    if (!lockSd(pdMS_TO_TICKS(50))) {
+        _status = StorageStatus::SD_UNAVAILABLE;
+        FaultManager::setActive(FaultId::STORAGE_SD, true);
+        EventLog::log(LOG_ERROR, "Stockage: bus SD occupe au montage");
+        return;
+    }
+
+    const bool mounted = _sd.begin(sdConfig);
+    if (!mounted) {
+        unlockSd();
         _status = StorageStatus::SD_UNAVAILABLE;
         FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
@@ -37,13 +65,14 @@ void StorageManager::begin() {
     }
 
     if (!_sd.card() || !_sd.vol()) {
+        _sd.end();
+        unlockSd();
         _status = StorageStatus::SD_UNAVAILABLE;
         FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
             LOG_WARN,
             "Stockage: carte detectee sans volume exploitable (format ou corruption possible)"
         );
-        _sd.end();
         return;
     }
 
@@ -62,7 +91,11 @@ void StorageManager::begin() {
     _sdAvailable = true;
     _lastHealthCheckMs = millis();
 
-    if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
+    const bool hasWebAssets =
+        _sd.exists("/www") && _sd.exists("/www/index.html");
+    unlockSd();
+
+    if (!hasWebAssets) {
         _status = StorageStatus::WEB_ASSETS_MISSING;
         FaultManager::setActive(FaultId::STORAGE_SD, true);
         EventLog::log(
@@ -88,7 +121,13 @@ void StorageManager::begin() {
 }
 
 void StorageManager::end() {
-    _sd.end();
+    const bool locked = !_sdMutex || lockSd(pdMS_TO_TICKS(50));
+    if (locked) {
+        _sd.end();
+        if (_sdMutex) unlockSd();
+    } else {
+        EventLog::log(LOG_WARN, "Stockage: arret SD differe, bus occupe");
+    }
 
     _sdAvailable = false;
     _status = StorageStatus::NOT_INITIALIZED;
@@ -104,11 +143,16 @@ void StorageManager::update() {
 
     const uint32_t now = millis();
     if (now - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
-    _lastHealthCheckMs = now;
 
-    // index.html est la sentinelle minimale : il a ete valide au boot.
-    // S'il disparait ensuite, la carte a ete retiree ou est devenue illisible.
-    if (_sd.exists("/www/index.html")) return;
+    const StorageAccessResult probe = probeOnSd("/www/index.html");
+    if (probe == StorageAccessResult::BUSY) {
+        // Une lecture Web est en cours : ne pas transformer une contention
+        // temporaire du bus en panne de carte. Le controle sera rejoue plus tard.
+        return;
+    }
+
+    _lastHealthCheckMs = now;
+    if (probe == StorageAccessResult::FOUND) return;
 
     _status = StorageStatus::READ_ERROR;
     _sdAvailable = false;
@@ -117,22 +161,74 @@ void StorageManager::update() {
         LOG_ERROR,
         "Stockage: carte SD retiree ou devenue illisible pendant le fonctionnement"
     );
-    _sd.end();
+
+    if (lockSd(0)) {
+        _sd.end();
+        unlockSd();
+    }
 }
 
-bool StorageManager::existsOnSd(const char* path) {
-    return _sdAvailable &&
-           path &&
-           path[0] == '/' &&
-           _sd.exists(path);
+StorageAccessResult StorageManager::probeOnSd(const char* path) {
+    if (!_sdAvailable || !path || path[0] != '/') {
+        return StorageAccessResult::ERROR;
+    }
+    if (!lockSd(0)) return StorageAccessResult::BUSY;
+
+    const bool exists = _sd.exists(path);
+    unlockSd();
+    return exists ? StorageAccessResult::FOUND : StorageAccessResult::NOT_FOUND;
 }
 
-bool StorageManager::openRead(const char* path, FsFile& file) {
-    if (!_sdAvailable || !path || path[0] != '/') return false;
+StorageAccessResult StorageManager::openRead(const char* path, FsFile& file) {
+    if (!_sdAvailable || !path || path[0] != '/') {
+        return StorageAccessResult::ERROR;
+    }
+    if (!lockSd(0)) return StorageAccessResult::BUSY;
 
     if (file.isOpen()) file.close();
+
+    if (!_sd.exists(path)) {
+        unlockSd();
+        return StorageAccessResult::NOT_FOUND;
+    }
+
     file = _sd.open(path, O_RDONLY);
-    return file.isOpen();
+    const bool opened = file.isOpen();
+    unlockSd();
+    return opened ? StorageAccessResult::FOUND : StorageAccessResult::ERROR;
+}
+
+StorageReadResult StorageManager::readChunk(FsFile& file, uint8_t* buffer,
+                                            size_t maxLen, size_t& bytesRead) {
+    bytesRead = 0;
+    if (!_sdAvailable || !file.isOpen() || !buffer || maxLen == 0) {
+        return StorageReadResult::ERROR;
+    }
+    if (!lockSd(0)) return StorageReadResult::BUSY;
+
+    const int32_t count = file.read(buffer, maxLen);
+    if (count < 0) {
+        file.close();
+        unlockSd();
+        return StorageReadResult::ERROR;
+    }
+    if (count == 0) {
+        file.close();
+        unlockSd();
+        return StorageReadResult::END_OF_FILE;
+    }
+
+    bytesRead = static_cast<size_t>(count);
+    unlockSd();
+    return StorageReadResult::DATA;
+}
+
+bool StorageManager::closeRead(FsFile& file) {
+    if (!file.isOpen()) return true;
+    if (!lockSd(0)) return false;
+    file.close();
+    unlockSd();
+    return true;
 }
 
 void StorageManager::reportReadError(const char* path) {
@@ -144,7 +240,11 @@ void StorageManager::reportReadError(const char* path) {
         "Stockage: erreur de lecture SD sur %s (carte illisible ou corrompue possible)",
         path ? path : "chemin inconnu"
     );
-    _sd.end();
+
+    if (lockSd(0)) {
+        _sd.end();
+        unlockSd();
+    }
 }
 
 const char* StorageManager::statusCode() const {

@@ -13,7 +13,7 @@ struct SdReadContext {
     String path;
 
     ~SdReadContext() {
-        if (file.isOpen()) file.close();
+        if (storage && file.isOpen()) storage->closeRead(file);
     }
 };
 
@@ -47,8 +47,14 @@ bool SdStaticHandler::canHandle(AsyncWebServerRequest* request) const {
     String sdPath;
     if (!mapRequestPath(url, sdPath)) return false;
 
-    if (_storage->isSdAvailable() && _storage->existsOnSd(sdPath.c_str())) {
-        return true;
+    if (_storage->isSdAvailable()) {
+        const StorageAccessResult probe = _storage->probeOnSd(sdPath.c_str());
+        if (probe == StorageAccessResult::FOUND ||
+            probe == StorageAccessResult::BUSY) {
+            // BUSY signifie seulement qu'une autre lecture SD utilise le bus.
+            // Le handler garde la requete et retentera sans degrader l'etat SD.
+            return true;
+        }
     }
 
     // Evite le 404 historique tout en laissant une future ressource LittleFS
@@ -94,49 +100,77 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
         return;
     }
 
-    if (request->url() == "/logo.png" &&
-        !_storage->existsOnSd(sdPath.c_str()) &&
-        !LittleFS.exists("/logo.png")) {
-        AsyncWebServerResponse* response = request->beginResponse(
-            200,
-            "image/svg+xml",
-            FALLBACK_LOGO
-        );
-        response->addHeader("Cache-Control", "public, max-age=3600");
-        response->addHeader("X-AquaLook-Storage", "Firmware-Fallback");
-        request->send(response);
-        return;
+    if (request->url() == "/logo.png" && !LittleFS.exists("/logo.png")) {
+        const StorageAccessResult logoProbe = _storage->probeOnSd(sdPath.c_str());
+        if (logoProbe == StorageAccessResult::NOT_FOUND ||
+            logoProbe == StorageAccessResult::ERROR) {
+            AsyncWebServerResponse* response = request->beginResponse(
+                200,
+                "image/svg+xml",
+                FALLBACK_LOGO
+            );
+            response->addHeader("Cache-Control", "public, max-age=3600");
+            response->addHeader("X-AquaLook-Storage", "Firmware-Fallback");
+            request->send(response);
+            return;
+        }
     }
 
     auto context = std::make_shared<SdReadContext>();
     context->storage = _storage;
     context->path = sdPath;
 
-    if (!_storage->openRead(sdPath.c_str(), context->file)) {
+    const StorageAccessResult openResult =
+        _storage->openRead(sdPath.c_str(), context->file);
+
+    if (openResult == StorageAccessResult::NOT_FOUND) {
+        request->send(404, "text/plain", "Not found");
+        return;
+    }
+    if (openResult == StorageAccessResult::ERROR) {
         _storage->reportReadError(sdPath.c_str());
         request->send(503, "text/plain", "SD read error");
         return;
     }
+    // Si BUSY, la reponse chunked est tout de meme creee. Le callback
+    // retentera l'ouverture avec RESPONSE_TRY_AGAIN sans bloquer AsyncTCP.
 
     const char* contentType = contentTypeForPath(sdPath);
     AsyncWebServerResponse* response = request->beginChunkedResponse(
         contentType,
         [context](uint8_t* buffer, size_t maxLen, size_t) -> size_t {
-            if (!context->file.isOpen()) return 0;
+            if (!context->storage) return 0;
 
-            const int32_t count = context->file.read(buffer, maxLen);
-            if (count < 0) {
-                if (context->storage) {
-                    context->storage->reportReadError(context->path.c_str());
+            if (!context->file.isOpen()) {
+                const StorageAccessResult openResult =
+                    context->storage->openRead(context->path.c_str(), context->file);
+                if (openResult == StorageAccessResult::BUSY) {
+                    return RESPONSE_TRY_AGAIN;
                 }
-                context->file.close();
+                if (openResult == StorageAccessResult::NOT_FOUND) {
+                    return 0;
+                }
+                if (openResult == StorageAccessResult::ERROR) {
+                    context->storage->reportReadError(context->path.c_str());
+                    return 0;
+                }
+            }
+
+            size_t count = 0;
+            const StorageReadResult readResult =
+                context->storage->readChunk(context->file, buffer, maxLen, count);
+
+            if (readResult == StorageReadResult::BUSY) {
+                return RESPONSE_TRY_AGAIN;
+            }
+            if (readResult == StorageReadResult::ERROR) {
+                context->storage->reportReadError(context->path.c_str());
                 return 0;
             }
-            if (count == 0) {
-                context->file.close();
+            if (readResult == StorageReadResult::END_OF_FILE) {
                 return 0;
             }
-            return static_cast<size_t>(count);
+            return count;
         }
     );
 
