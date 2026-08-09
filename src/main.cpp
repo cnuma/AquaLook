@@ -25,6 +25,19 @@
 #include "EquipmentRuntimeConfigStore.h"
 #include "domain/Xl9535SharedOutputState.h"
 
+#ifndef AQUALOOK_VERSION
+#define AQUALOOK_VERSION "unknown"
+#endif
+#ifndef AQUALOOK_BUILD_NUMBER
+#define AQUALOOK_BUILD_NUMBER "unknown"
+#endif
+#ifndef AQUALOOK_GIT_SHA
+#define AQUALOOK_GIT_SHA "unknown"
+#endif
+#ifndef AQUALOOK_GIT_BRANCH
+#define AQUALOOK_GIT_BRANCH "unknown"
+#endif
+
 WiFiManager wifiMgr;
 NTPManager ntpMgr;
 WeatherManager weatherMgr;
@@ -305,12 +318,37 @@ static void splashStep(const char* label) {
     _splashStep++;
 }
 
+static void printFirmwareBanner() {
+    Serial.println();
+    Serial.println(F("============================================================"));
+    Serial.println(F(" AQUA LOOK - FIRMWARE"));
+    Serial.printf(" Version : %s\n", AQUALOOK_VERSION);
+    Serial.printf(" Build   : %s\n", AQUALOOK_BUILD_NUMBER);
+    Serial.printf(" Commit  : %s\n", AQUALOOK_GIT_SHA);
+    Serial.printf(" Branche : %s\n", AQUALOOK_GIT_BRANCH);
+#if AQUALOOK_RELAY_BACKEND_V4
+    Serial.println(F(" Backend : V4"));
+#else
+    Serial.println(F(" Backend : LEGACY"));
+#endif
+    Serial.println(F("============================================================"));
+    Serial.println();
+}
+
 void setup() {
     Serial.begin(115200);
     delay(300);
 
+    printFirmwareBanner();
+
     FaultManager::begin();
-    EventLog::log(LOG_INFO, "AquaLook v2.0 demarrage");
+    EventLog::log(
+        LOG_INFO,
+        "AquaLook %s build %s sha %s demarrage",
+        AQUALOOK_VERSION,
+        AQUALOOK_BUILD_NUMBER,
+        AQUALOOK_GIT_SHA
+    );
     SystemDiagnostics::begin();
 
     Wire.begin(SDA_PIN, SCL_PIN);
