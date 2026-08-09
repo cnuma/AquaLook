@@ -566,10 +566,6 @@ void WebManager::handleSetWifi(AsyncWebServerRequest* req, JsonDocument& doc) {
 
     if (strlen(ssid) == 0) { sendError(req, "ssid vide"); return; }
 
-    // Dump diagnostic Serial — visible même sans WiFi
-    Serial.printf("[Web] handleSetWifi SSID='%s' PWD_len=%d PWD='%s'\n",
-                  ssid, strlen(pwd), pwd);
-
     if (!_config) {
         sendError(req, "config indisponible");
         EventLog::log(LOG_ERROR, "WiFi: ConfigManager absent — identifiants non sauvegardes");
