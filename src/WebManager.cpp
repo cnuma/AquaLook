@@ -556,10 +556,6 @@ void WebManager::handleSetWifi(AsyncWebServerRequest* req, JsonDocument& doc) {
 
     if (strlen(ssid) == 0) { sendError(req, "ssid vide"); return; }
 
-    // Dump diagnostic Serial — visible même sans WiFi
-    Serial.printf("[Web] handleSetWifi SSID='%s' PWD_len=%d PWD='%s'\n",
-                  ssid, strlen(pwd), pwd);
-
     if (!_config) {
         sendError(req, "config indisponible");
         EventLog::log(LOG_ERROR, "WiFi: ConfigManager absent — identifiants non sauvegardes");
@@ -889,43 +885,52 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
 //  Lien : http://<ip>/api/logs
 // ═══════════════════════════════════════════════════════════════
 void WebManager::handleGetLogs(AsyncWebServerRequest* req) {
-    // Construire la page HTML dans un String (taille max ~8KB pour 60 entrées)
-    String html;
-    html.reserve(4096);
+    AsyncResponseStream* response =
+        req->beginResponseStream("text/html; charset=utf-8");
 
-    html += F("<!DOCTYPE html><html lang='fr'><head>"
-              "<meta charset='UTF-8'>"
-              "<meta http-equiv='refresh' content='10'>"
-              "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-              "<title>AquaLook — Logs</title>"
-              "<style>"
-              "body{font-family:monospace;background:#0a0a0a;color:#ccc;margin:0;padding:1rem}"
-              "h2{color:#4fc3f7;margin-bottom:.5rem}"
-              ".sub{color:#556;font-size:.8rem;margin-bottom:1rem}"
-              "table{width:100%;border-collapse:collapse;font-size:.85rem}"
-              "th{text-align:left;color:#556;padding:.3rem .5rem;border-bottom:1px solid #222}"
-              "td{padding:.3rem .5rem;border-bottom:1px solid #181818;vertical-align:top}"
-              ".e{color:#f44336}.w{color:#ff9800}.i{color:#9e9e9e}"
-              ".tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.75rem;margin-right:4px}"
-              ".te{background:#f4433622;color:#f44336}"
-              ".tw{background:#ff980022;color:#ff9800}"
-              ".ti{background:#33333344;color:#9e9e9e}"
-              "</style></head><body>");
+    response->addHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate"
+    );
 
-    html += F("<h2>&#128220; Journal AquaLook</h2>");
-    html += "<div class='sub'>Session courante &mdash; ";
-    html += EventLog::count();
-    html += " entr&eacute;e(s) &mdash; auto-refresh 10s</div>";
+    response->print(F(
+        "<!DOCTYPE html><html lang='fr'><head>"
+        "<meta charset='UTF-8'>"
+        "<meta http-equiv='refresh' content='10'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>AquaLook - Logs</title>"
+        "<style>"
+        "body{font-family:monospace;background:#0a0a0a;color:#ccc;margin:0;padding:1rem}"
+        "h2{color:#4fc3f7;margin-bottom:.5rem}"
+        ".sub{color:#556;font-size:.8rem;margin-bottom:1rem}"
+        "table{width:100%;border-collapse:collapse;font-size:.85rem}"
+        "th{text-align:left;color:#556;padding:.3rem .5rem;border-bottom:1px solid #222}"
+        "td{padding:.3rem .5rem;border-bottom:1px solid #181818;vertical-align:top}"
+        ".e{color:#f44336}.w{color:#ff9800}.i{color:#9e9e9e}"
+        ".tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.75rem;margin-right:4px}"
+        ".te{background:#f4433622;color:#f44336}"
+        ".tw{background:#ff980022;color:#ff9800}"
+        ".ti{background:#33333344;color:#9e9e9e}"
+        "</style></head><body>"
+        "<h2>&#128220; Journal AquaLook</h2>"
+        "<div class='sub'>Session courante &mdash; "
+    ));
+
+    response->print(EventLog::count());
+    response->print(F(" entr&eacute;e(s) &mdash; auto-refresh 10s</div>"));
 
     if (EventLog::count() == 0) {
-        html += F("<p style='color:#556'>Aucun &eacute;v&eacute;nement enregistr&eacute;.</p>");
+        response->print(F(
+            "<p style='color:#556'>Aucun &eacute;v&eacute;nement enregistr&eacute;.</p>"
+        ));
     } else {
-        html += F("<table><tr><th>T+</th><th>Niveau</th><th>Message</th></tr>");
+        response->print(F(
+            "<table><tr><th>T+</th><th>Niveau</th><th>Message</th></tr>"
+        ));
 
         for (uint8_t i = 0; i < EventLog::count(); i++) {
             const LogEntry& e = EventLog::get(i);
 
-            // Temps depuis démarrage HH:MM:SS
             char tBuf[10];
             EventLog::msToHms(e.ms, tBuf, sizeof(tBuf));
 
@@ -934,31 +939,32 @@ void WebManager::handleGetLogs(AsyncWebServerRequest* req) {
             const char* tagClass  = (e.level == LOG_ERROR) ? "te" :
                                     (e.level == LOG_WARN)  ? "tw" : "ti";
 
-            html += "<tr><td style='color:#556;white-space:nowrap'>";
-            html += tBuf;
-            html += "</td><td><span class='tag ";
-            html += tagClass;
-            html += "'>";
-            html += EventLog::levelStr(e.level);
-            html += "</span></td><td class='";
-            html += lvlClass;
-            html += "'>";
-            html += e.msg;
-            html += "</td></tr>";
+            response->print(F("<tr><td style='color:#556;white-space:nowrap'>"));
+            response->print(tBuf);
+            response->print(F("</td><td><span class='tag "));
+            response->print(tagClass);
+            response->print(F("'>"));
+            response->print(EventLog::levelStr(e.level));
+            response->print(F("</span></td><td class='"));
+            response->print(lvlClass);
+            response->print(F("'>"));
+            response->print(e.msg);
+            response->print(F("</td></tr>"));
         }
-        html += F("</table>");
+        response->print(F("</table>"));
     }
 
-    // Uptime + heap en pied de page
     char upBuf[10];
     EventLog::msToHms(millis(), upBuf, sizeof(upBuf));
-    html += F("<div style='margin-top:1.5rem;color:#334;font-size:.75rem'>Uptime : ");
-    html += upBuf;
-    html += F(" &mdash; Heap libre : ");
-    html += ESP.getFreeHeap();
-    html += F(" octets</div></body></html>");
+    response->print(F(
+        "<div style='margin-top:1.5rem;color:#334;font-size:.75rem'>Uptime : "
+    ));
+    response->print(upBuf);
+    response->print(F(" &mdash; Heap libre : "));
+    response->print(ESP.getFreeHeap());
+    response->print(F(" octets</div></body></html>"));
 
-    req->send(200, "text/html; charset=utf-8", html);
+    req->send(response);
 }
 
 // ═══════════════════════════════════════════════════════════════
