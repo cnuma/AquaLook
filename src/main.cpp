@@ -5,6 +5,7 @@
 #include "EventBus.h"
 #include "EventLog.h"
 #include "FaultManager.h"
+#include "OtaBootGuard.h"
 #include "WiFiManager.h"
 #include "NTPManager.h"
 #include "NotificationManager.h"
@@ -443,6 +444,11 @@ void setup() {
     Serial.begin(115200);
     delay(300);
 
+    // Garde OTA : doit s'executer avant toute initialisation lourde. Ne
+    // redemarre que si un retour arriere automatique est necessaire suite a
+    // une bascule OTA qui n'a pas ete validee.
+    OtaBootGuard::onBoot();
+
     FaultManager::begin();
     EventLog::log(LOG_INFO, "AquaLook v2.0 demarrage");
     SystemDiagnostics::begin();
@@ -619,6 +625,8 @@ void setup() {
 
 void loop() {
     SystemDiagnostics::loopEnter();
+
+    OtaBootGuard::update();
 
     uint32_t startedUs = RuntimeProfiler::start();
     FaultManager::update();

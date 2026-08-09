@@ -12,6 +12,7 @@
 #include "EventLog.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
+#include "OtaBootGuard.h"
 #include "OtaDownloadTest.h"
 #include "OtaStageUpdate.h"
 #include "OtaBuildIdentity.h"
@@ -466,6 +467,67 @@ void restartToNormal() {
     delay(RESTART_DELAY_MS);
     ESP.restart();
 }
+
+// Active la partition inactive precedemment ecrite et verifiee par
+// STAGE_UPDATE_TEST. Ne necessite pas de WiFi : la partition est deja sur
+// la flash locale. Redemarre systematiquement, avec succes ou en refus.
+void handleInstallUpdate() {
+    MaintenanceResult result;
+    result.valid = true;
+    result.success = false;
+    result.recordedUptimeMs = millis();
+    result.minFreeHeap = ESP.getMinFreeHeap();
+    copyText(result.command, sizeof(result.command), "install_update");
+
+    const MaintenanceResult staged = MaintenanceResultStore::load();
+    const bool stagedOk = staged.valid && staged.success &&
+        strcmp(staged.command, "stage_update_test") == 0 &&
+        staged.calculatedSha256[0] != '\0' &&
+        strcmp(staged.calculatedSha256, staged.sha256) == 0;
+
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
+
+    if (!stagedOk || !running || !target || running == target) {
+        copyText(result.detail, sizeof(result.detail), "stage-verification-required");
+        MaintenanceResultStore::save(result);
+        EventLog::log(LOG_ERROR,
+                      "Maintenance: INSTALL_UPDATE refuse, aucune partition validee");
+        restartToNormal();
+        return;
+    }
+
+    if (!OtaBootGuard::arm(running->label, target->label)) {
+        copyText(result.detail, sizeof(result.detail), "boot-guard-arm-failed");
+        MaintenanceResultStore::save(result);
+        EventLog::log(LOG_ERROR,
+                      "Maintenance: INSTALL_UPDATE echec armement de la garde de boot");
+        restartToNormal();
+        return;
+    }
+
+    const esp_err_t setError = esp_ota_set_boot_partition(target);
+    if (setError != ESP_OK) {
+        snprintf(result.detail, sizeof(result.detail), "set-boot-partition-failed-%d",
+                 static_cast<int>(setError));
+        MaintenanceResultStore::save(result);
+        EventLog::log(LOG_ERROR,
+                      "Maintenance: INSTALL_UPDATE echec esp_ota_set_boot_partition err=%d",
+                      static_cast<int>(setError));
+        restartToNormal();
+        return;
+    }
+
+    result.success = true;
+    snprintf(result.detail, sizeof(result.detail), "activated-%s-pending-validation",
+             target->label);
+    MaintenanceResultStore::save(result);
+    EventLog::log(LOG_WARN,
+                  "Maintenance: INSTALL_UPDATE partition activee label=%s address=0x%06lX, "
+                  "redemarrage vers le nouveau firmware",
+                  target->label, static_cast<unsigned long>(target->address));
+    restartToNormal();
+}
 }
 
 bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
@@ -477,6 +539,15 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     if (!MaintenanceRequestStore::clear()) {
         EventLog::log(LOG_ERROR, "Maintenance: impossible d'effacer la demande NVS");
         return false;
+    }
+
+    // INSTALL_UPDATE ne necessite pas de reseau : la partition ciblee est
+    // deja ecrite localement par STAGE_UPDATE_TEST. Traite avant la branche
+    // WiFi commune aux autres commandes.
+    if (request == MaintenanceRequest::INSTALL_UPDATE) {
+        EventLog::log(LOG_WARN, "Maintenance: mode minimal actif command=install_update otaWrite=no");
+        handleInstallUpdate();
+        return true;
     }
 
     if (request != MaintenanceRequest::PROBE_GITHUB &&
