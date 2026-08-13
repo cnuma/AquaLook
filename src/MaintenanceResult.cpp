@@ -59,6 +59,7 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     const bool isDownloadTest = strcmp(result.command, "download_update_test") == 0;
     const bool isStageTest = strcmp(result.command, "stage_update_test") == 0;
     const bool successfulVersionCheck = isVersionCheck && result.success;
+    const bool successfulInstall = strcmp(result.command, "install_update") == 0 && result.success;
     const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
     const bool previousNotificationPending = preferences.getBool("notify", false);
     const String previousAvailableVersion = readOptionalString(preferences, "available");
@@ -83,8 +84,14 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     String calculatedSha256 = result.calculatedSha256;
 
     if (!successfulVersionCheck) {
-        updateAvailable = previousUpdateAvailable;
-        notificationPending = explicitNotificationAck ? false : previousNotificationPending;
+        // Un INSTALL_UPDATE reussi consomme la mise a jour en attente : la
+        // notification et le drapeau "mise a jour disponible" ne doivent pas
+        // survivre a la bascule, sinon le nouveau firmware demarre en
+        // pretendant a tort qu'une mise a jour vers lui-meme reste a faire.
+        updateAvailable = successfulInstall ? false : previousUpdateAvailable;
+        notificationPending = successfulInstall
+            ? false
+            : (explicitNotificationAck ? false : previousNotificationPending);
         manifestSize = preferences.getULong("manifest_sz", 0U);
         firmwareSize = preferences.getULong("firmware_sz", 0U);
         installedVersion = readOptionalString(preferences, "installed");
