@@ -245,6 +245,15 @@ Principes d’architecture :
 - la perte d’Internet, du broker, du VPS ou de l’application ne doit pas empêcher les cycles locaux ;
 - HiveMQ sert à valider le concept, puis la migration vers OVHcloud doit rester possible sans réécriture du moteur local.
 
+Stratégie de persistance de la configuration :
+
+À terme, les données de configuration et d'historique doivent pouvoir exister à la fois sur le module et dans le cloud, sans que l'un ne devienne une dépendance obligatoire de l'autre.
+
+- les données indispensables au fonctionnement autonome et à la sécurité (identifiants WiFi, planning des zones, seuils de pluie, paramètres système et d'affichage, garde de retour arrière OTA) restent toujours stockées localement sur le module, en NVS, et ne migrent jamais uniquement vers la carte SD ou le cloud ;
+- les données volumineuses ou non critiques pour l'autonomie (historique des opérations de mise à jour, journaux détaillés, statistiques, configurations avancées) peuvent être déplacées vers la carte SD dès aujourd'hui, puis vers le cloud à terme, à condition que leur absence dégrade une fonctionnalité annexe sans jamais interrompre l'arrosage ;
+- l'application native embarquée sur le module (interface Web locale actuelle) reste systématiquement disponible et pleinement fonctionnelle sans connexion au cloud ; l'application mobile et le cloud constituent une seconde façon d'accéder au module et de le configurer, pas la seule ;
+- toute donnée dupliquée entre le module et le cloud doit avoir une source de vérité explicite et une stratégie de synchronisation et de résolution de conflit documentée avant mise en œuvre.
+
 Ordre de réalisation proposé :
 
 1. documenter les topics et les schémas de messages ;
