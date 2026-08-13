@@ -14,6 +14,22 @@ $certificates = @(
         Name = "DigiCert Global Root G2"
         Url = "https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem"
         Sha256 = "CB3CCBB76031E5E0138F8DD39A23F9DE47FFC35E43C1144CEA27D46A5AB1CB5F"
+    },
+    @{
+        # Ancre de confiance reelle de github.com et api.github.com au
+        # 2026-08-13 (chaine Sectigo Public Server Authentication CA DV E36
+        # -> ... -> USERTrust ECC, verifiee sur matiere via openssl s_client).
+        Name = "USERTrust ECC Certification Authority"
+        Url = "http://crt.sectigo.com/USERTrustECCCertificationAuthority.crt"
+        Sha256 = "4FF460D54B9C86DABFBCFC5712E0400D2BED3FBC4D4FBDAA86E06ADCD2A9AD7A"
+    },
+    @{
+        # Ancre de confiance reelle de objects.githubusercontent.com et
+        # release-assets.githubusercontent.com au 2026-08-13 (chaine Let's
+        # Encrypt YR1 -> Root YR -> ISRG Root X1, verifiee sur meme base).
+        Name = "ISRG Root X1"
+        Url = "https://letsencrypt.org/certs/isrgrootx1.pem"
+        Sha256 = "96BCEC06264976F37460779ACF28C5A7CFE8A3C0AAE11A8FFCEE05C0BDDF08C6"
     }
 )
 
@@ -29,14 +45,24 @@ try {
         $pemPath = Join-Path $tempRoot (($entry.Name -replace '[^A-Za-z0-9]+', '_') + ".pem")
         Invoke-WebRequest -Uri $entry.Url -OutFile $pemPath -UseBasicParsing
 
-        $pemText = [System.IO.File]::ReadAllText($pemPath).Replace("`r`n", "`n").Trim()
-        if (-not $pemText.StartsWith("-----BEGIN CERTIFICATE-----") -or
-            -not $pemText.EndsWith("-----END CERTIFICATE-----")) {
-            throw "Format PEM invalide pour $($entry.Name)."
+        # Certaines autorites (ex. le depot historique Sectigo/USERTrust)
+        # servent le certificat racine en DER binaire plutot qu'en PEM. On
+        # detecte le format recu et on normalise vers du PEM dans les deux cas.
+        $rawBytes = [System.IO.File]::ReadAllBytes($pemPath)
+        $asText = [System.Text.Encoding]::ASCII.GetString($rawBytes)
+        if ($asText.TrimStart().StartsWith("-----BEGIN CERTIFICATE-----")) {
+            $pemText = $asText.Replace("`r`n", "`n").Trim()
+            if (-not $pemText.EndsWith("-----END CERTIFICATE-----")) {
+                throw "Format PEM invalide pour $($entry.Name)."
+            }
+            $base64 = ($pemText -split "`n" | Where-Object { $_ -notmatch '^-----' }) -join ''
+            $der = [Convert]::FromBase64String($base64)
+        } else {
+            $der = $rawBytes
+            $base64Body = [Convert]::ToBase64String($der, [Base64FormattingOptions]::InsertLineBreaks).Replace("`r`n", "`n")
+            $pemText = "-----BEGIN CERTIFICATE-----`n$base64Body`n-----END CERTIFICATE-----"
         }
 
-        $base64 = ($pemText -split "`n" | Where-Object { $_ -notmatch '^-----' }) -join ''
-        $der = [Convert]::FromBase64String($base64)
         $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
         $fingerprint = $certificate.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256)
 
@@ -55,9 +81,14 @@ try {
 #include <WiFiClientSecure.h>
 
 // Fichier genere par tools/generate_ota_tls_trust.ps1.
-// Sources officielles DigiCert et empreintes SHA-256 controlees avant generation.
+// Sources officielles (DigiCert, Sectigo/USERTrust, ISRG/Let's Encrypt) et
+// empreintes SHA-256 controlees avant generation.
 namespace OtaTlsTrust {
-inline constexpr char ROOT_CA_PEM[] = R"AQLCERT(
+// static (et non inline) : le standard C++ actif pour ce projet ne supporte
+// pas les variables inline (C++17). constexpr implique deja une liaison
+// interne par unite de compilation, sans duplication ni erreur d'edition
+// de liens.
+static constexpr char ROOT_CA_PEM[] = R"AQLCERT(
 $combinedPem)AQLCERT";
 
 inline void configure(WiFiClientSecure& client) {
