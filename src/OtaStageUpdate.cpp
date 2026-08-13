@@ -187,7 +187,10 @@ MaintenanceResult stageUrl(const MaintenanceResult& manifest,
                 lastDataAt = millis();
             }
         } else {
-            if (!client.connected()) break;
+            if (!client.connected()) {
+                copyText(result.detail, sizeof(result.detail), "firmware-connection-closed");
+                break;
+            }
             if (millis() - lastDataAt > RESPONSE_TIMEOUT_MS) {
                 copyText(result.detail, sizeof(result.detail), "firmware-body-timeout");
                 break;

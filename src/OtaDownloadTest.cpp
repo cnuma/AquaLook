@@ -206,7 +206,10 @@ MaintenanceResult downloadUrl(const MaintenanceResult& manifest,
                 lastDataAt = millis();
             }
         } else {
-            if (!client.connected()) break;
+            if (!client.connected()) {
+                copyText(result.detail, sizeof(result.detail), "firmware-connection-closed");
+                break;
+            }
             if (millis() - lastDataAt > RESPONSE_TIMEOUT_MS) {
                 copyText(result.detail, sizeof(result.detail), "firmware-body-timeout");
                 break;
@@ -231,7 +234,9 @@ MaintenanceResult downloadUrl(const MaintenanceResult& manifest,
     digestToHex(digest, result.calculatedSha256);
 
     if (result.downloadedSize != manifest.firmwareSize) {
-        copyText(result.detail, sizeof(result.detail), "firmware-size-mismatch");
+        if (result.detail[0] == '\0') {
+            copyText(result.detail, sizeof(result.detail), "firmware-size-mismatch");
+        }
         return result;
     }
     if (strcmp(result.calculatedSha256, manifest.sha256) != 0) {
