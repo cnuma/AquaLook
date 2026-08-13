@@ -25,6 +25,22 @@ Règles :
 - si le port change ou si la carte n’est plus détectée, demander une nouvelle confirmation ;
 - lorsque nécessaire, proposer la commande `pio device list` pour identifier les ports disponibles.
 
+## Compilation et téléversement : une seule commande suffit
+
+Pour n'importe quel environnement PlatformIO (`ProgrammeArrosage`, `ProgrammeArrosage_legacy`, `ProgrammeArrosage_v4`, etc.), la cible `upload` déclenche automatiquement la compilation avant de téléverser. Exécuter `pio run -e <env>` séparément juste avant `pio run -e <env> -t upload` est donc redondant pour flasher la carte :
+
+```powershell
+pio run -e <env> -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200
+```
+
+Si le téléversement échoue à cause d'une erreur de compilation, PlatformIO s'arrête avant d'écrire quoi que ce soit sur la carte.
+
+Compiler séparément (sans téléverser) reste utile dans deux cas précis :
+
+- validation de compilation avant de committer/pousser du code, sans matériel connecté ou sans vouloir flasher immédiatement ;
+- documentation d'un checkpoint où la compilation et le téléversement doivent être tracés comme deux étapes distinctes.
+
 ## Chaîne obligatoire pour un nouveau code
 
 ### 1. Précontrôles Git
