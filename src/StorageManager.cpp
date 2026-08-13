@@ -28,6 +28,15 @@ bool deadlineReached(uint32_t nowMs, uint32_t deadlineMs) {
 }
 }
 
+bool StorageManager::lockSd(uint32_t timeoutMs) {
+    if (!_sdMutex) return false;
+    return xSemaphoreTake(_sdMutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
+}
+
+void StorageManager::unlockSd() {
+    if (_sdMutex) xSemaphoreGive(_sdMutex);
+}
+
 void storageHealthUpdate() {
     if (g_registeredStorage) g_registeredStorage->update();
 }
@@ -35,6 +44,8 @@ void storageHealthUpdate() {
 void StorageManager::begin() {
     g_registeredStorage = this;
     IncidentManager::begin();
+
+    if (!_sdMutex) _sdMutex = xSemaphoreCreateMutex();
 
     _sd.end();
     resetCardMetadata();
@@ -90,7 +101,10 @@ void StorageManager::end() {
         return;
     }
 
-    _sd.end();
+    if (lockSd()) {
+        _sd.end();
+        unlockSd();
+    }
     resetCardMetadata();
 
     _status = StorageStatus::NOT_INITIALIZED;
@@ -139,7 +153,14 @@ void StorageManager::update() {
     if (nowMs - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
     _lastHealthCheckMs = nowMs;
 
-    if (_sd.exists("/www/index.html")) {
+    // La tache Web asynchrone peut etre en train de lire un fichier au meme
+    // instant : ne pas bloquer la boucle principale si le bus est occupe,
+    // ce controle sera simplement retente au prochain passage.
+    if (!lockSd(50U)) return;
+    const bool indexPresent = _sd.exists("/www/index.html");
+    unlockSd();
+
+    if (indexPresent) {
         _healthFailureCount = 0;
         return;
     }
@@ -166,11 +187,14 @@ void StorageManager::update() {
 }
 
 bool StorageManager::existsOnSd(const char* path) {
-    return _sdAvailable &&
-           _status == StorageStatus::READY &&
-           path &&
-           path[0] == '/' &&
-           _sd.exists(path);
+    if (!_sdAvailable || _status != StorageStatus::READY ||
+        !path || path[0] != '/') {
+        return false;
+    }
+    if (!lockSd()) return false;
+    const bool found = _sd.exists(path);
+    unlockSd();
+    return found;
 }
 
 bool StorageManager::openRead(const char* path, FsFile& file) {
@@ -181,9 +205,26 @@ bool StorageManager::openRead(const char* path, FsFile& file) {
         return false;
     }
 
+    if (!lockSd()) return false;
     if (file.isOpen()) file.close();
     file = _sd.open(path, O_RDONLY);
+    unlockSd();
     return file.isOpen();
+}
+
+int32_t StorageManager::readChunk(FsFile& file, uint8_t* buffer, size_t maxLen) {
+    if (!file.isOpen() || !buffer || maxLen == 0U) return -1;
+    if (!lockSd()) return -1;
+    const int32_t count = file.read(buffer, maxLen);
+    unlockSd();
+    return count;
+}
+
+void StorageManager::closeFile(FsFile& file) {
+    if (!file.isOpen()) return;
+    if (!lockSd()) return;
+    file.close();
+    unlockSd();
 }
 
 void StorageManager::reportReadError(const char* path) {
@@ -201,6 +242,15 @@ void StorageManager::reportReadError(const char* path) {
 }
 
 bool StorageManager::mountSd(bool publishAvailability) {
+    // Appelee depuis begin() (tache principale) et depuis la tache dediee de
+    // remontage : un verrou plus long est acceptable ici, le (re)montage
+    // n'est pas une operation frequente comme readChunk()/existsOnSd().
+    if (!lockSd(2000U)) {
+        _status = StorageStatus::SD_UNAVAILABLE;
+        _lastMountFailureReason = "sd_busy";
+        return false;
+    }
+
     _sd.end();
     resetCardMetadata();
 
@@ -214,6 +264,7 @@ bool StorageManager::mountSd(bool publishAvailability) {
     if (!_sd.begin(sdConfig)) {
         _status = StorageStatus::SD_UNAVAILABLE;
         _lastMountFailureReason = "sd_begin_failed";
+        unlockSd();
         return false;
     }
 
@@ -221,6 +272,7 @@ bool StorageManager::mountSd(bool publishAvailability) {
         _status = StorageStatus::SD_UNAVAILABLE;
         _lastMountFailureReason = "volume_unavailable";
         _sd.end();
+        unlockSd();
         return false;
     }
 
@@ -238,6 +290,7 @@ bool StorageManager::mountSd(bool publishAvailability) {
         _lastMountFailureReason = "web_assets_missing";
         _sd.end();
         resetCardMetadata();
+        unlockSd();
         return false;
     }
 
@@ -246,6 +299,7 @@ bool StorageManager::mountSd(bool publishAvailability) {
     _lastHealthCheckMs = millis();
     _healthFailureCount = 0;
     _sdAvailable = publishAvailability;
+    unlockSd();
     return true;
 }
 
@@ -280,7 +334,10 @@ void StorageManager::markUnavailable(StorageStatus status,
         path ? path : "inconnu"
     );
 
-    _sd.end();
+    if (lockSd()) {
+        _sd.end();
+        unlockSd();
+    }
     resetCardMetadata();
 
     _unavailableSinceMs = millis();

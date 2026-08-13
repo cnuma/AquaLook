@@ -13,7 +13,7 @@ struct SdReadContext {
     String path;
 
     ~SdReadContext() {
-        if (file.isOpen()) file.close();
+        if (file.isOpen() && storage) storage->closeFile(file);
     }
 };
 
@@ -122,18 +122,16 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
     AsyncWebServerResponse* response = request->beginChunkedResponse(
         contentType,
         [context](uint8_t* buffer, size_t maxLen, size_t) -> size_t {
-            if (!context->file.isOpen()) return 0;
+            if (!context->file.isOpen() || !context->storage) return 0;
 
-            const int32_t count = context->file.read(buffer, maxLen);
+            const int32_t count = context->storage->readChunk(context->file, buffer, maxLen);
             if (count < 0) {
-                if (context->storage) {
-                    context->storage->reportReadError(context->path.c_str());
-                }
-                context->file.close();
+                context->storage->reportReadError(context->path.c_str());
+                context->storage->closeFile(context->file);
                 return 0;
             }
             if (count == 0) {
-                context->file.close();
+                context->storage->closeFile(context->file);
                 return 0;
             }
             return static_cast<size_t>(count);

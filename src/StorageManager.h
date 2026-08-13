@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <SdFat.h>
+#include <freertos/semphr.h>
 #include "config.h"
 
 enum class StorageStatus : uint8_t {
@@ -49,6 +50,8 @@ public:
 
     bool existsOnSd(const char* path);
     bool openRead(const char* path, FsFile& file);
+    int32_t readChunk(FsFile& file, uint8_t* buffer, size_t maxLen);
+    void closeFile(FsFile& file);
     void reportReadError(const char* path);
     const char* cardTypeName() const;
 
@@ -76,6 +79,15 @@ private:
 
     SoftSpiDriver<SD_MISO_PIN, SD_MOSI_PIN, SD_SCLK_PIN> _softSpi;
     SdFs _sd;
+
+    // Le bus SPI logiciel de la carte SD est touche a la fois par la boucle
+    // principale (controle de sante periodique) et par la tache Web
+    // asynchrone (lecture des fichiers statiques). Ce mutex serialise tout
+    // acces a _sd/_softSpi entre ces deux contextes, sans quoi deux accès
+    // concurrents peuvent corrompre une lecture ou bloquer durablement le bus.
+    SemaphoreHandle_t _sdMutex = nullptr;
+    bool lockSd(uint32_t timeoutMs = 200U);
+    void unlockSd();
 
     volatile bool _sdAvailable = false;
     volatile StorageStatus _status = StorageStatus::NOT_INITIALIZED;
