@@ -6,6 +6,8 @@ Ce document regroupe les évolutions envisagées pour AquaLook. Il ne constitue 
 
 ### Migration des ressources Web vers la carte SD — préalable à l’OTA
 
+**Statut : réalisé et validé.** Les ressources Web sont servies depuis la carte SD par `SdStaticHandler`, avec repli LittleFS pour les ressources indispensables au démarrage et à la récupération. Validé sur matériel le 8 août 2026 (`docs/checkpoints/CHECKPOINT_2026-08-08_RECOVERY_PRE_OTA_WIFI_NVS.md`) et reconfirmé le 13 août 2026 pendant la campagne de validation OTA (`Stockage: ressources Web SD validees dans /www` observé en boot normal comme après bascule OTA). Le contenu ci-dessous reste la référence des objectifs et contraintes qui ont guidé cette réalisation.
+
 Utiliser la carte SD pour stocker les pages et ressources Web qui se trouvent actuellement en flash ou dans LittleFS et qui peuvent être déplacées sans compromettre le démarrage, la configuration initiale ou la récupération du module.
 
 Cette activité doit être réalisée et validée avant la mise en place de la mise à jour OTA.
@@ -62,6 +64,10 @@ Ordre de réalisation imposé :
 Invariant impératif : l’absence, le retrait ou la corruption de la carte SD ne doit jamais empêcher le démarrage du programmateur, l’exécution locale des cycles, l’accès à la première configuration ni l’utilisation d’une interface minimale de diagnostic et de récupération.
 
 ### Mise à jour distante du firmware par GitHub Releases
+
+**Statut : mécanique cœur réalisée et validée sur matériel le 13 août 2026.** Cycle complet observé de bout en bout sur `esp32-2432S028` : vérification de version depuis le manifeste GitHub Releases, téléchargement HTTPS avec vérification SHA-256, écriture en partition OTA inactive, activation (`esp_ota_set_boot_partition`) et redémarrage, garde de retour arrière applicative (validation après 45 s de fonctionnement stable, retour automatique après 3 tentatives sans validation), configuration NVS préservée à travers la bascule. Interface locale (`/ota`) et journalisation de chaque étape en place.
+
+Restent non réalisés, dans cette section : signature numérique du firmware au-delà du seul SHA-256, notifications de mise à jour (ntfy ou autre), déclenchement distant autorisé, limitation de fréquence des vérifications, et tests de coupure réseau/alimentation pendant un cycle OTA en cours. Le contenu ci-dessous reste la référence d'architecture pour ces points restants.
 
 Permettre la mise à jour d’un module AquaLook à distance, sans présence physique à proximité du programmateur et sans connexion au même réseau local, en utilisant GitHub Releases comme source officielle des firmwares OTA.
 
