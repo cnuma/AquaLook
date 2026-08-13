@@ -286,6 +286,7 @@ function renderPlanning() {
     html += `<div class="pg-header ${col===0?'today':''}">${label}</div>`;
   });
   const forecast = status.forecast || [];
+  const rainBlockedDays = computeRainBlockedDays(colDays, forecast);
   html += `<div></div>`;
   colDays.forEach((esp,col) => {
     const fd = forecast[col];
@@ -294,7 +295,7 @@ function renderPlanning() {
       const tmax = parseFloat(fd.tempMax), tmin = parseFloat(fd.tempMin);
       const wind = parseFloat(fd.windMaxKmh), windDeg = parseFloat(fd.windDeg);
       const icon = rain>1.0?'&#127783;':'&#9728;';
-      const tip  = weatherTooltipHtml(fd, DAYS_FULL[esp]);
+      const tip  = weatherTooltipHtml(fd, DAYS_FULL[esp], rainBlockedDays[col]);
       const visual = !!(displayConfig && displayConfig.weatherVisualsEnabled);
       const rainPct = visual ? Math.max(0, Math.min(100, rain / 20 * 100)) : 0;
       const windInfo = visual && !isNaN(wind) && wind>0
@@ -417,10 +418,41 @@ function weatherTempClass(temp) {
 function weatherWindCardinal(deg) {
   return ['N','NE','E','SE','S','SO','O','NO'][Math.round((((deg%360)+360)%360)/45)%8];
 }
-function weatherTooltipHtml(fd, dayLabel) {
+function computeRainBlockedDays(colDays, forecast) {
+  const nb = getNbZones();
+  const todayEpoch = todayEpochDay();
+  return colDays.map((espIdx, col) => {
+    const fd = forecast[col];
+    if (!fd || !fd.valid) return false;
+    const rainMm = parseFloat(fd.rainMm) || 0;
+    for (let zi = 0; zi < nb; zi++) {
+      const z = status?.zones?.[zi];
+      if (!z) continue;
+      const rainThresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
+      if (rainMm < rainThresh) continue;
+      if (z.mode === 0) {
+        const slots = (_zoneSlots[zi]?.daySlots?.[espIdx]) || (z.daySlots && z.daySlots[espIdx]) || [];
+        if (slots.some(s => s.e ?? s.enabled)) return true;
+      } else {
+        const intervalD = z.intervalDays || z.interval || 2;
+        const anchorDay = z.intervalAnchorDay || 0;
+        if (anchorDay > 0) {
+          const targetDay = todayEpoch + col;
+          if (targetDay >= anchorDay && (targetDay - anchorDay) % intervalD === 0) {
+            const slots = (_zoneSlots[zi]?.intervalSlots || z.intervalSlots || []);
+            if (slots.some(s => s.e ?? s.enabled)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  });
+}
+function weatherTooltipHtml(fd, dayLabel, suspended) {
   const cfg = Object.assign({}, DISP_DEFAULTS, displayConfig || {});
   const lines = [];
   const n = (v, digits=0) => Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : null;
+  if (suspended) lines.push(`<strong style="color:var(--amber)">&#9888; Arrosage suspendu (pluie)</strong>`);
   const desc = String(fd.description || '').trim();
   if (cfg.weatherTipCondition && desc) lines.push(`<strong>${escapeHtml(desc.charAt(0).toUpperCase()+desc.slice(1))}</strong>`);
   if (cfg.weatherTipTemp) {

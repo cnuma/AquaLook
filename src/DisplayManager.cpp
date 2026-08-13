@@ -805,6 +805,9 @@ void DisplayManager::renderPlanSprite() {
                     continue;
                 }
             }
+            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
+            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
@@ -812,7 +815,7 @@ void DisplayManager::renderPlanSprite() {
                 float frac = (float)(sl.hour * 60 + sl.minute) / 1440.0f;
                 int sx = x0 + (int)(frac * (PL_DAY_W - 2));
                 int sw = max(2, (int)((float)sl.duration / 1440.0f * (PL_DAY_W - 2)));
-                _sprPlan.fillRoundRect(sx, rowY + 2, sw, _planZoneH - 4, 1, col_z);
+                _sprPlan.fillRoundRect(sx, rowY + 2, sw, _planZoneH - 4, 1, slotColor);
             }
         }
     }
@@ -940,6 +943,9 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                     continue;
                 }
             }
+            const ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
+            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
                 const TimeSlot& slot = ds.slots[sl];
@@ -947,7 +953,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 float frac = (float)(slot.hour * 60 + slot.minute) / 1440.0f;
                 int sx = cx + 1 + (int)(frac * (COL_W - 2));
                 int sw = max(2, (int)((float)slot.duration / 1440.0f * (COL_W - 2)));
-                _tft.fillRoundRect(sx, rowY + 2, sw, max(2, (int)zoneH - 4), 1, col_z);
+                _tft.fillRoundRect(sx, rowY + 2, sw, max(2, (int)zoneH - 4), 1, slotColor);
             }
         }
     }
@@ -1021,6 +1027,9 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                     continue;
                 }
             }
+            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
+            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
@@ -1029,7 +1038,7 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                 int sx = x0 + (int)(frac * (DAY_W - 2));
                 int sw = max(2, (int)((float)sl.duration / 1440.0f * (DAY_W - 2)));
                 uint16_t barH = max((uint16_t)2, (uint16_t)(zoneH - 4));
-                _tft.fillRoundRect(sx, rowY + 2, sw, barH, 1, col_z);
+                _tft.fillRoundRect(sx, rowY + 2, sw, barH, 1, slotColor);
             }
         }
     }
