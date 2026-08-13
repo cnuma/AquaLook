@@ -5,6 +5,7 @@ function getZoneName(i){ return status?.zones?.[i]?.name || `Zone ${i+1}`; }
 function isZoneActive(i){ return !!(status?.zones?.[i]?.active || status?.zones?.[i]?.relayActive); }
 let status      = null;
 let adminStatus = null;
+let notificationConfig = null;
 let modalZone   = -1, modalDay = -1, modalIsInterval = false;
 const _zoneSlots = [];
 async function loadZoneSlots(z) {
@@ -581,6 +582,7 @@ function openDrawer() {
   document.getElementById('drawer-overlay').classList.add('open');
   fetchAdminStatus();
   fetchDisplayConfig();  // pre-remplit la section Affichage LCD a chaque ouverture
+  fetchNotificationConfig();  // pre-remplit la section Notifications ntfy
 }
 function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
@@ -777,6 +779,62 @@ async function saveCfgSystem() {
   const ledMode = parseInt(document.getElementById('cfg-led-mode').value) || 1;
   await api('/api/system', { screenTimeout: timeout, ledMode });
   toast('Systeme enregistre');
+}
+async function fetchNotificationConfig() {
+  try {
+    const r = await fetch('/api/notifications');
+    notificationConfig = r.ok ? await r.json() : null;
+  } catch(e) { notificationConfig = null; }
+  populateNotificationSection();
+}
+function populateNotificationSection() {
+  const d = notificationConfig;
+  const infoEl = document.getElementById('ntfy-info');
+  const enabledEl = document.getElementById('cfg-ntfy-enabled');
+  if (!d || !enabledEl) { if (infoEl) infoEl.textContent = 'État indisponible'; return; }
+  enabledEl.checked = !!d.enabled;
+  document.getElementById('cfg-ntfy-server').value = d.server || 'http://ntfy.sh';
+  document.getElementById('cfg-ntfy-topic').value  = d.topic  || '';
+  document.getElementById('cfg-ntfy-token').value  = '';
+  infoEl.innerHTML =
+    `Configuré : <span>${d.configured ? 'oui' : 'non'}</span><br>
+     Jeton : <span>${d.tokenConfigured ? 'présent' : 'absent'}</span><br>
+     Dernier résultat : <span>${d.lastResult || '--'}</span> — HTTP : <span>${d.lastHttpCode || '--'}</span>`;
+}
+function validNtfyTopic(topic) {
+  return topic.length >= 8 && /^[A-Za-z0-9_-]+$/.test(topic);
+}
+async function saveCfgNotifications() {
+  const server = document.getElementById('cfg-ntfy-server').value.trim() || 'http://ntfy.sh';
+  const topic  = document.getElementById('cfg-ntfy-topic').value.trim();
+  const token  = document.getElementById('cfg-ntfy-token').value;
+  let enabled  = document.getElementById('cfg-ntfy-enabled').checked && topic.length > 0;
+  if (!server.startsWith('http://')) { toast('Le serveur doit commencer par http://', true); return; }
+  if (enabled && !validNtfyTopic(topic)) {
+    toast('Sujet invalide (8 caracteres min., lettres/chiffres/-/_ uniquement)', true);
+    return;
+  }
+  if (!topic) enabled = false;
+  const response = await api('/api/notifications/config', {enabled, server, topic, token, preserveToken: true});
+  if (!response.ok) { toast('Configuration refusee par le module', true); return; }
+  toast('Notifications enregistrees');
+  await fetchNotificationConfig();
+}
+async function testCfgNotifications() {
+  try {
+    const r = await fetch('/api/notifications/test', {method:'POST'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    toast('Test envoye');
+  } catch(e) { toast('Test impossible : ' + e.message, true); }
+  await fetchNotificationConfig();
+}
+async function resetCfgNotifications() {
+  if (!confirm("Desactiver ntfy et effacer definitivement le sujet et le jeton enregistres en NVS ?")) return;
+  const response = await api('/api/notifications/config',
+    {enabled:false, server:'http://ntfy.sh', topic:'', token:'', preserveToken:false});
+  if (!response.ok) { toast('Reinitialisation impossible', true); return; }
+  toast('Notifications reinitialisees');
+  await fetchNotificationConfig();
 }
 async function launchCaptive() {
   if (!confirm('Lancer le portail captif ? Le module passera en mode AP.')) return;

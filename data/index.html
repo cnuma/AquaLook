@@ -269,6 +269,36 @@
       </button>
     </div>
   </div>
+  <div class="cfg-section" id="sec-notifications">
+    <div class="cfg-section-header" onclick="toggleSection('sec-notifications')">
+      <span class="cfg-section-title"><span class="sec-icon">🔔</span>Notifications (ntfy)</span>
+      <span class="cfg-chevron">▶</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-info" id="ntfy-info">Chargement...</div>
+      <div class="cfg-field"><label>Serveur</label>
+        <input type="text" id="cfg-ntfy-server" placeholder="http://ntfy.sh">
+        <div class="cfg-hint">Mode expérimental non chiffré : le sujet, le contenu et un éventuel jeton circulent en clair. Utiliser http://ntfy.sh ou un relais de confiance sur le réseau local.</div>
+      </div>
+      <div class="cfg-field"><label>Sujet privé</label>
+        <input type="text" id="cfg-ntfy-topic" autocomplete="off" placeholder="aqualook-7f3c9d2e-long-et-prive">
+        <div class="cfg-hint">Canal ntfy auquel ton téléphone s'abonne. Minimum 8 caractères ; lettres, chiffres, tiret (-) et underscore (_) uniquement.</div>
+      </div>
+      <div class="cfg-field"><label>Jeton d'accès facultatif</label>
+        <input type="password" id="cfg-ntfy-token" autocomplete="new-password" placeholder="Laisser vide si aucun compte ntfy n'est utilisé">
+        <div class="cfg-hint">Fourni par ntfy lorsque le sujet est protégé par un compte.</div>
+      </div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="cfg-ntfy-enabled" style="width:auto;margin:0">
+        <label for="cfg-ntfy-enabled" style="margin:0;cursor:pointer">Activer les notifications</label>
+      </div>
+      <button class="btn-cfg primary" onclick="saveCfgNotifications()">Enregistrer</button>
+      <button class="btn-cfg" onclick="testCfgNotifications()" style="margin-top:8px">Envoyer un test</button>
+      <button class="btn-cfg danger" onclick="resetCfgNotifications()" style="margin-top:8px">
+        Réinitialiser sujet et jeton
+      </button>
+    </div>
+  </div>
   <div class="cfg-section" id="sec-weather-tooltips">
     <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
       <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Info-bulles météo Web</span>
@@ -409,7 +439,7 @@
           border-radius:50%;background:#ffffff18;display:block;
           text-decoration:none" title="Journal et acquittement"></a>
 <script>
-const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","relay-admin"];
+const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin"];
 function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Admin : déverrouillé":"Admin : verrouillé")}
 function adminToggle(){let v=sessionStorage.getItem(K)==="1";if(v){sessionStorage.removeItem(K);adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem(K,"1");adminApply(1)}
 document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem(K)==="1"));
