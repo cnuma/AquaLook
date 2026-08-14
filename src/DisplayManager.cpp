@@ -805,10 +805,17 @@ void DisplayManager::renderPlanSprite() {
                     continue;
                 }
             }
-            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
-            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
-            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
+            bool hasAny = false;
+            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+                if (ds.slots[s].enabled) { hasAny = true; break; }
+            }
+            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
+            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            if (rainBlk) {
+                _sprPlan.fillRect(x0, rowY + 1, PL_DAY_W - 2, _planZoneH - 2, Theme::RAIN_BG_SOFT);
+            }
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
                 if (!sl.enabled) continue;
@@ -943,10 +950,17 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                     continue;
                 }
             }
-            const ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
-            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
-            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
+            bool hasAny = false;
+            for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
+                if (ds.slots[sl].enabled) { hasAny = true; break; }
+            }
+            const ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
+            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            if (rainBlk) {
+                _tft.fillRect(cx + 1, rowY + 1, COL_W - 2, max(2, (int)zoneH - 2), Theme::RAIN_BG_SOFT);
+            }
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
                 const TimeSlot& slot = ds.slots[sl];
                 if (!slot.enabled) continue;
@@ -1027,10 +1041,18 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                     continue;
                 }
             }
-            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
-            const bool rainBlk = fd.valid && fd.rainMm >= zs.rain.thresholdMm;
-            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
+            bool hasAny = false;
+            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+                if (ds.slots[s].enabled) { hasAny = true; break; }
+            }
+            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
+            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            if (rainBlk) {
+                uint16_t cellH = max((uint16_t)2, (uint16_t)(zoneH - 2));
+                _tft.fillRect(x0, rowY + 1, DAY_W - 2, cellH, Theme::RAIN_BG_SOFT);
+            }
+            const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
                 const TimeSlot& sl = ds.slots[s];
                 if (!sl.enabled) continue;

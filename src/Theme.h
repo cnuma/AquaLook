@@ -74,6 +74,11 @@ namespace Theme {
     constexpr uint16_t BORDER2        = 0x534B;
     constexpr uint16_t ACTIVE_BG_SOFT = 0x3904;
     constexpr uint16_t ACTIVE_BORDER  = 0x7965;
+    // Fond de cellule "arrosage suspendu (pluie)" — variante sombre de AMBER,
+    // meme esprit que ACTIVE_BG_SOFT, pour couvrir toute une case de planning
+    // sans ecraser la lisibilite du theme sombre (equivalent LCD du fond
+    // #fff3cd de .pg-day.rain cote Web, qui lui suppose un theme clair).
+    constexpr uint16_t RAIN_BG_SOFT   = 0x4981;
     constexpr uint16_t ON_ACTIVE_TEXT  = 0xFFE0;
     constexpr uint16_t ON_ACTIVE_MUTED = 0xBDF7;
 
