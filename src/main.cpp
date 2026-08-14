@@ -627,6 +627,7 @@ void loop() {
     SystemDiagnostics::loopEnter();
 
     OtaBootGuard::update();
+    configMgr.update();  // applique une sauvegarde NVS differee en attente, si echue
 
     uint32_t startedUs = RuntimeProfiler::start();
     FaultManager::update();

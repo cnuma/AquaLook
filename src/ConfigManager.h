@@ -206,6 +206,7 @@ public:
     // ── Cycle de vie ──────────────────────────────────────────
     void begin();   // mount LittleFS + charge NVS (migration JSON si nécessaire)
     void save();    // écriture binaire versionnée dans NVS
+    void update();  // à appeler dans loop() : applique une sauvegarde différée en attente
     void resetPersistent(); // efface uniquement la configuration NVS
 
     // ── Application vers les managers ─────────────────────────
@@ -232,7 +233,8 @@ public:
 
     bool isLoaded() const { return _loaded; }
 
-    // ── Setters — écrivent en flash immédiatement ──────────────
+    // ── Setters — écrivent en flash immédiatement, sauf mention
+    //    contraire (setZoneDaySlot/setZoneIntervalSlot : voir plus bas) ──
 
     // WiFi — save() + reboot (invariant I10)
     void setWifi(const char* ssid, const char* pwd);
@@ -276,6 +278,11 @@ public:
     void setZoneIntervalAnchorDay(uint8_t zone, uint32_t epochDay);
     void clearZoneIntervalProgramming(uint8_t zone);
     void setZoneRain(uint8_t zone, float threshMm, uint8_t hours);
+    // Sauvegarde différée (voir deferSave()) : l'éditeur de créneaux envoie
+    // jusqu'à MAX_SLOTS requêtes séparées pour un seul jour ; écrire en
+    // flash à chacune saturait la boucle principale (mesuré sur matériel :
+    // rafales de 5 écritures NVS consécutives). L'état en mémoire est à
+    // jour immédiatement, seule l'écriture flash est groupée.
     void setZoneDaySlot(uint8_t zone, uint8_t day, uint8_t slotIdx,
                         uint8_t h, uint8_t m, uint16_t dur, bool enabled);
     void setZoneIntervalSlot(uint8_t zone, uint8_t slotIdx,
@@ -299,9 +306,14 @@ private:
     bool      _nvsRejected = false;
     bool      _weatherVisualsEnabled = false;
 
+    // Sauvegarde différée — voir deferSave()/update().
+    bool      _saveDirty = false;
+    uint32_t  _saveDueMs = 0;
+
     bool loadNvs();
     bool loadLegacyJson();
     void defaults();
+    void deferSave();  // marque une sauvegarde en attente, groupée par update()
 
     // Helpers JSON ↔ structs
     void zoneToJson(uint8_t z, JsonObject& obj) const;

@@ -1,12 +1,17 @@
 #include "ConfigManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "TimeUtils.h"
 #include <Preferences.h>
 #include <cstring>
 #include <cstddef>
 
 namespace {
 constexpr uint32_t NVS_MAGIC = 0x414C4F4BUL; // "ALOK"
+// Delai de groupement des sauvegardes differees : assez long pour absorber
+// une rafale de MAX_SLOTS requetes consecutives (meme jour, memes zone),
+// assez court pour rester ecrit en NVS bien avant qu'on l'oublie.
+constexpr uint32_t SAVE_DEBOUNCE_MS = 800UL;
 
 struct PersistedConfigV1 {
     uint32_t magic;
@@ -487,6 +492,18 @@ void ConfigManager::save() {
                   (unsigned)written, CFG_NVS_SCHEMA);
 }
 
+void ConfigManager::deferSave() {
+    _saveDirty = true;
+    _saveDueMs = millis() + SAVE_DEBOUNCE_MS;
+}
+
+void ConfigManager::update() {
+    if (!_saveDirty) return;
+    if (!AquaLook::Time::deadlineReached(millis(), _saveDueMs)) return;
+    _saveDirty = false;
+    save();
+}
+
 void ConfigManager::resetPersistent() {
     Preferences prefs;
     if (!prefs.begin(CFG_NVS_NAMESPACE, false)) {
@@ -783,7 +800,7 @@ void ConfigManager::setZoneDaySlot(uint8_t z, uint8_t day, uint8_t slotIdx,
                                     uint16_t dur, bool enabled) {
     if (z >= MAX_ZONES || day >= NB_DAYS || slotIdx >= MAX_SLOTS) return;
     _zones[z].daySlots[day].slots[slotIdx] = CfgSlot(h, m, dur, enabled);
-    save();
+    deferSave();
 }
 
 void ConfigManager::setZoneIntervalSlot(uint8_t z, uint8_t slotIdx,
@@ -791,7 +808,7 @@ void ConfigManager::setZoneIntervalSlot(uint8_t z, uint8_t slotIdx,
                                          uint16_t dur, bool enabled) {
     if (z >= MAX_ZONES || slotIdx >= MAX_SLOTS) return;
     _zones[z].intervalSlots.slots[slotIdx] = CfgSlot(h, m, dur, enabled);
-    save();
+    deferSave();
 }
 
 void ConfigManager::syncZoneFromSchedule(uint8_t z, const ZoneSchedule& zs) {
