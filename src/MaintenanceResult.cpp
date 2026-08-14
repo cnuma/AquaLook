@@ -5,48 +5,66 @@
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_maint_res";
+constexpr char NVS_KEY[] = "blob";
+constexpr uint32_t NVS_MAGIC = 0x53455252UL; // "RRES" lu petit-boutiste
+constexpr uint16_t NVS_SCHEMA = 1U;
 
-void copyText(char* destination, size_t destinationSize, const String& source) {
+// Bloc unique, a l'image de PersistedConfig dans ConfigManager : une seule
+// ecriture NVS au lieu d'une quinzaine de cles separees. Chaque cle NVS a un
+// cout fixe minimal independant de sa taille ; regrouper les champs en un
+// seul blob reduit fortement l'empreinte totale et le nombre d'ecritures
+// flash par sauvegarde.
+struct PersistedMaintenanceResult {
+    uint32_t magic;
+    uint16_t schema;
+    uint16_t payloadSize;
+    MaintenanceResult data;
+    uint32_t crc32;
+};
+
+uint32_t crc32Bytes(const uint8_t* data, size_t len) {
+    uint32_t crc = 0xFFFFFFFFUL;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (0xEDB88320UL & (0UL - (crc & 1UL)));
+    }
+    return ~crc;
+}
+
+void copyText(char* destination, size_t destinationSize, const char* source) {
     if (destinationSize == 0U) return;
-    std::strncpy(destination, source.c_str(), destinationSize - 1U);
+    std::strncpy(destination, source ? source : "", destinationSize - 1U);
     destination[destinationSize - 1U] = '\0';
 }
 
-String readOptionalString(Preferences& preferences, const char* key) {
-    return preferences.isKey(key) ? preferences.getString(key) : String();
+// Charge le bloc precedent sans passer par l'API publique load(), afin de
+// distinguer explicitement "aucun bloc NVS" de "bloc invalide" au besoin.
+MaintenanceResult loadRaw(Preferences& preferences) {
+    MaintenanceResult empty;
+    const size_t len = preferences.getBytesLength(NVS_KEY);
+    if (len != sizeof(PersistedMaintenanceResult)) return empty;
+
+    PersistedMaintenanceResult blob{};
+    const size_t read = preferences.getBytes(NVS_KEY, &blob, sizeof(blob));
+    if (read != sizeof(blob) ||
+        blob.magic != NVS_MAGIC ||
+        blob.schema != NVS_SCHEMA ||
+        blob.payloadSize != sizeof(blob)) {
+        return empty;
+    }
+    if (crc32Bytes(reinterpret_cast<const uint8_t*>(&blob),
+                    offsetof(PersistedMaintenanceResult, crc32)) != blob.crc32) {
+        return empty;
+    }
+    return blob.data;
 }
 }
 
 MaintenanceResult MaintenanceResultStore::load() {
-    MaintenanceResult result;
     Preferences preferences;
-    if (!preferences.begin(NVS_NAMESPACE, true)) return result;
-
-    result.valid = preferences.getBool("valid", false);
-    if (result.valid) {
-        result.success = preferences.getBool("success", false);
-        result.updateAvailable = preferences.getBool("upd_avail", false);
-        result.notificationPending = preferences.getBool("notify", false);
-        result.tlsDurationMs = preferences.getULong("tls_ms", 0U);
-        result.recordedUptimeMs = preferences.getULong("uptime_ms", 0U);
-        result.minFreeHeap = preferences.getULong("heap_min", 0U);
-        result.manifestSize = preferences.getULong("manifest_sz", 0U);
-        result.firmwareSize = preferences.getULong("firmware_sz", 0U);
-        result.downloadedSize = preferences.getULong("download_sz", 0U);
-        result.downloadDurationMs = preferences.getULong("download_ms", 0U);
-        copyText(result.command, sizeof(result.command), readOptionalString(preferences, "command"));
-        copyText(result.httpLine, sizeof(result.httpLine), readOptionalString(preferences, "http"));
-        copyText(result.detail, sizeof(result.detail), readOptionalString(preferences, "detail"));
-        copyText(result.installedVersion, sizeof(result.installedVersion), readOptionalString(preferences, "installed"));
-        copyText(result.availableVersion, sizeof(result.availableVersion), readOptionalString(preferences, "available"));
-        copyText(result.channel, sizeof(result.channel), readOptionalString(preferences, "channel"));
-        copyText(result.target, sizeof(result.target), readOptionalString(preferences, "target"));
-        copyText(result.environment, sizeof(result.environment), readOptionalString(preferences, "env"));
-        copyText(result.board, sizeof(result.board), readOptionalString(preferences, "board"));
-        copyText(result.firmwareUrl, sizeof(result.firmwareUrl), readOptionalString(preferences, "fw_url"));
-        copyText(result.sha256, sizeof(result.sha256), readOptionalString(preferences, "sha256"));
-        copyText(result.calculatedSha256, sizeof(result.calculatedSha256), readOptionalString(preferences, "calc_sha"));
-    }
+    if (!preferences.begin(NVS_NAMESPACE, true)) return MaintenanceResult{};
+    const MaintenanceResult result = loadRaw(preferences);
     preferences.end();
     return result;
 }
@@ -55,94 +73,68 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     Preferences preferences;
     if (!preferences.begin(NVS_NAMESPACE, false)) return false;
 
+    const MaintenanceResult previous = loadRaw(preferences);
+
     const bool isVersionCheck = strcmp(result.command, "check_version") == 0;
     const bool isDownloadTest = strcmp(result.command, "download_update_test") == 0;
     const bool isStageTest = strcmp(result.command, "stage_update_test") == 0;
     const bool successfulVersionCheck = isVersionCheck && result.success;
     const bool successfulInstall = strcmp(result.command, "install_update") == 0 && result.success;
-    const bool previousUpdateAvailable = preferences.getBool("upd_avail", false);
-    const bool previousNotificationPending = preferences.getBool("notify", false);
-    const String previousAvailableVersion = readOptionalString(preferences, "available");
+
+    const bool previousUpdateAvailable = previous.updateAvailable;
+    const bool previousNotificationPending = previous.notificationPending;
     const bool explicitNotificationAck = previousUpdateAvailable && previousNotificationPending &&
         result.updateAvailable && !result.notificationPending && result.availableVersion[0] != '\0' &&
-        previousAvailableVersion == result.availableVersion;
+        strcmp(previous.availableVersion, result.availableVersion) == 0;
 
-    bool updateAvailable = result.updateAvailable;
-    bool notificationPending = result.notificationPending;
-    uint32_t manifestSize = result.manifestSize;
-    uint32_t firmwareSize = result.firmwareSize;
-    uint32_t downloadedSize = result.downloadedSize;
-    uint32_t downloadDurationMs = result.downloadDurationMs;
-    String installedVersion = result.installedVersion;
-    String availableVersion = result.availableVersion;
-    String channel = result.channel;
-    String target = result.target;
-    String environment = result.environment;
-    String board = result.board;
-    String firmwareUrl = result.firmwareUrl;
-    String sha256 = result.sha256;
-    String calculatedSha256 = result.calculatedSha256;
+    MaintenanceResult merged = result;
 
     if (!successfulVersionCheck) {
         // Un INSTALL_UPDATE reussi consomme la mise a jour en attente : la
         // notification et le drapeau "mise a jour disponible" ne doivent pas
         // survivre a la bascule, sinon le nouveau firmware demarre en
         // pretendant a tort qu'une mise a jour vers lui-meme reste a faire.
-        updateAvailable = successfulInstall ? false : previousUpdateAvailable;
-        notificationPending = successfulInstall
+        merged.updateAvailable = successfulInstall ? false : previousUpdateAvailable;
+        merged.notificationPending = successfulInstall
             ? false
             : (explicitNotificationAck ? false : previousNotificationPending);
-        manifestSize = preferences.getULong("manifest_sz", 0U);
-        firmwareSize = preferences.getULong("firmware_sz", 0U);
-        installedVersion = readOptionalString(preferences, "installed");
-        availableVersion = previousAvailableVersion;
-        channel = readOptionalString(preferences, "channel");
-        target = readOptionalString(preferences, "target");
-        environment = readOptionalString(preferences, "env");
-        board = readOptionalString(preferences, "board");
-        firmwareUrl = readOptionalString(preferences, "fw_url");
-        sha256 = readOptionalString(preferences, "sha256");
+        merged.manifestSize = previous.manifestSize;
+        merged.firmwareSize = previous.firmwareSize;
+        copyText(merged.installedVersion, sizeof(merged.installedVersion), previous.installedVersion);
+        copyText(merged.availableVersion, sizeof(merged.availableVersion), previous.availableVersion);
+        copyText(merged.channel, sizeof(merged.channel), previous.channel);
+        copyText(merged.target, sizeof(merged.target), previous.target);
+        copyText(merged.environment, sizeof(merged.environment), previous.environment);
+        copyText(merged.board, sizeof(merged.board), previous.board);
+        copyText(merged.firmwareUrl, sizeof(merged.firmwareUrl), previous.firmwareUrl);
+        copyText(merged.sha256, sizeof(merged.sha256), previous.sha256);
         if (!isDownloadTest && !isStageTest) {
-            downloadedSize = preferences.getULong("download_sz", 0U);
-            downloadDurationMs = preferences.getULong("download_ms", 0U);
-            calculatedSha256 = readOptionalString(preferences, "calc_sha");
+            merged.downloadedSize = previous.downloadedSize;
+            merged.downloadDurationMs = previous.downloadDurationMs;
+            copyText(merged.calculatedSha256, sizeof(merged.calculatedSha256), previous.calculatedSha256);
         }
     } else {
-        downloadedSize = 0U;
-        downloadDurationMs = 0U;
-        calculatedSha256 = "";
+        merged.downloadedSize = 0U;
+        merged.downloadDurationMs = 0U;
+        merged.calculatedSha256[0] = '\0';
         if (result.updateAvailable && previousUpdateAvailable &&
-            previousAvailableVersion == result.availableVersion && !previousNotificationPending) {
-            notificationPending = false;
+            strcmp(previous.availableVersion, result.availableVersion) == 0 &&
+            !previousNotificationPending) {
+            merged.notificationPending = false;
         }
     }
 
-    bool ok = true;
-    ok = preferences.putBool("valid", result.valid) == 1U && ok;
-    ok = preferences.putBool("success", result.success) == 1U && ok;
-    ok = preferences.putBool("upd_avail", updateAvailable) == 1U && ok;
-    ok = preferences.putBool("notify", notificationPending) == 1U && ok;
-    ok = preferences.putULong("tls_ms", result.tlsDurationMs) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("uptime_ms", result.recordedUptimeMs) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("heap_min", result.minFreeHeap) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("manifest_sz", manifestSize) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("firmware_sz", firmwareSize) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("download_sz", downloadedSize) == sizeof(uint32_t) && ok;
-    ok = preferences.putULong("download_ms", downloadDurationMs) == sizeof(uint32_t) && ok;
-    preferences.putString("command", result.command);
-    preferences.putString("http", result.httpLine);
-    preferences.putString("detail", result.detail);
-    preferences.putString("installed", installedVersion);
-    preferences.putString("available", availableVersion);
-    preferences.putString("channel", channel);
-    preferences.putString("target", target);
-    preferences.putString("env", environment);
-    preferences.putString("board", board);
-    preferences.putString("fw_url", firmwareUrl);
-    preferences.putString("sha256", sha256);
-    preferences.putString("calc_sha", calculatedSha256);
+    PersistedMaintenanceResult blob{};
+    blob.magic = NVS_MAGIC;
+    blob.schema = NVS_SCHEMA;
+    blob.payloadSize = sizeof(blob);
+    blob.data = merged;
+    blob.crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(&blob),
+                             offsetof(PersistedMaintenanceResult, crc32));
+
+    const size_t written = preferences.putBytes(NVS_KEY, &blob, sizeof(blob));
     preferences.end();
-    return ok;
+    return written == sizeof(blob);
 }
 
 bool MaintenanceResultStore::clear() {
