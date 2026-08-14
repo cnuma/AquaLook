@@ -828,6 +828,15 @@ void WebManager::handleSetDisplay(AsyncWebServerRequest* req, JsonDocument& doc)
 //
 //  Le client doit poller /api/wifi/scan toutes les ~500 ms
 //  jusqu'à recevoir scanning:false.
+//
+//  Le scan est lancé une seule fois, dès l'activation du portail captif
+//  (WiFiManager::startCaptivePortal), avant qu'un client ne s'y connecte —
+//  scanner pendant qu'un client est déjà associé au point d'accès le
+//  déconnecte brièvement (une seule radio, changement de canal). Cette
+//  route ne fait donc que lire le résultat déjà prêt ou en cours ; elle ne
+//  relance jamais de scan elle-même, et ne l'efface pas après lecture afin
+//  qu'un rechargement de page renvoie la même liste sans redéclencher de
+//  scan. Un nouveau scan nécessite un redémarrage du module.
 // ═══════════════════════════════════════════════════════════════
 void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
     if (!_wifi) { sendError(req, "wifi indisponible"); return; }
@@ -835,14 +844,15 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
     int16_t n = _wifi->getScanCount();
 
     if (n < 0) {
-        // Scan en cours (lancé par un appel précédent)
+        // Scan en cours (lancé au démarrage du portail captif)
         req->send(200, "application/json", "{\"scanning\":true}");
         return;
     }
 
-    // n == 0 et scan non lancé (getScanCount retourne 0 si !_scanPending)
+    // n == 0 et scan non lancé (getScanCount retourne 0 si !_scanPending) :
+    // filet de sécurité seulement, ne devrait pas arriver en usage normal
+    // puisque le scan est déjà lancé à l'activation du portail captif.
     if (n == 0) {
-        // Aucun scan lancé — on le démarre maintenant
         _wifi->startScan();
         req->send(200, "application/json", "{\"scanning\":true}");
         return;
@@ -892,9 +902,9 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
         net["secured"] = e.secured;
     }
 
-    // Libérer la mémoire driver
-    _wifi->clearScan();
-
+    // Le résultat n'est volontairement pas libéré ici (pas de clearScan()) :
+    // un rechargement de page doit retrouver la même liste sans redéclencher
+    // de scan. Il reste en mémoire jusqu'au redémarrage du module.
     sendJson(req, doc);
 }
 

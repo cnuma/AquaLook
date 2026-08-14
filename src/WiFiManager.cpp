@@ -118,6 +118,14 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             _dnsStarted = true;
             _state = State::CAPTIVE_PORTAL;
             EventBus::displayDirty = true;
+
+            // Lancer le scan reseau immediatement, avant qu'un client ne
+            // rejoigne le point d'acces : scanner pendant que quelqu'un est
+            // deja connecte au portail le deconnecte brievement (l'ESP32
+            // n'a qu'une seule radio, le scan doit quitter le canal de l'AP
+            // pour explorer les autres). En le lancant des la creation de
+            // l'AP, le resultat est deja pret quand la page est ouverte.
+            startScan();
             return true;
         }
 
