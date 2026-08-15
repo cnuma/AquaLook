@@ -56,6 +56,14 @@ public:
     int8_t      getRssi()         const;
     const char* stateStr()        const;
 
+    // Cible de la sonde de keepalive (voir checkKeepaliveReachable()).
+    // Remplie automatiquement avec la passerelle a la premiere connexion
+    // reussie si aucune valeur n'est deja enregistree ; modifiable ensuite
+    // (IP de test pour valider la detection, ou plus tard un hote cloud)
+    // sans jamais etre ecrasee automatiquement une fois definie.
+    const char* keepaliveHost() const { return _keepaliveHost; }
+    bool setKeepaliveHost(const char* host);
+
 private:
     enum class PendingAction : uint8_t {
         NONE,
@@ -74,12 +82,20 @@ private:
     uint8_t  _retryCount = 0;
     bool     _scanPending = false;
 
-    // Sonde passerelle — voir checkGatewayReachable(). Detecte une
-    // association "zombie" (wl_status toujours WL_CONNECTED alors que le
-    // reseau ne repond plus), qu'un simple sondage de WiFi.status() ne
-    // peut pas voir puisque le pilote lui-meme se trompe.
-    uint32_t _lastGatewayCheckMs = 0;
-    uint8_t  _consecutiveGatewayFailures = 0;
+    // Cible de la sonde de keepalive — voir checkKeepaliveReachable().
+    // Remplie automatiquement avec la passerelle a la premiere connexion
+    // reussie (voir handleConnecting()) si aucune valeur n'a deja ete
+    // enregistree en NVS ; l'utilisateur peut ensuite la modifier (IP de
+    // test, ou plus tard un hote/nom cloud) sans jamais etre ecrasee
+    // automatiquement une fois definie.
+    char     _keepaliveHost[64] = "";
+
+    // Sonde de keepalive — detecte une association "zombie" (wl_status
+    // toujours WL_CONNECTED alors que le reseau ne repond plus), qu'un
+    // simple sondage de WiFi.status() ne peut pas voir puisque le pilote
+    // lui-meme se trompe.
+    uint32_t _lastKeepaliveCheckMs = 0;
+    uint8_t  _consecutiveKeepaliveFailures = 0;
 
     PendingAction _pendingAction = PendingAction::NONE;
     uint32_t _pendingDeadlineMs = 0;
@@ -93,14 +109,14 @@ private:
     static constexpr uint32_t WIFI_AP_SETTLE_MS = 200;
     static constexpr uint32_t WIFI_RESTART_SETTLE_MS = 200;
 
-    // Sonde passerelle : voir _lastGatewayCheckMs plus haut. Le port 80 est
-    // le pari le plus sur sur une box/routeur domestique (interface
-    // d'administration presque toujours presente dessus) ; a revoir si ce
-    // n'est plus vrai sur l'installation cible.
-    static constexpr uint32_t GATEWAY_CHECK_INTERVAL_MS = 180000;  // 3 min
-    static constexpr uint32_t GATEWAY_CHECK_TIMEOUT_MS  = 1500;    // 1,5 s
-    static constexpr uint8_t  GATEWAY_FAILURE_THRESHOLD = 3;       // ~9 min avant reconnexion forcee
-    static constexpr uint16_t GATEWAY_CHECK_PORT = 80;
+    // Sonde de keepalive : voir _lastKeepaliveCheckMs plus haut. Le port 80
+    // est le pari le plus sur sur une box/routeur domestique (interface
+    // d'administration presque toujours presente dessus) ; a revoir le jour
+    // ou la cible est un service cloud (ex. port 443).
+    static constexpr uint32_t KEEPALIVE_CHECK_INTERVAL_MS = 180000;  // 3 min
+    static constexpr uint32_t KEEPALIVE_CHECK_TIMEOUT_MS  = 1500;    // 1,5 s
+    static constexpr uint8_t  KEEPALIVE_FAILURE_THRESHOLD = 3;       // ~9 min avant reconnexion forcee
+    static constexpr uint16_t KEEPALIVE_CHECK_PORT = 80;
 
     void scheduleAction(PendingAction action, uint32_t deadlineMs);
     bool processPendingAction(uint32_t now);
@@ -110,5 +126,8 @@ private:
     void handleDisconnected(uint32_t now);
     void handleConnected();
     void handleCaptivePortal();
-    void checkGatewayReachable(uint32_t now);
+    void checkKeepaliveReachable(uint32_t now);
+
+    void loadKeepaliveHost();
+    void saveKeepaliveHost() const;
 };

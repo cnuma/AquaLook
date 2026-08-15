@@ -461,6 +461,7 @@ private:
     void handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleDeleteIntervalProgramming(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetWifi(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetWifiKeepalive(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetNtp(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);

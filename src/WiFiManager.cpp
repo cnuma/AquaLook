@@ -5,6 +5,7 @@
 #include "TimeUtils.h"
 #include <DNSServer.h>
 #include <WiFiClient.h>
+#include <Preferences.h>
 
 static DNSServer _dnsServer;
 static bool _dnsStarted = false;
@@ -12,9 +13,18 @@ static bool _dnsStarted = false;
 static constexpr uint8_t DNS_PORT = 53;
 static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
 
+// Namespace NVS dedie, distinct de la configuration principale
+// (ConfigManager) : cette valeur est un parametre diagnostique lie au
+// cycle de vie de la connexion WiFi (auto-derivee, modifiable pour les
+// tests), pas une donnee de configuration deliberee de l'utilisateur.
+static constexpr const char* KEEPALIVE_NVS_NAMESPACE = "aq_wifi_ka";
+static constexpr const char* KEEPALIVE_NVS_KEY = "host";
+
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid, sizeof(_ssid));
     strlcpy(_pwd, pwd, sizeof(_pwd));
+
+    loadKeepaliveHost();
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
@@ -31,6 +41,48 @@ void WiFiManager::begin(const char* ssid, const char* pwd) {
         );
         startConnection();
     }
+}
+
+void WiFiManager::loadKeepaliveHost() {
+    Preferences prefs;
+    if (!prefs.begin(KEEPALIVE_NVS_NAMESPACE, true)) {
+        _keepaliveHost[0] = '\0';
+        return;
+    }
+    const String v = prefs.getString(KEEPALIVE_NVS_KEY, "");
+    strlcpy(_keepaliveHost, v.c_str(), sizeof(_keepaliveHost));
+    prefs.end();
+}
+
+void WiFiManager::saveKeepaliveHost() const {
+    Preferences prefs;
+    if (!prefs.begin(KEEPALIVE_NVS_NAMESPACE, false)) return;
+    prefs.putString(KEEPALIVE_NVS_KEY, _keepaliveHost);
+    prefs.end();
+}
+
+bool WiFiManager::setKeepaliveHost(const char* host) {
+    if (host == nullptr) return false;
+
+    char trimmed[64];
+    strlcpy(trimmed, host, sizeof(trimmed));
+    // Retirer les espaces de bord (copie/colle depuis l'UI).
+    size_t start = 0;
+    while (trimmed[start] == ' ') start++;
+    size_t end = strlen(trimmed);
+    while (end > start && trimmed[end - 1] == ' ') end--;
+    trimmed[end] = '\0';
+    if (start > 0) memmove(trimmed, trimmed + start, end - start + 1);
+
+    strlcpy(_keepaliveHost, trimmed, sizeof(_keepaliveHost));
+    saveKeepaliveHost();
+    _consecutiveKeepaliveFailures = 0;
+    EventLog::log(
+        LOG_INFO,
+        "WiFi: cible keepalive definie manuellement -> '%s'",
+        _keepaliveHost[0] != '\0' ? _keepaliveHost : "(vide)"
+    );
+    return true;
 }
 
 void WiFiManager::update() {
@@ -158,6 +210,23 @@ void WiFiManager::handleConnecting(uint32_t now) {
             WiFi.RSSI()
         );
 
+        // Premiere connexion reussie sans cible de keepalive deja
+        // enregistree : on la deduit de la passerelle du reseau. Une
+        // valeur deja presente (definie manuellement, ou herite d'une
+        // connexion precedente) n'est jamais ecrasee automatiquement.
+        if (_keepaliveHost[0] == '\0') {
+            const IPAddress gateway = WiFi.gatewayIP();
+            if (gateway != IPAddress(0, 0, 0, 0)) {
+                strlcpy(_keepaliveHost, gateway.toString().c_str(), sizeof(_keepaliveHost));
+                saveKeepaliveHost();
+                EventLog::log(
+                    LOG_INFO,
+                    "WiFi: cible keepalive initialisee automatiquement sur la passerelle %s",
+                    _keepaliveHost
+                );
+            }
+        }
+
         EventBus::displayDirty = true;
         return;
     }
@@ -218,50 +287,65 @@ void WiFiManager::handleConnected() {
         return;
     }
 
-    checkGatewayReachable(millis());
+    checkKeepaliveReachable(millis());
 }
 
-// Sonde active la passerelle locale, independamment de ce que rapporte
-// WiFi.status(). Necessaire car un incident observe sur le terrain a
-// montre que le pilote WiFi peut continuer a annoncer WL_CONNECTED
-// pendant de longues minutes (~24 min observees) apres une perte reelle
-// d'association (ex. echec de renouvellement de cle de groupe WPA2) :
-// une surveillance purement passive ne peut jamais detecter ce cas plus
-// vite que le pilote lui-meme ne s'en apercoit.
-void WiFiManager::checkGatewayReachable(uint32_t now) {
-    if (now - _lastGatewayCheckMs < GATEWAY_CHECK_INTERVAL_MS) return;
-    _lastGatewayCheckMs = now;
+// Sonde active la cible de keepalive (passerelle par defaut, ou toute
+// autre IP/hote enregistre — voir _keepaliveHost), independamment de ce
+// que rapporte WiFi.status(). Necessaire car un incident observe sur le
+// terrain a montre que le pilote WiFi peut continuer a annoncer
+// WL_CONNECTED pendant de longues minutes (~24 min observees) apres une
+// perte reelle d'association (ex. echec de renouvellement de cle de
+// groupe WPA2) : une surveillance purement passive ne peut jamais
+// detecter ce cas plus vite que le pilote lui-meme ne s'en apercoit.
+void WiFiManager::checkKeepaliveReachable(uint32_t now) {
+    if (now - _lastKeepaliveCheckMs < KEEPALIVE_CHECK_INTERVAL_MS) return;
+    _lastKeepaliveCheckMs = now;
 
-    const IPAddress gateway = WiFi.gatewayIP();
-    if (gateway == IPAddress(0, 0, 0, 0)) return;  // pas encore connue
+    if (_keepaliveHost[0] == '\0') return;  // pas encore de cible connue
+
+    IPAddress target;
+    if (!target.fromString(_keepaliveHost)) {
+        // Pas une IP litterale : tenter une resolution DNS (utile le jour
+        // ou la cible pointe vers un hote/service cloud).
+        if (WiFi.hostByName(_keepaliveHost, target) != 1) {
+            EventLog::log(
+                LOG_WARN,
+                "WiFi: cible keepalive '%s' non resolue",
+                _keepaliveHost
+            );
+            return;
+        }
+    }
 
     WiFiClient probe;
-    const bool reachable = probe.connect(gateway, GATEWAY_CHECK_PORT, GATEWAY_CHECK_TIMEOUT_MS);
+    const bool reachable = probe.connect(target, KEEPALIVE_CHECK_PORT, KEEPALIVE_CHECK_TIMEOUT_MS);
     probe.stop();
 
     if (reachable) {
-        _consecutiveGatewayFailures = 0;
+        _consecutiveKeepaliveFailures = 0;
         return;
     }
 
-    _consecutiveGatewayFailures++;
+    _consecutiveKeepaliveFailures++;
     EventLog::log(
         LOG_WARN,
-        "WiFi: passerelle %s injoignable (%u/%u), wl_status=%d toujours 'connecte'",
-        gateway.toString().c_str(),
-        static_cast<unsigned>(_consecutiveGatewayFailures),
-        static_cast<unsigned>(GATEWAY_FAILURE_THRESHOLD),
+        "WiFi: cible keepalive %s (%s) injoignable (%u/%u), wl_status=%d toujours 'connecte'",
+        _keepaliveHost,
+        target.toString().c_str(),
+        static_cast<unsigned>(_consecutiveKeepaliveFailures),
+        static_cast<unsigned>(KEEPALIVE_FAILURE_THRESHOLD),
         static_cast<int>(WiFi.status())
     );
 
-    if (_consecutiveGatewayFailures < GATEWAY_FAILURE_THRESHOLD) return;
+    if (_consecutiveKeepaliveFailures < KEEPALIVE_FAILURE_THRESHOLD) return;
 
     EventLog::log(
         LOG_ERROR,
-        "WiFi: connexion zombie detectee (passerelle injoignable x%u malgre wl_status=connecte), reconnexion forcee",
-        static_cast<unsigned>(_consecutiveGatewayFailures)
+        "WiFi: connexion zombie detectee (cible keepalive injoignable x%u malgre wl_status=connecte), reconnexion forcee",
+        static_cast<unsigned>(_consecutiveKeepaliveFailures)
     );
-    _consecutiveGatewayFailures = 0;
+    _consecutiveKeepaliveFailures = 0;
     WiFi.disconnect(true);
     _state = State::DISCONNECTED;
     _lastActionMs = now;

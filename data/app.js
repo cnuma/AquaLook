@@ -644,6 +644,13 @@ function populateDrawer() {
     `SSID : <span>${ssid}</span><br>
      IP : <span>${s.wifi?.ip||'--'}</span><br>
      ?tat : <span>${s.wifi?.state||'--'}</span>`;
+  const keepaliveHost = s.wifi?.keepaliveHost || '';
+  document.getElementById('wifi-keepalive-info').innerHTML =
+    `Cible keepalive : <span>${keepaliveHost || '(desactivee)'}</span>`;
+  const keepaliveEl = document.getElementById('cfg-keepalive');
+  if (keepaliveEl && document.activeElement !== keepaliveEl) {
+    keepaliveEl.value = keepaliveHost;
+  }
   if (s.ntp) {
     document.getElementById('cfg-ntp-server').value = s.ntp.server || 'pool.ntp.org';
     document.getElementById('cfg-ntp-gmt').value    = s.ntp.gmtOffset ?? 3600;
@@ -713,6 +720,12 @@ async function saveCfgWifi() {
   await api('/api/wifi', {ssid, pwd});
   toast('Redemarrage en cours...');
   closeDrawer();
+}
+async function saveCfgWifiKeepalive() {
+  const host = document.getElementById('cfg-keepalive').value.trim();
+  await api('/api/wifiKeepalive', {host});
+  toast(host ? 'Cible keepalive enregistree' : 'Sonde keepalive desactivee');
+  fetchAdminStatus();
 }
 async function saveCfgNtp() {
   await api('/api/ntp', {

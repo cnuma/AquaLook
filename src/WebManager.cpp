@@ -197,6 +197,7 @@ void WebManager::setupRoutes() {
 
     // ── POST config (v2) ──────────────────────
     POST_JSON("/api/wifi",          handleSetWifi);
+    POST_JSON("/api/wifiKeepalive", handleSetWifiKeepalive);
     POST_JSON("/api/touch",         handleSetTouch);
     POST_JSON("/api/ntp",           handleSetNtp);
     POST_JSON("/api/owm",           handleSetOwm);
@@ -330,6 +331,7 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
                         : (_wifi->isCaptivePortal()
                            ? _wifi->getApIP().toString()
                            : "");
+        wifi["keepaliveHost"] = _wifi->keepaliveHost();
     }
     if (_config) wifi["ssid"] = _config->wifi().ssid;
 
@@ -575,6 +577,20 @@ void WebManager::handleSetWifi(AsyncWebServerRequest* req, JsonDocument& doc) {
     sendOk(req);  // Invariant I10 : répondre AVANT le reboot
     EventLog::log(LOG_INFO, "WiFi: sauvegarde identifiants via NVS");
     _config->setWifi(ssid, pwd);  // inclut save() NVS + ESP.restart()
+}
+
+// Cible de la sonde de keepalive (voir WiFiManager::checkKeepaliveReachable).
+// Remplie automatiquement avec la passerelle a la premiere connexion, mais
+// modifiable ici — IP fictive pour tester la detection de connexion
+// "zombie", ou plus tard un hote cloud. Chaine vide = desactive la sonde.
+void WebManager::handleSetWifiKeepalive(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_wifi) { sendError(req, "wifi indisponible"); return; }
+
+    const char* host = doc["host"] | "";
+    if (strlen(host) >= 64) { sendError(req, "hote trop long"); return; }
+
+    _wifi->setKeepaliveHost(host);
+    sendOk(req);
 }
 
 void WebManager::handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc) {

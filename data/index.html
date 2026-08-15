@@ -100,6 +100,12 @@
       <button class="btn-cfg warn" onclick="launchCaptive()" style="margin-top:8px">
         Lancer portail captif
       </button>
+      <div class="cfg-info" id="wifi-keepalive-info" style="margin-top:14px">Cible keepalive : <span>—</span></div>
+      <div class="cfg-field"><label>Cible de surveillance (IP ou hôte)</label>
+        <input type="text" id="cfg-keepalive" autocomplete="off" placeholder="ex : 192.168.1.1">
+      </div>
+      <div class="cfg-hint">Sondée périodiquement pour détecter une connexion WiFi "zombie". Remplie automatiquement avec la passerelle à la connexion ; modifiable pour un test (IP fictive) ou une cible cloud future. Laisser vide pour désactiver.</div>
+      <button class="btn-cfg" onclick="saveCfgWifiKeepalive()" style="margin-top:8px">Enregistrer la cible</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-ntp">
