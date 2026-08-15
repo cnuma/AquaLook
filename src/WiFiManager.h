@@ -74,6 +74,13 @@ private:
     uint8_t  _retryCount = 0;
     bool     _scanPending = false;
 
+    // Sonde passerelle — voir checkGatewayReachable(). Detecte une
+    // association "zombie" (wl_status toujours WL_CONNECTED alors que le
+    // reseau ne repond plus), qu'un simple sondage de WiFi.status() ne
+    // peut pas voir puisque le pilote lui-meme se trompe.
+    uint32_t _lastGatewayCheckMs = 0;
+    uint8_t  _consecutiveGatewayFailures = 0;
+
     PendingAction _pendingAction = PendingAction::NONE;
     uint32_t _pendingDeadlineMs = 0;
 
@@ -86,6 +93,15 @@ private:
     static constexpr uint32_t WIFI_AP_SETTLE_MS = 200;
     static constexpr uint32_t WIFI_RESTART_SETTLE_MS = 200;
 
+    // Sonde passerelle : voir _lastGatewayCheckMs plus haut. Le port 80 est
+    // le pari le plus sur sur une box/routeur domestique (interface
+    // d'administration presque toujours presente dessus) ; a revoir si ce
+    // n'est plus vrai sur l'installation cible.
+    static constexpr uint32_t GATEWAY_CHECK_INTERVAL_MS = 180000;  // 3 min
+    static constexpr uint32_t GATEWAY_CHECK_TIMEOUT_MS  = 1500;    // 1,5 s
+    static constexpr uint8_t  GATEWAY_FAILURE_THRESHOLD = 3;       // ~9 min avant reconnexion forcee
+    static constexpr uint16_t GATEWAY_CHECK_PORT = 80;
+
     void scheduleAction(PendingAction action, uint32_t deadlineMs);
     bool processPendingAction(uint32_t now);
 
@@ -94,4 +110,5 @@ private:
     void handleDisconnected(uint32_t now);
     void handleConnected();
     void handleCaptivePortal();
+    void checkGatewayReachable(uint32_t now);
 };

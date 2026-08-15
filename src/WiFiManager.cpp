@@ -4,6 +4,7 @@
 #include "FaultManager.h"
 #include "TimeUtils.h"
 #include <DNSServer.h>
+#include <WiFiClient.h>
 
 static DNSServer _dnsServer;
 static bool _dnsStarted = false;
@@ -214,7 +215,57 @@ void WiFiManager::handleConnected() {
         _state = State::DISCONNECTED;
         _lastActionMs = millis();
         EventBus::displayDirty = true;
+        return;
     }
+
+    checkGatewayReachable(millis());
+}
+
+// Sonde active la passerelle locale, independamment de ce que rapporte
+// WiFi.status(). Necessaire car un incident observe sur le terrain a
+// montre que le pilote WiFi peut continuer a annoncer WL_CONNECTED
+// pendant de longues minutes (~24 min observees) apres une perte reelle
+// d'association (ex. echec de renouvellement de cle de groupe WPA2) :
+// une surveillance purement passive ne peut jamais detecter ce cas plus
+// vite que le pilote lui-meme ne s'en apercoit.
+void WiFiManager::checkGatewayReachable(uint32_t now) {
+    if (now - _lastGatewayCheckMs < GATEWAY_CHECK_INTERVAL_MS) return;
+    _lastGatewayCheckMs = now;
+
+    const IPAddress gateway = WiFi.gatewayIP();
+    if (gateway == IPAddress(0, 0, 0, 0)) return;  // pas encore connue
+
+    WiFiClient probe;
+    const bool reachable = probe.connect(gateway, GATEWAY_CHECK_PORT, GATEWAY_CHECK_TIMEOUT_MS);
+    probe.stop();
+
+    if (reachable) {
+        _consecutiveGatewayFailures = 0;
+        return;
+    }
+
+    _consecutiveGatewayFailures++;
+    EventLog::log(
+        LOG_WARN,
+        "WiFi: passerelle %s injoignable (%u/%u), wl_status=%d toujours 'connecte'",
+        gateway.toString().c_str(),
+        static_cast<unsigned>(_consecutiveGatewayFailures),
+        static_cast<unsigned>(GATEWAY_FAILURE_THRESHOLD),
+        static_cast<int>(WiFi.status())
+    );
+
+    if (_consecutiveGatewayFailures < GATEWAY_FAILURE_THRESHOLD) return;
+
+    EventLog::log(
+        LOG_ERROR,
+        "WiFi: connexion zombie detectee (passerelle injoignable x%u malgre wl_status=connecte), reconnexion forcee",
+        static_cast<unsigned>(_consecutiveGatewayFailures)
+    );
+    _consecutiveGatewayFailures = 0;
+    WiFi.disconnect(true);
+    _state = State::DISCONNECTED;
+    _lastActionMs = now;
+    EventBus::displayDirty = true;
 }
 
 void WiFiManager::handleDisconnected(uint32_t now) {
