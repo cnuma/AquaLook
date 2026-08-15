@@ -210,23 +210,6 @@ void WiFiManager::handleConnecting(uint32_t now) {
             WiFi.RSSI()
         );
 
-        // Premiere connexion reussie sans cible de keepalive deja
-        // enregistree : on la deduit de la passerelle du reseau. Une
-        // valeur deja presente (definie manuellement, ou herite d'une
-        // connexion precedente) n'est jamais ecrasee automatiquement.
-        if (_keepaliveHost[0] == '\0') {
-            const IPAddress gateway = WiFi.gatewayIP();
-            if (gateway != IPAddress(0, 0, 0, 0)) {
-                strlcpy(_keepaliveHost, gateway.toString().c_str(), sizeof(_keepaliveHost));
-                saveKeepaliveHost();
-                EventLog::log(
-                    LOG_INFO,
-                    "WiFi: cible keepalive initialisee automatiquement sur la passerelle %s",
-                    _keepaliveHost
-                );
-            }
-        }
-
         EventBus::displayDirty = true;
         return;
     }
@@ -285,6 +268,26 @@ void WiFiManager::handleConnected() {
         _lastActionMs = millis();
         EventBus::displayDirty = true;
         return;
+    }
+
+    // Cible de keepalive absente : la deduire de la passerelle du reseau.
+    // Tente a chaque tour de boucle tant qu'elle manque (au lieu du seul
+    // instant de la transition CONNECTING -> CONNECTED) car WiFi.gatewayIP()
+    // peut brievement rendre 0.0.0.0 juste apres l'evenement GOT_IP ; ce
+    // retry ferme cette fenetre de course sans complexite supplementaire.
+    // Une valeur deja presente (definie manuellement, ou heritee d'une
+    // connexion precedente) n'est jamais ecrasee automatiquement.
+    if (_keepaliveHost[0] == '\0') {
+        const IPAddress gateway = WiFi.gatewayIP();
+        if (gateway != IPAddress(0, 0, 0, 0)) {
+            strlcpy(_keepaliveHost, gateway.toString().c_str(), sizeof(_keepaliveHost));
+            saveKeepaliveHost();
+            EventLog::log(
+                LOG_INFO,
+                "WiFi: keepalive -> passerelle %s",
+                _keepaliveHost
+            );
+        }
     }
 
     checkKeepaliveReachable(millis());
