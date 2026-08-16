@@ -506,6 +506,13 @@ private:
     void handleDeployFileBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total);
     void handleDeployFileComplete(AsyncWebServerRequest* req);
 
+    // Route de validation temporaire pour WebAssetsUpdater::verifyOnly
+    // (etape 4 du meme plan) : telecharge et verifie un fichier depuis une
+    // URL fournie manuellement, n'ecrit jamais sur la SD. A remplacer par
+    // un declenchement pilote par le manifeste une fois l'etape 3 exploitee
+    // en conditions reelles (premier tag publie avec le manifeste Web).
+    void handleVerifyWebAsset(AsyncWebServerRequest* req, JsonDocument& doc);
+
     void sendJson(AsyncWebServerRequest* req, const JsonDocument& doc, int code = 200);
     void sendOk(AsyncWebServerRequest* req);
     void sendError(AsyncWebServerRequest* req, const char* msg, int code = 400);

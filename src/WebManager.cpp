@@ -3,6 +3,7 @@
 #include "EventLog.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
+#include "WebAssetsUpdater.h"
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -220,6 +221,10 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/zoneNotifications", handleSetZoneNotifications);
     POST_JSON("/api/display",       handleSetDisplay);
     POST_JSON("/api/logConfig",     handleSetLogConfig);
+
+    // Validation temporaire de WebAssetsUpdater::verifyOnly — voir la note
+    // sur handleVerifyWebAsset (WebManager.h) et ROADMAP.md.
+    POST_JSON("/api/debug/verify-web-asset", handleVerifyWebAsset);
 
 #undef POST_JSON
 
@@ -704,6 +709,26 @@ void WebManager::handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& do
         enabled ? "actives" : "desactives"
     );
     sendOk(req);
+}
+
+// Voir la note sur handleVerifyWebAsset (WebManager.h) et ROADMAP.md, "Mise
+// a jour distante des ressources Web" — etape 4 : telecharger et verifier
+// un fichier sans l'ecrire. {url, size, sha256} passes manuellement pour
+// l'instant, en attendant un declenchement pilote par le manifeste.
+void WebManager::handleVerifyWebAsset(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const char* url = doc["url"] | "";
+    const uint32_t size = doc["size"] | 0U;
+    const char* sha256 = doc["sha256"] | "";
+
+    const WebAssetVerifyResult result = WebAssetsUpdater::verifyOnly(url, size, sha256);
+
+    JsonDocument out;
+    out["ok"] = result.success;
+    out["downloadedSize"] = result.downloadedSize;
+    out["downloadDurationMs"] = result.downloadDurationMs;
+    out["sha256"] = result.calculatedSha256;
+    out["detail"] = result.detail;
+    sendJson(req, out, result.success ? 200 : 502);
 }
 
 void WebManager::handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc) {
