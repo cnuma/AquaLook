@@ -751,6 +751,30 @@ void WebManager::handleVerifyWebAsset(AsyncWebServerRequest* req, JsonDocument& 
         return;
     }
 
+    // Refus UNIQUEMENT pendant un arrosage en cours. Le telechargement bloque
+    // la boucle principale le temps du transfert (mesure sur materiel le 16
+    // aout 2026 : 10,1 s pour 1,4 Mo), ce qui retarderait d'autant la commande
+    // d'arret d'une voie ouverte — l'invariant OTA existant interdit de
+    // retarder ou d'interrompre silencieusement un cycle d'arrosage.
+    // Deliberement PAS de refus "par precaution" avant un creneau proche : une
+    // mise a jour apporte des corrections et reste prioritaire hors arrosage
+    // actif. Un creneau qui demarre pendant une verification deja lancee est
+    // seulement decale de quelques secondes au demarrage (la duree du cycle
+    // etant calculee depuis le demarrage reel, l'arret n'est jamais tronque),
+    // et la verification sera terminee bien avant l'arret.
+    // Meme controle que les routes /api/maintenance/* existantes.
+    if (_config && _relais) {
+        for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
+            if (_relais->getState(zone)) {
+                EventLog::log(LOG_WARN,
+                              "WebAssets: verification refusee, zone %u en arrosage",
+                              static_cast<unsigned>(zone + 1U));
+                sendError(req, "arrosage en cours", 409);
+                return;
+            }
+        }
+    }
+
     portENTER_CRITICAL(&_pendingMux);
     if (_verifyPending || _verifyRunning) {
         portEXIT_CRITICAL(&_pendingMux);
