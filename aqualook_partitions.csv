@@ -1,6 +1,31 @@
 # Name,     Type, SubType, Offset,   Size,     Flags
-nvs,        data, nvs,     0x9000,   0x5000,
+#
+# NVS agrandie de 0x5000 (20 Kio) a 0x15000 (84 Kio) le 16 aout 2026. A 20 Kio
+# la partition saturait (nvs_set_blob NOT_ENOUGH_SPACE) : le blob de config
+# principal fait 4884 octets et est reecrit EN ENTIER a chaque changement, ce
+# qui demande transitoirement le double. Une ecriture interrompue laissait le
+# blob tronque, CRC invalide, identifiants WiFi perdus et module en portail
+# captif (incident reel du 16 aout 2026, voir ROADMAP.md).
+#
+# La NVS est placee APRES les deux slots applicatifs, et non a l'adresse
+# traditionnelle 0x9000, pour une raison precise : la chaine Arduino/PlatformIO
+# ecrit boot_app0.bin a 0xe000 EN DUR
+# (framework-arduinoespressif32/tools/platformio-build.py) et l'image
+# applicative a 0x10000 par defaut (upload.offset_address). Garder otadata a
+# 0xe000 et app0 a 0x10000 permet de rester compatible avec ces valeurs sans
+# patcher le framework ni surcharger l'offset : une NVS agrandie sur place
+# aurait recouvert 0xe000 et aurait ete corrompue a chaque televersement.
+#
+# Le cout est pris sur les slots applicatifs (0x1F0000 -> 0x1E0000, soit
+# 1920 Kio chacun ; firmware actuel ~1392 Kio = 72 %). L'espace 0x9000-0xE000
+# (20 Kio) reste volontairement inutilise : le recuperer imposerait de deplacer
+# otadata. spiffs passe de 64 a 108 Kio.
+#
+# ATTENTION : une table de partitions ne se deploie PAS par OTA (l'OTA ne
+# pousse que l'image applicative). Tout module deja livre garderait l'ancienne
+# table ; ce changement doit etre applique par USB avant toute mise en service.
 otadata,    data, ota,     0xE000,   0x2000,
-app0,       app,  ota_0,   0x10000,  0x1F0000,
-app1,       app,  ota_1,   0x200000, 0x1F0000,
-spiffs,     data, spiffs,  0x3F0000, 0x10000,
+app0,       app,  ota_0,   0x10000,  0x1E0000,
+app1,       app,  ota_1,   0x1F0000, 0x1E0000,
+nvs,        data, nvs,     0x3D0000, 0x15000,
+spiffs,     data, spiffs,  0x3E5000, 0x1B000,

@@ -6,6 +6,8 @@
 #include "WebAssetsUpdater.h"
 #include "DisplayManager.h"
 #include <esp_heap_caps.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -255,6 +257,12 @@ void WebManager::setupRoutes() {
     // seule, aucun effet de bord, a retirer une fois la piste tranchee.
     _server.on("/api/debug/heap-info", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleHeapInfo(req);
+    });
+
+    // Diagnostic temporaire de saturation NVS (voir ROADMAP.md, "constat du
+    // 16 aout 2026 — NVS saturee") : lecture seule, aucune ecriture.
+    _server.on("/api/debug/nvs-stats", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleNvsStats(req);
     });
 
     _server.on("/api/captive", HTTP_POST, [this](AsyncWebServerRequest* req) {
@@ -873,6 +881,57 @@ void WebManager::handleHeapInfo(AsyncWebServerRequest* req) {
     out["allocatedBlocks"] = info.allocated_blocks;
     out["freeBlocks"] = info.free_blocks;
     out["totalBlocks"] = info.total_blocks;
+    sendJson(req, out);
+}
+
+// Diagnostic temporaire de saturation NVS — voir ROADMAP.md. Lecture seule :
+// nvs_get_stats() pour le global, puis une ouverture en lecture seule de
+// chaque namespace connu pour attribuer la consommation. Une entree NVS fait
+// 32 octets ; un blob occupe des entrees supplementaires pour ses chunks.
+void WebManager::handleNvsStats(AsyncWebServerRequest* req) {
+    JsonDocument out;
+
+    nvs_stats_t stats;
+    if (nvs_get_stats(nullptr, &stats) == ESP_OK) {
+        out["usedEntries"] = stats.used_entries;
+        out["freeEntries"] = stats.free_entries;
+        out["totalEntries"] = stats.total_entries;
+        out["namespaceCount"] = stats.namespace_count;
+        out["usedBytesApprox"] = stats.used_entries * 32U;
+        out["totalBytesApprox"] = stats.total_entries * 32U;
+    } else {
+        out["error"] = "nvs_get_stats-failed";
+    }
+
+    // Liste exhaustive des namespaces du projet au 16 aout 2026. Un namespace
+    // absent de NVS n'apparait simplement pas ouvert (aucune ecriture faite).
+    static const char* const NAMESPACES[] = {
+        "aqualook",      // ConfigManager (blob principal + ancres intervalle)
+        "aq_log_cfg",    // EventLog (bascule logs Timing) — ajoute le 16/08/2026
+        "aq_wifi_ka",    // WiFiManager (cible keepalive) — ajoute le 16/08/2026
+        "aq_incidents",  // IncidentManager (incidents carte SD)
+        "aq_maint",      // MaintenanceRequestStore
+        "aq_maint_res",  // MaintenanceResultStore
+        "aq_notify",     // NotificationManager
+        "aq_ota_guard"   // OtaBootGuard
+    };
+
+    JsonObject perNs = out["namespaces"].to<JsonObject>();
+    for (const char* ns : NAMESPACES) {
+        nvs_handle_t handle;
+        if (nvs_open(ns, NVS_READONLY, &handle) != ESP_OK) {
+            perNs[ns] = -1;  // namespace absent (jamais ecrit)
+            continue;
+        }
+        size_t used = 0U;
+        if (nvs_get_used_entry_count(handle, &used) == ESP_OK) {
+            perNs[ns] = used;
+        } else {
+            perNs[ns] = -2;
+        }
+        nvs_close(handle);
+    }
+
     sendJson(req, out);
 }
 

@@ -13,7 +13,11 @@ import sys
 
 SCHEMA = "aqualook-ota-manifest-v1"
 BOARD = "esp32-2432S028"
-MAX_FIRMWARE_SIZE = 2_031_616
+# Doit suivre la taille des slots OTA dans aqualook_partitions.csv : ramenee de
+# 2 031 616 (0x1F0000) a 1 966 080 (0x1E0000) le 16 aout 2026 pour agrandir la
+# partition NVS. Publier un firmware plus gros que le slot le rendrait
+# ininstallable sur le module.
+MAX_FIRMWARE_SIZE = 1_966_080
 VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 
 

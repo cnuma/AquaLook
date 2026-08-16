@@ -546,6 +546,9 @@ private:
     // 16 aout 2026" (fragmentation memoire bloquant le handshake TLS).
     void handleHeapInfo(AsyncWebServerRequest* req);
 
+    // Diagnostic temporaire de saturation NVS, lecture seule — voir ROADMAP.md.
+    void handleNvsStats(AsyncWebServerRequest* req);
+
     void sendJson(AsyncWebServerRequest* req, const JsonDocument& doc, int code = 200);
     void sendOk(AsyncWebServerRequest* req);
     void sendError(AsyncWebServerRequest* req, const char* msg, int code = 400);

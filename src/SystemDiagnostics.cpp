@@ -1,4 +1,10 @@
 #include "SystemDiagnostics.h"
+
+// Taille minimale attendue par slot OTA. Doit suivre aqualook_partitions.csv :
+// ramenee de 0x1F0000 a 0x1E0000 le 16 aout 2026 pour agrandir la NVS (voir
+// le commentaire du fichier de partitions). Une valeur superieure a la taille
+// reelle ferait rapporter ready=no et bloquerait tout l'OTA.
+static constexpr uint32_t MIN_OTA_PARTITION_SIZE = 0x1E0000UL;
 #include <WiFi.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
@@ -95,7 +101,7 @@ void logOtaStartupDiagnostics() {
 
     const bool layoutReady = ota0 != nullptr && ota1 != nullptr && otaData != nullptr;
     const bool sizesReady = ota0 != nullptr && ota1 != nullptr &&
-        ota0->size >= 0x1F0000UL && ota1->size >= 0x1F0000UL;
+        ota0->size >= MIN_OTA_PARTITION_SIZE && ota1->size >= MIN_OTA_PARTITION_SIZE;
 
     EventLog::log(
         layoutReady && sizesReady ? LOG_INFO : LOG_ERROR,
@@ -368,7 +374,7 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     fillPartitionJson(ota["otadata"].to<JsonObject>(), otaData, false);
     ota["dualLayout"] = ota0 != nullptr && ota1 != nullptr && otaData != nullptr;
     ota["sizesValid"] = ota0 != nullptr && ota1 != nullptr &&
-        ota0->size >= 0x1F0000UL && ota1->size >= 0x1F0000UL;
+        ota0->size >= MIN_OTA_PARTITION_SIZE && ota1->size >= MIN_OTA_PARTITION_SIZE;
     ota["ready"] = ota["dualLayout"].as<bool>() && ota["sizesValid"].as<bool>();
 
     const uint32_t nowMs = millis();

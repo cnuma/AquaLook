@@ -34,3 +34,5 @@ credentials.h
 
 # Captures locales (pio device monitor --filter log2file, sorties de session)
 logs/
+# Dumps NVS de secours : contiennent identifiants WiFi et cles API en clair.
+backups/
