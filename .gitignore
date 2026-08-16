@@ -31,3 +31,6 @@ credentials.h
 
 # Archives locales et exports de versions
 *.zip
+
+# Captures locales (pio device monitor --filter log2file, sorties de session)
+logs/
