@@ -104,13 +104,20 @@ public:
     // DisplayManager::update() ne soit rappele dans la meme iteration, est
     // donc sur. Pendant la suspension, tout rendu qui toucherait ces
     // sprites planterait — ne rien faire d'autre entre les deux appels.
+    // Idempotents : l'etat reel est suivi par _spritesFreed, si bien qu'un
+    // double appel ne fuit pas (createSprite sur un sprite deja alloue
+    // perdrait l'ancien tampon) et qu'un appel redondant ne coute rien.
     void suspendForMemoryRelief() {
+        if (_spritesFreed) return;
         _sprBtn0.deleteSprite();
         _sprPlan.deleteSprite();
+        _spritesFreed = true;
     }
     void resumeAfterMemoryRelief() {
+        if (!_spritesFreed) return;
         _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
         _sprPlan.createSprite(320, PL_PLAN_H);
+        _spritesFreed = false;
     }
 
 private:
@@ -185,6 +192,9 @@ private:
     bool      _listShowForce   = false;           // LIST >4z / GRID2 : sous-vue marche forcée
     uint8_t   _grid4View       = 0;               // GRID4 : 0=plan Z1-8, 1=plan Z9-16, 2=marche forcée
     bool      _needsFullRedraw = true;
+    // Les deux gros sprites (~95 Ko a eux deux) sont-ils actuellement liberes ?
+    // Voir suspendForMemoryRelief() et l'invariant applique dans update().
+    bool      _spritesFreed = false;
     uint32_t  _lastUpdate      = 0;
     uint32_t  _lastTouch       = 0;
     uint32_t  _lastTap         = 0;   // debounce action touch

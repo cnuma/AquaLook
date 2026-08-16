@@ -51,6 +51,12 @@ public:
     bool existsOnSd(const char* path);
     bool openRead(const char* path, FsFile& file);
     int32_t readChunk(FsFile& file, uint8_t* buffer, size_t maxLen);
+
+    // Valeur rendue par readChunkNonBlocking() quand le bus SD est occupe :
+    // rien n'a ete lu, le fichier est intact, l'appelant doit reessayer.
+    // Distincte de -1 (erreur reelle) et de 0 (fin de fichier).
+    static constexpr int32_t READ_CHUNK_BUSY = -2;
+    int32_t readChunkNonBlocking(FsFile& file, uint8_t* buffer, size_t maxLen);
     void closeFile(FsFile& file);
     void reportReadError(const char* path);
     const char* cardTypeName() const;

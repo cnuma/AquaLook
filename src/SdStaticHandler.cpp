@@ -124,7 +124,21 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
         [context](uint8_t* buffer, size_t maxLen, size_t) -> size_t {
             if (!context->file.isOpen() || !context->storage) return 0;
 
-            const int32_t count = context->storage->readChunk(context->file, buffer, maxLen);
+            // Lecture NON bloquante : ce rappel s'execute sur la tache unique
+            // d'AsyncTCP, partagee par toutes les connexions. Y attendre le
+            // mutex SD bloquerait le serveur entier des que deux fichiers SD
+            // sont demandes en meme temps — ce que fait tout navigateur (voir
+            // la note sur readChunkNonBlocking dans StorageManager.cpp).
+            const int32_t count =
+                context->storage->readChunkNonBlocking(context->file, buffer, maxLen);
+
+            // Bus occupe : rendre la main sans rien ecrire ni terminer la
+            // reponse. RESPONSE_TRY_AGAIN demande a la bibliotheque de
+            // rappeler plus tard, ce qui laisse les autres connexions avancer.
+            // Surtout ne pas retourner 0 ici : 0 signifie "fin du corps" et
+            // tronquerait silencieusement le fichier servi.
+            if (count == StorageManager::READ_CHUNK_BUSY) return RESPONSE_TRY_AGAIN;
+
             if (count < 0) {
                 context->storage->reportReadError(context->path.c_str());
                 context->storage->closeFile(context->file);

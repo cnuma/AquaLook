@@ -316,6 +316,17 @@ void DisplayManager::update() {
 
     // Si en veille : ne pas redessiner, juste gérer le touch pour réveil
     if (_screenMgr.isAsleep()) {
+        // Ecran eteint : plus rien ne dessine (on sort juste en dessous sans
+        // redraw), donc les deux gros sprites ne servent a rien. Les liberer
+        // rend ~95 Ko au tas, ce qui conditionne directement le nombre de
+        // connexions HTTP simultanees que le module peut honorer.
+        // Mesure du 16 aout 2026 : sprites alloues, 3 requetes simultanees
+        // suffisaient a rendre le serveur muet (page blanche, /app.js en
+        // echec, /index.html a 25 s) ; sprites liberes, 6 requetes passent
+        // toutes en moins de 1,7 s. Un navigateur ouvre couramment 6
+        // connexions paralleles pour charger une page.
+        suspendForMemoryRelief();
+
         if (now - _lastTouch >= 80) {
             _lastTouch = now;
             uint16_t tx, ty;
@@ -326,6 +337,17 @@ void DisplayManager::update() {
             }
         }
         return;  // pas de redraw en veille
+    }
+
+    // Ecran allume : les sprites doivent exister avant le moindre rendu.
+    // Applique ici plutot qu'au seul instant du reveil parce que le reveil
+    // peut venir de plusieurs chemins (touch, demarrage d'arrosage via
+    // ScreenManager::update, appel direct a wakeUp()) et que la verification
+    // HTTPS d'une ressource Web libere aussi ces sprites de son cote : cet
+    // invariant, reevalue a chaque passage, rattrape tous ces cas.
+    if (_spritesFreed) {
+        resumeAfterMemoryRelief();
+        _needsFullRedraw = true;
     }
 
     // Poll touch (80ms)

@@ -221,6 +221,26 @@ int32_t StorageManager::readChunk(FsFile& file, uint8_t* buffer, size_t maxLen) 
     return count;
 }
 
+// Variante non bloquante de readChunk(), destinee aux rappels AsyncTCP.
+// Retourne READ_CHUNK_BUSY (et ne lit rien) si le bus SD est occupe, au lieu
+// d'attendre le verrou.
+//
+// Raison d'etre : AsyncTCP execute TOUS les rappels de TOUTES les connexions
+// sur une seule tache. Un readChunk() classique y attend le mutex jusqu'a
+// 200 ms ; avec plusieurs fichiers SD demandes en parallele — ce que fait
+// tout navigateur — les rappels se disputent le verrou et bloquent cette
+// tache unique, donc l'integralite du serveur Web, y compris les routes API
+// qui ne touchent pas a la SD. Mesure du 16 aout 2026 : 6 requetes
+// simultanees suffisaient a rendre le module totalement muet (page non
+// chargee, /app.js et /style.css en echec, /index.html a 20 s).
+int32_t StorageManager::readChunkNonBlocking(FsFile& file, uint8_t* buffer, size_t maxLen) {
+    if (!file.isOpen() || !buffer || maxLen == 0U) return -1;
+    if (!lockSd(0U)) return READ_CHUNK_BUSY;
+    const int32_t count = file.read(buffer, maxLen);
+    unlockSd();
+    return count;
+}
+
 void StorageManager::closeFile(FsFile& file) {
     if (!file.isOpen()) return;
     if (!lockSd()) return;
