@@ -223,6 +223,18 @@ void WebManager::setupRoutes() {
 
 #undef POST_JSON
 
+    // Validation temporaire de l'ecriture SD reseau — voir la note sur
+    // DeployFileState (WebManager.h) et ROADMAP.md.
+    _server.on(
+        "/api/debug/deploy-file",
+        HTTP_POST,
+        [this](AsyncWebServerRequest* req) { handleDeployFileComplete(req); },
+        nullptr,
+        [this](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+            handleDeployFileBody(req, data, len, index, total);
+        }
+    );
+
     _server.on("/api/captive", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleStartCaptive(req);
     });
@@ -605,6 +617,78 @@ void WebManager::handleSetWifiKeepalive(AsyncWebServerRequest* req, JsonDocument
     if (strlen(host) >= 64) { sendError(req, "hote trop long"); return; }
 
     _wifi->setKeepaliveHost(host);
+    sendOk(req);
+}
+
+// Voir la note sur DeployFileState (WebManager.h) et ROADMAP.md, "Mise a
+// jour distante des ressources Web" — route de validation temporaire du
+// chemin d'ecriture SD reseau, un fichier a la fois, nom simple uniquement.
+void WebManager::handleDeployFileBody(
+    AsyncWebServerRequest* req,
+    uint8_t* data,
+    size_t len,
+    size_t index,
+    size_t total
+) {
+    if (index == 0) {
+        auto* state = new DeployFileState();
+        req->_tempObject = state;
+
+        const String name = req->hasParam("name") ? req->getParam("name")->value() : "";
+        const bool validName =
+            name.length() > 0 && name.length() < 48 &&
+            name.indexOf('/') < 0 && name.indexOf("..") < 0;
+
+        if (!validName || !_storage) {
+            state->openFailed = true;
+            return;
+        }
+
+        state->tmpPath   = "/www/." + name + ".deploytmp";
+        state->finalPath = "/www/" + name;
+
+        if (!_storage->openWrite(state->tmpPath.c_str(), state->file)) {
+            state->openFailed = true;
+        }
+    }
+
+    auto* state = static_cast<DeployFileState*>(req->_tempObject);
+    if (!state || state->openFailed || !_storage) return;
+
+    const int32_t written = _storage->writeChunk(state->file, data, len);
+    if (written != static_cast<int32_t>(len)) {
+        state->openFailed = true;
+    }
+}
+
+void WebManager::handleDeployFileComplete(AsyncWebServerRequest* req) {
+    auto* state = static_cast<DeployFileState*>(req->_tempObject);
+    req->_tempObject = nullptr;
+
+    if (!state) {
+        sendError(req, "requete invalide");
+        return;
+    }
+
+    if (state->openFailed || !_storage) {
+        if (state->file.isOpen()) _storage->closeFile(state->file);
+        if (state->tmpPath.length()) _storage->deleteOnSd(state->tmpPath.c_str());
+        delete state;
+        sendError(req, "ecriture echouee");
+        return;
+    }
+
+    _storage->closeFile(state->file);
+    const bool renamed = _storage->renameOnSd(state->tmpPath.c_str(), state->finalPath.c_str());
+    const String finalPath = state->finalPath;
+    delete state;
+
+    if (!renamed) {
+        sendError(req, "renommage echoue");
+        return;
+    }
+
+    EventLog::log(LOG_INFO, "Deploiement: fichier ecrit -> %s", finalPath.c_str());
     sendOk(req);
 }
 

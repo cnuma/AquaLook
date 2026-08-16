@@ -37,6 +37,7 @@ public:
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
         _sdStaticHandlerRegistered = true;
+        _storage = storage;
         _server.addHandler(new SdStaticHandler(storage));
     }
 
@@ -446,6 +447,7 @@ private:
     ConfigManager* _config = nullptr;
     WiFiManager* _wifi = nullptr;
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
+    StorageManager* _storage = nullptr;
     bool _sdStaticHandlerRegistered = false;
     bool _faultRoutesRegistered = false;
 
@@ -489,6 +491,21 @@ private:
     void handleGetLogs(AsyncWebServerRequest* req);
     void handleGetDisplay(AsyncWebServerRequest* req);
     void handleSetDisplay(AsyncWebServerRequest* req, JsonDocument& doc);
+
+    // Route de validation temporaire pour l'ecriture SD reseau (voir
+    // ROADMAP.md, "Mise a jour distante des ressources Web") : depose un
+    // seul fichier, nom simple uniquement (pas de sous-dossier), sous
+    // /www. A remplacer par le flux manifeste + SHA-256 une fois celui-ci
+    // en place ; ne pas laisser tel quel avant mise en production.
+    struct DeployFileState {
+        FsFile file;
+        String tmpPath;
+        String finalPath;
+        bool openFailed = false;
+    };
+    void handleDeployFileBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total);
+    void handleDeployFileComplete(AsyncWebServerRequest* req);
+
     void sendJson(AsyncWebServerRequest* req, const JsonDocument& doc, int code = 200);
     void sendOk(AsyncWebServerRequest* req);
     void sendError(AsyncWebServerRequest* req, const char* msg, int code = 400);
