@@ -138,7 +138,14 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
         }
     );
 
-    response->addHeader("Cache-Control", "public, max-age=300");
+    // Auparavant "public, max-age=300" : un navigateur pouvait rester
+    // jusqu'a 5 min sur une ancienne version d'une page apres une mise a
+    // jour cote SD, sans aucun moyen de le forcer autrement qu'un vidage
+    // manuel du cache. "no-cache" force une revalidation aupres du serveur
+    // a chaque chargement (donc toujours la derniere version), sans pour
+    // autant empecher le navigateur de reutiliser une reponse identique
+    // s'il sait la revalider — pas de cout reel sur un reseau local.
+    response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("X-AquaLook-Storage", "SD");
     request->send(response);
 }
