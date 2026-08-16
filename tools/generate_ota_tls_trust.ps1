@@ -30,6 +30,23 @@ $certificates = @(
         Name = "ISRG Root X1"
         Url = "https://letsencrypt.org/certs/isrgrootx1.pem"
         Sha256 = "96BCEC06264976F37460779ACF28C5A7CFE8A3C0AAE11A8FFCEE05C0BDDF08C6"
+    },
+    @{
+        # Ajoutee le 16 aout 2026 : github.com envoie la chaine leaf ->
+        # "Sectigo Public Server Authentication CA DV E36" -> "...Root E46"
+        # (elle-meme signee par USERTrust ECC, deja dans ce bundle). Verifiee
+        # valide via openssl (openssl verify avec le bundle existant comme
+        # CAfile) mais mbedTLS/ESP32 echoue en pratique sur ce module
+        # (X509 - Certificate verification failed, -9984) — vraisemblablement
+        # une limitation de construction de chaine sur 4 certificats. Ajouter
+        # Root E46 comme ancre directement fiable raccourcit le chemin d'un
+        # cran et evite d'avoir a s'appuyer sur cette construction. Empreinte
+        # verifiee par deux sources independantes : telechargement direct
+        # (URL ci-dessous) et premiere entree du paquet AIA "CA Issuers" de
+        # l'intermediaire recu en direct de github.com (memes octets).
+        Name = "Sectigo Public Server Authentication Root E46"
+        Url = "http://crt.sectigo.com/SectigoPublicServerAuthenticationRootE46.crt"
+        Sha256 = "C90F26F0FB1B4018B22227519B5CA2B53E2CA5B3BE5CF18EFE1BEF47380C5383"
     }
 )
 

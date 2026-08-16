@@ -18,8 +18,11 @@
 #include "NotificationManager.h"
 #include "SdStaticHandler.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "WebAssetsUpdater.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
+
+class DisplayManager;
 
 class WebManager {
 public:
@@ -33,6 +36,11 @@ public:
         _outputs = outputs;
         _relais.outputs = outputs;
     }
+
+    // Necessaire pour suspendre/reprendre temporairement un sprite d'ecran
+    // autour d'une verification HTTPS de ressource Web (voir la note sur
+    // _verifyPending plus bas et ROADMAP.md, "constat du 16 aout 2026").
+    void setDisplay(DisplayManager* display) { _display = display; }
 
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
@@ -461,6 +469,26 @@ private:
     bool _restartPending = false;
     uint32_t _restartAtMs = 0;
 
+    // Etape 4 (test) — voir ROADMAP.md, "constat du 16 aout 2026" : la
+    // verification HTTPS doit s'executer depuis la boucle principale
+    // (meme regle que _pendingSystem ci-dessus : "Ne jamais ecrire depuis
+    // le callback AsyncTCP", ici etendue a "ne jamais toucher un TFT_eSprite
+    // depuis ce callback"). Le POST depose la demande dans ces champs fixes
+    // (pas de String — aucune allocation dans la section critique) puis
+    // repond immediatement ; WebManager::update() (boucle principale)
+    // l'execute, suspend/reprend le sprite autour, et range le resultat ici.
+    DisplayManager* _display = nullptr;
+    static constexpr size_t VERIFY_URL_MAX = 200;
+    volatile bool _verifyPending = false;
+    volatile bool _verifyRunning = false;
+    volatile bool _verifyResultReady = false;
+    char _verifyUrl[VERIFY_URL_MAX] = {0};
+    uint32_t _verifySize = 0;
+    char _verifySha256[65] = {0};
+    WebAssetVerifyResult _verifyResult;
+
+    void runPendingVerify();
+
     void setupRoutes();
     void setupCaptiveRoutes();
     void handleStatus(AsyncWebServerRequest* request);
@@ -512,6 +540,11 @@ private:
     // un declenchement pilote par le manifeste une fois l'etape 3 exploitee
     // en conditions reelles (premier tag publie avec le manifeste Web).
     void handleVerifyWebAsset(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleVerifyWebAssetStatus(AsyncWebServerRequest* req);
+
+    // Diagnostic temporaire, lecture seule — voir ROADMAP.md, "constat du
+    // 16 aout 2026" (fragmentation memoire bloquant le handshake TLS).
+    void handleHeapInfo(AsyncWebServerRequest* req);
 
     void sendJson(AsyncWebServerRequest* req, const JsonDocument& doc, int code = 200);
     void sendOk(AsyncWebServerRequest* req);

@@ -4,6 +4,8 @@
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
+#include "DisplayManager.h"
+#include <esp_heap_caps.h>
 
 // ─────────────────────────────────────────────────────────────
 //  Page HTML du portail captif — servie en mode AP
@@ -60,6 +62,10 @@ void WebManager::update() {
         ESP.restart();
         return;
     }
+
+    // Avant le early-return ci-dessous : voir runPendingVerify() et la note
+    // sur _verifyPending (WebManager.h).
+    runPendingVerify();
 
     if (!_systemSavePending) return;
     if (!AquaLook::Time::deadlineReached(nowMs, _systemSaveAtMs)) return;
@@ -228,6 +234,10 @@ void WebManager::setupRoutes() {
 
 #undef POST_JSON
 
+    _server.on("/api/debug/verify-web-asset/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleVerifyWebAssetStatus(req);
+    });
+
     // Validation temporaire de l'ecriture SD reseau — voir la note sur
     // DeployFileState (WebManager.h) et ROADMAP.md.
     _server.on(
@@ -239,6 +249,13 @@ void WebManager::setupRoutes() {
             handleDeployFileBody(req, data, len, index, total);
         }
     );
+
+    // Diagnostic temporaire pour la fragmentation memoire constatee lors des
+    // tests HTTPS (voir ROADMAP.md, "constat du 16 aout 2026") : lecture
+    // seule, aucun effet de bord, a retirer une fois la piste tranchee.
+    _server.on("/api/debug/heap-info", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleHeapInfo(req);
+    });
 
     _server.on("/api/captive", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleStartCaptive(req);
@@ -715,20 +732,124 @@ void WebManager::handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& do
 // a jour distante des ressources Web" — etape 4 : telecharger et verifier
 // un fichier sans l'ecrire. {url, size, sha256} passes manuellement pour
 // l'instant, en attendant un declenchement pilote par le manifeste.
+//
+// N'execute PAS le telechargement ici : ce callback tourne sur la tache
+// AsyncTCP, jamais sur la boucle principale, et l'operation doit pouvoir
+// suspendre/reprendre un TFT_eSprite (voir DisplayManager::
+// suspendForMemoryRelief(), reserve a la boucle principale). Depose juste
+// la demande dans des champs fixes (jamais de String sous section critique)
+// et repond immediatement ; /api/debug/verify-web-asset/status donne le
+// resultat une fois WebManager::update() (loop principale) passe dessus.
 void WebManager::handleVerifyWebAsset(AsyncWebServerRequest* req, JsonDocument& doc) {
     const char* url = doc["url"] | "";
     const uint32_t size = doc["size"] | 0U;
     const char* sha256 = doc["sha256"] | "";
 
-    const WebAssetVerifyResult result = WebAssetsUpdater::verifyOnly(url, size, sha256);
+    if (strlen(url) == 0U || strlen(url) >= VERIFY_URL_MAX ||
+        size == 0U || strlen(sha256) != 64U) {
+        sendError(req, "arguments invalides (url/size/sha256)");
+        return;
+    }
+
+    portENTER_CRITICAL(&_pendingMux);
+    if (_verifyPending || _verifyRunning) {
+        portEXIT_CRITICAL(&_pendingMux);
+        sendError(req, "verification deja en cours", 409);
+        return;
+    }
+    std::strncpy(_verifyUrl, url, VERIFY_URL_MAX - 1U);
+    _verifyUrl[VERIFY_URL_MAX - 1U] = '\0';
+    _verifySize = size;
+    std::strncpy(_verifySha256, sha256, sizeof(_verifySha256) - 1U);
+    _verifySha256[sizeof(_verifySha256) - 1U] = '\0';
+    _verifyResultReady = false;
+    _verifyPending = true;
+    portEXIT_CRITICAL(&_pendingMux);
 
     JsonDocument out;
-    out["ok"] = result.success;
-    out["downloadedSize"] = result.downloadedSize;
-    out["downloadDurationMs"] = result.downloadDurationMs;
-    out["sha256"] = result.calculatedSha256;
-    out["detail"] = result.detail;
-    sendJson(req, out, result.success ? 200 : 502);
+    out["queued"] = true;
+    sendJson(req, out, 202);
+}
+
+void WebManager::handleVerifyWebAssetStatus(AsyncWebServerRequest* req) {
+    bool running, ready;
+    WebAssetVerifyResult result;
+    portENTER_CRITICAL(&_pendingMux);
+    running = _verifyRunning || _verifyPending;
+    ready = _verifyResultReady;
+    result = _verifyResult;
+    portEXIT_CRITICAL(&_pendingMux);
+
+    JsonDocument out;
+    out["running"] = running;
+    out["ready"] = ready;
+    if (ready) {
+        out["ok"] = result.success;
+        out["downloadedSize"] = result.downloadedSize;
+        out["downloadDurationMs"] = result.downloadDurationMs;
+        out["sha256"] = result.calculatedSha256;
+        out["detail"] = result.detail;
+    }
+    sendJson(req, out);
+}
+
+// Appele depuis WebManager::update() (boucle principale, jamais depuis la
+// tache AsyncTCP) : execute la demande deposee par handleVerifyWebAsset,
+// suspend/reprend le sprite d'ecran autour du telechargement. Voir la note
+// sur DisplayManager::suspendForMemoryRelief() pour la justification de
+// securite (pourquoi ce n'est correct qu'ici, jamais dans le callback).
+void WebManager::runPendingVerify() {
+    char url[VERIFY_URL_MAX];
+    uint32_t size;
+    char sha256[65];
+
+    portENTER_CRITICAL(&_pendingMux);
+    if (!_verifyPending) {
+        portEXIT_CRITICAL(&_pendingMux);
+        return;
+    }
+    _verifyPending = false;
+    _verifyRunning = true;
+    std::strncpy(url, _verifyUrl, sizeof(url));
+    size = _verifySize;
+    std::strncpy(sha256, _verifySha256, sizeof(sha256));
+    portEXIT_CRITICAL(&_pendingMux);
+
+    EventLog::log(LOG_INFO, "WebAssets: verification demarree url=%s taille=%lu",
+                  url, static_cast<unsigned long>(size));
+
+    if (_display) _display->suspendForMemoryRelief();
+    const WebAssetVerifyResult result = WebAssetsUpdater::verifyOnly(url, size, sha256);
+    if (_display) _display->resumeAfterMemoryRelief();
+
+    portENTER_CRITICAL(&_pendingMux);
+    _verifyResult = result;
+    _verifyResultReady = true;
+    _verifyRunning = false;
+    portEXIT_CRITICAL(&_pendingMux);
+}
+
+// Voir la note sur handleHeapInfo (WebManager.h) et ROADMAP.md, "constat du
+// 16 aout 2026" : identifier precisement la fragmentation qui bloque le
+// handshake TLS en fonctionnement normal, avant de tenter un correctif.
+// heap_caps_print_heap_info() liste chaque bloc libre sur le port Serie
+// (visible dans le journal), heap_caps_get_info() donne le resume expose ici.
+void WebManager::handleHeapInfo(AsyncWebServerRequest* req) {
+    multi_heap_info_t info;
+    heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+
+    Serial.println("[HeapInfo] Dump detaille des blocs libres (MALLOC_CAP_8BIT) :");
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+
+    JsonDocument out;
+    out["totalFreeBytes"] = info.total_free_bytes;
+    out["totalAllocatedBytes"] = info.total_allocated_bytes;
+    out["largestFreeBlock"] = info.largest_free_block;
+    out["minimumFreeBytes"] = info.minimum_free_bytes;
+    out["allocatedBlocks"] = info.allocated_blocks;
+    out["freeBlocks"] = info.free_blocks;
+    out["totalBlocks"] = info.total_blocks;
+    sendJson(req, out);
 }
 
 void WebManager::handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc) {

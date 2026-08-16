@@ -88,6 +88,31 @@ public:
 
     static constexpr uint8_t SPLASH_STEPS = 8;
 
+    // Libere/recree temporairement _sprBtn0 (154x120, ~37 Ko) ET _sprPlan
+    // (320x90, ~58 Ko), ~95 Ko au total — voir ROADMAP.md, "constat du 16
+    // aout 2026" : un premier essai avec _sprBtn0 seul (~37 Ko) a change
+    // l'erreur mbedTLS (memoire -> certificat) mais pas suffit ; le test de
+    // reference reussi (CHECK_VERSION en mode maintenance) disposait de
+    // ~245 Ko libres contre ~17 Ko ici au repos, d'ou l'ajout de _sprPlan.
+    // A appeler UNIQUEMENT depuis la boucle principale, jamais depuis un
+    // callback AsyncTCP : TFT_eSprite n'est pas thread-safe, et libere/
+    // recreer pendant qu'un rendu concurrent y dessine toucherait un
+    // pointeur invalide. Dans ce projet, WebManager::update() et
+    // DisplayManager::update() sont tous deux appeles depuis loop()
+    // (main.cpp), jamais depuis une autre tache : suspendre puis reprendre
+    // a l'interieur d'un seul appel a WebManager::update(), avant que
+    // DisplayManager::update() ne soit rappele dans la meme iteration, est
+    // donc sur. Pendant la suspension, tout rendu qui toucherait ces
+    // sprites planterait — ne rien faire d'autre entre les deux appels.
+    void suspendForMemoryRelief() {
+        _sprBtn0.deleteSprite();
+        _sprPlan.deleteSprite();
+    }
+    void resumeAfterMemoryRelief() {
+        _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
+        _sprPlan.createSprite(320, PL_PLAN_H);
+    }
+
 private:
     struct OutputAwareRelayState {
         RelaisManager* relay = nullptr;
