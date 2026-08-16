@@ -280,6 +280,25 @@ Cadre matériel : le projet vise **une seule carte cible**, décision actée le 
 
 À définir dans ce chapitre : la procédure de préparation d’un module neuf (ordre des opérations, vérifications de recette), la manière de constater a posteriori qu’un module a bien la bonne table de partitions, et le sort des modules éventuellement déjà flashés avec l’ancienne.
 
+### 🌙 Portage vers Guition JC4827W543C (ESP32-S3) — chantier en sommeil
+
+**Statut : en sommeil depuis le 16 août 2026, en attente de livraison des cartes.**
+
+Nouvelles cartes commandées le 16 août 2026 : ESP32-S3, 8 Mo de PSRAM, 4 Mo de flash, dalle IPS 4,3" 480×272, tactile capacitif. Elles deviendront le **socle matériel unique** du projet, conformément à la décision « jamais de code gérant deux cartes ».
+
+Analyse d'impact complète : **`docs/architecture/HW_JC4827W543_PORT_IMPACT.md`**, sur la branche **`hw/jc4827w543-esp32s3-port`**. Le firmware en service n'est pas impacté — cette branche ne contient aucune modification de code.
+
+Ce que l'analyse a établi, et qui contredit l'hypothèse initiale d'un simple changement cosmétique :
+
+- le contrôleur n'est pas un ST77xx mais un **NV3041A en QSPI**, que `TFT_eSPI` ne sait pas piloter — la couche d'affichage doit passer à `Arduino_GFX` ;
+- surface concernée mesurée : 3 625 lignes, 431 appels, dont ~423 portables mécaniquement via un adaptateur et **8 seulement** demandant une décision individuelle ;
+- le coût est concentré dans le **texte** (pas d'équivalent au `drawString` aligné par datum), et dans la **refonte de la mise en page** en 480×272 ;
+- bonnes surprises : les polices du thème sont déjà au format Adafruit `GFXfont` attendu par `Arduino_GFX`, et les couleurs déjà en RGB565 — ces deux postes ne coûtent rien.
+
+Opportunité à arbitrer une fois le matériel disponible : avec 8 Mo de PSRAM, un framebuffer plein écran coûte 261 Ko (3 % de la PSRAM) et permettrait de retirer les sprites partiels, la libération des sprites en veille ajoutée le 16 août 2026, et avec eux toute la classe de bugs « RAM interne saturée ». Conditionné à la mesure du coût d'un rafraîchissement depuis la PSRAM.
+
+Reprise : dérouler les validations par sous-système du document (§8) dès réception, en commençant par les deux mesures décisives — coût du rafraîchissement plein écran, et disponibilité du bus I2C pour le bloc relais. Aucune estimation de charge n'est donnée avant ces mesures, qui peuvent remettre en cause la stratégie.
+
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
 Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
