@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>AquaLook - Journal</title>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}button{border:1px solid #ef5350;border-radius:6px;padding:.65rem 1rem;background:#b71c1c;color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#263238;border-color:#607d8b}button.good{background:#1b5e20;border-color:#43a047}button.danger-action{background:#4a1717;border-color:#ef5350}button:disabled{opacity:.55;cursor:default}#state{font-size:.9rem;color:#aaa}#state.active{color:#ff6b6b;font-weight:700}#state.acked{color:#81c784;font-weight:700}main{padding:1rem;display:grid;gap:1rem}.card{background:#151515;border:1px solid #333;border-radius:8px;padding:1rem}.card h2{margin:.1rem 0 .8rem;font-size:1.05rem}.row{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem}label{display:grid;gap:.3rem;font-size:.85rem;color:#bbb}input{width:100%;padding:.65rem;border:1px solid #455a64;border-radius:6px;background:#0d171c;color:#fff}input.invalid{border-color:#ef5350;box-shadow:0 0 0 1px #ef535055}.meta{font-size:.85rem;color:#aaa;line-height:1.5}.help{font-size:.78rem;color:#8fa3ad;line-height:1.35}.field-error{min-height:1.1rem;font-size:.78rem;color:#ff6b6b}.danger{color:#ff6b6b}.ok{color:#81c784}#journal{width:100%;height:56vh;overflow:auto;margin:0;padding:.8rem;border:1px solid #263238;border-radius:8px;background:#050505;color:#d7e3e8;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}#journal-state{font-size:.78rem;color:#8fa3ad}
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}button{border:1px solid #ef5350;border-radius:6px;padding:.65rem 1rem;background:#b71c1c;color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#263238;border-color:#607d8b}button.good{background:#1b5e20;border-color:#43a047}button.danger-action{background:#4a1717;border-color:#ef5350}button:disabled{opacity:.55;cursor:default}#state{font-size:.9rem;color:#aaa}#state.active{color:#ff6b6b;font-weight:700}#state.acked{color:#81c784;font-weight:700}main{padding:1rem;display:grid;gap:1rem}.card{background:#151515;border:1px solid #333;border-radius:8px;padding:1rem}.card h2{margin:.1rem 0 .8rem;font-size:1.05rem}.row{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem}label{display:grid;gap:.3rem;font-size:.85rem;color:#bbb}input{width:100%;padding:.65rem;border:1px solid #455a64;border-radius:6px;background:#0d171c;color:#fff}input.invalid{border-color:#ef5350;box-shadow:0 0 0 1px #ef535055}.meta{font-size:.85rem;color:#aaa;line-height:1.5}.help{font-size:.78rem;color:#8fa3ad;line-height:1.35}.field-error{min-height:1.1rem;font-size:.78rem;color:#ff6b6b}.danger{color:#ff6b6b}.ok{color:#81c784}#journal{width:100%;height:56vh;overflow:auto;margin:0;padding:.8rem;border:1px solid #263238;border-radius:8px;background:#050505;color:#d7e3e8;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}#journal-state{font-size:.78rem;color:#8fa3ad}.log-err{color:#ff6b6b}.log-wrn{color:#ffb74d}.log-inf{color:#8fa3ad}
 </style></head><body>
 <header>
 <button id="ack-btn" onclick="ackErrors()">Acquitter les erreurs</button>
@@ -24,6 +24,13 @@
 <script>
 const $=id=>document.getElementById(id);
 let journalRefreshRunning=false;
+function renderJournal(text){
+ const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+ $('journal').innerHTML=text.split('\n').map(line=>{
+  const cls=line.includes('[ERR]')?'log-err':line.includes('[WRN]')?'log-wrn':line.includes('[INF]')?'log-inf':'';
+  return cls?`<span class="${cls}">${esc(line)}</span>`:esc(line);
+ }).join('\n');
+}
 async function getJson(url,opt){const r=await fetch(url,{cache:'no-store',...(opt||{})});let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
 async function refreshJournal(forceBottom=false){
  if(journalRefreshRunning)return;
@@ -33,7 +40,7 @@ async function refreshJournal(forceBottom=false){
  try{
   const r=await fetch('/api/logs.txt?_='+Date.now(),{cache:'no-store',headers:{'Accept':'text/plain; charset=utf-8'}});
   if(!r.ok)throw new Error('HTTP '+r.status);
-  box.textContent=await r.text();
+  renderJournal(await r.text());
   state.textContent='Actualisé à '+new Date().toLocaleTimeString('fr-FR');
   if(forceBottom||wasNearBottom)box.scrollTop=box.scrollHeight;
  }catch(e){state.textContent='Journal indisponible : '+e.message}
