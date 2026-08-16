@@ -291,6 +291,15 @@ public:
     // Sync planning complet depuis ScheduleManager
     void syncZoneFromSchedule(uint8_t zone, const ZoneSchedule& zs);
 
+    // ── Etat de la persistance ────────────────────────────────
+    // La sauvegarde est differee (anti-usure flash) : au moment ou une requete
+    // HTTP repond, l'ecriture n'a pas encore eu lieu. L'interface doit donc
+    // pouvoir distinguer « accepte » de « reellement enregistre », et surtout
+    // signaler un echec au lieu de laisser croire que tout va bien.
+    bool savePending() const { return _saveDirty; }
+    bool saveFailed()  const { return _saveFailed; }
+    bool saveSucceededOnce() const { return _saveSucceededOnce; }
+
 private:
     CfgWifi   _wifi;
     CfgTouch  _touch;
@@ -309,6 +318,12 @@ private:
     // Sauvegarde différée — voir deferSave()/update().
     bool      _saveDirty = false;
     uint32_t  _saveDueMs = 0;
+    // Etat reel de la persistance, expose pour que l'interface dise la verite
+    // plutot que d'annoncer un succes qu'elle n'a pas verifie.
+    bool      _saveFailed = false;
+    bool      _saveSucceededOnce = false;
+    void      markSaveFailed();
+    void      markSaveOk();
 
     bool loadNvs();
     bool loadLegacyJson();

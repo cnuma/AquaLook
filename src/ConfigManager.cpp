@@ -2,6 +2,7 @@
 #include "EventBus.h"
 #include "EventLog.h"
 #include "TimeUtils.h"
+#include "FaultManager.h"
 #include <Preferences.h>
 #include <cstring>
 #include <cstddef>
@@ -474,6 +475,7 @@ void ConfigManager::save() {
     Preferences prefs;
     if (!prefs.begin(CFG_NVS_NAMESPACE, false)) {
         EventLog::log(LOG_ERROR, "Config: ouverture NVS ecriture impossible");
+        markSaveFailed();
         free(blob);
         return;
     }
@@ -485,11 +487,29 @@ void ConfigManager::save() {
     if (written != sizeof(PersistedConfig)) {
         EventLog::log(LOG_ERROR, "Config: ecriture NVS incomplete (%u/%u)",
                       (unsigned)written, (unsigned)sizeof(PersistedConfig));
+        markSaveFailed();
         return;
     }
 
+    markSaveOk();
     EventLog::log(LOG_INFO, "Config: sauvegarde NVS OK (%u octets, schema %u)",
                   (unsigned)written, CFG_NVS_SCHEMA);
+}
+
+// Un echec de sauvegarde doit devenir VISIBLE, pas rester au fond d'un
+// journal. Sans cela, l'utilisateur modifie un reglage, l'interface confirme,
+// et la perte n'est decouverte qu'au redemarrage suivant — le pire cas pour
+// la confiance, car rien ne signale que quelque chose a mal tourne.
+void ConfigManager::markSaveFailed() {
+    _saveFailed = true;
+    FaultManager::setActive(FaultId::CONFIG_PERSIST, true);
+    FaultManager::notifyError();   // voyant rouge jusqu'a acquittement explicite
+}
+
+void ConfigManager::markSaveOk() {
+    _saveFailed = false;
+    _saveSucceededOnce = true;
+    FaultManager::setActive(FaultId::CONFIG_PERSIST, false);
 }
 
 void ConfigManager::deferSave() {

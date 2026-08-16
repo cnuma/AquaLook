@@ -299,6 +299,17 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
     doc["uptime"]  = millis() / 1000UL;
     doc["heap"]    = ESP.getFreeHeap();
 
+    // Etat reel de la persistance de la configuration. La sauvegarde etant
+    // differee (anti-usure flash), une reponse HTTP "ok" ne signifie que
+    // "accepte", jamais "enregistre" : sans cette information, l'interface
+    // laisserait croire qu'un reglage est acquis alors qu'il peut etre perdu
+    // au prochain redemarrage. On dit ce qu'on sait, pas ce qui arrange.
+    if (_config) {
+        JsonObject save = doc["configSave"].to<JsonObject>();
+        save["pending"] = _config->savePending();
+        save["failed"]  = _config->saveFailed();
+    }
+
     JsonObject weather = doc["weather"].to<JsonObject>();
     weather["rainExpected"] = _weather->isRainExpected();
     weather["rainMm"]       = _weather->getRainMm();
@@ -1303,12 +1314,40 @@ void WebManager::sendJson(AsyncWebServerRequest* req,
         req->url().c_str(), code, len, micros() - startedUs);
 }
 
+// "ok" signifie exactement : la demande a ete acceptee et appliquee en memoire.
+// Il ne dit RIEN de la persistance, et ne peut rien en dire : la sauvegarde est
+// differee de SAVE_DEBOUNCE_MS pour menager la flash, donc au moment ou cette
+// reponse part, l'ecriture n'a pas encore eu lieu.
+//
+// D'ou les deux champs supplementaires, qui rapportent l'etat reel du module :
+//   persistPending : une sauvegarde est due et pas encore ecrite ;
+//   persistFailed  : la derniere tentative a ECHOUE — un reglage sera perdu au
+//                    prochain redemarrage.
+//
+// Ajoute le 16 aout 2026 : jusque-la cette route repondait {"ok":true} y compris
+// lorsque l'ecriture NVS echouait (0 octet sur 4884, partition saturee).
+// L'utilisateur voyait une confirmation, et ne decouvrait la perte qu'au
+// redemarrage suivant. Annoncer un succes non verifie coute plus cher a la
+// confiance qu'une erreur franche.
 void WebManager::sendOk(AsyncWebServerRequest* req) {
     const uint32_t startedUs = micros();
-    static constexpr char BODY[] = "{\"ok\":true}";
-    req->send(200, "application/json", BODY);
+
+    const bool pending = _config && _config->savePending();
+    const bool failed  = _config && _config->saveFailed();
+
+    // Tampon fixe plutot qu'un String : cette fonction est sur le chemin de
+    // toutes les ecritures, on evite d'y faire churner le tas.
+    char body[72];
+    const int len = snprintf(
+        body, sizeof(body),
+        "{\"ok\":true,\"persistPending\":%s,\"persistFailed\":%s}",
+        pending ? "true" : "false",
+        failed  ? "true" : "false"
+    );
+
+    req->send(200, "application/json", body);
     SystemDiagnostics::noteWebResponse(
-        req->url().c_str(), 200, sizeof(BODY) - 1, micros() - startedUs);
+        req->url().c_str(), 200, len > 0 ? (size_t)len : 0U, micros() - startedUs);
 }
 
 void WebManager::sendError(AsyncWebServerRequest* req,

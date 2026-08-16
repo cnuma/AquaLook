@@ -39,6 +39,53 @@ Or **MQTT/TLS suppose une connexion TLS permanente**, et non ponctuelle comme le
 
 **Recommandation : trancher l'évaluation PSRAM avant d'engager le client MQTT sur le firmware.** Construire l'infrastructure côté serveur peut se faire en parallèle sans risque — elle ne dépend pas de ce choix — mais le raccordement du module devrait l'attendre. À défaut, prévoir de mesurer précisément l'empreinte mémoire d'une session MQTT/TLS maintenue avant toute intégration durable.
 
+## 3 bis. Télémétrie et supervision prédictive — objectif affirmé le 16 août 2026
+
+Exigence exprimée : les journaux doivent remonter vers le serveur afin d'**anticiper et prédire** le comportement des modules, en mode proactif — et non constater les pannes après coup.
+
+### Pourquoi c'est fondé, et pas une élégance
+
+Les deux pannes du 16 août 2026 étaient l'une et l'autre **précédées d'indicateurs mesurables**, et toutes deux ont pourtant été découvertes par la panne :
+
+- **saturation NVS** : les entrées libres de la partition diminuaient à mesure que des namespaces s'ajoutaient. Le seuil a été franchi sans que rien ne le signale, et la première manifestation a été la perte silencieuse d'un réglage, puis celle des identifiants WiFi ;
+- **effondrement du serveur Web** : le plus gros bloc mémoire contigu était descendu à ~17 Ko, et le minimum de tas atteint à ~650 octets. La première manifestation a été « la page ne se charge pas », attribuée à tort au WiFi pendant plusieurs heures.
+
+Dans les deux cas, un suivi de tendance aurait alerté **avant** l'incident. C'est exactement ce que cette exigence vise.
+
+### Les indicateurs précurseurs identifiés
+
+Repérés à l'usage, ils forment le socle de ce qu'il faut remonter. À noter : ce sont des **tendances** qui portent l'information, pas des valeurs instantanées.
+
+| Indicateur | Ce qu'il annonce | Remarque |
+|---|---|---|
+| **Plus gros bloc libre contigu** | fragmentation mémoire | **meilleur prédicteur que le tas libre total** — c'est lui qui décide si une allocation aboutit |
+| Minimum de tas atteint | marge réelle sous charge | valeur cumulée depuis le démarrage, très parlante |
+| Entrées NVS libres | saturation de la configuration | seuil franchi = pertes silencieuses |
+| Échecs de sauvegarde de configuration | perte de réglages | doit remonter comme **événement**, pas comme métrique |
+| Dépassements de boucle, avertissements de lenteur | dérive de charge | |
+| Événements de connexion zombie WiFi | qualité réseau du site | fréquence plus informative que l'occurrence |
+| Incidents carte SD | usure ou défaut du support | |
+| Redémarrages et leur cause | instabilité | un redémarrage non sollicité est toujours un signal |
+
+### Principe de conception : des métriques bornées, pas des journaux bruts
+
+Remonter les journaux tels quels serait une erreur : volume important, coût réseau et mémoire sur un module déjà contraint, et faible densité d'information. L'approche retenue :
+
+- **métriques périodiques**, structurées et bornées, sur `aqualook/v1/<moduleId>/diag` (arborescence déjà définie) ;
+- **événements à la survenue** pour ce qui est ponctuel et important — échec de persistance, redémarrage, incident SD, zombie WiFi ;
+- **extraits de journal uniquement sur incident**, en rafale bornée, jamais en flux continu ;
+- fréquence et taille limitées côté module, conformément à l'exigence existante de préservation de sa stabilité.
+
+Le stockage est déjà prévu (hypertable `module_message` en TimescaleDB) et la visualisation aussi (Grafana). L'essentiel du travail est donc côté module et côté définition des seuils.
+
+### Le prototype existe déjà
+
+La campagne de surveillance nocturne mise en place le 16 août 2026 (`logs/nuit-260816.log`) échantillonne précisément ces indicateurs à intervalle régulier, mesure le tas **au repos** pour disposer d'une série comparable, et n'alerte que sur franchissement de seuil. C'est, à la main et pour un seul module, exactement ce que la télémétrie doit automatiser pour une flotte. Les seuils qui s'y révéleront pertinents seront réutilisables tels quels.
+
+### Précaution
+
+Les journaux du module contiennent des éléments qui ne doivent pas partir sans y avoir pensé : nom du réseau WiFi, adresses IP locales, cible keepalive. Définir explicitement ce qui est transmis avant d'ouvrir le flux, plutôt que de filtrer après coup.
+
 ## 4. Ce qu'il faut installer sur le mini PC
 
 ### Socle
