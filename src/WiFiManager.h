@@ -125,6 +125,19 @@ private:
     static constexpr uint8_t  KEEPALIVE_FAILURE_THRESHOLD = 3;       // ~2 min15 avant reconnexion forcee
     static constexpr uint16_t KEEPALIVE_CHECK_PORT = 80;
 
+    // Escalade FaultManager si les cycles zombie se repetent — chacun se
+    // resout seul en general (~30s), donc un cycle isole ne doit pas
+    // declencher d'alerte persistante. Mais une instabilite recurrente
+    // (routeur qui redemarre, signal marginal...) merite un signal visible
+    // et acquittable (triangle LCD + LED), pas seulement une ligne de log
+    // qui defile. Non persiste au reboot (contrairement a l'incident SD) —
+    // portee volontairement limitee a la session en cours.
+    static constexpr uint8_t  ZOMBIE_ESCALATION_COUNT = 3;
+    static constexpr uint32_t ZOMBIE_ESCALATION_WINDOW_MS = 20UL * 60UL * 1000UL;  // 20 min
+    uint32_t _zombieEventsMs[ZOMBIE_ESCALATION_COUNT] = {0};
+    uint8_t  _zombieEventIdx = 0;
+    uint8_t  _zombieEventCount = 0;
+
     void scheduleAction(PendingAction action, uint32_t deadlineMs);
     bool processPendingAction(uint32_t now);
 
@@ -134,6 +147,7 @@ private:
     void handleConnected();
     void handleCaptivePortal();
     void checkKeepaliveReachable(uint32_t now);
+    void recordZombieEventAndMaybeEscalate(uint32_t now);
 
     void loadKeepaliveHost();
     void saveKeepaliveHost() const;

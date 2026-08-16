@@ -349,10 +349,41 @@ void WiFiManager::checkKeepaliveReachable(uint32_t now) {
         static_cast<unsigned>(_consecutiveKeepaliveFailures)
     );
     _consecutiveKeepaliveFailures = 0;
+    recordZombieEventAndMaybeEscalate(now);
     WiFi.disconnect(true);
     _state = State::DISCONNECTED;
     _lastActionMs = now;
     EventBus::displayDirty = true;
+}
+
+// Un cycle zombie isole se resout seul en general (~30s, prochaine tentative
+// de connexion) et ne merite pas d'alerte persistante. Mais si
+// ZOMBIE_ESCALATION_COUNT cycles surviennent en moins de
+// ZOMBIE_ESCALATION_WINDOW_MS, ca sent l'instabilite recurrente (routeur,
+// signal marginal...) plutot qu'un accident isole : on le signale via
+// FaultManager, comme l'incident SD (triangle LCD + LED), pour laisser une
+// trace visible et acquittable au lieu que chaque episode se referme tout
+// seul sans jamais rien remonter a l'utilisateur.
+void WiFiManager::recordZombieEventAndMaybeEscalate(uint32_t now) {
+    _zombieEventsMs[_zombieEventIdx] = now;
+    _zombieEventIdx = (_zombieEventIdx + 1) % ZOMBIE_ESCALATION_COUNT;
+    if (_zombieEventCount < ZOMBIE_ESCALATION_COUNT) _zombieEventCount++;
+
+    if (_zombieEventCount < ZOMBIE_ESCALATION_COUNT) return;
+
+    // Apres l'incrementation ci-dessus, cet index pointe sur la case la
+    // plus ancienne des ZOMBIE_ESCALATION_COUNT dernieres (celle qui sera
+    // ecrasee au prochain evenement).
+    const uint32_t oldest = _zombieEventsMs[_zombieEventIdx];
+    if (now - oldest > ZOMBIE_ESCALATION_WINDOW_MS) return;
+
+    FaultManager::setActive(FaultId::WIFI, true);
+    EventLog::log(
+        LOG_ERROR,
+        "WiFi: instabilite recurrente (x%u cycles en <%lumin), signalement persistant",
+        static_cast<unsigned>(ZOMBIE_ESCALATION_COUNT),
+        static_cast<unsigned long>(ZOMBIE_ESCALATION_WINDOW_MS / 60000UL)
+    );
 }
 
 void WiFiManager::handleDisconnected(uint32_t now) {
