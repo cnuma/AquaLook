@@ -136,7 +136,7 @@ Invariant impératif : aucune mise à jour ne doit pouvoir activer ou désactive
 
 ### Mise à jour distante des ressources Web — canal séparé de l’OTA firmware
 
-**Statut : besoin identifié le 16 août 2026, aucune implémentation.** À ce jour, `data/` (pages HTML, `app.js`, CSS) n’est déployé sur la carte SD que par synchronisation locale (`tools/sync-sd-assets.ps1`), qui suppose un accès physique à la carte SD (retrait, lecteur sur un PC ayant le dépôt, réinsertion). L’OTA firmware ne touche pas ce contenu : une mise à jour OTA installée ne change jamais ce qui est affiché sur `/`. Un horodatage de synchro (`assets-version.json`, généré par le script local, affiché en pied de page de `/`) permet seulement de constater visuellement quelle version est déployée — pas encore de la déployer à distance.
+**Statut : bloquant avant mise en production, chantier démarré le 16 août 2026.** À ce jour, `data/` (pages HTML, `app.js`, CSS) n’est déployé sur la carte SD que par synchronisation locale (`tools/sync-sd-assets.ps1`), qui suppose un accès physique à la carte SD (retrait, lecteur sur un PC ayant le dépôt, réinsertion). Cette manipulation est tenable pendant le développement, avec le module à portée de main ; elle ne l’est plus une fois le module installé en usage réel, hors d’atteinte physique facile. C’est donc un prérequis explicite avant tout déploiement en production, pas une simple amélioration de confort. L’OTA firmware ne couvre pas ce besoin : une mise à jour OTA installée ne change jamais ce qui est affiché sur `/`. Un horodatage de synchro (`assets-version.json`, généré par le script local, affiché en pied de page de `/`) permet seulement de constater visuellement quelle version est déployée — pas encore de la déployer à distance.
 
 Contrainte d’architecture centrale, à respecter dans toute conception : le mode maintenance OTA (`MaintenanceSetupWrapper.cpp`, `-Wl,--wrap=_Z5setupv`) exécute les opérations de flash firmware dans une tâche FreeRTOS isolée et volontairement minimale — sans SD, sans écran, sans serveur Web initialisés. C’est un choix délibéré d’isolation pendant une opération risquée (déjà la raison pour laquelle `MaintenanceResultStore` a été conservé en NVS plutôt que sur SD). Un déploiement de ressources Web a nécessairement besoin d’écrire sur la SD : il ne peut donc **pas** être greffé dans ce flux de maintenance existant sans revoir cette isolation. La conception doit passer par un second canal, indépendant, qui s’exécute en fonctionnement normal (WiFi, SD et le reste déjà disponibles comme pour le reste de l’application).
 
@@ -155,6 +155,16 @@ Travaux préalables identifiés :
 - `StorageManager` n’expose aujourd’hui que de la lecture (`openRead`/`readChunk`/`existsOnSd`) ; une capacité d’écriture symétrique (`openWrite`/`writeChunk`/suppression), protégée par le même mutex que le reste des accès SD, est un prérequis ;
 - étendre `tools/generate_ota_manifest.py` (ou créer un script dédié) et `.github/workflows/ota-release.yml` pour publier ce second manifeste avec chaque release ;
 - décider du comportement si l’écriture est interrompue en cours de déploiement (coupure réseau ou alimentation) : le module ne doit jamais se retrouver avec un mélange incohérent d’anciens et de nouveaux fichiers qui casserait le site servi.
+
+Ordre de réalisation proposé :
+
+1. capacité d’écriture SD dans `StorageManager`, mutex-protégée comme la lecture existante — **démarré le 16 août 2026** ;
+2. validation isolée de cette écriture (route de test ou équivalent) avant tout branchement réseau ;
+3. format du manifeste des ressources Web et extension de la chaîne de publication GitHub Releases ;
+4. téléchargement + vérification SHA-256 d’un fichier, sans écriture (symétrique à l’étape « vérification sans installation » de l’OTA firmware) ;
+5. écriture effective sur SD, avec stratégie explicite de cohérence en cas d’interruption ;
+6. interface locale (`/ota`) et journalisation de chaque étape ;
+7. vérification périodique, une fois la chaîne manuelle éprouvée sur le terrain.
 
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
