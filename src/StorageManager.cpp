@@ -76,6 +76,7 @@ void StorageManager::begin() {
         }
 
         logMounted(false, 0);
+        selfTestSdWrite();
         return;
     }
 
@@ -225,6 +226,109 @@ void StorageManager::closeFile(FsFile& file) {
     if (!lockSd()) return;
     file.close();
     unlockSd();
+}
+
+bool StorageManager::openWrite(const char* path, FsFile& file) {
+    if (!_sdAvailable ||
+        _status != StorageStatus::READY ||
+        !path ||
+        path[0] != '/') {
+        return false;
+    }
+
+    if (!lockSd()) return false;
+    if (file.isOpen()) file.close();
+    // O_CREAT | O_TRUNC : remplacement complet du contenu existant, jamais
+    // une ecriture partielle superposee a un ancien fichier plus long.
+    file = _sd.open(path, O_WRONLY | O_CREAT | O_TRUNC);
+    unlockSd();
+    return file.isOpen();
+}
+
+int32_t StorageManager::writeChunk(FsFile& file, const uint8_t* buffer, size_t len) {
+    if (!file.isOpen() || !buffer || len == 0U) return -1;
+    if (!lockSd()) return -1;
+    const int32_t written = file.write(buffer, len);
+    unlockSd();
+    return written;
+}
+
+bool StorageManager::deleteOnSd(const char* path) {
+    if (!_sdAvailable ||
+        _status != StorageStatus::READY ||
+        !path ||
+        path[0] != '/') {
+        return false;
+    }
+    if (!lockSd()) return false;
+    const bool ok = !_sd.exists(path) || _sd.remove(path);
+    unlockSd();
+    return ok;
+}
+
+void StorageManager::selfTestSdWrite() {
+    static constexpr const char* TMP_PATH  = "/www/.write_selftest.tmp";
+    static constexpr const char* FINAL_PATH = "/www/.write_selftest";
+    static constexpr const char* CONTENT = "AquaLook SD write self-test";
+    const size_t len = strlen(CONTENT);
+
+    FsFile f;
+    if (!openWrite(TMP_PATH, f)) {
+        EventLog::log(LOG_WARN, "Stockage: auto-test ecriture SD echoue (ouverture)");
+        return;
+    }
+    const int32_t written = writeChunk(f, reinterpret_cast<const uint8_t*>(CONTENT), len);
+    closeFile(f);
+
+    if (written != static_cast<int32_t>(len)) {
+        EventLog::log(
+            LOG_WARN,
+            "Stockage: auto-test ecriture SD echoue (ecrit %ld/%u octets)",
+            static_cast<long>(written),
+            static_cast<unsigned>(len)
+        );
+        deleteOnSd(TMP_PATH);
+        return;
+    }
+
+    if (!renameOnSd(TMP_PATH, FINAL_PATH)) {
+        EventLog::log(LOG_WARN, "Stockage: auto-test ecriture SD echoue (renommage)");
+        deleteOnSd(TMP_PATH);
+        return;
+    }
+
+    char buf[64] = {0};
+    bool readOk = false;
+    FsFile rf;
+    if (openRead(FINAL_PATH, rf)) {
+        const int32_t n = readChunk(rf, reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1U);
+        closeFile(rf);
+        readOk = (n == static_cast<int32_t>(len)) && (memcmp(buf, CONTENT, len) == 0);
+    }
+    deleteOnSd(FINAL_PATH);
+
+    if (readOk) {
+        EventLog::log(LOG_INFO, "Stockage: auto-test ecriture/lecture SD OK");
+    } else {
+        EventLog::log(LOG_WARN, "Stockage: auto-test ecriture SD : relecture incoherente");
+    }
+}
+
+bool StorageManager::renameOnSd(const char* fromPath, const char* toPath) {
+    if (!_sdAvailable ||
+        _status != StorageStatus::READY ||
+        !fromPath || fromPath[0] != '/' ||
+        !toPath || toPath[0] != '/') {
+        return false;
+    }
+    if (!lockSd()) return false;
+    // rename() sur SdFat echoue si la cible existe deja : la supprimer
+    // d'abord rend l'appel idempotent (utile pour "remplacer le fichier
+    // final par la version fraichement telechargee").
+    if (_sd.exists(toPath)) _sd.remove(toPath);
+    const bool ok = _sd.rename(fromPath, toPath);
+    unlockSd();
+    return ok;
 }
 
 void StorageManager::reportReadError(const char* path) {

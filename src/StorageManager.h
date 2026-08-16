@@ -55,6 +55,20 @@ public:
     void reportReadError(const char* path);
     const char* cardTypeName() const;
 
+    // ── Ecriture (deploiement distant des ressources Web — voir ROADMAP.md,
+    //    "Mise a jour distante des ressources Web") ──────────────────────
+    // Meme protection mutex que la lecture ci-dessus. openWrite() tronque le
+    // fichier s'il existe deja (remplacement complet, pas d'ecriture
+    // partielle superposee a un ancien contenu). Le fichier ecrit avec un
+    // chemin temporaire puis renomme (commitWrite) est a la charge de
+    // l'appelant : cette classe ne fait qu'exposer les primitives, pas la
+    // strategie de coherence en cas d'interruption (a definir avec le reste
+    // du flux de deploiement).
+    bool openWrite(const char* path, FsFile& file);
+    int32_t writeChunk(FsFile& file, const uint8_t* buffer, size_t len);
+    bool deleteOnSd(const char* path);
+    bool renameOnSd(const char* fromPath, const char* toPath);
+
 private:
     enum class RecoveryTaskResult : uint8_t {
         NONE = 0,
@@ -74,6 +88,14 @@ private:
     void startRecoveryTask(uint32_t nowMs);
     void processRecoveryTaskResult(uint32_t nowMs);
     void logMounted(bool recovered, uint32_t downtimeMs);
+
+    // Valide une fois au montage que le chemin d'ecriture (openWrite/
+    // writeChunk/renameOnSd) fonctionne reellement sur ce matériel — voir
+    // ROADMAP.md, "Mise a jour distante des ressources Web". Ecrit puis
+    // relit un petit fichier cache (prefixe '.') sous /www, verifie le
+    // contenu, nettoie derriere elle. N'expose aucune route HTTP : ne
+    // depend d'aucune entree exterieure, rien a valider/filtrer.
+    void selfTestSdWrite();
 
     static void recoveryTaskEntry(void* parameter);
 
