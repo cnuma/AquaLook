@@ -969,6 +969,19 @@ function toggleActivity() {
 fetchStatus();
 fetchAdminStatus();  // charge ville + config systeme au demarrage
 fetchDisplayConfig(); // charge les tokens de design LCD et applique les couleurs de zone web
+fetchAssetsVersion(); // pied de page : date/heure de la derniere synchro SD (voir tools/sync-sd-assets.ps1)
+async function fetchAssetsVersion() {
+  const el = document.getElementById('assets-version');
+  if (!el) return;
+  try {
+    const r = await fetch('/assets-version.json', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const v = await r.json();
+    el.textContent = `Pages synchronisees le ${v.syncedAt}` + (v.gitSha ? ` (${v.gitSha})` : '');
+  } catch(e) {
+    el.textContent = '';  // ancienne synchro sans ce fichier -- rien a afficher, pas d'erreur genante
+  }
+}
 setInterval(fetchStatus, 8000);        // 8s -- moins agressif pour l'ESP32
 setInterval(fetchAdminStatus, 60000);  // 1min -- rarement necessaire
 let displayConfig = null;

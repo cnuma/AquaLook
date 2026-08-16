@@ -75,3 +75,22 @@ if ($errors.Count -gt 0) {
 $totalBytes = ($sourceFiles | Measure-Object Length -Sum).Sum
 Write-Host "Synchronisation SD validee : $($sourceFiles.Count) fichiers, $totalBytes octets." -ForegroundColor Green
 Write-Host "Arborescence attendue par AquaLook : /www/..."
+
+# Horodatage de synchronisation, affiche en pied de page (index.html) pour
+# confirmer visuellement qu'on voit bien la derniere version deployee, sans
+# avoir a deviner. Genere ici (pas dans data/) : sa valeur n'a de sens qu'au
+# moment de CETTE synchronisation, pas comme contenu versionne dans le repo.
+$syncedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$gitSha = $null
+try {
+    $gitSha = (& git -C $PSScriptRoot rev-parse --short HEAD 2>$null | Out-String).Trim()
+} catch {}
+
+$versionInfo = [ordered]@{
+    syncedAt  = $syncedAt
+    gitSha    = if ($gitSha) { $gitSha } else { $null }
+    fileCount = $sourceFiles.Count
+}
+$versionPath = Join-Path $targetPath 'assets-version.json'
+($versionInfo | ConvertTo-Json -Compress) | Set-Content -Path $versionPath -Encoding utf8 -NoNewline
+Write-Host "Horodatage ecrit : $versionPath ($syncedAt)"
