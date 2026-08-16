@@ -11,6 +11,7 @@
 #include "ScheduleManager.h"
 #include "ConfigManager.h"
 #include "ScreenManager.h"
+#include "WiFiManager.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 
 // ═══════════════════════════════════════════════════════════════
@@ -69,7 +70,7 @@ public:
 
     void begin(NTPManager* ntp, WeatherManager* weather,
                RelaisManager* relais, ScheduleManager* schedule,
-               ConfigManager* config);
+               ConfigManager* config, WiFiManager* wifi = nullptr);
     void update();
 
     // Demande un rafraichissement dynamique au prochain passage dans update().
@@ -142,6 +143,7 @@ private:
     // ── Managers ──────────────────────────────
     NTPManager*      _ntp      = nullptr;
     WeatherManager*  _weather  = nullptr;
+    WiFiManager*     _wifi     = nullptr;
     OutputAwareRelayState _relais;
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     ScheduleManager* _schedule = nullptr;
@@ -276,6 +278,7 @@ private:
     void createSprites();
     void renderTimeSprite();
     void renderSignalSprite();
+    bool isWifiSearching() const;
     void renderPlanSprite();                                         // LIST : 7 cols, PL_PLAN_H
     void renderPlanSpriteFull(uint16_t destY, uint16_t h,
                                uint8_t zStart, uint8_t zEnd);        // GRID4 : 7 cols, N zones

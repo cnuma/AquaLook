@@ -240,12 +240,13 @@ void DisplayManager::drawSplashBar(uint8_t step, const char* label) {
 // ═══════════════════════════════════════════════════════════════
 void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
                             RelaisManager* relais, ScheduleManager* schedule,
-                            ConfigManager* config) {
+                            ConfigManager* config, WiFiManager* wifi) {
     _ntp      = ntp;
     _weather  = weather;
     _relais   = relais;
     _schedule = schedule;
     _config   = config;
+    _wifi     = wifi;
 
     // Charger la palette et les tokens de layout depuis la config persistée
     // (avant tout fillScreen — Theme::BG doit avoir la bonne valeur dès maintenant)
@@ -311,7 +312,7 @@ void DisplayManager::update() {
             if (_relais->getState(z)) { anyActive = true; break; }
         }
     }
-    _screenMgr.update(anyActive);
+    _screenMgr.update(anyActive, isWifiSearching());
 
     // Si en veille : ne pas redessiner, juste gérer le touch pour réveil
     if (_screenMgr.isAsleep()) {
@@ -701,8 +702,29 @@ void DisplayManager::renderTimeSprite() {
     _sprTime.pushSprite(182, 6);
 }
 
+// Recherche WiFi (ni connecte, ni portail captif — connexion en cours ou
+// reconnexion apres detection zombie) : les 4 barres clignotent en ambre
+// au lieu de rester eteintes, pour que l'etat "recherche en cours" soit
+// visible d'un coup d'oeil plutot que de se confondre avec "aucun signal".
+bool DisplayManager::isWifiSearching() const {
+    return _wifi && !_wifi->isConnected() && !_wifi->isCaptivePortal();
+}
+
 void DisplayManager::renderSignalSprite() {
     _sprSignal.fillSprite(Theme::SURFACE);
+
+    if (isWifiSearching()) {
+        const bool blinkOn = (millis() / 300) % 2 == 0;
+        if (blinkOn) {
+            for (uint8_t i = 0; i < 4; i++) {
+                uint8_t h = 4 + i * 3;
+                _sprSignal.fillRect(i * 5, 16 - h, 4, h, Theme::AMBER);
+            }
+        }
+        _sprSignal.pushSprite(296, 6);
+        return;
+    }
+
     int8_t rssi = (int8_t)WiFi.RSSI();
     uint8_t bars = (rssi > -55) ? 4 : (rssi > -70) ? 3 : (rssi > -80) ? 2 : 1;
     if (WiFi.status() != WL_CONNECTED) bars = 0;
@@ -1454,9 +1476,11 @@ void DisplayManager::updateHomeDynamic_list() {
     String hhMM = (_ntp && _ntp->isSynced()) ? _ntp->getHHMM() : "--:--";
     if (hhMM != _hc.hhMM) { _hc.hhMM = hhMM; renderTimeSprite(); }
 
-    // Signal
+    // Signal — redessine aussi en continu pendant la recherche WiFi pour
+    // faire vivre le clignotement (rssi reste fige a 0 tant que non connecte,
+    // ce qui ne declencherait sinon jamais de redraw).
     int8_t rssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : 0;
-    if (rssi != _hc.rssi) { _hc.rssi = rssi; renderSignalSprite(); }
+    if (rssi != _hc.rssi || isWifiSearching()) { _hc.rssi = rssi; renderSignalSprite(); }
 
     // Planning (uniquement si visible)
     if (_nbZones <= 4 || !_listShowForce) {

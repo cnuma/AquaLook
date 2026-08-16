@@ -40,7 +40,7 @@ void ScreenManager::begin(ConfigManager* config) {
     Serial.println("[Screen] ScreenManager OK");
 }
 
-void ScreenManager::update(bool anyRelayActive) {
+void ScreenManager::update(bool anyRelayActive, bool wifiSearching) {
     const uint32_t now = millis();
 
     if (anyRelayActive && !_relayWasActive) {
@@ -58,8 +58,10 @@ void ScreenManager::update(bool anyRelayActive) {
         screenOff();
     }
 
+    // La LED reste le seul retour visuel en veille ecran (backlight eteint) :
+    // recherche WiFi visible meme ecran off, pas seulement en usage normal.
     if (_sleeping) {
-        updateLed(anyRelayActive);
+        updateLed(anyRelayActive, wifiSearching);
     } else {
         ledOff();
     }
@@ -93,7 +95,7 @@ void ScreenManager::screenOff() {
     Serial.println("[Screen] Veille");
 }
 
-void ScreenManager::updateLed(bool relayActive) {
+void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     const uint32_t now = millis();
     const uint8_t mode =
         _config ? _config->system().ledMode : 1;
@@ -105,6 +107,24 @@ void ScreenManager::updateLed(bool relayActive) {
 
             if (_ledPhase) {
                 ledSet(true, false, false);
+            } else {
+                ledOff();
+            }
+        }
+        return;
+    }
+
+    // Recherche WiFi (connexion en cours ou reconnexion apres zombie) :
+    // clignotement bleu rapide, priorite juste sous l'arrosage actif et
+    // distinct des motifs de mode normal ci-dessous (aucun n'utilise ce
+    // rythme/cette couleur).
+    if (wifiSearching) {
+        if (now - _ledTimer >= 250UL) {
+            _ledTimer = now;
+            _ledPhase ^= 1U;
+
+            if (_ledPhase) {
+                ledSet(false, false, true);
             } else {
                 ledOff();
             }

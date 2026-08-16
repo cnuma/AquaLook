@@ -616,7 +616,8 @@ void setup() {
         &weatherMgr,
         &relaisMgr,
         &scheduleMgr,
-        &configMgr
+        &configMgr,
+        &wifiMgr
     );
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");

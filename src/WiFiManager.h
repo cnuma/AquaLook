@@ -113,9 +113,16 @@ private:
     // est le pari le plus sur sur une box/routeur domestique (interface
     // d'administration presque toujours presente dessus) ; a revoir le jour
     // ou la cible est un service cloud (ex. port 443).
-    static constexpr uint32_t KEEPALIVE_CHECK_INTERVAL_MS = 180000;  // 3 min
-    static constexpr uint32_t KEEPALIVE_CHECK_TIMEOUT_MS  = 1500;    // 1,5 s
-    static constexpr uint8_t  KEEPALIVE_FAILURE_THRESHOLD = 3;       // ~9 min avant reconnexion forcee
+    //
+    // Intervalle et timeout resserres (etaient 180000/1500) : le cout reel
+    // d'une verification plus frequente est quasi nul en fonctionnement
+    // normal (connect() local reussit en quelques ms), le blocage de la
+    // boucle principale ne survient que pendant une panne reelle — moment
+    // ou un delai de boucle est le cadet des soucis. Sonder toutes les 45s
+    // ramene la reconnexion forcee de ~9 min a ~2 min15 dans le pire cas.
+    static constexpr uint32_t KEEPALIVE_CHECK_INTERVAL_MS = 45000;   // 45 s
+    static constexpr uint32_t KEEPALIVE_CHECK_TIMEOUT_MS  = 1000;    // 1 s
+    static constexpr uint8_t  KEEPALIVE_FAILURE_THRESHOLD = 3;       // ~2 min15 avant reconnexion forcee
     static constexpr uint16_t KEEPALIVE_CHECK_PORT = 80;
 
     void scheduleAction(PendingAction action, uint32_t deadlineMs);

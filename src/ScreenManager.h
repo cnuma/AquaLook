@@ -10,7 +10,10 @@
 class ScreenManager {
 public:
     void begin(ConfigManager* config = nullptr);
-    void update(bool anyRelayActive);
+    // wifiSearching : WiFi ni connecte ni en portail captif (connexion en
+    // cours ou reconnexion apres detection zombie) — priorite d'affichage
+    // juste sous l'arrosage actif, au-dessus du mode LED normal.
+    void update(bool anyRelayActive, bool wifiSearching);
     void wakeUp();
 
     bool isAsleep() const { return _sleeping; }
@@ -34,7 +37,7 @@ private:
 
     void screenOn();
     void screenOff();
-    void updateLed(bool relayActive);
+    void updateLed(bool relayActive, bool wifiSearching);
     void renderLed();
     void ledOff();
     void ledSet(bool r, bool g, bool b);
