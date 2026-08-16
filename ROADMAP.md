@@ -197,7 +197,7 @@ Cause racine : la partition NVS faisait `0x5000` (20 Kio) pour un blob de config
 
 Correction : NVS portée de 20 à **84 Kio** (`0x15000`) dans `aqualook_partitions.csv`. La NVS est délibérément placée **après** les deux slots applicatifs plutôt qu’à l’adresse traditionnelle `0x9000` : la chaîne Arduino/PlatformIO écrit `boot_app0.bin` à `0xe000` en dur (`framework-arduinoespressif32/tools/platformio-build.py`) et l’image applicative à `0x10000` par défaut (`upload.offset_address`, qui ne dérive pas de la table de partitions — vérifié dans `builder/main.py`). Une première tentative d’agrandissement sur place a été abandonnée pour cette raison : elle plaçait la NVS sous `0xe000`, garantissant sa corruption à chaque téléversement. La disposition retenue garde `otadata` et `app0` à leurs adresses par défaut, donc aucun patch du framework ni surcharge d’offset. Coût : slots applicatifs ramenés de `0x1F0000` à `0x1E0000` (1920 Kio chacun, firmware à 72 %), et 20 Kio laissés inutilisés en `0x9000-0xE000`. La constante de contrôle correspondante dans `SystemDiagnostics.cpp` (qui rapportait `ready=no` si les slots étaient plus petits qu’attendu) a été extraite en `MIN_OTA_PARTITION_SIZE`, et `MAX_FIRMWARE_SIZE` dans `tools/generate_ota_manifest.py` a suivi, faute de quoi la chaîne de publication aurait pu produire un firmware trop gros pour le slot.
 
-**Avertissement pour la mise en production :** une table de partitions ne se déploie pas par OTA — l’OTA ne pousse que l’image applicative. Un module déjà livré conserverait l’ancienne table et resterait exposé à cet incident, sans correctif possible à distance. Ce changement doit donc être appliqué par USB avant toute mise en service, au même titre que la mise à jour des ressources Web est un prérequis de production.
+**Avertissement pour la mise en production :** une table de partitions ne se déploie pas par OTA — l’OTA ne pousse que l’image applicative. Un module déjà livré conserverait l’ancienne table et resterait exposé à cet incident, sans correctif possible à distance. Ce changement doit donc être appliqué par USB avant toute mise en service, au même titre que la mise à jour des ressources Web est un prérequis de production. Cette contrainte relève plus généralement du chapitre « Première mise en service d’un module », ouvert à la suite de cet incident : elle en est le cas d’école.
 
 Campagne de validation menée le 16 août 2026 après correction, sur le module réel :
 
@@ -232,6 +232,21 @@ Pistes non retenues, à garder en tête si le besoin revient : réduire le blob 
 - **confirmation de fin de processus** : notification (même canal ntfy) une fois le déploiement terminé, en cas de succès comme d’échec — l’utilisateur ne doit pas avoir à revenir consulter la page pour savoir si ça a fonctionné.
 
 Ce comportement s’applique uniformément aux deux canaux de mise à jour (OTA firmware et SD/Web), avec un vocabulaire visuel et de notification commun, même si le déclenchement et le contenu déployé restent indépendants l’un de l’autre (cf. décision de canal découplé ci-dessus). Prérequis : ce point dépend de l’étape 3 (manifeste) pour savoir qu’une mise à jour existe — tant que cette détection n’existe pas, il n’y a rien à signaler ni à déclencher depuis l’interface.
+
+### Première mise en service d’un module — ce que le premier flash doit obligatoirement embarquer
+
+**Statut : chapitre à développer.** Ouvert le 16 août 2026 à la suite du repartitionnement NVS, qui a mis en évidence une catégorie de contraintes jusque-là implicite.
+
+Principe directeur : **tout ce que l’OTA ne sait pas livrer doit être posé au premier flash, sinon ce n’est jamais rattrapable à distance.** L’OTA firmware ne pousse que l’image applicative ; le canal de mise à jour des ressources Web ne pousse que des fichiers vers la carte SD. Tout le reste — table de partitions, contenu initial de la carte, ressources de secours en flash — n’a aucun chemin de livraison distant. Un module livré avec l’un de ces éléments incorrect reste définitivement à corriger sur place, ce qui est précisément ce que l’ensemble du chantier OTA cherche à éviter.
+
+Éléments identifiés à ce jour comme relevant obligatoirement du premier flash :
+
+- **table de partitions** (`aqualook_partitions.csv`) : NVS de 84 Kio et slots applicatifs de `0x1E0000`. Un module flashé avec l’ancienne table (NVS 20 Kio) subira tôt ou tard la perte silencieuse de configuration décrite plus haut, sans correctif distant possible. C’est le cas d’école qui a fait naître ce chapitre ;
+- **contenu initial de la carte SD** (`/www`) : le canal de mise à jour des ressources Web suppose une arborescence déjà en place et un `assets-version.json` exploitable pour comparer les versions. Une carte vierge ou incohérente doit être traitée à la préparation, pas espérée d’une première mise à jour ;
+- **ressources de secours en flash/LittleFS** : portail captif et diagnostic minimal, indispensables pour reprendre la main sur un module qui n’a pas encore de réseau — donc avant tout OTA. À noter, `splash.jpg` et `logo.png` sont actuellement absents de LittleFS (repli texte au démarrage) : à trancher, soit les embarquer, soit acter le repli comme comportement nominal ;
+- **première configuration réseau** : par portail captif. Le point d’accès de secours est aujourd’hui ouvert (`WiFi.softAP()` sans mot de passe) — acceptable en développement, à réexaminer avant livraison.
+
+À définir dans ce chapitre : la procédure de préparation d’un module neuf (ordre des opérations, vérifications de recette), la manière de constater a posteriori qu’un module a bien la bonne table de partitions, et le sort des modules éventuellement déjà flashés avec l’ancienne.
 
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
