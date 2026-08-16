@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="fr"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AquaLook - URLs</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}
+header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}
+header h1{font-size:1.05rem;margin:0}
+header a{margin-left:auto;color:#4fc3f7;text-decoration:none}
+main{padding:1rem;display:grid;gap:1rem;max-width:900px;margin:0 auto}
+.card{background:#151515;border:1px solid #333;border-radius:8px;padding:1rem}
+.card h2{margin:.1rem 0 .8rem;font-size:1rem;color:#4fc3f7}
+.card p.help{margin:0 0 .8rem;font-size:.8rem;color:#8fa3ad;line-height:1.4}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #262626;vertical-align:top}
+th{color:#8fa3ad;font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
+td.path{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;color:#81c784;white-space:nowrap}
+td.path a{color:inherit;text-decoration:none}
+td.path a:hover{text-decoration:underline}
+td.method{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.75rem;font-weight:700;white-space:nowrap}
+td.method.get{color:#4fc3f7}
+td.method.post{color:#ffb300}
+td.desc{color:#ccc}
+.note{font-size:.78rem;color:#8fa3ad;line-height:1.4}
+</style></head><body>
+<header>
+<h1>🔗 URLs disponibles</h1>
+<a href="/index.html">Retour</a>
+</header>
+<main>
+
+<section class="card">
+<h2>Pages</h2>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path"><a href="/index.html">/index.html</a></td><td class="desc">Page principale — zones, planning semaine, météo, tiroir de réglages.</td></tr>
+<tr><td class="path"><a href="/setup">/setup</a></td><td class="desc">Portail captif de secours (choix SSID/mot de passe) — servi même sans carte SD.</td></tr>
+<tr><td class="path"><a href="/logs">/logs</a></td><td class="desc">Journal technique, acquittement des alarmes et de l'incident carte SD.</td></tr>
+<tr><td class="path"><a href="/ota">/ota</a></td><td class="desc">Mise à jour firmware (OTA) — vérifier, télécharger, installer une nouvelle version.</td></tr>
+<tr><td class="path"><a href="/urls.html">/urls.html</a></td><td class="desc">Cette page.</td></tr>
+</table>
+</section>
+
+<section class="card">
+<h2>API — lecture (GET)</h2>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path"><a href="/api/status">/api/status</a></td><td class="desc">État complet pour la page principale (zones, planning, météo, WiFi, heure...). Interrogé toutes les 8s.</td></tr>
+<tr><td class="path"><a href="/api/adminStatus">/api/adminStatus</a></td><td class="desc">État système pour le tiroir de réglages (WiFi + cible keepalive, NTP, météo OWM, système...).</td></tr>
+<tr><td class="path"><a href="/api/diagnostics">/api/diagnostics</a></td><td class="desc">Diagnostics bas niveau : build, mémoire, informations firmware.</td></tr>
+<tr><td class="path">/api/zone?z=N</td><td class="desc">Détail des créneaux (jour ou intervalle) d'une zone précise, chargé à la demande.</td></tr>
+<tr><td class="path"><a href="/api/display">/api/display</a></td><td class="desc">Configuration d'affichage LCD (couleurs, tooltips météo activés...).</td></tr>
+<tr><td class="path"><a href="/api/faults">/api/faults</a></td><td class="desc">État du bandeau d'alarme (actif / mémorisé / acquitté).</td></tr>
+<tr><td class="path"><a href="/api/incidents/storage-sd">/api/incidents/storage-sd</a></td><td class="desc">État de l'incident carte SD (occurrences, dernière cause, acquittement).</td></tr>
+<tr><td class="path"><a href="/api/notifications">/api/notifications</a></td><td class="desc">Configuration des notifications ntfy.</td></tr>
+<tr><td class="path"><a href="/api/maintenance/last-result">/api/maintenance/last-result</a></td><td class="desc">Dernier résultat d'opération OTA (vérification, téléchargement, installation).</td></tr>
+<tr><td class="path"><a href="/api/wifi/scan">/api/wifi/scan</a></td><td class="desc">Résultat du scan réseau WiFi (portail captif uniquement).</td></tr>
+<tr><td class="path"><a href="/api/logs.txt">/api/logs.txt</a></td><td class="desc">Journal technique brut, au format texte.</td></tr>
+<tr><td class="path">/api/logs</td><td class="desc">Redirige vers /api/logs.txt (ancien lien).</td></tr>
+</table>
+</section>
+
+<section class="card">
+<h2>API — écriture (POST)</h2>
+<p class="help">Non cliquables (nécessitent un corps JSON) — listées pour référence.</p>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path">/api/mode</td><td class="desc">Change le mode d'une zone (jours fixes / intervalle).</td></tr>
+<tr><td class="path">/api/interval</td><td class="desc">Modifie l'intervalle (en jours) d'une zone en mode intervalle.</td></tr>
+<tr><td class="path">/api/intervalAnchor</td><td class="desc">Définit/propose une nouvelle date de départ pour une programmation par intervalle.</td></tr>
+<tr><td class="path">/api/deleteInterval</td><td class="desc">Supprime la programmation par intervalle d'une zone.</td></tr>
+<tr><td class="path">/api/dayslot</td><td class="desc">Ajoute/modifie/supprime un créneau horaire (mode jours fixes).</td></tr>
+<tr><td class="path">/api/intervalslot</td><td class="desc">Ajoute/modifie/supprime un créneau horaire (mode intervalle).</td></tr>
+<tr><td class="path">/api/rain</td><td class="desc">Seuil de pluie déclenchant la suspension d'arrosage d'une zone.</td></tr>
+<tr><td class="path">/api/manual</td><td class="desc">Démarre/arrête un arrosage manuel sur une zone.</td></tr>
+<tr><td class="path">/api/manualDuration</td><td class="desc">Durée par défaut de l'arrosage manuel.</td></tr>
+<tr><td class="path">/api/saveSchedule</td><td class="desc">Sauvegarde explicite de la programmation (hors débounce automatique).</td></tr>
+<tr><td class="path">/api/wifi</td><td class="desc">Change le SSID/mot de passe WiFi (redémarre le module).</td></tr>
+<tr><td class="path">/api/wifiKeepalive</td><td class="desc">Définit la cible de la sonde de keepalive (IP ou hôte).</td></tr>
+<tr><td class="path">/api/touch</td><td class="desc">Calibration de l'écran tactile.</td></tr>
+<tr><td class="path">/api/ntp</td><td class="desc">Serveur NTP et décalages horaires (GMT/DST).</td></tr>
+<tr><td class="path">/api/owm</td><td class="desc">Configuration météo OpenWeatherMap (clé API, ville/coordonnées, unités).</td></tr>
+<tr><td class="path">/api/system</td><td class="desc">Paramètres système (nb de zones, contrôleur relais, logique, veille écran...).</td></tr>
+<tr><td class="path">/api/zoneName</td><td class="desc">Renomme une zone.</td></tr>
+<tr><td class="path">/api/zoneNotifications</td><td class="desc">Active/désactive les notifications ntfy par zone.</td></tr>
+<tr><td class="path">/api/display</td><td class="desc">Modifie la configuration d'affichage LCD.</td></tr>
+<tr><td class="path">/api/captive</td><td class="desc">Force le lancement du portail captif.</td></tr>
+<tr><td class="path">/api/resetConfig</td><td class="desc">Réinitialise la configuration NVS aux valeurs par défaut.</td></tr>
+<tr><td class="path">/api/logs/ack</td><td class="desc">Acquitte les alarmes actives.</td></tr>
+<tr><td class="path">/api/incidents/storage-sd/ack</td><td class="desc">Acquitte l'incident carte SD.</td></tr>
+<tr><td class="path">/api/notifications/test</td><td class="desc">Envoie une notification ntfy de test.</td></tr>
+<tr><td class="path">/api/maintenance/probe-github</td><td class="desc">OTA : teste la connectivité/TLS vers GitHub.</td></tr>
+<tr><td class="path">/api/maintenance/check-version</td><td class="desc">OTA : vérifie la dernière version disponible.</td></tr>
+<tr><td class="path">/api/maintenance/download-update-test</td><td class="desc">OTA : télécharge et vérifie le SHA256 du firmware.</td></tr>
+<tr><td class="path">/api/maintenance/stage-update-test</td><td class="desc">OTA : prépare la partition de mise à jour.</td></tr>
+<tr><td class="path">/api/maintenance/install-update</td><td class="desc">OTA : installe la mise à jour préparée et redémarre.</td></tr>
+</table>
+</section>
+
+<section class="card">
+<h2>Détection de portail captif</h2>
+<p class="help">Utilisées automatiquement par iOS/Android/Windows pour détecter le portail WiFi et ouvrir le navigateur captif — pas d'usage manuel.</p>
+<table>
+<tr><th>URL</th><th>Système</th></tr>
+<tr><td class="path">/hotspot-detect.html</td><td class="desc">iOS / macOS</td></tr>
+<tr><td class="path">/generate_204</td><td class="desc">Android</td></tr>
+<tr><td class="path">/gen_204</td><td class="desc">Android</td></tr>
+<tr><td class="path">/connecttest.txt</td><td class="desc">Windows</td></tr>
+<tr><td class="path">/ncsi.txt</td><td class="desc">Windows</td></tr>
+<tr><td class="path">/redirect</td><td class="desc">Générique</td></tr>
+<tr><td class="path">/success.txt</td><td class="desc">Générique</td></tr>
+<tr><td class="path">/canonical.html</td><td class="desc">Générique</td></tr>
+<tr><td class="path">/chat</td><td class="desc">Générique</td></tr>
+</table>
+</section>
+
+<p class="note">Page de référence maintenue à la main — si une route a été ajoutée ou retirée dans le firmware sans mise à jour ici, se fier à <code>src/WebManager.h</code> / <code>src/WebManager.cpp</code> (recherche <code>_server.on(</code>) qui font foi.</p>
+
+</main></body></html>

@@ -94,6 +94,15 @@
     <span class="drawer-title">Paramètres</span>
     <button class="drawer-close" onclick="closeDrawer()">✕</button></div>
   <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Admin : verrouillé</button>
+  <div id="link-urls" style="margin:0 12px 8px">
+    <a href="/urls.html" target="_blank"
+       style="display:block;padding:8px 10px;font-family:var(--mono);
+              font-size:11px;color:var(--text2);text-decoration:none;
+              border:1px solid var(--border2);border-radius:6px;text-align:center;
+              background:var(--bg2)">
+      🔗 Liste des URLs disponibles
+    </a>
+  </div>
   <div class="cfg-section" id="sec-wifi">
     <div class="cfg-section-header" onclick="toggleSection('sec-wifi')">
       <span class="cfg-section-title"><span class="sec-icon">📡</span>WiFi</span>
@@ -456,7 +465,7 @@
           border-radius:50%;background:#ffffff18;display:block;
           text-decoration:none" title="Journal et acquittement"></a>
 <script>
-const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin"];
+const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin","link-urls"];
 function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Admin : déverrouillé":"Admin : verrouillé")}
 function adminToggle(){let v=sessionStorage.getItem(K)==="1";if(v){sessionStorage.removeItem(K);adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem(K,"1");adminApply(1)}
 document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem(K)==="1"));
