@@ -1,5 +1,30 @@
 # Analyse d'impact — portage vers Guition JC4827W543C (ESP32-S3)
 
+> ## 🌙 Chantier en sommeil — mis en veille le 16 août 2026
+>
+> **Motif :** cartes commandées, livraison en attente. Rien ne peut avancer utilement sans le matériel : les deux étapes décisives (§8, tests 4 et 6) sont des mesures physiques.
+>
+> **Branche :** `hw/jc4827w543-esp32s3-port`. Le firmware en service n'est pas impacté — aucune ligne de code n'a été modifiée, ce document est le seul livrable.
+>
+> ### Où reprendre, à réception des cartes
+>
+> 1. Dérouler les validations par sous-système du **§8**, en commençant par les tests **4** (coût d'un rafraîchissement plein écran depuis la PSRAM) et **6** (bus I2C et bloc relais). Ces deux-là peuvent invalider la stratégie ; tout le reste en dépend.
+> 2. Consigner le brochage réellement constaté : la documentation de ce fabricant s'est déjà révélée fautive (mention « LX6 » pour un ESP32-S3, contrôleur annoncé ST77xx alors qu'il s'agit d'un NV3041A).
+> 3. Seulement ensuite, engager le portage selon l'ordre du **§9**.
+>
+> ### Hypothèses à revérifier avant de s'y fier
+>
+> Ce document a été écrit sans matériel ni bibliothèque installée. Deux points reposent sur la connaissance d'`Arduino_GFX` et non sur une compilation :
+>
+> - la correspondance d'API du **§11**, à confronter à la version d'`Arduino_GFX` effectivement installée ;
+> - la contiguïté ligne par ligne du tampon d'`Arduino_Canvas`, dont dépend le portage des deux appels sensibles de `DisplayManager.cpp:901` et `1339`.
+>
+> ### Ce qui reste vrai indépendamment du matériel
+>
+> Les mesures du §3 portent sur le code du projet, pas sur la carte : 3 625 lignes d'affichage, 431 appels TFT_eSPI, ~423 portables mécaniquement, 8 demandant une décision individuelle. Elles ne se périment que si la couche d'affichage évolue entre-temps — auquel cas, les refaire avant de reprendre.
+
+---
+
 Document d'analyse préalable, rédigé le 16 août 2026 sur la branche `hw/jc4827w543-esp32s3-port`, avant réception du matériel. Aucune modification de code n'accompagne cette analyse : elle sert à dimensionner le travail et à identifier ce qui doit être vérifié sur la carte réelle.
 
 Décision d'architecture applicable (actée le 16 août 2026) : **le projet ne comportera jamais de code gérant deux cartes**. Ce portage est donc une bascule de socle, pas l'ajout d'une variante.
