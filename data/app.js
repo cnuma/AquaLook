@@ -79,7 +79,17 @@ function renderAll() {
   document.getElementById('wifi-badge').textContent =
     status.synced ? status.time.slice(11,16) : 'NTP...';
   renderZones();
-  ensureAllZoneSlots().then(() => renderPlanning());
+  // Sans ce catch, une exception ici (reseau ou JS) laissait la carte
+  // Planning definitivement vide et totalement silencieuse — aucune trace
+  // nulle part pour comprendre pourquoi. Le cycle suivant (fetchStatus,
+  // 8s) retente de lui-meme ; ce catch sert uniquement a ne jamais perdre
+  // l'erreur en route.
+  ensureAllZoneSlots()
+    .then(() => renderPlanning())
+    .catch(e => {
+      console.error('[renderPlanning]', e);
+      addLog('Erreur affichage planning : ' + e.message);
+    });
 }
 const ZONE_COLORS = ['green','blue','amber','purple','green','blue','amber','purple',
                      'green','blue','amber','purple','green','blue','amber','purple'];
