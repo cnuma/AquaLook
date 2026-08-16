@@ -166,6 +166,19 @@ Ordre de réalisation proposé :
 6. interface locale (`/ota`) et journalisation de chaque étape ;
 7. vérification périodique, une fois la chaîne manuelle éprouvée sur le terrain.
 
+#### Expérience utilisateur du déclenchement — spécification du 16 août 2026
+
+À ce jour (test du 16 août 2026), le déclenchement d’un déploiement se fait directement depuis ce poste de travail (route de test `/api/debug/deploy-file`, appelée manuellement) : cela valide le mécanisme d’écriture, mais ce n’est pas utilisable par l’utilisateur final. Une fois la chaîne manifeste + téléchargement + vérification en place (étapes 3 à 5 ci-dessus), le déclenchement et la visibilité doivent devenir entièrement pilotables par l’utilisateur, pour les deux canaux (OTA firmware et ressources Web/SD) :
+
+- **notification qu’une mise à jour est en attente**, dès que le module détecte que sa version diffère de celle publiée (comparaison de manifeste), via le canal de notification déjà en service (ntfy) — informative, avant toute action ;
+- **LED** : clignotement violet dédié à l’état « mise à jour en attente », distinct des trois autres états déjà fixés (bleu = arrosage en cours, ambre = recherche réseau, rouge clignotant = panne réservée à `FaultManager`) — le violet a déjà été réservé à cet usage lors de la réorganisation des couleurs LED/LCD du 16 août 2026 ;
+- **LCD** : icône dédiée reprenant le même violet, sur le même principe que l’icône signal WiFi (`renderSignalSprite()`) déjà utilisée pour l’état « recherche réseau » ;
+- **page `/`** : icône ou badge dans la barre du haut signalant une mise à jour en attente, avec lien direct vers `/ota` ;
+- **page `/ota`** : lien mis en avant pour accéder facilement à la mise à jour en attente ; bouton de déclenchement manuel du processus complet (téléchargement, vérification, installation) pour le canal concerné (firmware ou SD/Web) ;
+- **confirmation de fin de processus** : notification (même canal ntfy) une fois le déploiement terminé, en cas de succès comme d’échec — l’utilisateur ne doit pas avoir à revenir consulter la page pour savoir si ça a fonctionné.
+
+Ce comportement s’applique uniformément aux deux canaux de mise à jour (OTA firmware et SD/Web), avec un vocabulaire visuel et de notification commun, même si le déclenchement et le contenu déployé restent indépendants l’un de l’autre (cf. décision de canal découplé ci-dessus). Prérequis : ce point dépend de l’étape 3 (manifeste) pour savoir qu’une mise à jour existe — tant que cette détection n’existe pas, il n’y a rien à signaler ni à déclencher depuis l’interface.
+
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
 Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
