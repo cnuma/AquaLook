@@ -652,11 +652,11 @@ function populateDrawer() {
     if (ctrlEl)  ctrlEl.dataset.current  = s.system.relayController ?? 0;
     if (logicEl) logicEl.dataset.current = s.system.relayLogic ?? 0;
   }
+  // header-title (ligne "AQUALOOK") et header-city (sous-titre, voir
+  // .logo-city dans index.html) forment deja un affichage sur 2 lignes :
+  // pas besoin d'agglomerer aussi la ville dans le titre, ca la doublait.
   const city = s.owm?.city || '';
   document.getElementById('header-city').textContent = city;
-  if (city) {
-    document.getElementById('header-title').textContent = 'AQUALOOK -- ' + city.toUpperCase();
-  }
   const ssid = s.wifi?.ssid || '--';
   document.getElementById('wifi-info').innerHTML =
     `SSID : <span>${ssid}</span><br>

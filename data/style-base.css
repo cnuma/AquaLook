@@ -38,6 +38,11 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   padding: 12px;
+  /* Garde-fou : un element qui deborde (ex. bouton "Arroser" sur mobile
+     etroit) ne doit jamais faire defiler la PAGE entiere horizontalement
+     (en-tete/titres coupes a gauche) — seuls les conteneurs qui le
+     demandent explicitement (.planning-card, overflow-x:auto) scrollent. */
+  overflow-x: hidden;
 }
 
 /* Header */
