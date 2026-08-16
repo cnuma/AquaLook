@@ -158,9 +158,9 @@ Travaux préalables identifiés :
 
 Ordre de réalisation proposé :
 
-1. capacité d’écriture SD dans `StorageManager`, mutex-protégée comme la lecture existante — **démarré le 16 août 2026** ;
-2. validation isolée de cette écriture (route de test ou équivalent) avant tout branchement réseau ;
-3. format du manifeste des ressources Web et extension de la chaîne de publication GitHub Releases ;
+1. capacité d’écriture SD dans `StorageManager`, mutex-protégée comme la lecture existante — **fait le 16 août 2026** ;
+2. validation isolée de cette écriture (route de test ou équivalent) avant tout branchement réseau — **fait le 16 août 2026**, via `/api/debug/deploy-file` et un déploiement réel de `logs.html` vérifié octet pour octet (SHA-256 identique) ;
+3. format du manifeste des ressources Web et extension de la chaîne de publication GitHub Releases — **fait le 16 août 2026** : `tools/generate_web_manifest.py` (schéma `aqualook-web-manifest-v1`, un fichier par entrée avec URL/taille/SHA-256, même convention que `generate_ota_manifest.py`) et `.github/workflows/ota-release.yml` étendu pour publier chaque fichier de `data/` comme asset de la release et générer `aqualook-web-manifest.json` à côté du manifeste firmware — validé localement (manifeste généré sur les 10 fichiers de `data/`, ~2 Ko, sous le budget de 8 Ko) ; reste à valider en conditions réelles au prochain tag de release ;
 4. téléchargement + vérification SHA-256 d’un fichier, sans écriture (symétrique à l’étape « vérification sans installation » de l’OTA firmware) ;
 5. écriture effective sur SD, avec stratégie explicite de cohérence en cas d’interruption ;
 6. interface locale (`/ota`) et journalisation de chaque étape ;

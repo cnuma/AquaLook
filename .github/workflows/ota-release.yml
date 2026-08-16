@@ -84,6 +84,18 @@ jobs:
             --legacy "release/AquaLook-legacy-${version}.bin" \
             --v4 "release/AquaLook-v4-${version}.bin" \
             --output release/aqualook-manifest.json
+
+          # Canal separe, decouple du firmware ci-dessus (voir ROADMAP.md,
+          # "Mise a jour distante des ressources Web") : chaque fichier de
+          # data/ est publie individuellement comme asset de la release,
+          # au meme titre que les .bin, et decrit dans son propre manifeste.
+          cp data/* release/
+          python tools/generate_web_manifest.py \
+            --version "$version" \
+            --tag "${{ steps.release.outputs.tag }}" \
+            --data-dir data \
+            --output release/aqualook-web-manifest.json
+
           sha256sum release/* | tee release/SHA256SUMS.txt
 
       - name: Upload workflow artifact
