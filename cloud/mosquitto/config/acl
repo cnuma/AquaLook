@@ -1,0 +1,37 @@
+# Droits MQTT AquaLook
+#
+# Principe : un module ne peut ecrire que dans SON sous-arbre et ne peut lire
+# que SES commandes. Un module compromis ne peut donc ni observer les autres,
+# ni leur envoyer d'ordres. Exigence « droits MQTT limites aux topics
+# necessaires » de SYSTEM_ARCHITECTURE.md, section 7.
+#
+# %u est remplace par le nom d'utilisateur MQTT, qui doit valoir exactement
+# l'identifiant du module (ex. aq-0001).
+#
+# Arborescence (version de protocole en tete, cf. section 6.3 « contrats
+# stables ») :
+#   aqualook/v1/<moduleId>/status    presence, retenu, avec Last Will
+#   aqualook/v1/<moduleId>/state     etat courant, retenu
+#   aqualook/v1/<moduleId>/event     evenements (debut/fin arrosage, incidents)
+#   aqualook/v1/<moduleId>/diag      diagnostics techniques
+#   aqualook/v1/<moduleId>/cmd       demandes de commande, serveur -> module
+#   aqualook/v1/<moduleId>/cmd/ack   acquittements, module -> serveur
+
+# ── Modules ─────────────────────────────────────────────────────────────────
+pattern write aqualook/v1/%u/status
+pattern write aqualook/v1/%u/state
+pattern write aqualook/v1/%u/event
+pattern write aqualook/v1/%u/diag
+pattern write aqualook/v1/%u/cmd/ack
+
+# Le module lit ses commandes, mais ne peut pas les publier : c'est ce qui
+# empeche un module de se donner des ordres ou d'en donner a un autre.
+pattern read aqualook/v1/%u/cmd
+
+# ── Passerelle applicative ──────────────────────────────────────────────────
+# Seul compte disposant d'une vue d'ensemble. Ses identifiants ne doivent
+# jamais se retrouver dans un firmware (« absence de secret administrateur
+# global dans le firmware »).
+user aqualook-bridge
+topic readwrite aqualook/v1/#
+topic read $SYS/#

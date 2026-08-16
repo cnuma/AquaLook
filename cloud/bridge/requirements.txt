@@ -1,0 +1,5 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+paho-mqtt==2.1.0
+psycopg[binary]==3.2.3
+psycopg_pool==3.2.4

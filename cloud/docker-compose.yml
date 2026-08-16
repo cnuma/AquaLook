@@ -1,0 +1,138 @@
+# Pile serveur AquaLook — « VPS maison ».
+#
+# Volontairement identique sur le mini PC et sur un VPS : c'est tout l'interet
+# de la conteneurisation ici. La migration de Phase C (voir ROADMAP.md) se
+# resume a copier ce dossier, restaurer un dump de base et relancer.
+#
+# Les versions d'images sont epinglees sur une version majeure. Avant une mise
+# en service reelle, les figer completement (tag precis ou digest) : une image
+# "latest" qui change sous les pieds est exactement le genre de surprise qu'on
+# ne veut pas sur une machine qui tourne en continu.
+
+name: aqualook
+
+services:
+
+  # ── Broker MQTT ────────────────────────────────────────────────────────────
+  # Transport des etats, evenements, demandes de commande et acquittements.
+  # TLS et identifiants par module : voir mosquitto/config/mosquitto.conf.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT en clair — LAN uniquement, a retirer une fois TLS valide
+      - "8883:8883"   # MQTT/TLS — le seul a exposer hors du reseau local
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+      # Certificats produits par Caddy (Let's Encrypt) et partages en lecture.
+      # Voir README, section « TLS ».
+      - caddy_data:/caddy-certs:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$$SYS/broker/uptime", "-C", "1", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Base de donnees et historique ──────────────────────────────────────────
+  # PostgreSQL + TimescaleDB : du SQL classique pour les donnees relationnelles
+  # (modules, sites, utilisateurs) et des hypertables pour les series
+  # temporelles (mesures, evenements horodates).
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Passerelle MQTT vers base ──────────────────────────────────────────────
+  # C'EST la piece qu'un hebergement mutualise ne peut pas fournir : un
+  # processus permanent, abonne au broker, qui persiste ce qui arrive.
+  # Expose aussi une petite API de lecture pour l'interface et Grafana.
+  bridge:
+    build: ./bridge
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_USERNAME: ${BRIDGE_MQTT_USER}
+      MQTT_PASSWORD: ${BRIDGE_MQTT_PASSWORD}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PROTO_VERSION: v1
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Reverse proxy et TLS ───────────────────────────────────────────────────
+  # Obtient et renouvelle seul les certificats Let's Encrypt. Les certificats
+  # obtenus servent aussi au broker MQTT (volume caddy_data partage).
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      - bridge
+
+  # ── Tableaux de bord ───────────────────────────────────────────────────────
+  # Tres rentable au demarrage : visualiser l'historique sans ecrire d'interface.
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://${DOMAIN}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Prototypage et scenarios ───────────────────────────────────────────────
+  # Prevu par la roadmap (Phase C). Permet d'essayer des flux et des
+  # diagnostics sans ecrire de code.
+  nodered:
+    image: nodered/node-red:4.0
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - nodered_data:/data
+    depends_on:
+      - mosquitto
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  db_data:
+  caddy_data:
+  caddy_config:
+  grafana_data:
+  nodered_data:

@@ -1,0 +1,38 @@
+# Reverse proxy et TLS automatique.
+#
+# Caddy obtient et renouvelle seul les certificats Let's Encrypt pour {$DOMAIN}.
+# Ces memes certificats servent au broker MQTT via le volume partage
+# (voir mosquitto.conf) : une seule autorite, un seul renouvellement.
+#
+# Prerequis : {$DOMAIN} doit pointer vers cette machine et les ports 80 et 443
+# doivent lui parvenir. Si le reseau domestique n'est pas expose, passer par un
+# tunnel sortant (voir README, section « Acces depuis l'exterieur »).
+
+{$DOMAIN} {
+	encode gzip
+
+	# En-tetes de securite de base.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Tableaux de bord.
+	handle_path /grafana/* {
+		reverse_proxy grafana:3000
+	}
+
+	# Prototypage : a ne PAS laisser ouvert sur Internet sans authentification
+	# supplementaire. Commente par defaut, a activer en connaissance de cause.
+	# handle_path /nodered/* {
+	# 	reverse_proxy nodered:1880
+	# }
+
+	# API de la passerelle.
+	handle {
+		reverse_proxy bridge:8000
+	}
+}

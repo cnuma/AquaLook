@@ -1,0 +1,4 @@
+# Secrets et donnees : jamais versionnes.
+.env
+mosquitto/config/passwd
+data/
