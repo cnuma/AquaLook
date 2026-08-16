@@ -134,6 +134,28 @@ Ordre de réalisation proposé :
 
 Invariant impératif : aucune mise à jour ne doit pouvoir activer ou désactiver une voie de manière intempestive, interrompre silencieusement un cycle en cours, effacer la configuration ou rendre le module irrécupérable. Le module doit rester fonctionnel sur la version précédente tant que la nouvelle version n’a pas été téléchargée, vérifiée, démarrée et explicitement confirmée comme saine. Les notifications restent informatives et ne doivent jamais constituer une dépendance critique du processus OTA.
 
+### Mise à jour distante des ressources Web — canal séparé de l’OTA firmware
+
+**Statut : besoin identifié le 16 août 2026, aucune implémentation.** À ce jour, `data/` (pages HTML, `app.js`, CSS) n’est déployé sur la carte SD que par synchronisation locale (`tools/sync-sd-assets.ps1`), qui suppose un accès physique à la carte SD (retrait, lecteur sur un PC ayant le dépôt, réinsertion). L’OTA firmware ne touche pas ce contenu : une mise à jour OTA installée ne change jamais ce qui est affiché sur `/`. Un horodatage de synchro (`assets-version.json`, généré par le script local, affiché en pied de page de `/`) permet seulement de constater visuellement quelle version est déployée — pas encore de la déployer à distance.
+
+Contrainte d’architecture centrale, à respecter dans toute conception : le mode maintenance OTA (`MaintenanceSetupWrapper.cpp`, `-Wl,--wrap=_Z5setupv`) exécute les opérations de flash firmware dans une tâche FreeRTOS isolée et volontairement minimale — sans SD, sans écran, sans serveur Web initialisés. C’est un choix délibéré d’isolation pendant une opération risquée (déjà la raison pour laquelle `MaintenanceResultStore` a été conservé en NVS plutôt que sur SD). Un déploiement de ressources Web a nécessairement besoin d’écrire sur la SD : il ne peut donc **pas** être greffé dans ce flux de maintenance existant sans revoir cette isolation. La conception doit passer par un second canal, indépendant, qui s’exécute en fonctionnement normal (WiFi, SD et le reste déjà disponibles comme pour le reste de l’application).
+
+Objectifs fonctionnels :
+
+- publier avec chaque version un manifeste décrivant les ressources Web disponibles : liste des fichiers avec URL de téléchargement et empreinte SHA-256 de chacun (pas d’archive compressée — l’ESP32 n’a pas de décompresseur zip/tar embarqué, et il s’agit d’un nombre restreint de petits fichiers texte, aussi simples à télécharger individuellement) ;
+- permettre au module de comparer sa version déployée (voir `assets-version.json`, à faire écrire par le module lui-même après un déploiement réussi plutôt que par le script local) à la version publiée dans le manifeste ;
+- télécharger, vérifier le SHA-256 puis écrire chaque fichier modifié sur la carte SD, en réutilisant l’infrastructure TLS/HTTPS déjà validée pour l’OTA firmware ;
+- exposer un déclenchement manuel (bouton dédié sur `/ota`, à côté de ceux du firmware) puis, une fois éprouvé, une vérification périodique ;
+- journaliser chaque étape comme le fait déjà l’OTA firmware (découverte, téléchargement, écriture, résultat).
+
+Couplage avec l’OTA firmware — décision à confirmer, orientation actuelle : **canal découplé plutôt que fusionné.** L’expérience du 16 août 2026 (nombreux correctifs Web ponctuels dans la même session, aucun n’ayant nécessité de nouveau firmware) va dans le sens d’un cycle de mise à jour des pages Web plus fréquent que celui du firmware. Le tag Git peut rester la référence commune de version (une version = firmware et pages cohérents ensemble), mais les deux installations restent déclenchables indépendamment l’une de l’autre.
+
+Travaux préalables identifiés :
+
+- `StorageManager` n’expose aujourd’hui que de la lecture (`openRead`/`readChunk`/`existsOnSd`) ; une capacité d’écriture symétrique (`openWrite`/`writeChunk`/suppression), protégée par le même mutex que le reste des accès SD, est un prérequis ;
+- étendre `tools/generate_ota_manifest.py` (ou créer un script dédié) et `.github/workflows/ota-release.yml` pour publier ce second manifeste avec chaque release ;
+- décider du comportement si l’écriture est interrompue en cours de déploiement (coupure réseau ou alimentation) : le module ne doit jamais se retrouver avec un mélange incohérent d’anciens et de nouveaux fichiers qui casserait le site servi.
+
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
 Permettre au module AquaLook de fonctionner et d’être administré sans box, routeur ni accès Internet en créant son propre point d’accès Wi-Fi auquel l’utilisateur peut se connecter directement.
