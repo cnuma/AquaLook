@@ -225,7 +225,7 @@ void SystemDiagnostics::loopExit() {
 
     // Le journal est emis hors section critique. La limitation evite une
     // tempete de logs qui aggraverait elle-meme le ralentissement mesure.
-    if (shouldLogOverrun) {
+    if (shouldLogOverrun && EventLog::timingLogsEnabled()) {
         EventLog::log(
             LOG_WARN,
             "Timing: boucle lente duration=%lu us threshold=%lu us count=%lu",

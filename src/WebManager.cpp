@@ -219,6 +219,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneNotifications", handleSetZoneNotifications);
     POST_JSON("/api/display",       handleSetDisplay);
+    POST_JSON("/api/logConfig",     handleSetLogConfig);
 
 #undef POST_JSON
 
@@ -604,6 +605,20 @@ void WebManager::handleSetWifiKeepalive(AsyncWebServerRequest* req, JsonDocument
     if (strlen(host) >= 64) { sendError(req, "hote trop long"); return; }
 
     _wifi->setKeepaliveHost(host);
+    sendOk(req);
+}
+
+// Bascule les warnings "Timing: ..." (boucle lente, composants lents) —
+// utiles en diagnostic, bavards une fois le point etudie resolu. Persiste
+// (voir EventLog::setTimingLogsEnabled) : survit au redemarrage.
+void WebManager::handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const bool enabled = doc["timingLogsEnabled"] | true;
+    EventLog::setTimingLogsEnabled(enabled);
+    EventLog::log(
+        LOG_INFO,
+        "Config: logs Timing %s",
+        enabled ? "actives" : "desactives"
+    );
     sendOk(req);
 }
 

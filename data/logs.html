@@ -16,7 +16,10 @@
 <div id="incident" class="meta">Lecture...</div>
 <div class="row" style="margin-top:.8rem"><button id="incident-ack" class="good" onclick="ackIncident()">Acquitter l'incident</button></div>
 </section>
-<section class="card"><div class="row"><h2 style="margin-right:auto">Journal technique</h2><span id="journal-state">Lecture...</span><button class="secondary" onclick="refreshJournal(true)">Actualiser</button></div><pre id="journal" aria-live="polite"></pre></section>
+<section class="card"><div class="row"><h2 style="margin-right:auto">Journal technique</h2><span id="journal-state">Lecture...</span><button class="secondary" onclick="refreshJournal(true)">Actualiser</button></div>
+<div class="row" style="margin-top:.3rem"><label style="display:flex;flex-direction:row;align-items:center;gap:.4rem;font-size:.82rem;color:#bbb;cursor:pointer"><input type="checkbox" id="timing-logs" style="width:auto" onchange="setTimingLogs(this.checked)"> Journaliser les warnings de lenteur ("Timing: ...", "boucle lente")</label></div>
+<p class="help" style="margin:.3rem 0 0">Utiles en diagnostic (mesure du temps de chaque composant), mais bavards une fois le point etudie resolu. Preference persistee, n'affecte pas les autres logs (erreurs, WiFi...).</p>
+<pre id="journal" aria-live="polite"></pre></section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -40,6 +43,9 @@ async function refreshFaults(){const btn=$('ack-btn'),state=$('state');try{const
 async function ackErrors(){await fetch('/api/logs/ack',{method:'POST',cache:'no-store'});await Promise.all([refreshJournal(true),refreshFaults()])}
 async function refreshIncident(){const box=$('incident'),btn=$('incident-ack');try{const d=await getJson('/api/incidents/storage-sd');const active=d.state==='active',none=d.state==='none',acked=d.state==='acknowledged';box.innerHTML='<b class="'+(active?'danger':'ok')+'">État : '+d.state+'</b><br>Occurrences : '+d.occurrences+'<br>Dernière cause : '+(d.lastReason||'-')+'<br>Notifications en attente : 0x'+Number(d.pendingNotifications||0).toString(16).padStart(2,'0');btn.disabled=active||none||acked;btn.textContent=active?'Incident actif - acquittement bloqué':(acked?'Incident acquitté':'Acquitter l\'incident')}catch(e){box.textContent='Incident indisponible';btn.disabled=true}}
 async function ackIncident(){try{await getJson('/api/incidents/storage-sd/ack',{method:'POST'});await refreshIncident()}catch(e){alert('Acquittement impossible : '+e.message)}}
+async function refreshLogConfig(){try{const d=await getJson('/api/logConfig');$('timing-logs').checked=!!d.timingLogsEnabled}catch(e){}}
+async function setTimingLogs(enabled){try{await fetch('/api/logConfig',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timingLogsEnabled:enabled})})}catch(e){alert('Enregistrement impossible : '+e.message)}}
 async function refreshAll(){await Promise.all([refreshFaults(),refreshIncident(),refreshJournal(false)])}
 refreshAll();setInterval(refreshAll,2000);
+refreshLogConfig();
 </script></body></html>

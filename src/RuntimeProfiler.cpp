@@ -74,7 +74,7 @@ void RuntimeProfiler::stop(
 
     portEXIT_CRITICAL(&_mux);
 
-    if (shouldLog) {
+    if (shouldLog && EventLog::timingLogsEnabled()) {
         EventLog::log(
             LOG_WARN,
             "Timing: n=%s wallUs=%lu count=%lu schedSuspect=%s schedCount=%lu core=%d",

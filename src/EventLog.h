@@ -24,6 +24,19 @@ struct LogEntry {
 
 class EventLog {
 public:
+    // Charge la preference persistee (voir _timingLogsEnabled plus bas).
+    // A appeler une fois au demarrage, une fois le systeme de fichiers NVS
+    // pret ; sans appel, la valeur par defaut (activee) s'applique.
+    static void begin();
+
+    // Warnings "Timing: ..." (RuntimeProfiler, SystemDiagnostics::loopExit)
+    // — utiles en diagnostic mais tres bavards en usage normal une fois le
+    // point etudie resolu. Case a part (pas un niveau de log general) pour
+    // ne jamais masquer les WARN/ERROR "metier" (ex. keepalive WiFi) qui
+    // partagent LOG_WARN avec eux.
+    static bool timingLogsEnabled() { return _timingLogsEnabled; }
+    static void setTimingLogsEnabled(bool enabled, bool persist = true);
+
     static void log(LogLevel level, const char* fmt, ...) {
         char buf[LOG_MSG_LEN];
         va_list args;
@@ -214,4 +227,5 @@ private:
     static uint8_t _head;
     static uint8_t _count;
     static bool _hasErrors;
+    static bool _timingLogsEnabled;
 };

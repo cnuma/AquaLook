@@ -53,6 +53,20 @@ public:
             }
         );
 
+        _server.on("/api/logConfig", HTTP_GET,
+            [](AsyncWebServerRequest* req) {
+                String body;
+                body.reserve(48);
+                body += F("{\"timingLogsEnabled\":");
+                body += EventLog::timingLogsEnabled() ? F("true") : F("false");
+                body += '}';
+                AsyncWebServerResponse* response =
+                    req->beginResponse(200, "application/json", body);
+                response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                req->send(response);
+            }
+        );
+
         _server.on("/api/faults", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 String body;
@@ -468,6 +482,7 @@ private:
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneNotifications(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleStartCaptive(AsyncWebServerRequest* req);
     void handleResetConfig(AsyncWebServerRequest* req);
     void handleWifiScan(AsyncWebServerRequest* req);

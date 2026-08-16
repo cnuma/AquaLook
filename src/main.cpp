@@ -450,6 +450,7 @@ void setup() {
     OtaBootGuard::onBoot();
 
     FaultManager::begin();
+    EventLog::begin();
     EventLog::log(LOG_INFO, "AquaLook v2.0 demarrage");
     SystemDiagnostics::begin();
 
