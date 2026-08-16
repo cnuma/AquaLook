@@ -251,13 +251,21 @@ Résultat mesuré après correction : à la mise en veille le tas libre passe de
 
 **Limite résiduelle assumée : écran allumé, la contrainte demeure** (~2 connexions simultanées). Avec la veille écran par défaut à quelques minutes, le module passe l’essentiel de son temps dans le cas favorable, mais une consultation Web pendant qu’on manipule l’écran reste exposée. Pistes si le besoin s’en fait sentir, par ordre de coût croissant : réduire `_sprPlan` en le dessinant par bandes (57 Ko à lui seul, gain d’environ 38 Ko sans changer le rendu), réduire le nombre de ressources chargées en parallèle par la page, ou passer à une carte disposant de PSRAM (voir ci-dessous).
 
-À évaluer — **matériel avec PSRAM** : une variante de carte équipée de PSRAM permettrait de loger les sprites en mémoire externe et de libérer durablement la RAM interne, seule utilisable par les tampons réseau. Vérifié le 16 août 2026 : le projet n’utilise **aucune** broche GPIO 16 ou 17, celles que les modules WROVER réservent à la PSRAM, donc pas de conflit de câblage à prévoir. Contreparties à mesurer avant de trancher : le rendu de sprites en PSRAM est sensiblement plus lent que sur RAM interne, ce qui n’est pas neutre alors que des avertissements de lenteur d’affichage existent déjà ; et un parc mixte (avec et sans PSRAM) imposerait de supporter deux comportements. Relève du chapitre « Première mise en service » : un changement de carte ne se déploie pas à distance.
+À évaluer — **matériel avec PSRAM, comme socle unique du projet** : une carte équipée de PSRAM permettrait de loger les sprites en mémoire externe et de libérer durablement la RAM interne, seule utilisable par les tampons réseau (la PSRAM ne convient pas au DMA). La contrainte de connexions simultanées disparaîtrait sans dépendre de la veille écran. Vérifié le 16 août 2026 : le projet n’utilise **aucune** broche GPIO 16 ou 17, celles que les modules WROVER réservent à la PSRAM — pas de conflit de câblage à prévoir.
+
+**Décision d’architecture actée le 16 août 2026 : le projet ne comportera jamais de code gérant les deux cartes.** Si la PSRAM est retenue après évaluation, elle devient le socle matériel unique, en bascule franche ; les modules sans PSRAM sortent du périmètre supporté. Aucune détection à l’exécution, aucun chemin de code conditionnel, aucun parc mixte. C’est ce qui évite de payer indéfiniment le coût de deux comportements à tester et à maintenir.
+
+Conséquence directe sur la façon de mener l’évaluation : elle doit être conduite **avant** tout engagement, car le choix est en pratique irréversible une fois le socle basculé. Le point à mesurer en priorité est le coût réel du rendu de sprites en PSRAM, sensiblement plus lent que sur RAM interne — ce qui n’est pas neutre alors que des avertissements de lenteur d’affichage existent déjà sur la carte actuelle. Si ce coût s’avérait rédhibitoire pour la fluidité de l’écran, la bascule serait à écarter et les pistes purement logicielles (rendu de `_sprPlan` par bandes) reprendraient la main.
+
+Relève également du chapitre « Première mise en service » : un changement de carte ne se déploie pas à distance, et sous cette décision il ne s’agit pas d’une variante à provisionner mais du seul matériel cible.
 
 ### Première mise en service d’un module — ce que le premier flash doit obligatoirement embarquer
 
 **Statut : chapitre à développer.** Ouvert le 16 août 2026 à la suite du repartitionnement NVS, qui a mis en évidence une catégorie de contraintes jusque-là implicite.
 
 Principe directeur : **tout ce que l’OTA ne sait pas livrer doit être posé au premier flash, sinon ce n’est jamais rattrapable à distance.** L’OTA firmware ne pousse que l’image applicative ; le canal de mise à jour des ressources Web ne pousse que des fichiers vers la carte SD. Tout le reste — table de partitions, contenu initial de la carte, ressources de secours en flash — n’a aucun chemin de livraison distant. Un module livré avec l’un de ces éléments incorrect reste définitivement à corriger sur place, ce qui est précisément ce que l’ensemble du chantier OTA cherche à éviter.
+
+Cadre matériel : le projet vise **une seule carte cible**, décision actée le 16 août 2026 — jamais de code gérant plusieurs variantes (voir la section précédente à propos de la PSRAM). Un changement de socle matériel est donc une bascule de parc, pas une variante à provisionner en parallèle.
 
 Éléments identifiés à ce jour comme relevant obligatoirement du premier flash :
 
