@@ -100,13 +100,17 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     const uint8_t mode =
         _config ? _config->system().ledMode : 1;
 
+    // Code couleur volontairement disjoint de celui de FaultManager::
+    // resolveColor() (rouge clignotant, applique ensuite par renderLed()) :
+    // le rouge doit rester reserve exclusivement a une erreur/panne
+    // detectee, jamais reutilise ici pour un etat operationnel normal.
     if (relayActive) {
         if (now - _ledTimer >= 500UL) {
             _ledTimer = now;
             _ledPhase ^= 1U;
 
             if (_ledPhase) {
-                ledSet(true, false, false);
+                ledSet(false, false, true);
             } else {
                 ledOff();
             }
@@ -115,16 +119,17 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     }
 
     // Recherche WiFi (connexion en cours ou reconnexion apres zombie) :
-    // clignotement bleu rapide, priorite juste sous l'arrosage actif et
-    // distinct des motifs de mode normal ci-dessous (aucun n'utilise ce
-    // rythme/cette couleur).
+    // clignotement ambre rapide, priorite juste sous l'arrosage actif.
+    // Meme couleur que l'icone signal du LCD (renderSignalSprite()) —
+    // avant, le LCD clignotait en ambre et la LED en bleu pour le meme
+    // etat, incoherence corrigee ici.
     if (wifiSearching) {
         if (now - _ledTimer >= 250UL) {
             _ledTimer = now;
             _ledPhase ^= 1U;
 
             if (_ledPhase) {
-                ledSet(false, false, true);
+                ledSetBrightness(255, 100, 0);
             } else {
                 ledOff();
             }
