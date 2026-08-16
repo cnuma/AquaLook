@@ -199,6 +199,16 @@ Correction : NVS portée de 20 à **84 Kio** (`0x15000`) dans `aqualook_partitio
 
 **Avertissement pour la mise en production :** une table de partitions ne se déploie pas par OTA — l’OTA ne pousse que l’image applicative. Un module déjà livré conserverait l’ancienne table et resterait exposé à cet incident, sans correctif possible à distance. Ce changement doit donc être appliqué par USB avant toute mise en service, au même titre que la mise à jour des ressources Web est un prérequis de production.
 
+Campagne de validation menée le 16 août 2026 après correction, sur le module réel :
+
+- 60 écritures de configuration consécutives : 60/60 réussies, nombre d’entrées NVS rigoureusement stable (312), donc pas de fuite — le ramasse-miettes recycle correctement ;
+- configuration poussée au maximum (les 80 créneaux des deux zones activés) : 80/80 réussies, le blob restant de taille fixe (159 entrées quel que soit son contenu) ;
+- **six coupures brutales (reset matériel) déclenchées à 700, 780, 820, 850, 900 et 1000 ms après une modification**, c’est-à-dire de part et d’autre du debounce de sauvegarde de 800 ms, donc en pleine fenêtre d’écriture NVS : configuration et identifiants WiFi intacts dans les six cas, aucun bloc invalide, aucun retour aux valeurs par défaut. C’est la reproduction directe du scénario qui avait provoqué l’incident ;
+- persistance vérifiée après redémarrage matériel (`mise sous tension`) : zéro écart sur les 82 créneaux ;
+- non-régression applicative après repartitionnement : `CHECK_VERSION` OTA réussi, vérification HTTPS d’une ressource Web réussie, déploiement SD réseau avec SHA-256 identique, commande relais ON/OFF en ~130 ms, refus de vérification pendant arrosage toujours actif.
+
+**Non testé, à faire avant mise en production : le chemin d’installation OTA complet avec la nouvelle table.** `app1` a changé d’adresse (`0x200000` → `0x1F0000`) et de taille, or `STAGE_UPDATE_TEST` et `INSTALL_UPDATE` refusent de s’exécuter tant qu’aucune version plus récente n’est publiée (`check-version-required`, garde légitime). La validation de bout en bout exige donc de publier une release supérieure à celle installée, puis de dérouler vérification → téléchargement → stage → installation → retour arrière. Les diagnostics rapportent la nouvelle disposition correctement (`app0`/`app1` à 1 966 080 octets, `dualLayout=true`, `sizesValid=true`, `ready=yes`) et l’écriture flash OTA elle-même n’a pas été exercée.
+
 Pistes non retenues, à garder en tête si le besoin revient : réduire le blob lui-même (16 zones sont persistées alors que 2 sont utilisées, `CfgZone` fait 276 octets, soit environ 3,8 Kio de zones inutilisées sur 4884) serait déployable par OTA, mais impose une migration de schéma et ne résout pas la place des autres namespaces. À reconsidérer si le nombre de namespaces continue d’augmenter.
 
 #### Expérience utilisateur du déclenchement — spécification du 16 août 2026
