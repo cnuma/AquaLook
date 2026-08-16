@@ -24,6 +24,20 @@ void WebManager::begin(NTPManager* ntp, WeatherManager* weather,
     _schedule = schedule;
     _config   = config;
     _wifi     = wifi;
+
+    // ESPAsyncWebServer garde les connexions HTTP ouvertes (keep-alive) par
+    // defaut. Symptome observe sur le terrain : apres une periode sans appel
+    // de page, le premier rechargement affiche la page sans donnees (la
+    // requete /api/status tente de reutiliser une connexion TCP devenue
+    // silencieusement morte cote ESP32 et reste bloquee jusqu'a un timeout
+    // navigateur) ; un second rechargement force une connexion neuve et
+    // fonctionne. "Connection: close" sur chaque reponse force le navigateur
+    // a ouvrir une connexion neuve a chaque requete : cout negligeable ici
+    // (page peu sollicitee, interrogee toutes les 8s), mais elimine cette
+    // classe de blocage. S'applique a toutes les reponses (copie dans
+    // AsyncWebServerResponse a la construction), fichiers statiques inclus.
+    DefaultHeaders::Instance().addHeader("Connection", "close");
+
     // Invariant I1 : LittleFS déjà monté par ConfigManager
     setupRoutes();
     _server.begin();
