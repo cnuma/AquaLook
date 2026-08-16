@@ -1,12 +1,13 @@
+/* Flux normal (pas de position:fixed) : un bandeau flottant recouvrait le
+   bouton menu ou le contenu de la page des que la mise en page bougeait
+   au-dessus de lui (bandeau stockage SD qui apparait, hauteur d'en-tete
+   variable...). En flux normal, il reserve son propre espace et repousse
+   simplement ce qui suit, comme n'importe quel autre bloc de la page. */
 .fault-panel {
-  position: fixed;
-  z-index: 9998;
-  top: 66px;
-  right: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(420px, calc(100vw - 28px));
+  margin: 0 0 10px;
   padding: 11px 15px;
   border: 2px solid #ef5350;
   border-radius: 10px;
@@ -88,11 +89,3 @@
   }
 }
 
-@media (max-width: 620px) {
-  .fault-panel {
-    top: 62px;
-    left: 10px;
-    right: 10px;
-    max-width: none;
-  }
-}

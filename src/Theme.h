@@ -79,6 +79,10 @@ namespace Theme {
     // sans ecraser la lisibilite du theme sombre (equivalent LCD du fond
     // #fff3cd de .pg-day.rain cote Web, qui lui suppose un theme clair).
     constexpr uint16_t RAIN_BG_SOFT   = 0x4981;
+    // Rayures du hachurage de RAIN_BG_SOFT (AMBER assombri de moitie) —
+    // remplace un aplat uni pour signaler "arrosage suspendu (pluie)" plus
+    // explicitement, meme esprit que le hachurage cote Web (.pg-day.rain).
+    constexpr uint16_t RAIN_STRIPE    = 0x7A80;
     constexpr uint16_t ON_ACTIVE_TEXT  = 0xFFE0;
     constexpr uint16_t ON_ACTIVE_MUTED = 0xBDF7;
 

@@ -50,12 +50,23 @@ async function fetchStatus() {
     _fetching = false;
   }
 }
-async function fetchAdminStatus() {
+async function fetchAdminStatus(isRetry) {
   try {
     const r = await fetch('/api/adminStatus');
     adminStatus = await r.json();
     populateDrawer();
-  } catch(e) { /* silencieux */ }
+  } catch(e) {
+    // Reseau WiFi instable par moments (voir keepalive) : un premier echec
+    // silencieux laissait le tiroir de reglages avec des champs vides
+    // (impression qu'il fallait tout ressaisir) sans jamais reessayer.
+    // Un seul retry rapide couvre l'immense majorite des ratés ponctuels ;
+    // au-dela, le journal en informe plutot que de rester muet.
+    if (!isRetry) {
+      setTimeout(() => fetchAdminStatus(true), 1500);
+    } else {
+      addLog('Parametres non rafraichis (reseau)');
+    }
+  }
 }
 function jsToEsp(d) { return d === 0 ? 6 : d - 1; }
 function getTodayEspIdx() { return jsToEsp(new Date().getDay()); }
@@ -335,7 +346,7 @@ function renderPlanning() {
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
                       onclick="openDayModal(${zi},${espIdx})">
           ${hasAny
-            ? enabled.map(s=>`<div class="mini-slot ${rainBlk?'amber':zoneColor}">
+            ? enabled.map(s=>`<div class="mini-slot">
                 ${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
             : `<div class="pg-cross">--</div>`}
         </div>`;
@@ -368,7 +379,7 @@ function renderPlanning() {
         const cls       = isTrigger ? (rainBlk?'rain':'interval-on') : 'interval-off';
         const inner     = isTrigger
           ? (enabled.length
-              ? enabled.map(s=>`<div class="mini-slot ${rainBlk?'amber':zoneColor}">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
+              ? enabled.map(s=>`<div class="mini-slot">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
               : `<span class="pg-zone-label-${zoneColor}" style="font-size:11px">&#8635; /${intervalD}j</span>`)
           : `<div class="pg-cross">--</div>`;
         const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
@@ -403,6 +414,13 @@ function bindWeatherTooltips() {
     host.addEventListener('mouseenter', place);
     host.addEventListener('mousemove', place);
     host.addEventListener('mouseleave', () => { tip.style.display = ''; });
+    // renderPlanning() reconstruit toute la grille toutes les 8s (fetchStatus) :
+    // les nouveaux noeuds ne recoivent ni mouseenter ni mousemove tant que le
+    // curseur/doigt ne bouge pas vraiment, meme si :hover matche deja via CSS
+    // (le pointeur est toujours au-dessus du meme point ecran). Sans ce
+    // repositionnement immediat, la bulle reste affichee (CSS) mais a sa
+    // position par defaut (haut-gauche) jusqu'au prochain mouvement.
+    if (host.matches(':hover')) place();
   });
 }
 function escapeHtml(s) {
@@ -1020,10 +1038,9 @@ function applyWebZoneColors(cfg) {
     '.zone-color-blue.zone-card-active   { background: ' + z1 + '18 !important; }',
     '.zone-color-amber.zone-card-active  { background: ' + z2 + '18 !important; }',
     '.zone-color-purple.zone-card-active { background: ' + z3 + '18 !important; }',
-    '.mini-slot.green  { background: ' + z0 + '28 !important; color: ' + z0 + ' !important; }',
-    '.mini-slot.blue   { background: ' + z1 + '28 !important; color: ' + z1 + ' !important; }',
-    '.mini-slot.amber  { background: ' + z2 + '28 !important; color: ' + z2 + ' !important; }',
-    '.mini-slot.purple { background: ' + z3 + '28 !important; color: ' + z3 + ' !important; }',
+    // .mini-slot n'est plus teinte par zone : voir --slot-bg/--slot-text
+    // (style-base.css), une couleur fixe pour rester lisible quel que
+    // soit le fond de zone choisi par l'utilisateur.
     '.zt-name-green  { border-left-color: ' + z0 + ' !important; }',
     '.zt-name-blue   { border-left-color: ' + z1 + ' !important; }',
     '.zt-name-amber  { border-left-color: ' + z2 + ' !important; }',

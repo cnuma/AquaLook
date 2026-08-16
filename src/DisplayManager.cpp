@@ -39,6 +39,31 @@ static uint8_t weatherRainBarHeight(float rainMm, uint8_t maxHeight) {
     return h == 0 ? 1 : h;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Remplit un rectangle avec un motif de hachures diagonales plutot
+//  qu'un aplat uni — plus explicite pour signaler un etat particulier
+//  (ex. "arrosage suspendu (pluie)") au premier coup d'oeil. Meme esprit
+//  que le hachurage cote Web pour le meme cas (.pg-day.rain,
+//  style-base.css). TFT_eSprite herite de TFT_eSPI (voir drawCardBg
+//  plus bas) : cette fonction s'utilise aussi bien avec _tft qu'avec
+//  n'importe quel sprite (_sprPlan...).
+// ─────────────────────────────────────────────────────────────
+static void fillHatchRect(
+    TFT_eSPI& gfx,
+    int x, int y, int w, int h,
+    uint16_t bgColor, uint16_t stripeColor,
+    int spacing = 5
+) {
+    gfx.fillRect(x, y, w, h, bgColor);
+    for (int d = -h; d < w; d += spacing) {
+        int x0 = x + d,     y0 = y;
+        int x1 = x + d + h, y1 = y + h;
+        if (x0 < x) { y0 += (x - x0); x0 = x; }
+        if (x1 > x + w) { y1 -= (x1 - (x + w)); x1 = x + w; }
+        if (x0 <= x1) gfx.drawLine(x0, y0, x1, y1, stripeColor);
+    }
+}
+
 
 // Indique si une colonne du planning correspond à un jour réellement prévu
 // pour une zone en mode intervalle. Le calcul reprend la logique d'exécution :
@@ -813,7 +838,8 @@ void DisplayManager::renderPlanSprite() {
             const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
             const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
             if (rainBlk) {
-                _sprPlan.fillRect(x0, rowY + 1, PL_DAY_W - 2, _planZoneH - 2, Theme::RAIN_BG_SOFT);
+                fillHatchRect(_sprPlan, x0, rowY + 1, PL_DAY_W - 2, _planZoneH - 2,
+                              Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
             }
             const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {
@@ -958,7 +984,8 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
             const ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
             const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
             if (rainBlk) {
-                _tft.fillRect(cx + 1, rowY + 1, COL_W - 2, max(2, (int)zoneH - 2), Theme::RAIN_BG_SOFT);
+                fillHatchRect(_tft, cx + 1, rowY + 1, COL_W - 2, max(2, (int)zoneH - 2),
+                              Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
             }
             const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
@@ -1050,7 +1077,8 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
             const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
             if (rainBlk) {
                 uint16_t cellH = max((uint16_t)2, (uint16_t)(zoneH - 2));
-                _tft.fillRect(x0, rowY + 1, DAY_W - 2, cellH, Theme::RAIN_BG_SOFT);
+                fillHatchRect(_tft, x0, rowY + 1, DAY_W - 2, cellH,
+                              Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
             }
             const uint16_t slotColor = rainBlk ? Theme::AMBER : col_z;
             for (uint8_t s = 0; s < MAX_SLOTS; s++) {

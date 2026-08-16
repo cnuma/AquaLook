@@ -72,17 +72,25 @@
       'display:none',
       'box-sizing:border-box',
       'width:100%',
+      'margin-bottom:10px',
       'padding:10px 14px',
-      'border-bottom:1px solid #ffb300',
+      'border:1px solid #ffb300',
+      'border-radius:10px',
       'background:#3b2a00',
       'color:#ffe082',
       'font:600 13px/1.4 sans-serif',
-      'text-align:center',
-      'position:relative',
-      'z-index:10001'
+      'text-align:center'
     ].join(';');
 
-    document.body.insertBefore(banner, document.body.firstChild);
+    // Flux normal, juste apres l'en-tete : voir la note sur .fault-panel
+    // dans alarm.css — un bandeau flottant recouvrait le contenu au lieu
+    // de reserver sa propre place.
+    const headerEl = document.querySelector('header');
+    if (headerEl) {
+      headerEl.insertAdjacentElement('afterend', banner);
+    } else {
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
     return banner;
   }
 

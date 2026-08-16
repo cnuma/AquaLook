@@ -18,6 +18,13 @@
   --muted:      #7a9e80;
   --mono:       'IBM Plex Mono', monospace;
   --sans:       'Space Grotesk', sans-serif;
+  /* Couleur fixe du badge horaire (.mini-slot), volontairement decorrelee
+     de la couleur choisie par l'utilisateur pour le fond de zone (qui,
+     elle, reste variable) : deux teintes proches du meme fond rendaient
+     le badge difficile a lire. Un neutre sombre garde un bon contraste
+     quel que soit le fond pastel choisi. */
+  --slot-bg:    #33475b;
+  --slot-text:  #eef3f7;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -211,7 +218,21 @@ header {
 .pg-day.today-col { border-color: var(--green) !important; }
 .pg-day.off  { background: var(--bg); }
 .pg-day.on   { background: var(--green-dim); border-color: var(--green-mid); }
-.pg-day.rain { background: #fff3cd; border-color: #ffc107; }
+/* Hachurage plutot qu'un simple fond orange plein : plus explicite pour
+   signaler "arrosage suspendu (pluie)" au premier coup d'oeil, meme motif
+   que .interval-off ci-dessous mais en teinte orange. Alignee avec le
+   traitement de l'ecran LCD (memes tons). */
+.pg-day.rain {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      #fff3cd 0,
+      #fff3cd 6px,
+      #ffdf85 6px,
+      #ffdf85 9px
+    );
+  border-color: #ffc107;
+}
 .pg-day.interval-on {
   background: #ede0ff;
   border-color: #b39ddb;
@@ -230,14 +251,16 @@ header {
   border-style: dashed;
 }
 .pg-cross { margin: auto; font-size: 11px; color: var(--border2); font-family: var(--mono); }
+/* Couleur fixe (voir --slot-bg/--slot-text) : l'identite de zone est deja
+   portee par le fond de la journee et l'etiquette de la ligne, le badge
+   horaire n'a besoin que d'etre lisible partout. */
 .mini-slot {
   border-radius: 3px; padding: 2px 3px; font-family: var(--mono);
   font-size: 9px; font-weight: 600; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;
+  background: var(--slot-bg); color: var(--slot-text);
+  border: 1px solid rgba(255,255,255,.18);
 }
-.mini-slot.green { background: #c3e6cb; color: #155724; }
-.mini-slot.amber  { background: #ffeeba; color: #856404; }
-.mini-slot.purple { background: #e8d5ff; color: #6633cc; }
 
 /* Modal */
 .modal-overlay {
