@@ -27,7 +27,7 @@ let journalRefreshRunning=false;
 function renderJournal(text){
  const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
  $('journal').innerHTML=text.split('\n').map(line=>{
-  const cls=line.includes('[ERR]')?'log-err':line.includes('[WRN]')?'log-wrn':line.includes('[INF]')?'log-inf':'';
+  const cls=line.includes('[ERR')?'log-err':line.includes('[WARN]')?'log-wrn':line.includes('[INFO]')?'log-inf':'';
   return cls?`<span class="${cls}">${esc(line)}</span>`:esc(line);
  }).join('\n');
 }
