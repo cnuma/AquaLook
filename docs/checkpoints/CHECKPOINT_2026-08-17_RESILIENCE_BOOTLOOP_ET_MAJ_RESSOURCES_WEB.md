@@ -311,6 +311,158 @@ Aucune notification ntfy n'est attendue : le module est en 5.9.7 et la release
 publiée aussi, donc il n'y a rien à signaler. C'est le résultat normal, pas un
 échec.
 
+## Référence opérationnelle
+
+### Outillage et chemins
+
+| Outil | Chemin |
+|---|---|
+| PlatformIO | `C:\Users\emman\.platformio\penv\Scripts\pio.exe` |
+| Python PlatformIO | `C:\Users\emman\.platformio\penv\Scripts\python.exe` |
+| esptool | `C:\Users\emman\.platformio\packages\tool-esptoolpy\esptool.py` |
+| addr2line | `C:\Users\emman\.platformio\packages\toolchain-xtensa-esp32\bin\xtensa-esp32-elf-addr2line.exe` |
+| ELF pour décodage | `.pio\build\ProgrammeArrosage\firmware.elf` |
+
+Environnement `ProgrammeArrosage`, plateforme `espressif32 @ 6.13.0`, carte
+`esp32dev`. Avant tout téléversement : `pio device list`. `platformio.ini`
+déclare `COM9`, la machine de développement utilisait `COM3` — le port doit être
+imposé explicitement.
+
+Piège constaté le 17 août : sur cette machine, `pio.exe` et le moniteur série
+tournent tous deux comme `python.exe`. Un `taskkill /IM python.exe` coupe donc
+les deux, **y compris une capture en cours**, sans que rien ne le signale.
+
+### Cartographie NVS
+
+Dix namespaces. Le 16 août 2026, une restauration a oublié `aq_notify` et
+`aq_log_cfg`, et l'utilisateur a dû ressaisir sa configuration ntfy : **une
+restauration partielle est silencieuse**. Cette liste doit rester alignée avec
+l'énumération de `/api/debug/nvs-stats` dans `src/WebManager.cpp`.
+
+| Namespace | Contenu | Ce que coûte son oubli |
+|---|---|---|
+| `aqualook` | blob de configuration principal (4 884 o, schéma 2, CRC) | WiFi, zones, planning, NTP, OWM, affichage |
+| `aq_wifi_ka` | cible de la sonde keepalive | détection de connexion zombie inactive |
+| `aq_log_cfg` | configuration du journal | niveaux de journalisation |
+| `aq_notify` | configuration ntfy | **notifications muettes, sans alerte** |
+| `aq_incidents` | état des incidents SD | historique et acquittements |
+| `aq_maint` | demande de maintenance en attente | sans effet durable |
+| `aq_maint_res` | dernier résultat de maintenance | état OTA, notification en attente |
+| `aq_ota_guard` | garde de bascule OTA | retour arrière automatique |
+| `aq_upd_chk` | horaire et intervalle de vérification | réglage revenu aux valeurs par défaut |
+| `aq_boot` | compteur anti-boucle et mode dégradé | protection remise à zéro |
+
+Diagnostic : `GET /api/debug/nvs-stats`. Récupération d'identifiants perdus
+(méthode employée le 16 août) — vidage de la partition puis lecture des chaînes :
+
+```powershell
+& $python $esptool --port COM3 read_flash 0x3D0000 0x15000 nvs_dump.bin
+```
+
+> **Aucun secret ne vit dans le dépôt.** Mot de passe WiFi, sujet ntfy et clé
+> API OpenWeatherMap n'existent qu'en NVS sur le module. Ils ne sont
+> récupérables que depuis le module, jamais depuis Git.
+
+### Garde-fous en place et leurs seuils
+
+| Garde | Seuil | Fichier | Comportement |
+|---|---|---|---|
+| Pages embarquées simultanées | 1 | `WebManager.cpp` | 503 + `Retry-After`, rechargement auto |
+| Requêtes SD en vol | 8, ou < 12 000 o libres | `SdStaticHandler.cpp` | refus journalisé |
+| Fetch météo | < 45 000 o libres ou < 25 000 o de plus gros bloc | `WeatherManager.h` | report de 2 min, journalisé |
+| Mémoire basse | < 10 000 o libres | `SystemDiagnostics.cpp` | défaut `MEMORY_LOW` |
+| Heure inconnue | 5 min sans heure valide | `NTPManager.cpp` | défaut `TIME_UNSYNCED`, rappel /30 min |
+| WiFi jugé stable | 5 min de connexion continue | `UpdateCheckScheduler.h` | condition de déclenchement |
+| Boucle de redémarrages | 4 démarrages sans 3 min stables | `BootLoopGuard.h` | mode dégradé, défaut `BOOT_LOOP` |
+
+### Routes HTTP utiles
+
+| Route | Méthode | Usage |
+|---|---|---|
+| `/api/status` | GET | état runtime léger : uptime, zones, heap, `synced` |
+| `/api/adminStatus` | GET | configuration complète, `bootGuard`, `updateCheck` |
+| `/api/updateCheck` | POST | horaire et intervalle de vérification |
+| `/api/bootguard/clear` | POST | sortie du mode dégradé |
+| `/api/webassets/update` | POST | déploiement des ressources Web (redémarre) |
+| `/api/maintenance/check-version` | POST | vérification OTA firmware (redémarre) |
+| `/api/maintenance/last-result` | GET | dernier résultat de maintenance |
+| `/api/notifications/test` | POST | notification ntfy de test |
+| `/api/logs.txt` | GET | journal du démarrage courant **uniquement** |
+| `/assets-version.json` | GET | version des ressources Web servies |
+| `/api/debug/heap-info` | GET | tas libre, plus gros bloc, fragmentation |
+| `/api/debug/nvs-stats` | GET | occupation par namespace |
+
+> Les routes `/api/debug/*` sont **ouvertes sans authentification**. À sécuriser
+> ou retirer avant toute mise en service.
+
+### Procédures d'essai reproductibles
+
+Ces essais ont trouvé de vrais défauts le 17 août et n'existaient nulle part
+ailleurs. Les rejouer avant chaque release ; ils prennent quelques minutes.
+
+**Intégrité des pages sous concurrence** — a révélé la corruption HTML.
+
+```bash
+curl -s http://192.168.1.198/ota -o ref.html
+for i in $(seq 1 8); do curl -s http://192.168.1.198/ota -o p$i.html & done; wait
+for i in $(seq 1 8); do cmp -s ref.html p$i.html && echo "OK $i" || echo "ECART $i"; done
+```
+
+Attendu : aucune page servie en `200` ne diffère de la référence. Les `503` sont
+normaux et voulus. **Comparer les octets, jamais le code de retour.**
+
+**Conformité des ressources servies** — a confirmé le déploiement v5.9.6.
+Télécharger `aqualook-web-manifest.json` de la dernière release, recalculer le
+SHA-256 de chaque fichier **servi par le module**, comparer à celui du
+manifeste. Attendu : zéro écart.
+
+**Alerte d'heure inconnue.** Pointer le serveur NTP sur `192.0.2.1` (RFC 5737,
+garanti non routable) via `POST /api/ntp`, puis provoquer un reset **matériel** —
+un reset logiciel conserve l'horloge et n'exerce rien. Attendu : alerte à 5 min.
+Restaurer ensuite `pool.ntp.org` / gmt 3600 / dst 3600 et vérifier la ligne
+`NTP: heure retrouvee`.
+
+**Mode dégradé.** Quatre resets matériels espacés de moins de trois minutes :
+
+```powershell
+& $python $esptool --port COM3 --after hard_reset read_mac
+```
+
+Attendu : comptage `2/4` puis `3/4` sans réaction, puis `MODE DEGRADE actif`.
+Vérifier ensuite à zéro dans le journal : `Meteo: fetch`, `Verif MAJ: echeance`,
+`Notification: envoi` ; et présents : planning, serveur Web. Sortir par
+`POST /api/bootguard/clear`.
+
+**Observation passive.** Après tout correctif touchant la mémoire, laisser
+tourner sans émettre la moindre requête, puis compter :
+
+```bash
+grep -ac "abort() was called" $LOG ; grep -ac "Guru Meditation" $LOG
+grep -ac "demarrage target=" $LOG
+```
+
+Attendu : `0`, `0`, et un seul démarrage. C'est ce comptage qui a permis de
+distinguer « corrigé » de « moins fréquent ».
+
+### Publier une release
+
+La CI se déclenche sur un tag `v*.*.*` et publie firmware, manifeste OTA,
+manifeste Web et les 10 fichiers de `data/`.
+
+```powershell
+"5.9.8" | Set-Content VERSION -Encoding utf8
+git add VERSION ; git commit -m "chore(release): 5.9.8"
+git push origin agent/ota-3.1-stage-inactive
+git tag -a v5.9.8 -m "AquaLook 5.9.8" ; git push origin v5.9.8
+
+gh run list --workflow=ota-release.yml --limit 1
+gh release view v5.9.8 --json assets -q '.assets[].name'
+```
+
+Le module ne voit une mise à jour que si la version publiée diffère de celle
+qu'il exécute. Publier une release est donc aussi le **seul** moyen d'exercer le
+chemin de notification « mise à jour disponible ».
+
 ## Principes de travail retenus ce jour
 
 - **Un code de retour n'est pas une vérification.** Un `curl` qui rend `200` avec
