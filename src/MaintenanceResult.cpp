@@ -45,19 +45,31 @@ MaintenanceResult loadRaw(Preferences& preferences) {
     const size_t len = preferences.getBytesLength(NVS_KEY);
     if (len != sizeof(PersistedMaintenanceResult)) return empty;
 
-    PersistedMaintenanceResult blob{};
-    const size_t read = preferences.getBytes(NVS_KEY, &blob, sizeof(blob));
-    if (read != sizeof(blob) ||
-        blob.magic != NVS_MAGIC ||
-        blob.schema != NVS_SCHEMA ||
-        blob.payloadSize != sizeof(blob)) {
+    // Alloue sur le tas et non sur la pile : PersistedMaintenanceResult pese
+    // environ 760 octets, et ce code est appele depuis des taches a pile
+    // etroite. Le 17 aout 2026, l'enchainement load() puis save() depuis la
+    // tache de notification (4 Ko) a fait deborder le canari de pile. Meme
+    // precaution que ConfigManager::save(), pour la meme raison.
+    PersistedMaintenanceResult* blob =
+        static_cast<PersistedMaintenanceResult*>(malloc(sizeof(PersistedMaintenanceResult)));
+    if (blob == nullptr) return empty;
+
+    const size_t read = preferences.getBytes(NVS_KEY, blob, sizeof(*blob));
+    if (read != sizeof(*blob) ||
+        blob->magic != NVS_MAGIC ||
+        blob->schema != NVS_SCHEMA ||
+        blob->payloadSize != sizeof(*blob)) {
+        free(blob);
         return empty;
     }
-    if (crc32Bytes(reinterpret_cast<const uint8_t*>(&blob),
-                    offsetof(PersistedMaintenanceResult, crc32)) != blob.crc32) {
+    if (crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
+                    offsetof(PersistedMaintenanceResult, crc32)) != blob->crc32) {
+        free(blob);
         return empty;
     }
-    return blob.data;
+    const MaintenanceResult data = blob->data;
+    free(blob);
+    return data;
 }
 }
 
@@ -124,17 +136,27 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         }
     }
 
-    PersistedMaintenanceResult blob{};
-    blob.magic = NVS_MAGIC;
-    blob.schema = NVS_SCHEMA;
-    blob.payloadSize = sizeof(blob);
-    blob.data = merged;
-    blob.crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(&blob),
+    // Sur le tas, pour la meme raison que dans loadRaw() : ce bloc de ~760
+    // octets s'ajoutait a 'previous' et 'merged' deja sur la pile, soit plus
+    // de 2 Ko pour la seule fonction save().
+    PersistedMaintenanceResult* blob =
+        static_cast<PersistedMaintenanceResult*>(malloc(sizeof(PersistedMaintenanceResult)));
+    if (blob == nullptr) {
+        preferences.end();
+        return false;
+    }
+    memset(blob, 0, sizeof(*blob));
+    blob->magic = NVS_MAGIC;
+    blob->schema = NVS_SCHEMA;
+    blob->payloadSize = sizeof(*blob);
+    blob->data = merged;
+    blob->crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
                              offsetof(PersistedMaintenanceResult, crc32));
 
-    const size_t written = preferences.putBytes(NVS_KEY, &blob, sizeof(blob));
+    const size_t written = preferences.putBytes(NVS_KEY, blob, sizeof(*blob));
     preferences.end();
-    return written == sizeof(blob);
+    free(blob);
+    return written == sizeof(PersistedMaintenanceResult);
 }
 
 bool MaintenanceResultStore::clear() {

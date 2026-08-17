@@ -15,7 +15,26 @@ constexpr char NVS_CONFIG_KEY[] = "config";
 constexpr uint8_t CONFIG_SCHEMA = 1U;
 constexpr uint32_t SUPERVISOR_PERIOD_MS = 1000U;
 constexpr uint32_t NETWORK_TIMEOUT_MS = 8000U;
-constexpr uint32_t SUPERVISOR_STACK = 4096U;
+// Portee a 8 Ko le 17 aout 2026 apres un plantage reproductible : la tache
+// superviseur envoyait la notification (http=200), puis debordait sa pile en
+// ecrivant l'accuse de reception en NVS.
+//
+//   Guru Meditation Error: Core 0 panic'ed
+//   Stack canary watchpoint triggered (notify-supervis)
+//
+// markUpdateNotificationDelivered() enchaine MaintenanceResultStore::load()
+// puis save(), et MaintenanceResult pese environ 750 octets : plusieurs copies
+// se retrouvaient sur la pile en meme temps, sans compter les tampons internes
+// de NVS. Les copies sont desormais allouees sur le tas (voir
+// MaintenanceResult.cpp), ce qui corrige la cause de fond ; cette marge reste
+// pour les autres chemins de cette tache.
+//
+// Consequence du plantage, la raison pour laquelle il fallait le corriger et
+// pas seulement le constater : le redemarrage survenait AVANT que l'accuse ne
+// soit persiste. Au demarrage suivant, le module se croyait toujours en
+// attente et renvoyait la meme notification. L'utilisateur recevait donc une
+// alerte en double pour un envoi qui avait parfaitement reussi.
+constexpr uint32_t SUPERVISOR_STACK = 8192U;
 constexpr uint32_t SENDER_STACK = 4096U;
 constexpr UBaseType_t TASK_PRIORITY = 1U;
 constexpr BaseType_t TASK_CORE = 0;
@@ -407,6 +426,12 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
             if (!markUpdateNotificationDelivered()) {
                 EventLog::log(LOG_WARN, "Notification: livraison update non acquittee en NVS");
             }
+            // Marge de pile mesuree juste apres l'ecriture NVS, c'est-a-dire au
+            // pic reel de ce chemin. Une valeur, pas une hypothese : c'est
+            // exactement ce qui manquait quand la tache a deborde.
+            EventLog::log(LOG_INFO,
+                          "Notification: accuse update ecrit, marge de pile=%u octets",
+                          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
         } else {
             IncidentManager::markStorageSdNotificationDelivered(
                 incidentNotificationFor(g_work)
