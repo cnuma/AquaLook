@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <functional>
 
 // Etape 4 du plan "Mise a jour distante des ressources Web" (ROADMAP.md) :
 // telecharger un fichier depuis une URL de release GitHub et verifier sa
@@ -25,6 +26,22 @@ struct WebAssetVerifyResult {
 
 class WebAssetsUpdater {
 public:
+    // Destination des octets telecharges. Le telechargement, la verification
+    // d'empreinte et la destination sont ainsi separes : la meme mecanique
+    // sert a verifier sans ecrire, a remplir un tampon (manifeste) ou a ecrire
+    // sur la carte, sans dupliquer la gestion HTTPS/redirections/SHA-256.
+    // Retourner false interrompt le transfert (ecriture impossible).
+    using Sink = std::function<bool(const uint8_t* data, size_t len)>;
+
+    // Telecharge, verifie taille et SHA-256, et transmet les octets au sink au
+    // fil de l'eau. Rien n'est conserve en memoire au-dela d'un bloc.
+    static WebAssetVerifyResult downloadToSink(
+        const char* url,
+        uint32_t expectedSize,
+        const char* expectedSha256Hex,
+        const Sink& sink
+    );
+
     // url doit etre une URL https:// vers un hote GitHub autorise (release
     // asset). expectedSha256Hex : 64 caracteres hexadecimaux minuscules.
     // Le corps telecharge n'est jamais conserve, seulement haché au vol.

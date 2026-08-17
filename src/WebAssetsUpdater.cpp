@@ -62,7 +62,8 @@ WebAssetVerifyResult downloadAndVerify(
     const String& url,
     uint32_t expectedSize,
     const char* expectedSha256Hex,
-    uint8_t redirectCount
+    uint8_t redirectCount,
+    const WebAssetsUpdater::Sink& sink
 ) {
     WebAssetVerifyResult result;
     HttpTarget target;
@@ -131,7 +132,7 @@ WebAssetVerifyResult downloadAndVerify(
             copyText(result.detail, sizeof(result.detail), "redirect-invalid");
             return result;
         }
-        return downloadAndVerify(location, expectedSize, expectedSha256Hex, redirectCount + 1U);
+        return downloadAndVerify(location, expectedSize, expectedSha256Hex, redirectCount + 1U, sink);
     }
 
     if (statusCode != 200) {
@@ -184,6 +185,11 @@ WebAssetVerifyResult downloadAndVerify(
                         &shaContext,
                         buffer,
                         static_cast<size_t>(received)) != 0) {
+                    hashOk = false;
+                    break;
+                }
+                if (sink && !sink(buffer, static_cast<size_t>(received))) {
+                    copyText(result.detail, sizeof(result.detail), "sink-write-failed");
                     hashOk = false;
                     break;
                 }
@@ -253,5 +259,23 @@ WebAssetVerifyResult WebAssetsUpdater::verifyOnly(
         copyText(result.detail, sizeof(result.detail), "invalid-arguments");
         return result;
     }
-    return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U);
+    return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U,
+                             WebAssetsUpdater::Sink());
+}
+
+// Variante publique avec destination : meme mecanique, les octets verifies
+// sont en plus transmis au sink au fil du telechargement.
+WebAssetVerifyResult WebAssetsUpdater::downloadToSink(
+    const char* url,
+    uint32_t expectedSize,
+    const char* expectedSha256Hex,
+    const Sink& sink
+) {
+    if (!url || url[0] == ' ' || expectedSize == 0U ||
+        !expectedSha256Hex || strlen(expectedSha256Hex) != 64U) {
+        WebAssetVerifyResult result;
+        copyText(result.detail, sizeof(result.detail), "invalid-arguments");
+        return result;
+    }
+    return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U, sink);
 }
