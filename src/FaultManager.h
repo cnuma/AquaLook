@@ -19,7 +19,13 @@ enum class FaultId : uint8_t {
     // Sans ce defaut, l'echec serait muet : TFT_eSprite teste _created et
     // sort sans rien dessiner, donc l'ecran resterait fige sur son dernier
     // contenu, sans message ni trace. Ajoute le 17 aout 2026.
-    DISPLAY_ALLOC = 6
+    DISPLAY_ALLOC = 6,
+    // Memoire libre passee sous le seuil d'alerte. Signale AVANT la panne :
+    // les trois defaillances du 16-17 aout 2026 (page non chargee, poignee de
+    // main TLS en echec, plantages au demarrage) etaient toutes des epuisements
+    // memoire, et toutes ont ete decouvertes par la panne alors que la
+    // degradation etait mesurable en amont. Ajoute le 17 aout 2026.
+    MEMORY_LOW = 7
 };
 
 class FaultManager {

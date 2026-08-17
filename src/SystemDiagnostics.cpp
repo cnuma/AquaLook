@@ -11,6 +11,8 @@ static constexpr uint32_t MIN_OTA_PARTITION_SIZE = 0x1E0000UL;
 #include "EventLog.h"
 #include "TimeUtils.h"
 #include "RuntimeProfiler.h"
+#include "FaultManager.h"
+#include <esp_heap_caps.h>
 
 #ifndef AQUALOOK_VERSION
 #define AQUALOOK_VERSION "unknown"
@@ -140,6 +142,11 @@ uint32_t SystemDiagnostics::_loopPeriodUs = 0;
 uint32_t SystemDiagnostics::_loopPeriodMaxUs = 0;
 uint64_t SystemDiagnostics::_loopDurationTotalUs = 0;
 uint32_t SystemDiagnostics::_loopOverrunCount = 0;
+uint32_t SystemDiagnostics::_memSampleAtMs = 0;
+uint32_t SystemDiagnostics::_memLogAtMs = 0;
+uint32_t SystemDiagnostics::_minFreeBytes = UINT32_MAX;
+uint32_t SystemDiagnostics::_minLargestBlock = UINT32_MAX;
+bool     SystemDiagnostics::_memLowActive = false;
 uint32_t SystemDiagnostics::_lastLoopOverrunUs = 0;
 uint32_t SystemDiagnostics::_lastLoopOverrunAtMs = 0;
 uint32_t SystemDiagnostics::_lastLoopOverrunLogAtMs = 0;
@@ -198,9 +205,74 @@ void SystemDiagnostics::loopEnter() {
     portEXIT_CRITICAL(&_mux);
 }
 
+
+// Surveillance memoire — alerter AVANT la panne plutot que la constater.
+//
+// Motivation directe : les trois defaillances du 16-17 aout 2026 etaient des
+// epuisements memoire (page Web qui ne se chargeait plus, poignee de main TLS
+// impossible, plantages au demarrage), et toutes ont ete decouvertes par la
+// panne alors que la degradation etait mesurable en amont. Les planchers
+// releves ici sont aussi les indicateurs retenus pour la future telemetrie.
+//
+// Aucune allocation dans cette fonction : elle doit rester utilisable
+// precisement quand la memoire manque.
+void SystemDiagnostics::sampleMemory(uint32_t nowMs) {
+    if (!AquaLook::Time::elapsedAtLeast(nowMs, _memSampleAtMs, MEM_SAMPLE_INTERVAL_MS)) {
+        return;
+    }
+    _memSampleAtMs = nowMs;
+
+    const uint32_t freeBytes =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    const uint32_t largest =
+        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+
+    if (freeBytes < _minFreeBytes)   _minFreeBytes = freeBytes;
+    if (largest   < _minLargestBlock) _minLargestBlock = largest;
+
+    if (!_memLowActive && freeBytes < MEM_LOW_FREE_BYTES) {
+        _memLowActive = true;
+        FaultManager::setActive(FaultId::MEMORY_LOW, true);
+        FaultManager::notifyError();
+        _memLogAtMs = nowMs;
+        EventLog::log(LOG_ERROR,
+                      "Memoire: seuil bas franchi libre=%lu plusGrosBloc=%lu "
+                      "(seuil=%lu) — risque d'echec d'allocation",
+                      static_cast<unsigned long>(freeBytes),
+                      static_cast<unsigned long>(largest),
+                      static_cast<unsigned long>(MEM_LOW_FREE_BYTES));
+        return;
+    }
+
+    // Hysteresis : ne relacher qu'au-dessus d'un seuil superieur, sinon
+    // l'alerte clignoterait a chaque oscillation autour du seuil bas.
+    if (_memLowActive && freeBytes > MEM_RECOVER_FREE_BYTES) {
+        _memLowActive = false;
+        FaultManager::setActive(FaultId::MEMORY_LOW, false);
+        EventLog::log(LOG_INFO,
+                      "Memoire: retour a la normale libre=%lu plusGrosBloc=%lu",
+                      static_cast<unsigned long>(freeBytes),
+                      static_cast<unsigned long>(largest));
+        return;
+    }
+
+    // Tant que la situation reste basse, le rappeler periodiquement : une
+    // alerte unique se perd dans le journal si l'etat dure des heures.
+    if (_memLowActive &&
+        AquaLook::Time::elapsedAtLeast(nowMs, _memLogAtMs, MEM_LOG_INTERVAL_MS)) {
+        _memLogAtMs = nowMs;
+        EventLog::log(LOG_WARN,
+                      "Memoire: toujours basse libre=%lu plusGrosBloc=%lu",
+                      static_cast<unsigned long>(freeBytes),
+                      static_cast<unsigned long>(largest));
+    }
+}
+
 void SystemDiagnostics::loopExit() {
     const uint32_t durationUs = micros() - _loopStartedUs;
     const uint32_t nowMs = millis();
+
+    sampleMemory(nowMs);
     bool shouldLogOverrun = false;
     uint32_t overrunCount = 0;
 
@@ -344,6 +416,15 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     memory["heapLargestBlock"] =
         heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     memory["heapSize"] = ESP.getHeapSize();
+    // Planchers releves par sampleMemory(). Le plus gros bloc contigu minimum
+    // est le meilleur predicteur d'echec d'allocation : une allocation echoue
+    // parce qu'aucun bloc assez grand n'existe, pas parce que le total manque.
+    // Ces deux valeurs sont les indicateurs retenus pour la telemetrie a venir.
+    memory["minFreeBytesSeen"] =
+        _minFreeBytes == UINT32_MAX ? 0UL : _minFreeBytes;
+    memory["minLargestBlockSeen"] =
+        _minLargestBlock == UINT32_MAX ? 0UL : _minLargestBlock;
+    memory["lowMemoryActive"] = _memLowActive;
     memory["psramSize"] = ESP.getPsramSize();
     memory["psramFree"] = ESP.getFreePsram();
     memory["loopStackHighWaterWords"] = uxTaskGetStackHighWaterMark(nullptr);
