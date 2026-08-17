@@ -1,4 +1,5 @@
 #include "WiFiManager.h"
+#include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
 #include "FaultManager.h"
@@ -183,7 +184,7 @@ bool WiFiManager::processPendingAction(uint32_t now) {
         }
 
         case PendingAction::RESTART:
-            ESP.restart();
+            BootLoopGuard::restartDeliberately("bascule de mode WiFi");
             return true;
 
         case PendingAction::NONE:

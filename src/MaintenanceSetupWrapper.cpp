@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "BootLoopGuard.h"
 
 #include "ConfigManager.h"
 #include "EventLog.h"
@@ -28,7 +29,7 @@ void maintenanceTask(void*) {
     // plutot que reprendre un setup partiellement intercepte.
     MaintenanceBoot::runIfRequested(maintenanceConfig);
     delay(250);
-    ESP.restart();
+    BootLoopGuard::restartDeliberately("sortie du mode maintenance");
 }
 }
 

@@ -1,6 +1,7 @@
 #include "WeatherManager.h"
 #include "ConfigManager.h"
 #include "EventBus.h"
+#include "BootLoopGuard.h"
 #include "EventLog.h"
 
 #include <esp_heap_caps.h>
@@ -56,6 +57,11 @@ void WeatherManager::begin(ConfigManager* config) {
 }
 
 void WeatherManager::update(bool wifiConnected) {
+    // Fonction de confort : suspendue tant que le module est en mode degrade.
+    // C'est precisement une reponse meteo qui a provoque l'une des deux
+    // boucles de redemarrages du 17 aout 2026.
+    if (BootLoopGuard::isDegraded()) return;
+
     if (EventBus::configDirty && _config) {
         if (_config->owm().apiKey[0] != '\0') {
             _forceFetch = true;

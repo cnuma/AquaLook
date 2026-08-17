@@ -1,4 +1,5 @@
 #include "MaintenanceBoot.h"
+#include "BootLoopGuard.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -467,7 +468,7 @@ void persistProbeResult(const GithubProbeOutcome& outcome) {
 void restartToNormal() {
     WiFi.disconnect(true);
     delay(RESTART_DELAY_MS);
-    ESP.restart();
+    BootLoopGuard::restartDeliberately("fin du mode maintenance");
 }
 
 // Active la partition inactive precedemment ecrite et verifiee par

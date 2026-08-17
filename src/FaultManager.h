@@ -35,7 +35,12 @@ enum class FaultId : uint8_t {
     // horodatee), mais pas a une coupure d'alimentation. Le scenario reel est
     // donc : coupure de courant, retour du courant sans reseau, et un arrosage
     // qui ne repart jamais. Ajoute le 17 aout 2026.
-    TIME_UNSYNCED = 8
+    TIME_UNSYNCED = 8,
+    // Le module a redemarre plusieurs fois sans jamais tenir une periode de
+    // fonctionnement stable, et s'est mis en mode degrade. Ajoute le 17 aout
+    // 2026, apres deux boucles de redemarrages que rien dans le module n'a
+    // arretees : le seul rempart avait ete un utilisateur debranchant la prise.
+    BOOT_LOOP = 9
 };
 
 class FaultManager {

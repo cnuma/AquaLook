@@ -1,4 +1,5 @@
 #include "UpdateCheckScheduler.h"
+#include "BootLoopGuard.h"
 
 #include <Preferences.h>
 
@@ -112,6 +113,10 @@ void UpdateCheckScheduler::update(bool ntpSynced,
                                   const WiFiManager* wifi,
                                   const RelaisManager* relais,
                                   const ConfigManager* config) {
+    // En mode degrade, surtout pas : cette verification provoque un
+    // redemarrage volontaire, ce qui est la derniere chose a faire quand le
+    // module vient de trop redemarrer.
+    if (BootLoopGuard::isDegraded()) return;
     if (!_loaded || _triggered || !_cfg.enabled) return;
 
     // Le WiFi doit etre stable, pas seulement associe. La duree est mesuree
@@ -192,6 +197,6 @@ void UpdateCheckScheduler::update(bool ntpSynced,
                   "maintenance pour verifier les mises a jour",
                   static_cast<unsigned>(_cfg.hour),
                   static_cast<unsigned>(_cfg.minute));
-    delay(200);
-    ESP.restart();
+    BootLoopGuard::restartDeliberately(
+        "verification periodique des mises a jour");
 }

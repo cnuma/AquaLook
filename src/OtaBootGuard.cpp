@@ -1,4 +1,5 @@
 #include "OtaBootGuard.h"
+#include "BootLoopGuard.h"
 
 #include <Preferences.h>
 #include <esp_ota_ops.h>
@@ -90,7 +91,7 @@ void OtaBootGuard::onBoot() {
                           previousLabel);
         }
         delay(250);
-        ESP.restart();
+        BootLoopGuard::restartDeliberately("retour arriere OTA");
         return; // jamais atteint
     }
 

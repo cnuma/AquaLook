@@ -5,6 +5,7 @@
 #include <WiFiClient.h>
 #include <time.h>
 
+#include "BootLoopGuard.h"
 #include "EventLog.h"
 #include "ConfigManager.h"
 #include "MaintenanceResult.h"
@@ -352,7 +353,14 @@ void NotificationManager::supervisorTask(void*) {
             processWorkerResult(nowMs);
         }
 
+        // Aucun envoi en mode degrade. C'est volontairement le cas meme
+        // pour signaler le mode degrade lui-meme : si la boucle vient de
+        // l'envoi d'une notification — cas reellement survenu le 17 aout
+        // 2026 — en emettre une ici relancerait exactement ce que ce mode
+        // existe pour arreter. L'etat est signale par les moyens locaux, qui
+        // ne peuvent rien relancer : voyant, ecran, page Web, journal.
         if (g_result == WorkerResult::IDLE &&
+            !BootLoopGuard::isDegraded() &&
             g_config.enabled &&
             validServer(g_config.server) &&
             validTopic(g_config.topic) &&

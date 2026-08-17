@@ -684,6 +684,10 @@ function populateDrawer() {
     document.getElementById('cfg-ntp-gmt').value    = s.ntp.gmtOffset ?? 3600;
     document.getElementById('cfg-ntp-dst').value    = s.ntp.dstOffset ?? 3600;
   }
+  if (s.bootGuard) {
+    const b = document.getElementById('bootguard-banner');
+    if (b) b.style.display = s.bootGuard.degraded ? '' : 'none';
+  }
   if (s.updateCheck) {
     const u = s.updateCheck;
     const en = document.getElementById('cfg-upd-enabled');
@@ -780,6 +784,14 @@ async function saveCfgNtp() {
     dstOffset: parseInt(document.getElementById('cfg-ntp-dst').value) || 3600
   });
   toast('NTP mis a jour');
+}
+async function clearBootGuard() {
+  if (!confirm('Réactiver la météo, les mises à jour et les notifications ?
+
+Si la cause du problème n’est pas résolue, AquaLook peut se remettre à redémarrer.')) return;
+  await api('/api/bootguard/clear', {});
+  toast('Fonctions réactivées au prochain démarrage');
+  fetchAdminStatus();
 }
 async function saveCfgUpdateCheck() {
   const enabled = document.getElementById('cfg-upd-enabled').checked;

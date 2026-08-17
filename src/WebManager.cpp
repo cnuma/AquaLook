@@ -1,10 +1,12 @@
 #include "WebManager.h"
+#include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
 #include "UpdateCheckScheduler.h"
+#include "BootLoopGuard.h"
 #include "DisplayManager.h"
 #include <esp_heap_caps.h>
 #include <nvs.h>
@@ -205,7 +207,7 @@ void WebManager::update() {
 
     if (_restartPending && AquaLook::Time::deadlineReached(nowMs, _restartAtMs)) {
         _restartPending = false;
-        ESP.restart();
+        BootLoopGuard::restartDeliberately("demande depuis l'interface Web");
         return;
     }
 
@@ -400,6 +402,19 @@ void WebManager::setupRoutes() {
     // Diagnostic temporaire pour la fragmentation memoire constatee lors des
     // tests HTTPS (voir ROADMAP.md, "constat du 16 aout 2026") : lecture
     // seule, aucun effet de bord, a retirer une fois la piste tranchee.
+    // Sortie du mode degrade, sur action explicite. Volontairement une action
+    // de l'utilisateur et non un retour automatique : survivre avec la meteo
+    // coupee ne prouve rien sur la meteo, et un retour automatique relancerait
+    // la boucle au premier cycle suivant.
+    _server.on("/api/bootguard/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!BootLoopGuard::isDegraded()) { sendOk(req); return; }
+        if (!BootLoopGuard::clearDegraded()) {
+            sendError(req, "effacement impossible", 500);
+            return;
+        }
+        sendOk(req);
+    });
+
     _server.on("/api/debug/heap-info", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleHeapInfo(req);
     });
@@ -616,6 +631,15 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         ntp["dstOffset"] = _config->ntp().dstOffset;
         ntp["synced"]    = _ntp->isSynced();
         ntp["time"]      = _ntp->getTimeStr();
+    }
+
+    // Garde anti-boucle : etat toujours expose, meme au repos, pour que la
+    // page puisse dire "tout va bien" plutot que de ne rien dire.
+    {
+        JsonObject bg = doc["bootGuard"].to<JsonObject>();
+        bg["degraded"] = BootLoopGuard::isDegraded();
+        bg["suspectBoots"] = BootLoopGuard::suspectBootCount();
+        bg["threshold"] = BootLoopGuard::DEGRADED_THRESHOLD;
     }
 
     // Verification periodique des mises a jour
@@ -1146,7 +1170,8 @@ void WebManager::handleNvsStats(AsyncWebServerRequest* req) {
         "aq_maint_res",  // MaintenanceResultStore
         "aq_notify",     // NotificationManager
         "aq_ota_guard",  // OtaBootGuard
-        "aq_upd_chk"     // UpdateCheckScheduler — ajoute le 17/08/2026
+        "aq_upd_chk",    // UpdateCheckScheduler — ajoute le 17/08/2026
+        "aq_boot"        // BootLoopGuard — ajoute le 17/08/2026
     };
 
     JsonObject perNs = out["namespaces"].to<JsonObject>();
@@ -1320,7 +1345,7 @@ void WebManager::handleResetConfig(AsyncWebServerRequest* req) {
     sendOk(req);
     _config->resetPersistent();
     delay(200);
-    ESP.restart();
+    BootLoopGuard::restartDeliberately("remise a zero de la configuration");
 }
 
 // ═══════════════════════════════════════════════════════════════

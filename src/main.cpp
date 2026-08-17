@@ -18,6 +18,7 @@
 #include "DisplayPlanningDecor.h"
 #include "ConfigManager.h"
 #include "StorageManager.h"
+#include "BootLoopGuard.h"
 #include "SystemDiagnostics.h"
 #include "UpdateCheckScheduler.h"
 #include "RuntimeProfiler.h"
@@ -449,6 +450,10 @@ void setup() {
     // Garde OTA : doit s'executer avant toute initialisation lourde. Ne
     // redemarre que si un retour arriere automatique est necessaire suite a
     // une bascule OTA qui n'a pas ete validee.
+    // Avant toute initialisation lourde : si les demarrages precedents se
+    // sont mal passes, les sous-systemes de confort ne doivent meme pas
+    // demarrer.
+    BootLoopGuard::onBoot();
     OtaBootGuard::onBoot();
 
     FaultManager::begin();
@@ -633,6 +638,7 @@ void setup() {
 void loop() {
     SystemDiagnostics::loopEnter();
 
+    BootLoopGuard::update();
     OtaBootGuard::update();
     configMgr.update();  // applique une sauvegarde NVS differee en attente, si echue
 

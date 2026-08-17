@@ -150,6 +150,12 @@
       <button class="btn-cfg primary" onclick="saveCfgNtp()">Enregistrer</button>
     </div>
   </div>
+  <div id="bootguard-banner" style="display:none;margin:0 0 12px;padding:14px;border-radius:10px;background:#4a1010;border:1px solid #a33;color:#ffd9d9">
+    <strong>Mode dégradé actif</strong>
+    <div style="margin:.5rem 0;font-size:.92rem;line-height:1.45">AquaLook a redémarré plusieurs fois de suite sans parvenir à fonctionner normalement. Il s’est mis en sécurité&nbsp;: <strong>l’arrosage, l’horloge et cette page continuent de fonctionner</strong>. La météo, la vérification des mises à jour et les notifications sont suspendues.</div>
+    <div style="margin:.5rem 0;font-size:.92rem">Consultez le journal pour comprendre la cause avant de réactiver.</div>
+    <button class="btn-cfg" onclick="clearBootGuard()">Réactiver les fonctions suspendues</button>
+  </div>
   <div class="cfg-section" id="sec-upd">
     <div class="cfg-section-header" onclick="toggleSection('sec-upd')">
       <span class="cfg-section-title"><span class="sec-icon">⬆</span>Mises à jour</span>

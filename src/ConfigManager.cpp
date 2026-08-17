@@ -1,4 +1,5 @@
 #include "ConfigManager.h"
+#include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
 #include "TimeUtils.h"
@@ -590,7 +591,7 @@ void ConfigManager::setWifi(const char* ssid, const char* pwd) {
     strlcpy(_wifi.password, pwd,  sizeof(_wifi.password));
     save();
     // Invariant I10 : l'appelant (WebManager) a déjà envoyé sendOk()
-    ESP.restart();
+    BootLoopGuard::restartDeliberately("changement des identifiants WiFi");
 }
 
 void ConfigManager::setTouchCalib(int16_t xMin, int16_t xMax,
@@ -689,7 +690,7 @@ void ConfigManager::setSystemNbZones(uint8_t nb) {
     save();
     // Reboot requis — les tableaux RAM sont redimensionnés au boot
     // L'appelant (WebManager) envoie sendOk() AVANT d'appeler ce setter
-    ESP.restart();
+    BootLoopGuard::restartDeliberately("changement du nombre de zones");
 }
 
 void ConfigManager::setSystemNbRelais(uint8_t nb) {
