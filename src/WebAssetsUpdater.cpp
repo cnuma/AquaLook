@@ -454,6 +454,18 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
     strncpy(out.version, version, sizeof(out.version) - 1U);
     out.fileCount = static_cast<uint8_t>(files.size());
 
+    // Comparer avant de telecharger : reinstaller une version identique
+    // userait la carte et prendrait un risque pour rien.
+    char installed[24] = {0};
+    readInstalledVersion(storage, installed, sizeof(installed));
+    if (installed[0] != '\0' && strcmp(installed, out.version) == 0) {
+        out.ok = true;
+        out.filesDeployed = 0U;
+        copyText(out.detail, sizeof(out.detail), "deja-a-jour");
+        EventLog::log(LOG_INFO, "WebAssets: deja a jour en version %s", out.version);
+        return out;
+    }
+
     if (!storage->beginAssetStaging()) {
         copyText(out.detail, sizeof(out.detail), "transit-impossible");
         return out;
@@ -499,6 +511,27 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         out.filesDeployed++;
         EventLog::log(LOG_INFO, "WebAssets: %s verifie (%lu octets)",
                       name, static_cast<unsigned long>(r.downloadedSize));
+    }
+
+    // Ecrire la version dans le transit, et non apres la bascule : elle bascule
+    // ainsi avec les fichiers qu'elle decrit. Ecrite apres coup, une coupure
+    // entre les deux laisserait le module affirmer une version qu'il n'a pas.
+    // Jusqu'ici ce fichier n'etait produit que par le script de synchronisation
+    // local ; sans lui, le module ne pouvait pas savoir s'il etait a jour.
+    {
+        String vjson = String("{\"version\":\"") + out.version +
+                       "\",\"fileCount\":" + String(out.fileCount) +
+                       ",\"source\":\"manifest\"}";
+        String vpath = String(StorageManager::ASSETS_STAGING) + "/assets-version.json";
+        FsFile vf;
+        if (storage->openWrite(vpath.c_str(), vf)) {
+            storage->writeChunk(vf, reinterpret_cast<const uint8_t*>(vjson.c_str()),
+                                vjson.length());
+            storage->closeFile(vf);
+        } else {
+            copyText(out.detail, sizeof(out.detail), "version-non-ecrite");
+            return out;
+        }
     }
 
     if (!storage->commitAssetStaging()) {
