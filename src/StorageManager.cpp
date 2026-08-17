@@ -309,6 +309,137 @@ bool StorageManager::deleteOnSd(const char* path) {
     return ok;
 }
 
+
+// ── Deploiement transactionnel des ressources Web ─────────────────────────
+// Voir la note detaillee dans StorageManager.h. Regle : ne jamais ecrire
+// directement dans /www.
+
+bool StorageManager::removeDirectoryContents(const char* dirPath) {
+    if (!_cardMounted || !dirPath) return false;
+    if (!lockSd(1000U)) return false;
+
+    FsFile dir;
+    if (!dir.open(dirPath, O_RDONLY)) {
+        unlockSd();
+        return false;   // absent : rien a supprimer, l'appelant decide
+    }
+
+    bool allRemoved = true;
+    char name[64];
+    FsFile entry;
+    while (entry.openNext(&dir, O_RDONLY)) {
+        const bool isDir = entry.isDir();
+        entry.getName(name, sizeof(name));
+        entry.close();
+        if (isDir) {
+            // /www est plat par construction. Un sous-repertoire inattendu est
+            // signale plutot qu'ignore en silence.
+            allRemoved = false;
+            continue;
+        }
+        char full[128];
+        snprintf(full, sizeof(full), "%s/%s", dirPath, name);
+        if (!_sd.remove(full)) allRemoved = false;
+    }
+    dir.close();
+    unlockSd();
+    return allRemoved;
+}
+
+bool StorageManager::beginAssetStaging() {
+    if (!_cardMounted) return false;
+
+    // Repartir d'un transit propre : un reliquat d'un essai precedent
+    // interrompu melangerait d'anciens fichiers aux nouveaux.
+    removeDirectoryContents(ASSETS_STAGING);
+
+    if (!lockSd(1000U)) return false;
+    _sd.rmdir(ASSETS_STAGING);
+    const bool created = _sd.mkdir(ASSETS_STAGING);
+    unlockSd();
+
+    EventLog::log(created ? LOG_INFO : LOG_ERROR,
+                  "Deploiement: preparation du transit %s %s",
+                  ASSETS_STAGING, created ? "OK" : "ECHEC");
+    return created;
+}
+
+bool StorageManager::commitAssetStaging() {
+    if (!_cardMounted) return false;
+
+    if (!lockSd(2000U)) return false;
+
+    if (!_sd.exists(ASSETS_STAGING)) {
+        unlockSd();
+        EventLog::log(LOG_ERROR, "Deploiement: transit absent, bascule annulee");
+        return false;
+    }
+
+    // Bascule proprement dite. Les deux renommages sont l'unique fenetre
+    // sensible ; recoverInterruptedStaging() la rattrape au demarrage suivant.
+    _sd.rmdir(ASSETS_OLD);
+    bool ok = true;
+    if (_sd.exists(ASSETS_DIR) && !_sd.rename(ASSETS_DIR, ASSETS_OLD)) ok = false;
+    if (ok && !_sd.rename(ASSETS_STAGING, ASSETS_DIR)) {
+        // Echec apres avoir ecarte l'ancien : le remettre en place plutot que
+        // de laisser le module sans ressources du tout.
+        _sd.rename(ASSETS_OLD, ASSETS_DIR);
+        ok = false;
+    }
+    unlockSd();
+
+    if (!ok) {
+        EventLog::log(LOG_ERROR, "Deploiement: bascule echouee, ancienne version conservee");
+        return false;
+    }
+
+    removeDirectoryContents(ASSETS_OLD);
+    if (lockSd(1000U)) { _sd.rmdir(ASSETS_OLD); unlockSd(); }
+
+    EventLog::log(LOG_INFO, "Deploiement: bascule effectuee, nouvelles ressources actives");
+    return true;
+}
+
+void StorageManager::recoverInterruptedStaging() {
+    if (!lockSd(1000U)) return;
+
+    const bool hasAssets  = _sd.exists(ASSETS_DIR);
+    const bool hasStaging = _sd.exists(ASSETS_STAGING);
+    const bool hasOld     = _sd.exists(ASSETS_OLD);
+
+    // Coupure entre les deux renommages : /www n'existe plus mais le transit
+    // est complet et verifie. Terminer la bascule plutot que de demarrer sans
+    // ressources.
+    if (!hasAssets && hasStaging) {
+        const bool done = _sd.rename(ASSETS_STAGING, ASSETS_DIR);
+        unlockSd();
+        EventLog::log(done ? LOG_WARN : LOG_ERROR,
+                      "Deploiement: bascule interrompue %s au demarrage",
+                      done ? "terminee" : "IRRECUPERABLE");
+        return;
+    }
+
+    // Coupure juste avant le second renommage : l'ancien est encore la, le
+    // transit n'a pas pris sa place. Restaurer l'ancien, qui est sain.
+    if (!hasAssets && hasOld) {
+        const bool done = _sd.rename(ASSETS_OLD, ASSETS_DIR);
+        unlockSd();
+        EventLog::log(done ? LOG_WARN : LOG_ERROR,
+                      "Deploiement: ancienne version %s apres interruption",
+                      done ? "restauree" : "IRRECUPERABLE");
+        return;
+    }
+
+    unlockSd();
+
+    // Cas nominal avec residus : la bascule a reussi, le menage n'a pas fini.
+    if (hasAssets && hasOld) {
+        removeDirectoryContents(ASSETS_OLD);
+        if (lockSd(1000U)) { _sd.rmdir(ASSETS_OLD); unlockSd(); }
+        EventLog::log(LOG_INFO, "Deploiement: residus de bascule nettoyes");
+    }
+}
+
 void StorageManager::selfTestSdWrite() {
     // Hors de /www : une corruption pendant ce test ne doit jamais pouvoir
     // emporter le repertoire des ressources Web.
@@ -432,6 +563,13 @@ bool StorageManager::mountSd(bool publishAvailability) {
     const uint64_t clusterCount = _sd.vol()->clusterCount();
     _totalBytes = clusterCount * bytesPerCluster;
     _usedBytes = 0;
+
+    // Rattraper un deploiement interrompu AVANT de juger de la presence des
+    // ressources : sans cela, une coupure pendant la bascule ferait conclure a
+    // tort a des ressources manquantes alors qu'elles sont dans le transit.
+    unlockSd();
+    recoverInterruptedStaging();
+    if (!lockSd(1000U)) return false;
 
     if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
         _status = StorageStatus::WEB_ASSETS_MISSING;

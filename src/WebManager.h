@@ -533,6 +533,9 @@ private:
     };
     void handleDeployFileBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total);
     void handleDeployFileComplete(AsyncWebServerRequest* req);
+    // Vrai entre /api/debug/deploy-begin et /api/debug/deploy-commit : les
+    // fichiers deposes vont alors dans le transit /www.new et non dans /www.
+    bool _deployStagingOpen = false;
 
     // Route de validation temporaire pour WebAssetsUpdater::verifyOnly
     // (etape 4 du meme plan) : telecharge et verifie un fichier depuis une

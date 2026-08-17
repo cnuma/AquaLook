@@ -269,6 +269,25 @@ void WebManager::setupRoutes() {
     // demarrage et ecrivait dans /www, ce qui creait une fenetre de corruption
     // du repertoire des ressources Web a chaque boot — perte reelle constatee
     // le 17 aout 2026. Il ecrit maintenant sous /diag.
+    // Deploiement transactionnel : prepare le transit, puis bascule.
+    // Les fichiers eux-memes passent par /api/debug/deploy-file, qui ecrit
+    // desormais dans /www.new tant qu'un transit est ouvert.
+    _server.on("/api/debug/deploy-begin", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
+        if (!_storage->beginAssetStaging()) { sendError(req, "preparation du transit impossible", 503); return; }
+        _deployStagingOpen = true;
+        sendOk(req);
+    });
+
+    _server.on("/api/debug/deploy-commit", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
+        if (!_deployStagingOpen) { sendError(req, "aucun transit ouvert", 409); return; }
+        const bool ok = _storage->commitAssetStaging();
+        _deployStagingOpen = false;
+        if (!ok) { sendError(req, "bascule echouee, ancienne version conservee", 500); return; }
+        sendOk(req);
+    });
+
     _server.on("/api/debug/sd-selftest", HTTP_POST, [this](AsyncWebServerRequest* req) {
         if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
         _storage->runWriteSelfTest();
@@ -695,8 +714,13 @@ void WebManager::handleDeployFileBody(
             return;
         }
 
-        state->tmpPath   = "/www/." + name + ".deploytmp";
-        state->finalPath = "/www/" + name;
+        // Ecrire dans le transit tant qu'un deploiement est ouvert : ne jamais
+        // toucher /www directement, une interruption y laisserait un melange
+        // incoherent d'anciens et de nouveaux fichiers (incident du 17 aout
+        // 2026, ou /www a ete perdu par une ecriture interrompue).
+        const String dir = _deployStagingOpen ? String("/www.new") : String("/www");
+        state->tmpPath   = dir + "/." + name + ".deploytmp";
+        state->finalPath = dir + "/" + name;
 
         if (!_storage->openWrite(state->tmpPath.c_str(), state->file)) {
             state->openFailed = true;

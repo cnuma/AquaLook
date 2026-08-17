@@ -77,6 +77,35 @@ public:
     // Auto-test d'ecriture, desormais A LA DEMANDE uniquement : l'executer a
     // chaque demarrage creait une fenetre de corruption recurrente.
     void runWriteSelfTest() { selfTestSdWrite(); }
+
+    // ── Deploiement transactionnel des ressources Web ─────────────────────
+    //
+    // Strategie de coherence en cas d'interruption (question laissee ouverte
+    // dans ROADMAP.md, etape 5). Regle absolue tiree de l'incident du 17 aout
+    // 2026 : on n'ecrit JAMAIS directement dans /www. Une coupure au milieu
+    // d'un deploiement y laisserait un melange incoherent d'anciens et de
+    // nouveaux fichiers, voire un repertoire corrompu — c'est exactement ce
+    // qui a fait perdre les ressources Web ce jour-la.
+    //
+    // Deroule :
+    //   1. beginAssetStaging()   -> prepare /www.new vide
+    //   2. les fichiers sont ecrits un a un dans /www.new (openWrite)
+    //   3. commitAssetStaging()  -> /www -> /www.old, /www.new -> /www,
+    //                               puis suppression de /www.old
+    //
+    // Une coupure avant l'etape 3 laisse /www INTACT : le module continue de
+    // servir l'ancienne version, et /www.new sera simplement ecrase au
+    // prochain essai. La seule fenetre sensible est celle des deux renommages,
+    // tres courte, et recoverInterruptedStaging() la rattrape au demarrage.
+    bool beginAssetStaging();
+    bool commitAssetStaging();
+    // Rattrape un deploiement interrompu. Appelee au montage, avant toute
+    // decision sur la presence des ressources.
+    void recoverInterruptedStaging();
+
+    static constexpr const char* ASSETS_DIR     = "/www";
+    static constexpr const char* ASSETS_STAGING = "/www.new";
+    static constexpr const char* ASSETS_OLD     = "/www.old";
     int32_t writeChunk(FsFile& file, const uint8_t* buffer, size_t len);
     bool deleteOnSd(const char* path);
     bool renameOnSd(const char* fromPath, const char* toPath);
@@ -108,6 +137,9 @@ private:
     // contenu, nettoie derriere elle. N'expose aucune route HTTP : ne
     // depend d'aucune entree exterieure, rien a valider/filtrer.
     void selfTestSdWrite();
+    // /www est plat (SdStaticHandler ne sert que /www/<nom>), donc une
+    // suppression a un seul niveau suffit — pas de recursion a prevoir.
+    bool removeDirectoryContents(const char* dirPath);
 
     static void recoveryTaskEntry(void* parameter);
 
