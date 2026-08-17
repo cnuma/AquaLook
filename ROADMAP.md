@@ -280,6 +280,21 @@ Cadre matériel : le projet vise **une seule carte cible**, décision actée le 
 
 À définir dans ce chapitre : la procédure de préparation d’un module neuf (ordre des opérations, vérifications de recette), la manière de constater a posteriori qu’un module a bien la bonne table de partitions, et le sort des modules éventuellement déjà flashés avec l’ancienne.
 
+### Plantages au démarrage — corrigés le 17 août 2026, et pourquoi ils menaçaient l'OTA
+
+**Symptôme observé sur le terrain, avant tout diagnostic :** l'utilisateur avait remarqué que le module redémarrait parfois plusieurs fois d'affilée, puis finissait par se stabiliser. Le comportement était resté inexpliqué, et sans conséquence apparente puisque le module repartait seul.
+
+Mesuré le 17 août 2026 : **3 sessions de démarrage sur 4 se terminaient par un `abort()` environ 5 secondes après le boot**, contre aucune sur les dix journaux de la veille. Deux causes distinctes, la seconde n'étant devenue visible qu'une fois la première écartée :
+
+1. **`weather-fetch` créée sans affinité de cœur.** L'ordonnanceur pouvait la placer sur le cœur 0, celui des piles WiFi et lwIP, où elle analyse un JSON d'environ 16 Ko lu directement depuis le flux réseau — d'autant plus longtemps que le signal est faible (RSSI descendu à −87 dBm ce jour-là). La tâche `IDLE0`, de priorité 0, ne s'exécutait alors plus, `yield()` d'Arduino ne cédant qu'aux priorités égales ou supérieures, et le chien de garde abattait le système. C'est **le même mécanisme que les deux plantages du 16 août** (tâche WiFi dédiée, puis mDNS) : à chaque fois une tâche supplémentaire atterrissait sur le cœur 0 en concurrence avec celle-ci. Épinglée au cœur 1, la signature `task_wdt` a entièrement disparu.
+2. **Premier appel météo déclenché à la toute première itération de boucle**, exactement au moment où tout le reste s'alloue : 95 Ko de sprites d'affichage, association WiFi, démarrage du serveur Web, plus la réponse OWM à analyser. Ce pic simultané épuisait le tas et provoquait un `abort()` sur allocation échouée, les exceptions étant désactivées. Premier appel désormais différé de 20 secondes.
+
+Validé sur matériel : **8 démarrages consécutifs, aucun plantage**, contre 3 sur 4 auparavant avec le même protocole.
+
+**Conséquence indirecte qui rendait ce défaut bien plus grave qu'il n'y paraissait — et qui n'avait pas été anticipée : il pouvait provoquer des retours arrière OTA injustifiés.** La garde de démarrage (`OtaBootGuard`) exige 45 secondes de fonctionnement sain pour valider une nouvelle version, et revient à la précédente après 3 tentatives infructueuses. Or le plantage survenait vers 5 secondes, donc bien avant toute validation. Trois démarrages successifs touchés auraient suffi à faire annuler une mise à jour parfaitement saine, sans le moindre rapport avec elle. Le symptôme observé aurait été « les mises à jour reviennent seules en arrière », pratiquement indiagnosticable. La validation OTA du 16 août a réussi (validée à 45 005 ms) : le défaut n'a simplement pas frappé pendant cette fenêtre.
+
+Ces deux correctifs restent des **atténuations d'une contrainte structurelle**, pas des guérisons : cette carte ne dispose que d'environ 32 Kio de tas libre écran allumé. Ils étalent les pics, ils ne créent pas de mémoire. C'est le troisième sujet de la semaine à converger vers le même constat, avec la page qui ne se chargeait pas et l'échec de poignée de main TLS.
+
 ### 🌙 Portage vers Guition JC4827W543C (ESP32-S3) — chantier en sommeil
 
 **Statut : en sommeil depuis le 16 août 2026, en attente de livraison des cartes.**
