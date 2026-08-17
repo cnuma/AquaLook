@@ -36,7 +36,21 @@ String payloadPreview(const String& payload) {
 void WeatherManager::begin(ConfigManager* config) {
     _config = config;
     clearForecast(_forecast);
-    _nextFetchAt = 0;
+
+    // Premier appel volontairement differe, et non immediat.
+    //
+    // Avec _nextFetchAt = 0, la requete partait des la premiere iteration de
+    // la boucle, c'est-a-dire au moment precis ou tout le reste s'alloue :
+    // 95 Ko de sprites d'affichage, association WiFi, demarrage du serveur
+    // Web. S'y ajoutait la reponse OWM d'environ 16 Ko a analyser. Ce pic
+    // simultane epuisait la memoire et provoquait un abort() sur allocation
+    // echouee (exceptions desactivees), une a deux fois sur trois demarrages
+    // observes le 17 aout 2026 — juste apres la ligne "Meteo: HTTP 200".
+    //
+    // Etaler suffit : rien n'exige une meteo dans les premieres secondes,
+    // alors que le demarrage est le moment ou la memoire est la plus sollicitee.
+    _nextFetchAt = millis() + FIRST_FETCH_DELAY_MS;
+
     Serial.println("[Meteo] Initialisé");
 }
 
@@ -109,13 +123,37 @@ bool WeatherManager::startFetch() {
     _resultReady = false;
     portEXIT_CRITICAL(&g_weatherMux);
 
-    const BaseType_t created = xTaskCreate(
+    // Epinglee au coeur 1, et non laissee libre (xTaskCreate sans affinite).
+    //
+    // Motif, constate sur materiel : sans affinite, l'ordonnanceur peut placer
+    // cette tache sur le coeur 0, celui ou tournent la pile WiFi et lwIP. Elle
+    // y analyse un JSON de ~16 Ko lu directement depuis le flux reseau, ce qui
+    // dure d'autant plus longtemps que le signal est faible (RSSI descendu a
+    // -87 dBm le 17 aout 2026). Pendant ce temps la tache IDLE0, de priorite 0,
+    // ne s'execute plus — yield() d'Arduino ne cede qu'aux priorites egales ou
+    // superieures — et le chien de garde abat le systeme :
+    //   E task_wdt: CPU 0: weather-fetch / CPU 1: loopTask / Aborting.
+    // Signature observee trois fois sur quatre demarrages le 17 aout 2026, et
+    // deja responsable des deux plantages du 16 aout (tache WiFi dediee, puis
+    // mDNS) : dans les trois cas, une tache supplementaire atterrissait sur le
+    // coeur 0 en concurrence avec celle-ci.
+    //
+    // Le coeur 1 est celui de loopTask, qui y cohabite sans incident depuis des
+    // heures. Ce choix supprime la concurrence avec la pile reseau, cause
+    // premiere de la lenteur du fetch.
+    //
+    // Limite assumee : si la famine se reproduisait sur IDLE1, le correctif
+    // suivant consisterait a rendre la main explicitement pendant la lecture
+    // (enveloppe de flux appelant vTaskDelay quand aucun octet n'est
+    // disponible), yield() seul etant insuffisant pour laisser passer IDLE.
+    const BaseType_t created = xTaskCreatePinnedToCore(
         fetchTaskEntry,
         "weather-fetch",
         FETCH_TASK_STACK_BYTES,
         this,
         FETCH_TASK_PRIORITY,
-        nullptr
+        nullptr,
+        1
     );
 
     if (created != pdPASS) {

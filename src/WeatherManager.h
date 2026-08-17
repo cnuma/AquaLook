@@ -87,6 +87,11 @@ private:
 
     static constexpr uint32_t FETCH_TASK_STACK_BYTES = 12288;
     static constexpr UBaseType_t FETCH_TASK_PRIORITY = 1;
+    // Delai avant la toute premiere requete meteo, pour ne pas ajouter son pic
+    // memoire a celui du demarrage (voir le commentaire de begin()). Assez long
+    // pour que WiFi, serveur Web et affichage aient fini de s'installer, assez
+    // court pour que la meteo apparaisse sans attente perceptible.
+    static constexpr uint32_t FIRST_FETCH_DELAY_MS = 20000UL;
     static constexpr uint32_t FETCH_RETRY_DELAY_MS = 60000UL;
 
     bool startFetch();
