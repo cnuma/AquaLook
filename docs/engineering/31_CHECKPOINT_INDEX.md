@@ -2,7 +2,7 @@
 
 - Version documentaire : 1.0
 - Statut : index initial
-- Dernière consolidation : 2026-07-27
+- Dernière consolidation : 2026-08-17
 - Source : `docs/checkpoints/` et historique Git
 - Maturité : D3
 
@@ -18,6 +18,7 @@ Cet index permet d’identifier rapidement les états de reprise qui ont servi �
 | 2026-07-13 | `CHECKPOINT_2026-07-13_MAIN_STEP6_CLOSED.md` | clôture étape 6, matériel, Web, SD, NTP, EventLog et Runtime | référence majeure |
 | 2026-07-25/26 | checkpoints et commits documentaires architecture/cybersécurité | gouvernance, sécurité et manuel d’ingénierie | intégrés |
 | 2026-07-27 | lots 1 à 4 Engineering Reference v1.0 | consolidation documentaire | courant |
+| 2026-08-17 | `CHECKPOINT_2026-08-17_RESILIENCE_BOOTLOOP_ET_MAJ_RESSOURCES_WEB.md` | mise à jour des ressources Web de bout en bout, diffusion HTTP, alerte d’heure inconnue, garde anti-boucle et mode dégradé | état de reprise courant |
 
 ## Informations obligatoires d’un checkpoint
 
