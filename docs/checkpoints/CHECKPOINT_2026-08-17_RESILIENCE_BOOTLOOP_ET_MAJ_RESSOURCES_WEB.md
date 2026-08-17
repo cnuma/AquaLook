@@ -211,12 +211,9 @@ d'une trace :
 
 ## À faire en priorité à la reprise
 
-1. **Lire le journal de la nuit du 17 au 18 août.** La vérification automatique
-   de 03:30 n'a jamais été déclenchée en conditions réelles. Le réseau de
-   l'utilisateur redémarre à 03:29, donc le scénario attendu est : report
-   journalisé (`pas de connexion WiFi`), reconnexion, cinq minutes de stabilité,
-   puis déclenchement vers 03:36-03:38. **Vérifier aussi qu'un seul cycle a eu
-   lieu**, ce qui validerait la protection anti-boucle en conditions réelles.
+1. **Lire le journal de la nuit du 17 au 18 août** — voir la section
+   « Campagne de la nuit » ci-dessous, qui contient la procédure complète et le
+   scénario attendu.
 2. **Déployer les ressources Web en 5.9.7.** La carte est restée en 5.9.6 : le
    bandeau de mode dégradé et le bouton de réactivation ajoutés en fin de
    journée ne sont **pas encore servis par le module**. Passer par le bouton de
@@ -226,6 +223,93 @@ d'une trace :
    ressources Web est disponible.
 4. Reste de la spécification UX d'origine : LED violette et icône LCD pour une
    mise à jour en attente, pastille dans la barre du haut renvoyant vers `/ota`.
+
+## Campagne de la nuit du 17 au 18 août 2026
+
+La vérification automatique de 03:30 n'a **jamais** été déclenchée en conditions
+réelles à la clôture. Sa logique de décision n'est validée que par le
+raisonnement. Le réseau de l'utilisateur redémarre à 03:29, une minute avant
+l'échéance : la collision est fortuite mais exerce exactement le chemin de report
+qu'on ne savait pas tester autrement.
+
+### Lancer la capture
+
+Le journal en RAM du module est effacé par le redémarrage de maintenance. **La
+capture série est le seul témoin** des lignes antérieures au redémarrage.
+
+```powershell
+pio device list        # confirmer le port : platformio.ini declare COM9,
+                       # la machine de developpement utilisait COM3
+
+pio device monitor --port <PORT> --baud 115200 `
+  --filter log2file --filter esp32_exception_decoder --filter time
+```
+
+Le fichier apparaît sous `logs\device-monitor-<AAMMJJ-HHMMSS>.log`.
+
+### Vérifier que la capture écrit réellement
+
+À faire systématiquement, dans une seconde fenêtre. Le 17 août, les processus du
+moniteur tournaient alors que le fichier n'était plus alimenté depuis une demi-
+heure : **« le moniteur est lancé » ne prouve rien**. C'est le même principe que
+partout ailleurs dans ce projet — vérifier le résultat, pas l'état apparent.
+
+```powershell
+curl.exe -s -X POST -H "Content-Type: application/json" `
+  -d '{\"enabled\":true,\"hour\":3,\"minute\":30,\"intervalDays\":1}' `
+  http://192.168.1.198/api/updateCheck
+
+Get-Content (Get-ChildItem logs\device-monitor-*.log |
+  Sort-Object LastWriteTime -Desc | Select -First 1) -Tail 3
+```
+
+La ligne `Verif MAJ: reglage change` doit apparaître **horodatée à l'instant**.
+Sinon la capture est morte : tout fermer et relancer.
+
+### Deux précautions d'horaire
+
+L'ouverture du moniteur provoque un reset matériel par RTS, et débrancher le
+module pour le déplacer est une coupure d'alimentation. Dans les deux cas :
+
+- **l'horloge interne est perdue** et doit être resynchronisée par NTP. Si le
+  module n'a pas l'heure à 03:30, la vérification est reportée — correctement,
+  mais la nuit est perdue. Contrôler `"synced": true` sur `/api/status` avant de
+  laisser tourner ;
+- le compteur anti-boucle monte à 1 ou 2 sur 4, sans conséquence : il repart de
+  zéro après trois minutes de fonctionnement stable.
+
+Lancer la capture **au moins quinze minutes avant l'échéance**.
+
+### Dépouillement le lendemain
+
+```powershell
+$L = Get-ChildItem logs\device-monitor-*.log |
+     Sort-Object LastWriteTime -Desc | Select -First 1
+Select-String -Path $L -Pattern "Verif MAJ|Garde anti-boucle|CHECK_VERSION|abort|Guru"
+(Select-String -Path $L -Pattern "demarrage target=").Count
+```
+
+Scénario attendu, écrit à l'avance pour permettre la comparaison :
+
+| Vers | Ligne attendue |
+|---|---|
+| 03:30 | `Verif MAJ: echeance atteinte mais report — pas de connexion WiFi` |
+| 03:3x | reconnexion WiFi, puis cinq minutes de stabilité exigées |
+| 03:36-03:38 | `Verif MAJ: echeance 03:30 atteinte, redemarrage en mode maintenance` |
+| — | `Maintenance: CHECK_VERSION success=yes installed=5.9.7 available=5.9.7` |
+
+Trois contrôles, par ordre d'importance :
+
+1. **exactement deux démarrages** — un en mode maintenance, un en production.
+   Trois ou plus signifierait que la protection anti-boucle a eu à travailler,
+   et il faudrait comprendre pourquoi ;
+2. **`abort` et `Guru` à zéro** ;
+3. le report journalisé **puis** le déclenchement effectif — c'est le
+   comportement jamais vérifié autrement que par le raisonnement.
+
+Aucune notification ntfy n'est attendue : le module est en 5.9.7 et la release
+publiée aussi, donc il n'y a rien à signaler. C'est le résultat normal, pas un
+échec.
 
 ## Principes de travail retenus ce jour
 
