@@ -17,6 +17,149 @@ static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Mode de secours : saisissez manuellement le nom exact de votre reseau.</p><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" placeholder="Mot de passe"><button type="button" onclick="saveWifi()">Enregistrer et connecter</button><div id="msg"></div></main><script>const $=x=>document.getElementById(x);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value.trim(),m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}</script></body></html>
 )rawhtml";
 
+// ───── Diffusion des pages HTML embarquees ──────────────────────────────
+//
+// Les pages /ota et /logs pesent une douzaine de kilo-octets et partent en
+// plusieurs blocs TCP successifs. ESPAsyncWebServer calcule la taille du bloc a
+// partir de la place annoncee par la pile TCP, remplit le bloc, puis ecrit — et
+// ignore la valeur rendue par l'ecriture. Si la place a diminue entre-temps
+// parce que d'autres connexions ont consomme le tampon partage,
+// AsyncClient::add() n'envoie que ce qui rentre encore, mais le curseur de
+// lecture de la reponse avance de la taille DEMANDEE. Les octets refuses ne
+// sont jamais reproposes : le navigateur recoit une page amputee en son milieu,
+// accompagnee d'un Content-Length annoncant la taille complete.
+//
+// Mesure du 17 aout 2026, ecran allume (plus gros bloc libre : 17 Ko), page
+// /ota de 12 503 octets, comparaison octet a octet contre une reference :
+//     1 chargement simultane   -> 1/1 intacte
+//     2 chargements simultanes -> 2/2 intactes
+//     3 chargements simultanes -> 1/3 intacte
+//     8 chargements simultanes -> 0/8 intactes (jusqu'a 174 octets perdus au
+//                                 milieu, le reste du document correct)
+//
+// Le defaut est dans la bibliotheque. Une correction de son controle de flux a
+// ete tentee puis abandonnee le meme jour : elle degradait le comportement
+// (connexions restant sans reponse). Tant qu'elle n'est pas comprise de bout en
+// bout, on ne prend pas le risque de la modifier.
+//
+// La parade retenue est donc applicative et volontairement modeste : borner le
+// nombre de pages servies en parallele et refuser explicitement au-dela, avec
+// un code 503 et un Retry-After. Une page a recharger est un desagrement ; une
+// page fausse presentee comme complete est une perte de confiance.
+namespace {
+
+constexpr uint8_t  PAGE_MAX_INFLIGHT   = 1U;
+constexpr uint32_t PAGE_MIN_FREE_BYTES = 12000UL;
+// Duree au-dela de laquelle un envoi en cours est forcement termine ou perdu :
+// une page de 12 Ko sur un reseau local ne prend pas dix secondes. Ce delai
+// existe uniquement pour que le compteur ne puisse jamais rester bloque en
+// haut. Un compteur qui fuit rendrait les pages definitivement inaccessibles,
+// soit une panne bien pire que le defaut qu'on cherche a contourner.
+constexpr uint32_t PAGE_INFLIGHT_STALE_MS = 10000UL;
+
+portMUX_TYPE g_pageInflightMux = portMUX_INITIALIZER_UNLOCKED;
+uint8_t  g_pageInflight        = 0U;
+uint32_t g_pageInflightSinceMs = 0U;
+uint32_t g_pageRejectCount     = 0U;
+uint32_t g_pageRejectLogAtMs   = 0U;
+
+}  // namespace
+
+void WebManager::sendEmbeddedPage(AsyncWebServerRequest* req,
+                                  const char* page,
+                                  size_t pageLength,
+                                  const char* extraHeaderName,
+                                  const char* extraHeaderValue) {
+    const uint32_t nowMs = millis();
+    const uint32_t freeBytes =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+
+    bool refuse = false;
+    bool unstuck = false;
+    uint32_t rejectCount = 0U;
+
+    portENTER_CRITICAL(&g_pageInflightMux);
+    if (g_pageInflight > 0U &&
+        (nowMs - g_pageInflightSinceMs) >= PAGE_INFLIGHT_STALE_MS) {
+        g_pageInflight = 0U;
+        unstuck = true;
+    }
+    if (g_pageInflight >= PAGE_MAX_INFLIGHT || freeBytes < PAGE_MIN_FREE_BYTES) {
+        refuse = true;
+        rejectCount = ++g_pageRejectCount;
+    } else {
+        if (g_pageInflight == 0U) {
+            g_pageInflightSinceMs = nowMs;
+        }
+        g_pageInflight++;
+    }
+    portEXIT_CRITICAL(&g_pageInflightMux);
+
+    if (unstuck) {
+        EventLog::log(LOG_WARN,
+                      "Web: compteur de pages debloque apres %lu ms sans fin "
+                      "d'envoi — securite anti-blocage",
+                      static_cast<unsigned long>(PAGE_INFLIGHT_STALE_MS));
+    }
+
+    if (refuse) {
+        // Journal limite : un refus arrive rarement seul.
+        if (nowMs - g_pageRejectLogAtMs >= 10000UL) {
+            g_pageRejectLogAtMs = nowMs;
+            EventLog::log(LOG_WARN,
+                          "Web: page refusee (libre=%lu max=%u refus=%lu) — "
+                          "mieux vaut recharger qu'une page incomplete",
+                          static_cast<unsigned long>(freeBytes),
+                          static_cast<unsigned>(PAGE_MAX_INFLIGHT),
+                          static_cast<unsigned long>(rejectCount));
+        }
+        AsyncWebServerResponse* busy = req->beginResponse(
+            503, "text/html; charset=utf-8",
+            "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\">"
+            "<meta http-equiv=\"refresh\" content=\"3\">"
+            "<title>AquaLook</title></head><body style=\"font-family:sans-serif;"
+            "margin:2rem\"><h1>Un instant</h1><p>AquaLook termine d'envoyer une "
+            "autre page. Celle-ci se rechargera toute seule dans trois "
+            "secondes.</p></body></html>");
+        busy->addHeader("Retry-After", "3");
+        busy->addHeader("Cache-Control", "no-store");
+        req->send(busy);
+        return;
+    }
+
+    // Libere le jeton quand la connexion se ferme, ce que la bibliotheque fait
+    // systematiquement en fin de reponse (l'en-tete Connection: close est pose
+    // par la reponse elle-meme). Le delai anti-blocage ci-dessus couvre le cas
+    // ou cette fermeture tarderait.
+    req->onDisconnect([]() {
+        portENTER_CRITICAL(&g_pageInflightMux);
+        if (g_pageInflight > 0U) {
+            g_pageInflight--;
+            g_pageInflightSinceMs = millis();
+        }
+        portEXIT_CRITICAL(&g_pageInflightMux);
+    });
+
+    // Surcharge (const uint8_t*, size_t) et NON (const char*) : elle seule
+    // diffuse la page directement depuis la flash (AsyncProgmemResponse). La
+    // surcharge const char* recopie la page entiere dans une String du tas,
+    // puis appelle substring() sur le reste a chaque acquittement — une
+    // nouvelle copie a chaque fois. Pour 12 Ko, le pic depasse 25 Ko alors que
+    // le plus gros bloc libre tombe a 17 Ko quand l'ecran est allume ; quand
+    // l'allocation echoue, la bibliotheque ne le verifie pas et envoie la
+    // longueur prevue depuis une String vide. Le 17 aout 2026, /ota a ainsi
+    // livre au navigateur neuf kilo-octets du tas du module a la place de la
+    // page.
+    AsyncWebServerResponse* response = req->beginResponse(
+        200, "text/html; charset=utf-8",
+        reinterpret_cast<const uint8_t*>(page), pageLength);
+    response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    if (extraHeaderName != nullptr && extraHeaderValue != nullptr) {
+        response->addHeader(extraHeaderName, extraHeaderValue);
+    }
+    req->send(response);
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  begin()
 // ═══════════════════════════════════════════════════════════════
