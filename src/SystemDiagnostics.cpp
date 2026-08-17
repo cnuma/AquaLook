@@ -142,6 +142,7 @@ uint32_t SystemDiagnostics::_loopPeriodUs = 0;
 uint32_t SystemDiagnostics::_loopPeriodMaxUs = 0;
 uint64_t SystemDiagnostics::_loopDurationTotalUs = 0;
 uint32_t SystemDiagnostics::_loopOverrunCount = 0;
+TaskHandle_t SystemDiagnostics::_loopTaskHandle = nullptr;
 uint32_t SystemDiagnostics::_memSampleAtMs = 0;
 uint32_t SystemDiagnostics::_memLogAtMs = 0;
 uint32_t SystemDiagnostics::_minFreeBytes = UINT32_MAX;
@@ -162,6 +163,11 @@ char     SystemDiagnostics::_lastWebUri[64] = "";
 
 void SystemDiagnostics::begin() {
     RuntimeProfiler::begin();
+    // begin() est appelee depuis setup(), qui s'execute dans loopTask : c'est
+    // le seul endroit ou l'on peut capturer son handle simplement. Sans lui, la
+    // marge de pile rapportee serait celle de la tache appelante (AsyncTCP lors
+    // d'une requete HTTP) et non celle qui deborde reellement.
+    _loopTaskHandle = xTaskGetCurrentTaskHandle();
     portENTER_CRITICAL(&_mux);
     _bootMs = millis();
     _lastLoopMs = millis();
@@ -427,7 +433,12 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     memory["lowMemoryActive"] = _memLowActive;
     memory["psramSize"] = ESP.getPsramSize();
     memory["psramFree"] = ESP.getFreePsram();
-    memory["loopStackHighWaterWords"] = uxTaskGetStackHighWaterMark(nullptr);
+    // Mesurer loopTask explicitement, et non la tache appelante : interroge par
+    // HTTP, uxTaskGetStackHighWaterMark(nullptr) renvoyait la marge d'AsyncTCP,
+    // ce qui affichait une reserve confortable alors que loopTask, elle,
+    // debordait. Diagnostic trompeur corrige le 17 aout 2026.
+    memory["loopStackHighWaterWords"] =
+        _loopTaskHandle ? uxTaskGetStackHighWaterMark(_loopTaskHandle) : 0U;
 
     const esp_partition_t* running = esp_ota_get_running_partition();
     const esp_partition_t* boot = esp_ota_get_boot_partition();

@@ -55,6 +55,8 @@ private:
     static constexpr uint32_t MEM_RECOVER_FREE_BYTES = 16000UL;
     static constexpr uint32_t MEM_LOG_INTERVAL_MS    = 60000UL;
 
+    // Handle de loopTask, capture dans begin() qui s'execute dans cette tache.
+    static TaskHandle_t _loopTaskHandle;
     static uint32_t _memSampleAtMs;
     static uint32_t _memLogAtMs;
     static uint32_t _minFreeBytes;      // plancher observe depuis le demarrage

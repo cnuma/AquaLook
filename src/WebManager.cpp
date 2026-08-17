@@ -68,6 +68,7 @@ void WebManager::update() {
     // Avant le early-return ci-dessous : voir runPendingVerify() et la note
     // sur _verifyPending (WebManager.h).
     runPendingVerify();
+    runPendingCheck();
 
     if (!_systemSavePending) return;
     if (!AquaLook::Time::deadlineReached(nowMs, _systemSaveAtMs)) return;
@@ -269,6 +270,44 @@ void WebManager::setupRoutes() {
     // demarrage et ecrivait dans /www, ce qui creait une fenetre de corruption
     // du repertoire des ressources Web a chaque boot — perte reelle constatee
     // le 17 aout 2026. Il ecrit maintenant sous /diag.
+    // Detection d'une mise a jour des ressources Web : le module lit lui-meme
+    // le manifeste publie et le compare a sa version installee.
+    _server.on("/api/webassets/check", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
+        portENTER_CRITICAL(&_pendingMux);
+        if (_checkPending || _checkRunning) {
+            portEXIT_CRITICAL(&_pendingMux);
+            sendError(req, "verification deja en cours", 409);
+            return;
+        }
+        _checkResultReady = false;
+        _checkPending = true;
+        portEXIT_CRITICAL(&_pendingMux);
+        JsonDocument out; out["queued"] = true;
+        sendJson(req, out, 202);
+    });
+
+    _server.on("/api/webassets/check/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        bool running, ready; WebAssetsUpdater::CheckResult r;
+        portENTER_CRITICAL(&_pendingMux);
+        running = _checkRunning || _checkPending;
+        ready = _checkResultReady;
+        r = _checkResult;
+        portEXIT_CRITICAL(&_pendingMux);
+        JsonDocument out;
+        out["running"] = running;
+        out["ready"] = ready;
+        if (ready) {
+            out["ok"] = r.ok;
+            out["updateAvailable"] = r.updateAvailable;
+            out["installedVersion"] = r.installedVersion;
+            out["availableVersion"] = r.availableVersion;
+            out["fileCount"] = r.fileCount;
+            out["detail"] = r.detail;
+        }
+        sendJson(req, out);
+    });
+
     // Deploiement transactionnel : prepare le transit, puis bascule.
     // Les fichiers eux-memes passent par /api/debug/deploy-file, qui ecrit
     // desormais dans /www.new tant qu'un transit est ouvert.
@@ -875,6 +914,26 @@ void WebManager::handleVerifyWebAssetStatus(AsyncWebServerRequest* req) {
 // suspend/reprend le sprite d'ecran autour du telechargement. Voir la note
 // sur DisplayManager::suspendForMemoryRelief() pour la justification de
 // securite (pourquoi ce n'est correct qu'ici, jamais dans le callback).
+// Execute la verification de manifeste depuis la boucle principale, sprites
+// liberes le temps de la session TLS. Voir la note sur _checkPending.
+void WebManager::runPendingCheck() {
+    portENTER_CRITICAL(&_pendingMux);
+    if (!_checkPending) { portEXIT_CRITICAL(&_pendingMux); return; }
+    _checkPending = false;
+    _checkRunning = true;
+    portEXIT_CRITICAL(&_pendingMux);
+
+    if (_display) _display->suspendForMemoryRelief();
+    const WebAssetsUpdater::CheckResult r = WebAssetsUpdater::checkForUpdate(_storage);
+    if (_display) _display->resumeAfterMemoryRelief();
+
+    portENTER_CRITICAL(&_pendingMux);
+    _checkResult = r;
+    _checkResultReady = true;
+    _checkRunning = false;
+    portEXIT_CRITICAL(&_pendingMux);
+}
+
 void WebManager::runPendingVerify() {
     char url[VERIFY_URL_MAX];
     uint32_t size;

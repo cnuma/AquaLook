@@ -489,6 +489,19 @@ private:
 
     void runPendingVerify();
 
+    // Meme contrainte que _verifyPending : la verification du manifeste ouvre
+    // une session TLS, qui echoue faute de memoire contigue si les sprites
+    // d'affichage sont alloues. Elle doit donc s'executer depuis la boucle
+    // principale, seule habilitee a les liberer — jamais depuis le callback
+    // AsyncTCP. Erreur commise puis corrigee le 17 aout 2026 : appelee
+    // directement dans le gestionnaire HTTP, elle echouait en
+    // "tls-connect-failed" des que l'ecran etait allume.
+    volatile bool _checkPending = false;
+    volatile bool _checkRunning = false;
+    volatile bool _checkResultReady = false;
+    WebAssetsUpdater::CheckResult _checkResult;
+    void runPendingCheck();
+
     void setupRoutes();
     void setupCaptiveRoutes();
     void handleStatus(AsyncWebServerRequest* request);
