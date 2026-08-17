@@ -177,9 +177,44 @@ Validé sur le module : 3/3 tentatives réussies contre le vrai fichier de relea
 
 Limite connue, à traiter à l'étape 6 : l'opération bloque la boucle principale pendant toute la durée du téléchargement (jusqu'à 15 s de timeout configuré) — acceptable pour ce test manuel et rare, mais à revoir avant un déclenchement périodique automatique (l'invariant OTA existant interdit d'interrompre silencieusement un cycle d'arrosage ; une vérification qui retarderait de plusieurs secondes une commande relais pendant sa fenêtre irait à l'encontre de cet invariant).
 
-5. écriture effective sur SD, avec stratégie explicite de cohérence en cas d’interruption ;
-6. interface locale (`/ota`) et journalisation de chaque étape ;
+5. écriture effective sur SD, avec stratégie explicite de cohérence en cas d’interruption — **fait et validé le 17 août 2026** : déploiement transactionnel via un répertoire de transit (`/www.new`), bascule par déplacements fichier par fichier, et rattrapage au montage (`StorageManager::beginAssetStaging/commitAssetStaging/recoverInterruptedStaging`). Règle absolue tirée de l’incident du 17 août : on n’écrit jamais directement dans `/www`. Une coupure avant la bascule laisse `/www` intact ; test d’interruption réel mené et concluant. À noter, limite de SdFat rencontrée en chemin : `FatVolume::rename()` ouvre la source en lecture seule et ne peut donc pas mettre à jour l’entrée `..` d’un sous-répertoire — le renommage de répertoire échoue, d’où la bascule fichier par fichier ;
+6. interface locale (`/ota`) et journalisation de chaque étape — **fait et validé le 17 août 2026**. Le déploiement s’exécute en **mode maintenance** et non en fonctionnement normal : c’est la réponse à la limite laissée ouverte à l’étape 4 (mémoire contiguë insuffisante, blocage de la boucle principale). Le module redémarre sur un contexte minimal disposant d’environ 242 Ko de tas libre au lieu de ~32 Ko, y fait son travail, puis redémarre en production — séparation nette entre un démarrage de mise à jour et un démarrage de production. C’est la seule commande de maintenance à monter la carte SD, ce que l’isolation d’origine autorise puisqu’elle n’écrit pas en flash. Deux tentatives précédentes en fonctionnement normal avaient échoué (poignée de main TLS impossible, puis débordement de pile de `loopTask`) ; le code correspondant reste garé sur `wip/step6-webassets-check`, son plantage au démarrage n’étant **pas** expliqué à ce jour.
+
+   L’interface `/ota` porte désormais une section « Ressources Web » : version installée, nombre de fichiers, origine, et un bouton qui déclenche `POST /api/webassets/update` avec confirmation, messages d’attente dédiés et rechargement automatique une fois le module revenu. Le résultat est persisté dans `MaintenanceResultStore` et affiché au retour : sans cela, le journal en RAM étant effacé par le redémarrage, un échec serait passé totalement inaperçu. Les champs propres à l’OTA firmware sont préservés par la fusion de `MaintenanceResultStore::save()` — vérifié sur matériel : une mise à jour firmware en attente survit intacte à un déploiement de ressources Web.
+
+   Garde d’arrosage conforme à la règle retenue — la mise à jour est prioritaire car elle apporte des corrections, et n’est refusée que si un cycle est **en cours** : vérifié dans les deux sens (arrosage manuel actif → `409 arrosage en cours` pour les deux canaux ; arrosage arrêté → `202` immédiatement).
+
+   **Reste à faire de la spécification UX d’origine :** notification ntfy à la fin de l’opération, signalement d’une mise à jour en attente (LED violette, icône LCD, pastille dans la barre du haut renvoyant vers `/ota`). Seule la confirmation à l’écran est en place.
+
 7. vérification périodique, une fois la chaîne manuelle éprouvée sur le terrain.
+
+### Pages HTML servies tronquées sous un `Content-Length` complet — 17 août 2026
+
+**Statut : contourné côté application, défaut de bibliothèque non corrigé.**
+
+Découvert en validant l’interface de l’étape 6, et sans rapport avec elle : la page `/ota` arrivait au navigateur corrompue. Trois défauts distincts, tous silencieux, tous producteurs de fausses informations.
+
+**1. La page contenait de la mémoire brute.** `/ota` et `/logs` passaient par la surcharge `beginResponse(code, type, const char*)`, qui recopie la page entière dans une `String` du tas puis rappelle `substring()` sur le reste à chaque acquittement TCP — plus de 25 Ko de pic pour une page de 12 Ko, alors que le plus gros bloc libre tombe à 17 Ko quand l’écran est allumé. L’échec d’allocation n’est vérifié nulle part et la longueur prévue est écrite depuis une `String` devenue vide : le module a envoyé au navigateur neuf kilo-octets de son propre tas à la place de la page. Corrigé en passant par la surcharge `(const uint8_t*, size_t)`, qui diffuse directement depuis la flash (`AsyncProgmemResponse`) sans aucune copie en tas.
+
+**2. Des octets disparaissaient au milieu du document.** `AsyncAbstractResponse::_ack()` calcule la taille d’un bloc à partir de la place annoncée par la pile TCP (`client()->space()`), remplit le bloc, puis écrit — et ignore la valeur rendue par `write()`. Si la place a diminué entre-temps parce que d’autres connexions ont consommé le tampon partagé, `AsyncClient::add()` n’envoie que ce qui rentre encore et renvoie ce nombre, mais le curseur de lecture avance de la taille **demandée**. Les octets refusés ne sont jamais reproposés. Mesuré à huit chargements simultanés : jusqu’à 174 octets manquants en plein milieu, le reste du document intact et dans l’ordre, sous un `Content-Length` annonçant la taille complète. `AsyncBasicResponse::_ack()` a le même défaut.
+
+Une correction du contrôle de flux de la bibliothèque a été écrite, appliquée via un script de pré-compilation, testée sur matériel, puis **abandonnée le même jour** : elle dégradait nettement le comportement (la plupart des connexions restaient sans réponse). Elle n’est pas conservée dans l’historique. Tant que cette machine à états — crédits en vol, `_cache`, comptabilité `_sentLength`/`_writtenLength` — n’est pas comprise de bout en bout, on n’y touche pas : un défaut connu et borné vaut mieux qu’une correction hasardeuse au cœur du transport.
+
+**3. La parade retenue est applicative et volontairement modeste.** Une seule page embarquée servie à la fois (`WebManager::sendEmbeddedPage`), refus explicite au-delà : `503`, `Retry-After`, et une petite page qui se recharge d’elle-même après trois secondes. Les pages embarquées sont autonomes — CSS et JS en ligne, une seule requête par chargement — donc la borne ne gêne pas l’usage réel. Un délai anti-blocage de dix secondes garantit que le compteur ne peut pas rester coincé en haut : une fuite rendrait les pages définitivement inaccessibles, panne bien pire que le défaut contourné.
+
+Mesures sur matériel, écran allumé (plus gros bloc libre 17 396 octets), page `/ota` de 12 503 octets, comparaison octet à octet contre une référence :
+
+| Situation | Résultat |
+|---|---|
+| Avant, 8 chargements simultanés | 8 pages sur 8 défectueuses |
+| Avant, seuil mesuré | 1 et 2 simultanés intacts ; dégradation à partir de 3 |
+| Borne à 2 pages en parallèle | encore 2 pages corrompues sur 32 — la contention porte sur les tampons TCP partagés, pas seulement sur nos pages |
+| Borne à 1 page, 5 rafales de 8 | 10 pages servies **toutes intactes**, 30 refus explicites, **0 corrompue**, 0 connexion sans réponse |
+| Usage nominal, 20 chargements enchaînés de `/ota` et de `/logs` | 40/40 intactes, aucun refus |
+
+**Portée réelle et leçon.** Ce défaut n’est pas propre à `/ota` : il touche toute réponse assez grande pour être découpée en plusieurs blocs TCP, y compris les fichiers servis depuis la carte SD. `/logs` n’était épargné que par sa taille. Il explique très probablement une partie des symptômes « la page ne se charge pas » / « la page est cassée » observés précédemment et attribués à la pression mémoire seule.
+
+La leçon de méthode : le symptôme était visible depuis le début sur une simple lecture d’octets, mais un `curl` qui renvoie `HTTP 200` et une taille conforme au `Content-Length` a l’air d’un succès. Il a fallu comparer octet à octet contre une référence pour le voir. **Un code de retour n’est pas une vérification** — à généraliser aux tests de non-régression Web.
 
 ### Partition NVS saturée — incident et correction du 16 août 2026
 
