@@ -616,6 +616,38 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                       static_cast<unsigned>(r.filesDeployed),
                       static_cast<unsigned>(r.fileCount),
                       r.detail);
+
+        // Le journal ci-dessus part sur le port serie et dans un tampon en RAM
+        // que le redemarrage vers le mode normal efface. Sans trace persistante,
+        // l'utilisateur qui a appuye sur le bouton retrouve simplement sa page
+        // sans savoir si le deploiement a reussi, echoue, ou n'avait rien a
+        // faire — et un echec passe totalement inapercu. On enregistre donc le
+        // resultat comme le font les autres commandes de maintenance.
+        //
+        // MaintenanceResultStore::save() preserve les champs propres a l'OTA
+        // firmware (version disponible, notification en attente, URL, empreinte)
+        // pour toute commande autre qu'un check_version : l'etat d'une mise a
+        // jour firmware en attente n'est donc pas efface par un deploiement de
+        // ressources Web. La version deployee est portee par detail, les champs
+        // installedVersion/availableVersion restant reserves au firmware.
+        MaintenanceResult webResult;
+        webResult.valid = true;
+        webResult.success = r.ok;
+        webResult.recordedUptimeMs = millis();
+        webResult.minFreeHeap = ESP.getMinFreeHeap();
+        copyText(webResult.command, sizeof(webResult.command),
+                 MaintenanceRequestStore::name(request));
+        char webDetail[128];
+        snprintf(webDetail, sizeof(webDetail), "%s version=%s fichiers=%u/%u",
+                 r.detail[0] ? r.detail : "sans detail",
+                 r.version[0] ? r.version : "n/a",
+                 static_cast<unsigned>(r.filesDeployed),
+                 static_cast<unsigned>(r.fileCount));
+        copyText(webResult.detail, sizeof(webResult.detail), webDetail);
+        if (!MaintenanceResultStore::save(webResult)) {
+            EventLog::log(LOG_ERROR,
+                          "Maintenance: echec sauvegarde resultat WEB_ASSETS_UPDATE");
+        }
     } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
         const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
