@@ -4,6 +4,7 @@
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
+#include "UpdateCheckScheduler.h"
 #include "DisplayManager.h"
 #include <esp_heap_caps.h>
 #include <nvs.h>
@@ -372,6 +373,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/zoneNotifications", handleSetZoneNotifications);
     POST_JSON("/api/display",       handleSetDisplay);
     POST_JSON("/api/logConfig",     handleSetLogConfig);
+    POST_JSON("/api/updateCheck",   handleSetUpdateCheck);
 
     // Validation temporaire de WebAssetsUpdater::verifyOnly — voir la note
     // sur handleVerifyWebAsset (WebManager.h) et ROADMAP.md.
@@ -614,6 +616,17 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         ntp["dstOffset"] = _config->ntp().dstOffset;
         ntp["synced"]    = _ntp->isSynced();
         ntp["time"]      = _ntp->getTimeStr();
+    }
+
+    // Verification periodique des mises a jour
+    if (_updateCheck != nullptr) {
+        const UpdateCheckConfig& uc = _updateCheck->config();
+        JsonObject chk = doc["updateCheck"].to<JsonObject>();
+        chk["enabled"]      = uc.enabled;
+        chk["hour"]         = uc.hour;
+        chk["minute"]       = uc.minute;
+        chk["intervalDays"] = uc.intervalDays;
+        chk["lastCheckEpochDay"] = _updateCheck->lastCheckEpochDay();
     }
 
     // OWM
@@ -1132,7 +1145,8 @@ void WebManager::handleNvsStats(AsyncWebServerRequest* req) {
         "aq_maint",      // MaintenanceRequestStore
         "aq_maint_res",  // MaintenanceResultStore
         "aq_notify",     // NotificationManager
-        "aq_ota_guard"   // OtaBootGuard
+        "aq_ota_guard",  // OtaBootGuard
+        "aq_upd_chk"     // UpdateCheckScheduler — ajoute le 17/08/2026
     };
 
     JsonObject perNs = out["namespaces"].to<JsonObject>();
@@ -1162,6 +1176,26 @@ void WebManager::handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc) {
         doc["yMin"] | (int)TOUCH_Y_MIN,
         doc["yMax"] | (int)TOUCH_Y_MAX
     );
+    sendOk(req);
+}
+
+void WebManager::handleSetUpdateCheck(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_updateCheck) { sendError(req, "planificateur indisponible", 503); return; }
+
+    const UpdateCheckConfig& current = _updateCheck->config();
+    const bool enabled = doc["enabled"] | current.enabled;
+    const uint8_t hour = doc["hour"] | current.hour;
+    const uint8_t minute = doc["minute"] | current.minute;
+    const uint8_t days = doc["intervalDays"] | current.intervalDays;
+
+    // Bornes verifiees cote module et pas seulement dans la page : la page
+    // n'est qu'un client parmi d'autres, et un reglage hors bornes fixerait
+    // une echeance jamais atteinte, donc une verification qui n'aurait jamais
+    // lieu — silencieusement.
+    if (!_updateCheck->set(enabled, hour, minute, days)) {
+        sendError(req, "heure (0-23), minute (0-59) ou intervalle (1-30 jours) hors bornes");
+        return;
+    }
     sendOk(req);
 }
 

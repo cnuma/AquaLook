@@ -150,6 +150,28 @@
       <button class="btn-cfg primary" onclick="saveCfgNtp()">Enregistrer</button>
     </div>
   </div>
+  <div class="cfg-section" id="sec-upd">
+    <div class="cfg-section-header" onclick="toggleSection('sec-upd')">
+      <span class="cfg-section-title"><span class="sec-icon">⬆</span>Mises à jour</span>
+      <span class="cfg-chevron">▶</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-field">
+        <label><input type="checkbox" id="cfg-upd-enabled"> Vérifier automatiquement les mises à jour</label>
+      </div>
+      <div class="cfg-field-row">
+        <div class="cfg-field"><label>Heure de la vérification</label>
+          <input type="time" id="cfg-upd-time" value="03:30">
+        </div>
+        <div class="cfg-field"><label>Tous les (jours)</label>
+          <input type="number" id="cfg-upd-days" min="1" max="30" value="1">
+        </div>
+      </div>
+      <div class="cfg-hint">À l’heure choisie, AquaLook redémarre une trentaine de secondes en mode maintenance pour interroger le serveur de mises à jour, puis reprend son fonctionnement normal. La vérification est reportée — jamais annulée en silence — si un arrosage est en cours, si le réseau n’est pas stable, ou si l’heure n’est pas connue. Choisissez de préférence une heure creuse, hors de vos créneaux d’arrosage.</div>
+      <div id="cfg-upd-last" class="cfg-hint"></div>
+      <button class="btn-cfg primary" onclick="saveCfgUpdateCheck()">Enregistrer</button>
+    </div>
+  </div>
   <div class="cfg-section" id="sec-owm">
     <div class="cfg-section-header" onclick="toggleSection('sec-owm')">
       <span class="cfg-section-title"><span class="sec-icon">🌤</span>Météo (OWM)</span>

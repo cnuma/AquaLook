@@ -19,6 +19,7 @@
 #include "ConfigManager.h"
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"
+#include "UpdateCheckScheduler.h"
 #include "RuntimeProfiler.h"
 #include "EquipmentManager.h"
 #include "EquipmentModel.h"
@@ -38,6 +39,7 @@ ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
 ConfigManager configMgr;
+UpdateCheckScheduler updateCheckScheduler;
 StorageManager storageMgr;
 EquipmentManager equipmentMgr;
 EquipmentManager shadowEquipmentMgr;
@@ -591,6 +593,7 @@ void setup() {
     splashStep("WiFi");
 
     ntpMgr.begin(&configMgr);
+    updateCheckScheduler.begin();
     splashStep("NTP");
 
     webMgr.setOutputAdapter(&outputAdapter);
@@ -621,6 +624,7 @@ void setup() {
         &wifiMgr
     );
     webMgr.setDisplay(&displayMgr);
+    webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", ESP.getPsramSize());
@@ -666,6 +670,21 @@ void loop() {
         );
         RuntimeProfiler::stop(RuntimeProfiler::Component::SCHEDULE, startedUs);
     }
+
+    // Verification periodique des mises a jour. Place APRES le planificateur :
+    // si l'echeance tombe pile au demarrage d'un creneau, l'arrosage est deja
+    // lance et la vanne ouverte fait echouer la condition de declenchement.
+    // L'ordre inverse laisserait une fenetre d'un tour de boucle pendant
+    // laquelle le module redemarrerait juste avant d'ouvrir la vanne.
+    updateCheckScheduler.update(
+        ntpMgr.isSynced(),
+        ntpMgr.getHour(),
+        ntpMgr.getMinute(),
+        ntpMgr.getEpochDay(),
+        &wifiMgr,
+        &relaisMgr,
+        &configMgr
+    );
 
     startedUs = RuntimeProfiler::start();
     executionShadowRuntime.update(millis());

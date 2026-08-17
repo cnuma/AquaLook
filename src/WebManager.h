@@ -24,6 +24,8 @@
 
 class DisplayManager;
 
+class UpdateCheckScheduler;
+
 class WebManager {
 public:
     // Diffuse une page HTML embarquee en flash, en bornant le nombre de pages
@@ -31,6 +33,8 @@ public:
     // de deux chargements simultanes, la bibliotheque perd des octets en cours
     // de route et livre une page trouee sous un Content-Length complet. Un refus
     // explicite vaut mieux qu'une page fausse.
+    void handleSetUpdateCheck(AsyncWebServerRequest* req, JsonDocument& doc);
+
     static void sendEmbeddedPage(AsyncWebServerRequest* req,
                                  const char* page,
                                  size_t pageLength,
@@ -52,6 +56,10 @@ public:
     // autour d'une verification HTTPS de ressource Web (voir la note sur
     // _verifyPending plus bas et ROADMAP.md, "constat du 16 aout 2026").
     void setDisplay(DisplayManager* display) { _display = display; }
+
+    void setUpdateCheckScheduler(UpdateCheckScheduler* scheduler) {
+        _updateCheck = scheduler;
+    }
 
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
@@ -462,6 +470,7 @@ private:
     WiFiManager* _wifi = nullptr;
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     StorageManager* _storage = nullptr;
+    UpdateCheckScheduler* _updateCheck = nullptr;
     bool _sdStaticHandlerRegistered = false;
     bool _faultRoutesRegistered = false;
 

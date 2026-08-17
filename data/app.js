@@ -684,6 +684,24 @@ function populateDrawer() {
     document.getElementById('cfg-ntp-gmt').value    = s.ntp.gmtOffset ?? 3600;
     document.getElementById('cfg-ntp-dst').value    = s.ntp.dstOffset ?? 3600;
   }
+  if (s.updateCheck) {
+    const u = s.updateCheck;
+    const en = document.getElementById('cfg-upd-enabled');
+    const tm = document.getElementById('cfg-upd-time');
+    const dy = document.getElementById('cfg-upd-days');
+    if (en && document.activeElement !== en) en.checked = !!u.enabled;
+    if (tm && document.activeElement !== tm) {
+      tm.value = String(u.hour ?? 3).padStart(2,'0') + ':' + String(u.minute ?? 30).padStart(2,'0');
+    }
+    if (dy && document.activeElement !== dy) dy.value = u.intervalDays ?? 1;
+    const last = document.getElementById('cfg-upd-last');
+    if (last) {
+      // lastCheckEpochDay vaut 0 tant qu'aucune echeance n'a ete posee.
+      last.textContent = u.lastCheckEpochDay
+        ? 'Derniere verification : ' + new Date(u.lastCheckEpochDay*86400000).toLocaleDateString('fr-FR')
+        : 'Aucune verification effectuee pour le moment.';
+    }
+  }
   if (s.owm) {
     document.getElementById('cfg-owm-units').value = s.owm.units || 'metric';
     const hasCity = s.owm.city && s.owm.city.length > 0;
@@ -762,6 +780,20 @@ async function saveCfgNtp() {
     dstOffset: parseInt(document.getElementById('cfg-ntp-dst').value) || 3600
   });
   toast('NTP mis a jour');
+}
+async function saveCfgUpdateCheck() {
+  const enabled = document.getElementById('cfg-upd-enabled').checked;
+  const parts   = (document.getElementById('cfg-upd-time').value || '03:30').split(':');
+  const days    = parseInt(document.getElementById('cfg-upd-days').value) || 1;
+  if (days < 1 || days > 30) { toast('Intervalle attendu entre 1 et 30 jours', true); return; }
+  await api('/api/updateCheck', {
+    enabled,
+    hour:   parseInt(parts[0]) || 0,
+    minute: parseInt(parts[1]) || 0,
+    intervalDays: days
+  });
+  toast(enabled ? 'Verification automatique enregistree' : 'Verification automatique desactivee');
+  fetchAdminStatus();
 }
 function toggleOwmMode() {
   const mode = document.getElementById('cfg-owm-mode').value;
