@@ -346,7 +346,18 @@ void DisplayManager::update() {
     // HTTPS d'une ressource Web libere aussi ces sprites de son cote : cet
     // invariant, reevalue a chaque passage, rattrape tous ces cas.
     if (_spritesFreed) {
-        resumeAfterMemoryRelief();
+        // Tentative espacee : en cas d'echec, reessayer a chaque iteration
+        // enchainerait des allocations vouees a echouer et ajouterait de la
+        // charge au moment precis ou la memoire manque.
+        if (!AquaLook::Time::elapsedAtLeast(now, _lastSpriteRetryMs,
+                                            SPRITE_RETRY_INTERVAL_MS)) {
+            return;
+        }
+        _lastSpriteRetryMs = now;
+
+        if (!resumeAfterMemoryRelief()) {
+            return;   // defaut deja signale, on ne dessine pas dans le vide
+        }
         _needsFullRedraw = true;
     }
 

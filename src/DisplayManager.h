@@ -11,6 +11,9 @@
 #include "ScheduleManager.h"
 #include "ConfigManager.h"
 #include "ScreenManager.h"
+#include "FaultManager.h"
+#include "EventLog.h"
+#include "TimeUtils.h"
 #include "WiFiManager.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 
@@ -113,11 +116,39 @@ public:
         _sprPlan.deleteSprite();
         _spritesFreed = true;
     }
-    void resumeAfterMemoryRelief() {
-        if (!_spritesFreed) return;
-        _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
-        _sprPlan.createSprite(320, PL_PLAN_H);
+    // Retourne false si l'un des tampons n'a pas pu etre alloue. Dans ce cas
+    // _spritesFreed reste vrai : rien n'est dessine ce tour-ci, et une nouvelle
+    // tentative aura lieu plus tard — le systeme se repare seul des que la
+    // memoire se libere.
+    //
+    // Sans ce controle, l'echec serait totalement muet : TFT_eSprite teste
+    // _created dans chaque primitive et sort sans rien faire, donc l'ecran
+    // resterait fige sur son dernier contenu, sans erreur ni trace. C'est
+    // exactement le type de panne silencieuse que l'on veut supprimer.
+    bool resumeAfterMemoryRelief() {
+        if (!_spritesFreed) return true;
+
+        const bool btnOk  = _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H) != nullptr;
+        const bool planOk = _sprPlan.createSprite(320, PL_PLAN_H) != nullptr;
+
+        if (!btnOk || !planOk) {
+            // Liberer le tampon partiellement obtenu : le garder ne servirait
+            // a rien et retiendrait de la memoire dont l'autre a besoin.
+            _sprBtn0.deleteSprite();
+            _sprPlan.deleteSprite();
+            FaultManager::setActive(FaultId::DISPLAY_ALLOC, true);
+            FaultManager::notifyError();
+            EventLog::log(LOG_ERROR,
+                          "Affichage: allocation des tampons impossible "
+                          "(bouton=%s planning=%s), rendu suspendu",
+                          btnOk ? "ok" : "echec",
+                          planOk ? "ok" : "echec");
+            return false;   // _spritesFreed reste vrai -> nouvelle tentative
+        }
+
         _spritesFreed = false;
+        FaultManager::setActive(FaultId::DISPLAY_ALLOC, false);
+        return true;
     }
 
 private:
@@ -195,6 +226,8 @@ private:
     // Les deux gros sprites (~95 Ko a eux deux) sont-ils actuellement liberes ?
     // Voir suspendForMemoryRelief() et l'invariant applique dans update().
     bool      _spritesFreed = false;
+    uint32_t  _lastSpriteRetryMs = 0;
+    static constexpr uint32_t SPRITE_RETRY_INTERVAL_MS = 2000UL;
     uint32_t  _lastUpdate      = 0;
     uint32_t  _lastTouch       = 0;
     uint32_t  _lastTap         = 0;   // debounce action touch

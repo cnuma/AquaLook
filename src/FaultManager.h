@@ -14,7 +14,12 @@ enum class FaultId : uint8_t {
     // l'enregistrement, le voyant restait au vert, et la perte n'etait
     // decouverte qu'au redemarrage suivant. Un reglage perdu en silence coute
     // plus cher a la confiance qu'une panne franche, qui elle se voit.
-    CONFIG_PERSIST = 5
+    CONFIG_PERSIST = 5,
+    // Allocation d'un tampon d'affichage impossible au reveil de l'ecran.
+    // Sans ce defaut, l'echec serait muet : TFT_eSprite teste _created et
+    // sort sans rien dessiner, donc l'ecran resterait fige sur son dernier
+    // contenu, sans message ni trace. Ajoute le 17 aout 2026.
+    DISPLAY_ALLOC = 6
 };
 
 class FaultManager {
