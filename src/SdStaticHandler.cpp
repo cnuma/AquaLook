@@ -4,16 +4,50 @@
 #include <memory>
 
 #include "EventLog.h"
+#include <esp_heap_caps.h>
 
 namespace {
+
+// ── Bornage de la concurrence sur les fichiers SD ─────────────────────────
+//
+// Chaque reponse en flux retient un tampon et un descripteur de fichier
+// jusqu'a son terme. Sans borne, c'est l'epuisement memoire qui arbitre : le
+// 16 aout 2026, trois requetes simultanees suffisaient a rendre le serveur
+// totalement muet, y compris pour les routes qui ne touchent pas la SD.
+// Corriger la cause (liberation des sprites en veille) a releve le plafond de
+// 2 a plus de 8, mais n'a pas cree de borne : ecran allume, la marge reste
+// mince. Mieux vaut refuser proprement une requete de trop que s'effondrer.
+//
+// Le garde-fou porte d'abord sur la MEMOIRE reellement disponible, et non sur
+// un simple compteur : le nombre de reponses tenables depend de l'etat de
+// l'ecran (sprites alloues ou non), donc un seuil fixe serait tantot trop
+// permissif, tantot inutilement restrictif. Le compteur ne sert que de
+// garde-fou ultime contre un emballement.
+constexpr uint32_t SD_MIN_FREE_BYTES = 12000UL;
+constexpr uint8_t  SD_MAX_INFLIGHT   = 8U;
+constexpr uint32_t SD_REJECT_LOG_INTERVAL_MS = 10000UL;
+
+portMUX_TYPE g_sdInflightMux = portMUX_INITIALIZER_UNLOCKED;
+uint8_t  g_sdInflight = 0U;
+uint32_t g_sdRejectLogAtMs = 0U;
+uint32_t g_sdRejectCount = 0U;
 
 struct SdReadContext {
     FsFile file;
     StorageManager* storage = nullptr;
     String path;
+    bool counted = false;
 
     ~SdReadContext() {
         if (file.isOpen() && storage) storage->closeFile(file);
+        // Decremente ici plutot qu'a la fin du flux : ce destructeur s'execute
+        // aussi lorsque le client coupe la connexion en cours de route, cas ou
+        // un decompte place dans le rappel de lecture ne passerait jamais.
+        if (counted) {
+            portENTER_CRITICAL(&g_sdInflightMux);
+            if (g_sdInflight > 0U) g_sdInflight--;
+            portEXIT_CRITICAL(&g_sdInflightMux);
+        }
     }
 };
 
@@ -108,9 +142,49 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
         return;
     }
 
+    // Refus propre plutot qu'effondrement : si la memoire est deja basse ou si
+    // trop de flux sont en cours, repondre 503 avec Retry-After. Le navigateur
+    // reessaiera de lui-meme, ce qui degrade le temps de chargement au lieu de
+    // rendre le module muet.
+    const uint32_t freeBytes =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    bool refuse = false;
+    uint8_t inflightNow = 0U;
+
+    portENTER_CRITICAL(&g_sdInflightMux);
+    inflightNow = g_sdInflight;
+    if (freeBytes < SD_MIN_FREE_BYTES || g_sdInflight >= SD_MAX_INFLIGHT) {
+        refuse = true;
+        g_sdRejectCount++;
+    } else {
+        g_sdInflight++;
+    }
+    portEXIT_CRITICAL(&g_sdInflightMux);
+
+    if (refuse) {
+        const uint32_t nowMs = millis();
+        // Journal limite : un refus arrive rarement seul, et une rafale de
+        // lignes aggraverait la situation memoire qu'on cherche a proteger.
+        if (nowMs - g_sdRejectLogAtMs >= SD_REJECT_LOG_INTERVAL_MS) {
+            g_sdRejectLogAtMs = nowMs;
+            EventLog::log(LOG_WARN,
+                          "Web: requete SD refusee (libre=%lu enCours=%u total=%lu) "
+                          "— protection contre la saturation",
+                          static_cast<unsigned long>(freeBytes),
+                          static_cast<unsigned>(inflightNow),
+                          static_cast<unsigned long>(g_sdRejectCount));
+        }
+        AsyncWebServerResponse* busy =
+            request->beginResponse(503, "text/plain", "Occupe, reessayez");
+        busy->addHeader("Retry-After", "1");
+        request->send(busy);
+        return;
+    }
+
     auto context = std::make_shared<SdReadContext>();
     context->storage = _storage;
     context->path = sdPath;
+    context->counted = true;
 
     if (!_storage->openRead(sdPath.c_str(), context->file)) {
         _storage->reportReadError(sdPath.c_str());

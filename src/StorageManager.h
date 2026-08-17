@@ -27,6 +27,9 @@ public:
     void update();
 
     bool isSdAvailable() const { return _sdAvailable; }
+    // Vrai des que la carte est montee, meme si les ressources Web manquent :
+    // c'est cet etat qui autorise une reparation a distance.
+    bool isCardMounted() const { return _cardMounted; }
     bool areWebAssetsAvailable() const {
         return _status == StorageStatus::READY && _sdAvailable;
     }
@@ -71,6 +74,9 @@ public:
     // strategie de coherence en cas d'interruption (a definir avec le reste
     // du flux de deploiement).
     bool openWrite(const char* path, FsFile& file);
+    // Auto-test d'ecriture, desormais A LA DEMANDE uniquement : l'executer a
+    // chaque demarrage creait une fenetre de corruption recurrente.
+    void runWriteSelfTest() { selfTestSdWrite(); }
     int32_t writeChunk(FsFile& file, const uint8_t* buffer, size_t len);
     bool deleteOnSd(const char* path);
     bool renameOnSd(const char* fromPath, const char* toPath);
@@ -118,6 +124,17 @@ private:
     void unlockSd();
 
     volatile bool _sdAvailable = false;
+    // Carte physiquement montee et utilisable en ECRITURE, independamment de
+    // la presence des ressources Web. Distinct de _sdAvailable, qui signifie
+    // "ressources Web servables".
+    //
+    // Raison d'etre : quand /www manque, la carte elle-meme fonctionne
+    // parfaitement (volume monte, geometrie lue). La demonter privait le
+    // module du seul moyen de se reparer — reecrire les fichiers absents —
+    // et rendait un module sans acces physique definitivement inutilisable
+    // pour une simple absence de fichiers. Le chemin de recuperation etait
+    // bloque par la panne qu'il devait corriger. Constate le 17 aout 2026.
+    volatile bool _cardMounted = false;
     volatile StorageStatus _status = StorageStatus::NOT_INITIALIZED;
     volatile StorageRecoveryState _recoveryState = StorageRecoveryState::IDLE;
 

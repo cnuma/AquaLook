@@ -265,6 +265,16 @@ void WebManager::setupRoutes() {
         handleNvsStats(req);
     });
 
+    // Auto-test d'ecriture SD, desormais a la demande. Il tournait a chaque
+    // demarrage et ecrivait dans /www, ce qui creait une fenetre de corruption
+    // du repertoire des ressources Web a chaque boot — perte reelle constatee
+    // le 17 aout 2026. Il ecrit maintenant sous /diag.
+    _server.on("/api/debug/sd-selftest", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
+        _storage->runWriteSelfTest();
+        sendOk(req);
+    });
+
     _server.on("/api/captive", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleStartCaptive(req);
     });

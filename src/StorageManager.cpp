@@ -3,6 +3,7 @@
 #include "EventLog.h"
 #include "FaultManager.h"
 #include "IncidentManager.h"
+#include <cstring>
 
 namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
@@ -76,7 +77,12 @@ void StorageManager::begin() {
         }
 
         logMounted(false, 0);
-        selfTestSdWrite();
+        // Auto-test d'ecriture retire du demarrage : il ecrivait, renommait
+        // puis supprimait un fichier DANS /www a chaque boot, creant une
+        // fenetre de corruption du repertoire qui contient toutes les
+        // ressources Web — au moment ou l'alimentation est la moins stable.
+        // Perte reelle de /www constatee le 17 aout 2026 apres 28 boots.
+        // Desormais uniquement a la demande, via /api/debug/sd-selftest.
         return;
     }
 
@@ -249,8 +255,10 @@ void StorageManager::closeFile(FsFile& file) {
 }
 
 bool StorageManager::openWrite(const char* path, FsFile& file) {
-    if (!_sdAvailable ||
-        _status != StorageStatus::READY ||
+    // Ecriture autorisee des que la carte est montee, meme si les ressources
+    // Web manquent : c'est precisement dans cet etat qu'il faut pouvoir ecrire
+    // pour reparer (voir la note sur _cardMounted dans StorageManager.h).
+    if (!_cardMounted ||
         !path ||
         path[0] != '/') {
         return false;
@@ -258,6 +266,22 @@ bool StorageManager::openWrite(const char* path, FsFile& file) {
 
     if (!lockSd()) return false;
     if (file.isOpen()) file.close();
+
+    // Creer le repertoire parent s'il manque. Indispensable a la reparation a
+    // distance : quand /www a disparu, il faut pouvoir le recreer avant d'y
+    // reecrire index.html, sans quoi le module reste inutilisable pour une
+    // simple absence de repertoire (constate le 17 aout 2026).
+    const char* lastSlash = strrchr(path, '/');
+    if (lastSlash && lastSlash != path) {
+        char parent[96];
+        const size_t len = static_cast<size_t>(lastSlash - path);
+        if (len < sizeof(parent)) {
+            memcpy(parent, path, len);
+            parent[len] = '\0';
+            if (!_sd.exists(parent)) _sd.mkdir(parent);
+        }
+    }
+
     // O_CREAT | O_TRUNC : remplacement complet du contenu existant, jamais
     // une ecriture partielle superposee a un ancien fichier plus long.
     file = _sd.open(path, O_WRONLY | O_CREAT | O_TRUNC);
@@ -274,8 +298,7 @@ int32_t StorageManager::writeChunk(FsFile& file, const uint8_t* buffer, size_t l
 }
 
 bool StorageManager::deleteOnSd(const char* path) {
-    if (!_sdAvailable ||
-        _status != StorageStatus::READY ||
+    if (!_cardMounted ||
         !path ||
         path[0] != '/') {
         return false;
@@ -287,8 +310,10 @@ bool StorageManager::deleteOnSd(const char* path) {
 }
 
 void StorageManager::selfTestSdWrite() {
-    static constexpr const char* TMP_PATH  = "/www/.write_selftest.tmp";
-    static constexpr const char* FINAL_PATH = "/www/.write_selftest";
+    // Hors de /www : une corruption pendant ce test ne doit jamais pouvoir
+    // emporter le repertoire des ressources Web.
+    static constexpr const char* TMP_PATH  = "/diag/.write_selftest.tmp";
+    static constexpr const char* FINAL_PATH = "/diag/.write_selftest";
     static constexpr const char* CONTENT = "AquaLook SD write self-test";
     const size_t len = strlen(CONTENT);
 
@@ -335,8 +360,7 @@ void StorageManager::selfTestSdWrite() {
 }
 
 bool StorageManager::renameOnSd(const char* fromPath, const char* toPath) {
-    if (!_sdAvailable ||
-        _status != StorageStatus::READY ||
+    if (!_cardMounted ||
         !fromPath || fromPath[0] != '/' ||
         !toPath || toPath[0] != '/') {
         return false;
@@ -412,13 +436,22 @@ bool StorageManager::mountSd(bool publishAvailability) {
     if (!_sd.exists("/www") || !_sd.exists("/www/index.html")) {
         _status = StorageStatus::WEB_ASSETS_MISSING;
         _lastMountFailureReason = "web_assets_missing";
-        _sd.end();
-        resetCardMetadata();
+        // La carte reste MONTEE : elle fonctionne, seuls les fichiers manquent.
+        // C'est ce qui permet de les reecrire a distance et de retrouver un
+        // module sain sans intervention physique. Les ressources Web restent
+        // annoncees indisponibles (_sdAvailable faux), donc le serveur bascule
+        // sur le repli LittleFS — mais les ecritures, elles, sont autorisees.
+        // Les metadonnees ne sont plus effacees : elles etaient lues avec
+        // succes, les remettre a zero affichait "carte inconnue, 0 octet" et
+        // laissait croire a une carte morte alors qu'elle repond.
+        _cardMounted = true;
+        _sdAvailable = false;
         unlockSd();
         return false;
     }
 
     _status = StorageStatus::READY;
+    _cardMounted = true;
     _lastMountFailureReason = "none";
     _lastHealthCheckMs = millis();
     _healthFailureCount = 0;
