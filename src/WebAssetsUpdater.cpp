@@ -6,6 +6,8 @@
 
 #include "EventLog.h"
 #include "OtaTlsTrust.h"
+#include "StorageManager.h"
+#include <ArduinoJson.h>
 
 namespace {
 constexpr uint16_t HTTPS_PORT = 443U;
@@ -63,7 +65,12 @@ WebAssetVerifyResult downloadAndVerify(
     uint32_t expectedSize,
     const char* expectedSha256Hex,
     uint8_t redirectCount,
-    const WebAssetsUpdater::Sink& sink
+    const WebAssetsUpdater::Sink& sink,
+    // false : taille et empreinte inconnues d'avance (cas du manifeste, qui
+    // EST la reference des empreintes). expectedSize sert alors de borne
+    // maximale et non de valeur attendue. Le contenu reste valide ensuite par
+    // analyse stricte, et chaque fichier qu'il decrit est verifie par SHA-256.
+    bool verify
 ) {
     WebAssetVerifyResult result;
     HttpTarget target;
@@ -132,7 +139,8 @@ WebAssetVerifyResult downloadAndVerify(
             copyText(result.detail, sizeof(result.detail), "redirect-invalid");
             return result;
         }
-        return downloadAndVerify(location, expectedSize, expectedSha256Hex, redirectCount + 1U, sink);
+        return downloadAndVerify(location, expectedSize, expectedSha256Hex,
+                                 redirectCount + 1U, sink, verify);
     }
 
     if (statusCode != 200) {
@@ -150,11 +158,18 @@ WebAssetVerifyResult downloadAndVerify(
         client.stop();
         return result;
     }
-    if (static_cast<uint32_t>(contentLength) != expectedSize) {
+    if (verify && static_cast<uint32_t>(contentLength) != expectedSize) {
         copyText(result.detail, sizeof(result.detail), "content-length-mismatch");
         client.stop();
         return result;
     }
+    if (!verify && static_cast<uint32_t>(contentLength) > expectedSize) {
+        copyText(result.detail, sizeof(result.detail), "too-large");
+        client.stop();
+        return result;
+    }
+    const uint32_t bytesToRead =
+        verify ? expectedSize : static_cast<uint32_t>(contentLength);
 
     mbedtls_sha256_context shaContext;
     mbedtls_sha256_init(&shaContext);
@@ -171,10 +186,10 @@ WebAssetVerifyResult downloadAndVerify(
     uint32_t lastDataAt = downloadStartedAt;
     bool hashOk = true;
 
-    while (downloaded < expectedSize) {
+    while (downloaded < bytesToRead) {
         const int available = client.available();
         if (available > 0) {
-            const size_t remaining = expectedSize - downloaded;
+            const size_t remaining = bytesToRead - downloaded;
             const size_t wanted = min(
                 static_cast<size_t>(available),
                 min(sizeof(buffer), remaining)
@@ -225,13 +240,13 @@ WebAssetVerifyResult downloadAndVerify(
     client.stop();
     digestToHex(digest, result.calculatedSha256);
 
-    if (result.downloadedSize != expectedSize) {
+    if (verify && result.downloadedSize != expectedSize) {
         if (result.detail[0] == '\0') {
             copyText(result.detail, sizeof(result.detail), "size-mismatch");
         }
         return result;
     }
-    if (strcmp(result.calculatedSha256, expectedSha256Hex) != 0) {
+    if (verify && strcmp(result.calculatedSha256, expectedSha256Hex) != 0) {
         copyText(result.detail, sizeof(result.detail), "sha256-mismatch");
         return result;
     }
@@ -260,7 +275,7 @@ WebAssetVerifyResult WebAssetsUpdater::verifyOnly(
         return result;
     }
     return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U,
-                             WebAssetsUpdater::Sink());
+                             WebAssetsUpdater::Sink(), true);
 }
 
 // Variante publique avec destination : meme mecanique, les octets verifies
@@ -271,11 +286,230 @@ WebAssetVerifyResult WebAssetsUpdater::downloadToSink(
     const char* expectedSha256Hex,
     const Sink& sink
 ) {
-    if (!url || url[0] == ' ' || expectedSize == 0U ||
+    if (!url || url[0] == '\0' || expectedSize == 0U ||
         !expectedSha256Hex || strlen(expectedSha256Hex) != 64U) {
         WebAssetVerifyResult result;
         copyText(result.detail, sizeof(result.detail), "invalid-arguments");
         return result;
     }
-    return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U, sink);
+    return downloadAndVerify(String(url), expectedSize, expectedSha256Hex, 0U, sink, true);
+}
+
+// ── Detection d'une mise a jour ───────────────────────────────────────────
+
+namespace {
+
+// Lit la version actuellement deployee depuis /www/assets-version.json.
+// Absent ou illisible => version inconnue, ce qui fait considerer toute
+// version publiee comme une mise a jour : c'est le comportement voulu pour un
+// module dont les ressources viennent d'une synchronisation manuelle.
+void readInstalledVersion(StorageManager* storage, char* out, size_t outSize) {
+    if (outSize == 0U) return;
+    out[0] = '\0';
+    if (!storage) return;
+
+    FsFile f;
+    if (!storage->openRead("/www/assets-version.json", f)) return;
+
+    char buf[256];
+    const int32_t n = storage->readChunk(f, reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1U);
+    storage->closeFile(f);
+    if (n <= 0) return;
+    buf[n] = '\0';
+
+    JsonDocument doc;
+    if (deserializeJson(doc, buf) != DeserializationError::Ok) return;
+
+    // Le fichier ecrit par tools/sync-sd-assets.ps1 ne porte pas de version de
+    // release mais un horodatage et un sha git. On accepte les deux formes :
+    // "version" si le module l'a ecrit lui-meme, sinon "gitSha" a defaut.
+    const char* v = doc["version"] | doc["gitSha"] | "";
+    strncpy(out, v, outSize - 1U);
+    out[outSize - 1U] = '\0';
+}
+
+}  // namespace
+
+namespace {
+// Recuperation bornee, sans empreinte attendue : reservee au manifeste.
+WebAssetVerifyResult fetchUnverified(const char* url, uint32_t maxBytes,
+                                     const WebAssetsUpdater::Sink& sink) {
+    return downloadAndVerify(String(url), maxBytes, "", 0U, sink, false);
+}
+}  // namespace
+
+WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* storage) {
+    CheckResult result;
+
+    // Le manifeste est petit et sa taille n'est pas connue d'avance : on le
+    // recupere sans verification d'empreinte (il EST la reference des
+    // empreintes). Son contenu est valide par analyse stricte ci-dessous, et
+    // chaque fichier qu'il decrit sera lui verifie par SHA-256.
+    String body;
+    body.reserve(3072);
+    bool overflow = false;
+
+    const Sink collect = [&body, &overflow](const uint8_t* data, size_t len) -> bool {
+        if (body.length() + len > MANIFEST_MAX_BYTES) { overflow = true; return false; }
+        for (size_t i = 0; i < len; ++i) body += static_cast<char>(data[i]);
+        return true;
+    };
+
+    // downloadToSink exige taille et empreinte attendues. Pour le manifeste on
+    // ne les a pas : on passe par une recuperation directe, bornee en taille.
+    WebAssetVerifyResult dl = fetchUnverified(MANIFEST_URL, MANIFEST_MAX_BYTES, collect);
+
+    if (overflow) {
+        copyText(result.detail, sizeof(result.detail), "manifest-too-large");
+        return result;
+    }
+    if (!dl.success) {
+        copyText(result.detail, sizeof(result.detail), dl.detail);
+        return result;
+    }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        copyText(result.detail, sizeof(result.detail), "manifest-parse-failed");
+        return result;
+    }
+
+    const char* schema = doc["schema"] | "";
+    if (strcmp(schema, "aqualook-web-manifest-v1") != 0) {
+        copyText(result.detail, sizeof(result.detail), "manifest-schema-unknown");
+        return result;
+    }
+
+    const char* version = doc["release"]["version"] | "";
+    JsonArray files = doc["files"].as<JsonArray>();
+    if (version[0] == '\0' || files.isNull() || files.size() == 0U) {
+        copyText(result.detail, sizeof(result.detail), "manifest-incomplete");
+        return result;
+    }
+
+    strncpy(result.availableVersion, version, sizeof(result.availableVersion) - 1U);
+    result.fileCount = static_cast<uint8_t>(files.size());
+    readInstalledVersion(storage, result.installedVersion, sizeof(result.installedVersion));
+
+    result.ok = true;
+    result.updateAvailable =
+        strcmp(result.availableVersion, result.installedVersion) != 0;
+    copyText(result.detail, sizeof(result.detail),
+             result.updateAvailable ? "update-available" : "up-to-date");
+
+    EventLog::log(LOG_INFO,
+                  "WebAssets: verification installee=%s disponible=%s fichiers=%u -> %s",
+                  result.installedVersion[0] ? result.installedVersion : "inconnue",
+                  result.availableVersion,
+                  static_cast<unsigned>(result.fileCount),
+                  result.detail);
+    return result;
+}
+
+// ── Deploiement complet des ressources Web ────────────────────────────────
+// Concu pour le mode maintenance : voir la note dans WebAssetsUpdater.h.
+WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
+    StorageManager* storage) {
+    DeployResult out;
+
+    if (!storage || !storage->isCardMounted()) {
+        copyText(out.detail, sizeof(out.detail), "carte-sd-indisponible");
+        return out;
+    }
+
+    // Le manifeste est recupere une seule fois : il sert a la fois a comparer
+    // les versions et a piloter le telechargement fichier par fichier.
+    String body;
+    body.reserve(3072);
+    bool overflow = false;
+    const Sink collect = [&body, &overflow](const uint8_t* data, size_t len) -> bool {
+        if (body.length() + len > MANIFEST_MAX_BYTES) { overflow = true; return false; }
+        for (size_t i = 0; i < len; ++i) body += static_cast<char>(data[i]);
+        return true;
+    };
+
+    const WebAssetVerifyResult dl = fetchUnverified(MANIFEST_URL, MANIFEST_MAX_BYTES, collect);
+    if (overflow || !dl.success) {
+        copyText(out.detail, sizeof(out.detail),
+                 overflow ? "manifeste-trop-gros" : dl.detail);
+        return out;
+    }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        copyText(out.detail, sizeof(out.detail), "manifeste-illisible");
+        return out;
+    }
+    if (strcmp(doc["schema"] | "", "aqualook-web-manifest-v1") != 0) {
+        copyText(out.detail, sizeof(out.detail), "schema-inconnu");
+        return out;
+    }
+
+    JsonArray files = doc["files"].as<JsonArray>();
+    const char* version = doc["release"]["version"] | "";
+    if (files.isNull() || files.size() == 0U || version[0] == '\0') {
+        copyText(out.detail, sizeof(out.detail), "manifeste-incomplet");
+        return out;
+    }
+    strncpy(out.version, version, sizeof(out.version) - 1U);
+    out.fileCount = static_cast<uint8_t>(files.size());
+
+    if (!storage->beginAssetStaging()) {
+        copyText(out.detail, sizeof(out.detail), "transit-impossible");
+        return out;
+    }
+
+    // Chaque fichier est ecrit dans le transit et verifie par SHA-256 pendant
+    // son telechargement. Un seul echec annule tout : on ne bascule pas, et
+    // /www reste intact.
+    for (JsonObject f : files) {
+        const char* name = f["name"] | "";
+        const char* url = f["url"] | "";
+        const char* sha = f["sha256"] | "";
+        const uint32_t size = f["size"] | 0U;
+
+        if (name[0] == '\0' || url[0] == '\0' || strlen(sha) != 64U || size == 0U) {
+            copyText(out.detail, sizeof(out.detail), "entree-manifeste-invalide");
+            return out;
+        }
+        // Un nom compose interdirait de garantir la destination : refus net.
+        if (strchr(name, '/') || strstr(name, "..")) {
+            copyText(out.detail, sizeof(out.detail), "nom-de-fichier-refuse");
+            return out;
+        }
+
+        String dest = String(StorageManager::ASSETS_STAGING) + "/" + name;
+        FsFile file;
+        if (!storage->openWrite(dest.c_str(), file)) {
+            copyText(out.detail, sizeof(out.detail), "ecriture-impossible");
+            return out;
+        }
+
+        const Sink toCard = [storage, &file](const uint8_t* data, size_t len) -> bool {
+            return storage->writeChunk(file, data, len) == static_cast<int32_t>(len);
+        };
+        const WebAssetVerifyResult r = downloadToSink(url, size, sha, toCard);
+        storage->closeFile(file);
+
+        if (!r.success) {
+            EventLog::log(LOG_ERROR, "WebAssets: %s echoue (%s)", name, r.detail);
+            copyText(out.detail, sizeof(out.detail), r.detail);
+            return out;   // /www jamais touche : rien a defaire
+        }
+        out.filesDeployed++;
+        EventLog::log(LOG_INFO, "WebAssets: %s verifie (%lu octets)",
+                      name, static_cast<unsigned long>(r.downloadedSize));
+    }
+
+    if (!storage->commitAssetStaging()) {
+        copyText(out.detail, sizeof(out.detail), "bascule-echouee");
+        return out;
+    }
+
+    out.ok = true;
+    copyText(out.detail, sizeof(out.detail), "deploye");
+    EventLog::log(LOG_INFO,
+                  "WebAssets: deploiement termine version=%s fichiers=%u",
+                  out.version, static_cast<unsigned>(out.filesDeployed));
+    return out;
 }

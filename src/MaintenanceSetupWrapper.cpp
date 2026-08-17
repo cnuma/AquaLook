@@ -6,7 +6,16 @@
 #include "MaintenanceRequest.h"
 
 namespace {
-constexpr uint32_t MAINTENANCE_TASK_STACK = 16384U;
+// Portee de 16384 a 32768 octets le 17 aout 2026. Une session TLS mbedTLS
+// combinee a l'analyse ArduinoJson du manifeste des ressources Web depassait
+// 16 Ko et declenchait "Stack canary watchpoint triggered (aqualook-maint)"
+// juste apres le montage de la carte.
+//
+// Ce cout est sans consequence ICI, et c'est tout l'interet d'executer les
+// mises a jour dans ce mode : le tas y est libre a ~242 Ko (mesure), contre
+// ~32 Ko en fonctionnement normal ou une telle reserve permanente serait
+// inenvisageable. La pile est rendue des le retour au mode nominal.
+constexpr uint32_t MAINTENANCE_TASK_STACK = 32768U;
 constexpr UBaseType_t MAINTENANCE_TASK_PRIORITY = 1U;
 constexpr BaseType_t MAINTENANCE_TASK_CORE = 0;
 

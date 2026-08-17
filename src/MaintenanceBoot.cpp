@@ -15,6 +15,8 @@
 #include "OtaBootGuard.h"
 #include "OtaDownloadTest.h"
 #include "OtaStageUpdate.h"
+#include "WebAssetsUpdater.h"
+#include "StorageManager.h"
 #include "OtaBuildIdentity.h"
 #include "OtaTlsTrust.h"
 
@@ -553,7 +555,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     if (request != MaintenanceRequest::PROBE_GITHUB &&
         request != MaintenanceRequest::CHECK_VERSION &&
         request != MaintenanceRequest::DOWNLOAD_UPDATE_TEST &&
-        request != MaintenanceRequest::STAGE_UPDATE_TEST) {
+        request != MaintenanceRequest::STAGE_UPDATE_TEST &&
+        request != MaintenanceRequest::WEB_ASSETS_UPDATE) {
         EventLog::log(LOG_WARN, "Maintenance: commande refusee type=%s implementation=absente",
                       MaintenanceRequestStore::name(request));
         return false;
@@ -596,6 +599,23 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                       result.success ? "yes" : "no", result.installedVersion,
                       result.availableVersion[0] ? result.availableVersion : "n/a",
                       result.updateAvailable ? "yes" : "no", result.detail);
+    } else if (request == MaintenanceRequest::WEB_ASSETS_UPDATE) {
+        // Seule commande de maintenance a monter la carte SD : elle en a besoin
+        // et n'ecrit pas en flash, donc l'isolation qui justifiait d'exclure la
+        // SD du mode maintenance ne s'applique pas ici.
+        StorageManager storage;
+        storage.begin();
+        const WebAssetsUpdater::DeployResult r =
+            WebAssetsUpdater::deployFromManifest(&storage);
+        success = r.ok;
+        EventLog::log(r.ok ? LOG_INFO : LOG_ERROR,
+                      "Maintenance: WEB_ASSETS_UPDATE success=%s version=%s "
+                      "fichiers=%u/%u detail=%s otaWrite=no",
+                      r.ok ? "yes" : "no",
+                      r.version[0] ? r.version : "n/a",
+                      static_cast<unsigned>(r.filesDeployed),
+                      static_cast<unsigned>(r.fileCount),
+                      r.detail);
     } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
         const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);

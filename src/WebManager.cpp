@@ -269,6 +269,37 @@ void WebManager::setupRoutes() {
     // demarrage et ecrivait dans /www, ce qui creait une fenetre de corruption
     // du repertoire des ressources Web a chaque boot — perte reelle constatee
     // le 17 aout 2026. Il ecrit maintenant sous /diag.
+    // Mise a jour des ressources Web : declenchee par l'utilisateur, executee
+    // au redemarrage en mode maintenance (memoire large, tache dediee, pas de
+    // concurrence). Meme protection que les routes /api/maintenance/* : jamais
+    // pendant un arrosage, l'invariant interdisant de retarder une commande de
+    // vanne.
+    _server.on("/api/webassets/update", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_config || !_relais) { sendError(req, "runtime indisponible", 503); return; }
+        for (uint8_t zone = 0U; zone < _config->nbZones(); ++zone) {
+            if (_relais->getState(zone)) {
+                EventLog::log(LOG_WARN,
+                              "WebAssets: mise a jour refusee, zone %u en arrosage",
+                              static_cast<unsigned>(zone + 1U));
+                sendError(req, "arrosage en cours", 409);
+                return;
+            }
+        }
+        if (!MaintenanceRequestStore::save(MaintenanceRequest::WEB_ASSETS_UPDATE)) {
+            sendError(req, "enregistrement de la demande impossible", 500);
+            return;
+        }
+        EventLog::log(LOG_WARN,
+                      "WebAssets: mise a jour demandee, redemarrage en mode maintenance");
+        _restartPending = true;
+        _restartAtMs = millis() + 750U;
+        JsonDocument out;
+        out["ok"] = true;
+        out["restart"] = true;
+        out["command"] = "web_assets_update";
+        sendJson(req, out, 202);
+    });
+
     // Deploiement transactionnel : prepare le transit, puis bascule.
     // Les fichiers eux-memes passent par /api/debug/deploy-file, qui ecrit
     // desormais dans /www.new tant qu'un transit est ouvert.

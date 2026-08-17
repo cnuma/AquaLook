@@ -367,37 +367,64 @@ bool StorageManager::beginAssetStaging() {
 bool StorageManager::commitAssetStaging() {
     if (!_cardMounted) return false;
 
+    // Bascule fichier par fichier, et non par renommage de repertoire.
+    //
+    // SdFat ouvre le chemin en lecture seule dans rename() (FatVolume.h :
+    // open(vwd(), oldPath, O_RDONLY) puis file.rename(...)), ce qui ne permet
+    // pas de mettre a jour l'entree ".." d'un sous-repertoire : renommer /www
+    // echouait systematiquement (etape 1/2), constate le 17 aout 2026 alors
+    // que les 10 fichiers etaient tous telecharges et verifies.
+    //
+    // Compromis assume : la bascule n'est plus atomique. Une coupure pendant
+    // cette phase laisse un melange de fichiers ANCIENS et NOUVEAUX, tous
+    // complets et valides individuellement — jamais de fichier tronque. C'est
+    // tres different de l'incident du matin, ou l'ecriture longue (le
+    // telechargement) se faisait dans /www ; ici cette phase reste isolee dans
+    // le transit, et seule la phase de deplacement, de l'ordre de la seconde,
+    // touche /www. recoverInterruptedStaging() reprend les deplacements
+    // restants au demarrage suivant.
     if (!lockSd(2000U)) return false;
 
-    if (!_sd.exists(ASSETS_STAGING)) {
+    FsFile dir;
+    if (!dir.open(ASSETS_STAGING, O_RDONLY)) {
         unlockSd();
         EventLog::log(LOG_ERROR, "Deploiement: transit absent, bascule annulee");
         return false;
     }
 
-    // Bascule proprement dite. Les deux renommages sont l'unique fenetre
-    // sensible ; recoverInterruptedStaging() la rattrape au demarrage suivant.
-    _sd.rmdir(ASSETS_OLD);
-    bool ok = true;
-    if (_sd.exists(ASSETS_DIR) && !_sd.rename(ASSETS_DIR, ASSETS_OLD)) ok = false;
-    if (ok && !_sd.rename(ASSETS_STAGING, ASSETS_DIR)) {
-        // Echec apres avoir ecarte l'ancien : le remettre en place plutot que
-        // de laisser le module sans ressources du tout.
-        _sd.rename(ASSETS_OLD, ASSETS_DIR);
-        ok = false;
+    uint8_t moved = 0U;
+    bool allMoved = true;
+    char name[64];
+    FsFile entry;
+    while (entry.openNext(&dir, O_RDONLY)) {
+        const bool isDir = entry.isDir();
+        entry.getName(name, sizeof(name));
+        entry.close();
+        if (isDir) continue;   // le transit est plat par construction
+
+        char from[128];
+        char to[128];
+        snprintf(from, sizeof(from), "%s/%s", ASSETS_STAGING, name);
+        snprintf(to, sizeof(to), "%s/%s", ASSETS_DIR, name);
+
+        // Un renommage FAT echoue si la destination existe : retirer d'abord.
+        if (_sd.exists(to)) _sd.remove(to);
+        if (_sd.rename(from, to)) {
+            moved++;
+        } else {
+            allMoved = false;
+            EventLog::log(LOG_ERROR, "Deploiement: deplacement echoue pour %s", name);
+        }
     }
+    dir.close();
+    _sd.rmdir(ASSETS_STAGING);
     unlockSd();
 
-    if (!ok) {
-        EventLog::log(LOG_ERROR, "Deploiement: bascule echouee, ancienne version conservee");
-        return false;
-    }
-
-    removeDirectoryContents(ASSETS_OLD);
-    if (lockSd(1000U)) { _sd.rmdir(ASSETS_OLD); unlockSd(); }
-
-    EventLog::log(LOG_INFO, "Deploiement: bascule effectuee, nouvelles ressources actives");
-    return true;
+    EventLog::log(allMoved ? LOG_INFO : LOG_ERROR,
+                  "Deploiement: bascule %s, %u fichier(s) deplace(s)",
+                  allMoved ? "effectuee" : "INCOMPLETE",
+                  static_cast<unsigned>(moved));
+    return allMoved && moved > 0U;
 }
 
 void StorageManager::recoverInterruptedStaging() {
@@ -407,15 +434,13 @@ void StorageManager::recoverInterruptedStaging() {
     const bool hasStaging = _sd.exists(ASSETS_STAGING);
     const bool hasOld     = _sd.exists(ASSETS_OLD);
 
-    // Coupure entre les deux renommages : /www n'existe plus mais le transit
-    // est complet et verifie. Terminer la bascule plutot que de demarrer sans
-    // ressources.
-    if (!hasAssets && hasStaging) {
-        const bool done = _sd.rename(ASSETS_STAGING, ASSETS_DIR);
+    // Transit encore present : une bascule a ete interrompue en cours de
+    // deplacement. La reprendre est sans risque, l'operation etant idempotente
+    // (chaque fichier restant remplace sa version ancienne).
+    if (hasStaging) {
         unlockSd();
-        EventLog::log(done ? LOG_WARN : LOG_ERROR,
-                      "Deploiement: bascule interrompue %s au demarrage",
-                      done ? "terminee" : "IRRECUPERABLE");
+        EventLog::log(LOG_WARN, "Deploiement: transit restant, reprise de la bascule");
+        commitAssetStaging();
         return;
     }
 
