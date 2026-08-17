@@ -186,7 +186,25 @@ Limite connue, à traiter à l'étape 6 : l'opération bloque la boucle principa
 
    **Reste à faire de la spécification UX d’origine :** notification ntfy à la fin de l’opération, signalement d’une mise à jour en attente (LED violette, icône LCD, pastille dans la barre du haut renvoyant vers `/ota`). Seule la confirmation à l’écran est en place.
 
-7. vérification périodique, une fois la chaîne manuelle éprouvée sur le terrain.
+7. vérification périodique — **canal firmware fait le 17 août 2026, canal ressources Web à faire**. `UpdateCheckScheduler` ne fait pas la vérification : il décide quand il est sûr de redémarrer en mode maintenance pour la faire, là où la mémoire suffit. Cinq conditions obligatoires (activée, heure connue, WiFi stable depuis cinq minutes, aucun arrosage en cours, échéance atteinte), refus journalisé au plus une fois par heure, et jour de vérification enregistré **avant** le redémarrage pour rendre une boucle de redémarrages impossible. Réglage (activation, heure, intervalle) dans la section « Mises à jour » de la page de configuration, namespace NVS dédié `aq_upd_chk` pour ne pas toucher au blob de configuration principal.
+
+   La condition « heure connue » vient de l’utilisateur : redémarrer sans heure valide suspendrait l’arrosage programmé (voir `FaultId::TIME_UNSYNCED`).
+
+   **Reste à faire :** vérifier aussi le canal ressources Web dans le même démarrage de maintenance, et notifier par ntfy quand une mise à jour de ressources Web est disponible. La notification existe déjà pour le firmware (`NotificationManager` consomme `updateAvailable`/`notificationPending`).
+
+### Chaîne complète validée de bout en bout — release v5.9.6, 17 août 2026
+
+Première mise à jour des ressources Web déclenchée par un bouton de l’interface, sans aucune intervention depuis le poste de travail :
+
+1. tag `v5.9.6` poussé, CI publie firmware, manifeste et les 10 fichiers de `data/` ;
+2. bouton « Mettre à jour les ressources Web » sur `/ota` ;
+3. redémarrage en mode maintenance, manifeste lu, **10 fichiers téléchargés et vérifiés empreinte par empreinte** ;
+4. bascule transactionnelle de 11 fichiers (`assets-version.json` inclus, pour qu’il change en même temps que ce qu’il décrit) ;
+5. retour en production, version des pages passée de 5.9.5 à 5.9.6.
+
+Vérification faite sur les octets et non sur le code de retour, conformément à la leçon du jour : le SHA-256 de quatre fichiers servis par le module (`index.html`, `app.js`, `style-base.css`, `logs.html`) a été recalculé et comparé à celui du manifeste publié — 4 conformes, 0 écart.
+
+Incident traversé pendant l’opération, et résolu seul : le WiFi est devenu « zombie » (association maintenue, passerelle et DNS injoignables). La sonde de keepalive ajoutée le 16 août a détecté la situation après trois échecs, forcé une reconnexion, et le module est revenu en ligne en deux minutes sans intervention.
 
 ### Pages HTML servies tronquées sous un `Content-Length` complet — 17 août 2026
 
