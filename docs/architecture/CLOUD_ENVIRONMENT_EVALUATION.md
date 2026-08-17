@@ -62,7 +62,7 @@ Repérés à l'usage, ils forment le socle de ce qu'il faut remonter. À noter :
 | Minimum de tas atteint | marge réelle sous charge | valeur cumulée depuis le démarrage, très parlante |
 | Entrées NVS libres | saturation de la configuration | seuil franchi = pertes silencieuses |
 | Échecs de sauvegarde de configuration | perte de réglages | doit remonter comme **événement**, pas comme métrique |
-| Dépassements de boucle, avertissements de lenteur | dérive de charge | |
+| Dépassements de boucle | **à ne pas utiliser tel quel** | mesuré le 17 août 2026 : ~1 dépassement par requête HTTP servie, avant comme après les modifications du 16 août (test comparatif sur deux versions). Le compteur suit le **trafic**, pas la santé — un onglet de navigateur laissé ouvert produisait 500/heure sans le moindre symptôme. La mesure étant en temps écoulé, elle compte la préemption normale par la tâche réseau. À remplacer par une mesure de temps **processeur**, ou à normaliser par le nombre de requêtes |
 | Événements de connexion zombie WiFi | qualité réseau du site | fréquence plus informative que l'occurrence |
 | Incidents carte SD | usure ou défaut du support | |
 | Redémarrages et leur cause | instabilité | un redémarrage non sollicité est toujours un signal |
