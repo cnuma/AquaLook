@@ -2,14 +2,38 @@
 #include "ConfigManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "FaultManager.h"
 
 // ── Intervalles de poll (compile-time) ────────
 static constexpr uint32_t POLL_BEFORE_SYNC_MS = 500;
 static constexpr uint32_t POLL_AFTER_SYNC_MS  = 3600000UL;  // 1h
 
+// -- Alerte "heure inconnue" ----------------------------------------------
+//
+// main.cpp n'appelle ScheduleManager::update() que si NTPManager est
+// synchronise : sans heure, aucun arrosage programme ne demarre. Jusqu'ici
+// cette situation etait totalement muette — le module cessait simplement
+// d'arroser, sans defaut leve, sans voyant, sans ligne de journal.
+//
+// L'horloge interne survit a un redemarrage logiciel (verifie le 17 aout 2026 :
+// apres esp_restart(), la premiere ligne de journal est deja horodatee), mais
+// pas a une coupure d'alimentation. Le scenario reel est donc : coupure de
+// courant, retour du courant sans reseau, et un arrosage qui ne repart jamais.
+//
+// Le seuil est volontairement large. Un demarrage normal synchronise en
+// quelques secondes (WiFi connecte vers 5 s, heure valide dans la foulee).
+// Cinq minutes ne peuvent pas etre atteintes par un simple demarrage un peu
+// lent : une alerte a tort couterait plus cher que le silence qu'elle remplace.
+static constexpr uint32_t UNSYNCED_ALERT_MS  = 300000UL;   // 5 min
+// Tant que la situation dure, la rappeler : une alerte unique se perd dans le
+// journal, et c'est justement le cas ou l'utilisateur cherche pourquoi son
+// arrosage ne part pas.
+static constexpr uint32_t UNSYNCED_REPEAT_MS = 1800000UL;  // 30 min
+
 // ─────────────────────────────────────────────────────────────
 void NTPManager::begin(ConfigManager* config) {
     _config = config;
+    _beginMs = millis();
     applyConfig();
     EventLog::log(LOG_INFO, "NTP: synchronisation lancee");
 }
@@ -41,8 +65,43 @@ void NTPManager::update() {
             // informations temporelles sans blocage ni scintillement.
             const String timeStr = getTimeStr();
             EventLog::log(LOG_INFO, "NTP: synchronise %s", timeStr.c_str());
+            if (_unsyncedFaultRaised) {
+                _unsyncedFaultRaised = false;
+                FaultManager::setActive(FaultId::TIME_UNSYNCED, false);
+                EventLog::log(LOG_INFO,
+                              "NTP: heure retrouvee %s — les arrosages "
+                              "programmes reprennent",
+                              timeStr.c_str());
+            }
         }
         _lastSync = now;
+        return;
+    }
+
+    // Pas d'heure. Tant qu'on est dans le delai de demarrage normal, c'est
+    // attendu et on ne dit rien.
+    if (now - _beginMs < UNSYNCED_ALERT_MS) return;
+
+    if (!_unsyncedFaultRaised) {
+        _unsyncedFaultRaised = true;
+        _unsyncedLogAtMs = now;
+        FaultManager::setActive(FaultId::TIME_UNSYNCED, true);
+        FaultManager::notifyError();
+        EventLog::log(LOG_ERROR,
+                      "NTP: heure toujours inconnue apres %lu min — aucun "
+                      "arrosage programme ne peut demarrer tant que l'heure "
+                      "n'est pas connue (serveur=%s)",
+                      static_cast<unsigned long>((now - _beginMs) / 60000UL),
+                      (_config != nullptr) ? _config->ntp().server : "compile-time");
+        return;
+    }
+
+    if (now - _unsyncedLogAtMs >= UNSYNCED_REPEAT_MS) {
+        _unsyncedLogAtMs = now;
+        EventLog::log(LOG_ERROR,
+                      "NTP: heure toujours inconnue depuis %lu min — arrosage "
+                      "programme toujours a l'arret",
+                      static_cast<unsigned long>((now - _beginMs) / 60000UL));
     }
 }
 

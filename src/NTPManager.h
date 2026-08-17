@@ -36,6 +36,9 @@ private:
     bool           _synced    = false;
     uint32_t       _lastPoll  = 0;
     uint32_t       _lastSync  = 0;
+    uint32_t       _beginMs   = 0;
+    bool           _unsyncedFaultRaised = false;
+    uint32_t       _unsyncedLogAtMs     = 0;
 
     void applyConfig();
     bool fillTm(struct tm& out) const;

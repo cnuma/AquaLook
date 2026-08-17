@@ -25,7 +25,17 @@ enum class FaultId : uint8_t {
     // main TLS en echec, plantages au demarrage) etaient toutes des epuisements
     // memoire, et toutes ont ete decouvertes par la panne alors que la
     // degradation etait mesurable en amont. Ajoute le 17 aout 2026.
-    MEMORY_LOW = 7
+    MEMORY_LOW = 7,
+    // Heure inconnue depuis assez longtemps pour que ce ne soit plus le simple
+    // delai de demarrage. Consequence directe et invisible autrement :
+    // main.cpp n'appelle ScheduleManager::update() QUE si NTPManager est
+    // synchronise, donc sans heure le module n'arrose plus du tout — sans rien
+    // dire. L'horloge interne survit a un redemarrage logiciel (verifie le
+    // 17 aout 2026 : apres esp_restart(), la premiere ligne de journal est deja
+    // horodatee), mais pas a une coupure d'alimentation. Le scenario reel est
+    // donc : coupure de courant, retour du courant sans reseau, et un arrosage
+    // qui ne repart jamais. Ajoute le 17 aout 2026.
+    TIME_UNSYNCED = 8
 };
 
 class FaultManager {
