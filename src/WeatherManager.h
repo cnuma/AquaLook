@@ -36,6 +36,20 @@ struct ForecastDay {
 // ═══════════════════════════════════════════════════════════════
 class WeatherManager {
 public:
+    // Seuils memoire exiges avant de lancer un fetch. Voir la note detaillee
+    // dans WeatherManager.cpp : sans eux, la reponse de ~17 Ko epuisait le tas
+    // et la premiere connexion HTTP suivante faisait abort() le systeme.
+    static constexpr uint32_t MIN_FREE_FOR_FETCH  = 45000UL;
+    static constexpr uint32_t MIN_BLOCK_FOR_FETCH = 25000UL;
+    static constexpr uint32_t FETCH_RETRY_ON_LOW_MEMORY_MS = 120000UL;
+
+private:
+    // Distingue un report volontaire pour cause de memoire d'un vrai echec de
+    // creation de tache, pour ne pas journaliser une cause fausse.
+    bool _fetchDeferredForMemory = false;
+
+public:
+
     void begin(ConfigManager* config = nullptr);
     void update(bool wifiConnected);
 

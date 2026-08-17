@@ -3,6 +3,7 @@
 #include "EventBus.h"
 #include "EventLog.h"
 
+#include <esp_heap_caps.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
@@ -90,7 +91,12 @@ void WeatherManager::update(bool wifiConnected) {
     _nextFetchAt = now + FETCH_RETRY_DELAY_MS;
 
     if (!startFetch()) {
-        EventLog::log(
+        // Un report volontaire pour cause de memoire s'est deja explique
+        // lui-meme, avec ses chiffres. Rejournaliser "impossible de creer la
+        // tache" par-dessus serait faux : aucune tache n'a ete tentee. Une
+        // ligne fausse dans un journal coute plus cher qu'une ligne absente,
+        // parce qu'elle envoie chercher au mauvais endroit.
+        if (!_fetchDeferredForMemory) EventLog::log(
             LOG_WARN,
             "Meteo: impossible de creer la tache de fetch"
         );
@@ -104,6 +110,50 @@ bool WeatherManager::startFetch() {
     const char* city = _config ? _config->owm().city : OWM_CITY;
     const char* country = _config ? _config->owm().country : OWM_COUNTRY;
     const char* units = _config ? _config->owm().units : "metric";
+
+    // Ne pas lancer un telechargement de ~17 Ko quand il n'y a pas la place.
+    //
+    // Constate le 17 aout 2026, boucle de redemarrages : a chaque demarrage,
+    // "Meteo: HTTP 200 annonce=16739 lecture=stream" etait suivi dans la
+    // seconde de
+    //   abort() was called at PC 0x401a021b
+    //   AsyncServer::_accepted -> operator new -> __cxa_throw -> std::terminate
+    // Autrement dit : la reponse meteo epuisait le tas, puis la premiere
+    // connexion HTTP entrante ne trouvait plus de quoi allouer son objet de
+    // requete. operator new leve bad_alloc, personne ne l'attrape, et le
+    // runtime C++ abat tout le systeme. Pas de degradation, pas de refus
+    // poli — un redemarrage sec, en boucle, jusqu'a debrancher le module.
+    //
+    // Le seuil porte sur le plus GROS BLOC et pas seulement sur le total
+    // libre : c'est la contrainte reelle de ce module, ou le tas est fragmente
+    // par les deux tampons d'affichage permanents (~95 Ko). Un total
+    // confortable avec des blocs minuscules ne permet toujours pas d'allouer.
+    //
+    // Une meteo reportee est invisible pour l'utilisateur : le prochain cycle
+    // reessaiera. Un redemarrage ne l'est pas.
+    const uint32_t freeBytes =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    const uint32_t largestBlock =
+        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    if (freeBytes < MIN_FREE_FOR_FETCH || largestBlock < MIN_BLOCK_FOR_FETCH) {
+        _fetchDeferredForMemory = true;
+        portENTER_CRITICAL(&g_weatherMux);
+        _fetchInProgress = false;
+        portEXIT_CRITICAL(&g_weatherMux);
+        _nextFetchAt = millis() + FETCH_RETRY_ON_LOW_MEMORY_MS;
+        EventLog::log(LOG_WARN,
+                      "Meteo: fetch reporte, memoire insuffisante "
+                      "(libre=%lu plusGrosBloc=%lu seuils=%lu/%lu) — nouvel "
+                      "essai dans %lu s",
+                      static_cast<unsigned long>(freeBytes),
+                      static_cast<unsigned long>(largestBlock),
+                      static_cast<unsigned long>(MIN_FREE_FOR_FETCH),
+                      static_cast<unsigned long>(MIN_BLOCK_FOR_FETCH),
+                      static_cast<unsigned long>(FETCH_RETRY_ON_LOW_MEMORY_MS / 1000UL));
+        return false;
+    }
+
+    _fetchDeferredForMemory = false;
 
     FetchRequest request;
     strlcpy(request.apiKey, apiKey ? apiKey : "", sizeof(request.apiKey));
