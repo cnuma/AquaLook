@@ -168,6 +168,68 @@ bool httpExchange(Client& client, const char* method, const char* host,
     return true;
 }
 
+// Serialise la configuration effective du module : reglages systeme et
+// creneaux des zones actives uniquement (system().nbZones), jamais les
+// MAX_ZONES emplacements en capacite.
+//
+// Les creneaux sont encodes en tableaux [heure, minute, duree, actif]
+// plutot qu'en objets nommes. A pleine capacite (16 zones x 8 plannings
+// x 5 creneaux = 640 creneaux) la forme nommee depasserait 19 Ko quand la
+// forme tableau tient sous 7 Ko ; avec 2 zones actives on reste vers 1 Ko.
+// La limite serveur est de 64 Ko (MAX_PAYLOAD_BYTES), donc large, mais le
+// tas du module reste la vraie contrainte.
+void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
+    payload["schema"] = 1;
+
+    const CfgSystem& sys = cm.system();
+    JsonObject system = payload["system"].to<JsonObject>();
+    system["nbZones"]          = sys.nbZones;
+    system["nbRelais"]         = sys.nbRelaisPhysical;
+    system["maxWateringMin"]   = sys.maxWateringMin;
+    system["screenTimeoutMin"] = sys.screenTimeoutMin;
+    system["ledMode"]          = sys.ledMode;
+    system["relayLogic"]       = sys.relayLogic;
+    system["relayController"]  = sys.relayController;
+
+    JsonArray zones = payload["zones"].to<JsonArray>();
+    const uint8_t activeZones = cm.nbZones();
+    for (uint8_t z = 0U; z < activeZones && z < MAX_ZONES; ++z) {
+        const CfgZone& src = cm.zone(z);
+        JsonObject zone = zones.add<JsonObject>();
+        zone["i"]            = z;
+        zone["name"]         = src.name;
+        zone["mode"]         = src.mode;
+        zone["intervalDays"] = src.intervalDays;
+
+        JsonObject rain = zone["rain"].to<JsonObject>();
+        rain["thresholdMm"]   = src.rain.thresholdMm;
+        rain["forecastHours"] = src.rain.forecastHours;
+
+        JsonArray days = zone["days"].to<JsonArray>();
+        for (uint8_t d = 0U; d < NB_DAYS; ++d) {
+            JsonArray day = days.add<JsonArray>();
+            for (uint8_t s = 0U; s < MAX_SLOTS; ++s) {
+                const CfgSlot& slot = src.daySlots[d].slots[s];
+                JsonArray entry = day.add<JsonArray>();
+                entry.add(slot.hour);
+                entry.add(slot.minute);
+                entry.add(slot.duration);
+                entry.add(slot.enabled ? 1 : 0);
+            }
+        }
+
+        JsonArray interval = zone["interval"].to<JsonArray>();
+        for (uint8_t s = 0U; s < MAX_SLOTS; ++s) {
+            const CfgSlot& slot = src.intervalSlots.slots[s];
+            JsonArray entry = interval.add<JsonArray>();
+            entry.add(slot.hour);
+            entry.add(slot.minute);
+            entry.add(slot.duration);
+            entry.add(slot.enabled ? 1 : 0);
+        }
+    }
+}
+
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -193,7 +255,8 @@ CloudSyncConfig CloudSync::loadConfig() {
     return cfg;
 }
 
-CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg) {
+CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
+                               const ConfigManager& configManager) {
     CloudSyncResult result;
 
     WiFiClient plainClient;
@@ -252,7 +315,45 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg) {
         }
     }
 
-    // ── 2. Sondage d'une commande en attente ────────────────────────────
+    // ── 2. Configuration effective (miroir cote serveur) ────────────────
+    //
+    // Envoyee a chaque cycle, sans detection de changement. A 1 Ko par
+    // heure le gain d'une empreinte serait negligeable devant la
+    // complexite d'un etat supplementaire a maintenir ; a revoir si
+    // l'intervalle descend nettement ou si le nombre de zones augmente.
+    client->stop();
+    if (!client->connect(cfg.host, port)) {
+        copyText(result.detail, sizeof(result.detail), "config: connexion impossible");
+        result.valid = true;
+        return result;
+    }
+    {
+        JsonDocument doc;
+        doc["type"] = "config";
+        buildConfigPayload(configManager, doc["payload"].to<JsonObject>());
+
+        String body;
+        serializeJson(doc, body);
+        EventLog::log(LOG_INFO, "CloudSync: config serialisee (%u octets)",
+                      static_cast<unsigned>(body.length()));
+
+        int status = 0;
+        String respBody;
+        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", cfg.token, body, status, respBody)) {
+            copyText(result.detail, sizeof(result.detail), "config: pas de reponse");
+            client->stop();
+            result.valid = true;
+            return result;
+        }
+        result.configSuccess = (status >= 200 && status < 300);
+        if (!result.configSuccess) {
+            char detail[64];
+            snprintf(detail, sizeof(detail), "config: http=%d", status);
+            copyText(result.detail, sizeof(result.detail), detail);
+        }
+    }
+
+    // ── 3. Sondage d'une commande en attente ────────────────────────────
     client->stop();
     if (!client->connect(cfg.host, port)) {
         copyText(result.detail, sizeof(result.detail), "sondage: connexion impossible");
@@ -280,7 +381,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg) {
         }
     }
 
-    // ── 3. Accuse reception (sans encore appliquer -- voir CloudSync.h) ─
+    // ── 4. Accuse reception (sans encore appliquer -- voir CloudSync.h) ─
     if (result.commandReceived) {
         client->stop();
         if (client->connect(cfg.host, port)) {

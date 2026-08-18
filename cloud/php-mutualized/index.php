@@ -18,7 +18,10 @@ require_once __DIR__ . '/db.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
-const VALID_MSG_TYPES = ['status', 'state', 'event', 'diag'];
+// 'config' : instantane de la configuration effective du module (creneaux et
+// reglages systeme). Miroir en lecture seule -- le module reste l'autorite,
+// voir SYSTEM_ARCHITECTURE.md Sec.9 invariants #1, #2, #3.
+const VALID_MSG_TYPES = ['status', 'state', 'event', 'diag', 'config'];
 const MODULE_ID_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/';
 
 header('Content-Type: application/json; charset=utf-8');

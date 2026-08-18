@@ -678,13 +678,14 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         }
     } else if (request == MaintenanceRequest::CLOUD_SYNC) {
         const CloudSyncConfig cloudCfg = CloudSync::loadConfig();
-        const CloudSyncResult r = CloudSync::run(cloudCfg);
-        success = r.valid && r.reportSuccess;
+        const CloudSyncResult r = CloudSync::run(cloudCfg, configManager);
+        success = r.valid && r.reportSuccess && r.configSuccess;
+        // Libelles compactes : EventLog tronque a LOG_MSG_LEN (72).
         EventLog::log(success ? LOG_INFO : LOG_ERROR,
-                      "Maintenance: CLOUD_SYNC rapport=%s commande=%s accuse=%s detail=%s",
+                      "Maintenance: CLOUD_SYNC rapport=%s config=%s cmd=%s detail=%s",
                       r.reportSuccess ? "ok" : "echec",
-                      r.commandReceived ? "recue" : "aucune",
-                      r.commandReceived ? (r.ackSuccess ? "ok" : "echec") : "n/a",
+                      r.configSuccess ? "ok" : "echec",
+                      r.commandReceived ? (r.ackSuccess ? "ok" : "echec") : "aucune",
                       r.detail);
         // Pas de MaintenanceResult persiste ici : contrairement au firmware/
         // ressources Web, il n'y a rien a afficher a l'utilisateur apres

@@ -22,9 +22,16 @@ class ConfigManager;
 //  maintenance offre ~245 Ko de tas libre. utile meme en HTTP simple
 //  (tests locaux) pour rester coherent une fois le HTTPS active.
 //
-//  Perimetre actuel : accuse reception d'une commande en attente, ne
-//  l'applique pas encore. Prouver le tuyau complet avant d'y brancher
-//  une logique metier (creneaux, reglages).
+//  Perimetre actuel : remonte la configuration effective (creneaux et
+//  reglages systeme) pour consultation cote serveur, et accuse reception
+//  d'une commande en attente sans encore l'appliquer.
+//
+//  Sens d'autorite (invariants Sec.9 #1, #2, #3 et #6) : le module reste
+//  l'autorite. Le serveur n'est qu'un miroir de la configuration
+//  effective ; il pourra proposer une modification sous forme de commande,
+//  que le module validera avant application. Le serveur ne detient jamais
+//  la verite, sinon une modification faite localement (ecran, portail web
+//  du module) serait ecrasee en silence -- ce qu'interdit l'invariant #3.
 // ═══════════════════════════════════════════════════════════════
 
 struct CloudSyncConfig {
@@ -40,6 +47,7 @@ struct CloudSyncConfig {
 struct CloudSyncResult {
     bool     valid           = false;
     bool     reportSuccess   = false;
+    bool     configSuccess   = false;
     bool     commandReceived = false;
     char     correlationId[40] = "";
     bool     ackSuccess      = false;
@@ -55,10 +63,11 @@ public:
     // hors de la boucle principale.
     static CloudSyncConfig loadConfig();
 
-    // Envoie la telemetrie, sonde une commande en attente, l'accuse sans
-    // encore l'appliquer. A appeler uniquement en mode maintenance (voir
-    // note ci-dessus).
-    static CloudSyncResult run(const CloudSyncConfig& cfg);
+    // Envoie la telemetrie puis la configuration effective, sonde une
+    // commande en attente, l'accuse sans encore l'appliquer. A appeler
+    // uniquement en mode maintenance (voir note ci-dessus).
+    static CloudSyncResult run(const CloudSyncConfig& cfg,
+                               const ConfigManager& configManager);
 };
 
 class CloudSyncScheduler {

@@ -25,7 +25,10 @@ from . import db  # noqa: E402
 
 PROTO_VERSION = "v1"
 MAX_PAYLOAD_BYTES = 64 * 1024
-VALID_MSG_TYPES = {"status", "state", "event", "diag"}
+# "config" : instantane de la configuration effective du module (creneaux et
+# reglages systeme). Miroir en lecture seule -- le module reste l'autorite,
+# voir SYSTEM_ARCHITECTURE.md Sec.9 invariants #1, #2, #3.
+VALID_MSG_TYPES = {"status", "state", "event", "diag", "config"}
 
 # Meme contrainte que la piste MQTT : un identifiant de module reste borne et
 # sans surprise, il sert de cle primaire.
