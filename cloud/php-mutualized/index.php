@@ -1,0 +1,186 @@
+<?php
+/**
+ * API HTTP AquaLook -- version hebergement mutualise (PHP + MySQL/MariaDB).
+ *
+ * Meme contrat de routes que cloud/api (FastAPI, piste VPS) : le firmware
+ * n'a pas a savoir laquelle des deux implementations repond. Execution par
+ * requete, comme le veut un hebergement mutualise -- pas de processus
+ * permanent, coherent avec la trajectoire retenue le 18 aout 2026
+ * (docs/architecture/SYSTEM_ARCHITECTURE.md Sec.5.0).
+ *
+ * La logique metier d'arrosage n'est PAS ici : l'ESP32 reste l'autorite
+ * locale, ce service transporte, historise et met en attente.
+ */
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/db.php';
+
+const PROTO_VERSION = 'v1';
+const MAX_PAYLOAD_BYTES = 64 * 1024;
+const VALID_MSG_TYPES = ['status', 'state', 'event', 'diag'];
+const MODULE_ID_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/';
+
+header('Content-Type: application/json; charset=utf-8');
+
+function send_json(int $status, array $body): never
+{
+    http_response_code($status);
+    echo json_encode($body, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function bearer_token(): string
+{
+    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if (!str_starts_with($header, 'Bearer ')) {
+        send_json(401, ['detail' => 'jeton porteur manquant']);
+    }
+    return trim(substr($header, 7));
+}
+
+/** Resout le jeton en identifiant de module. Refus sur, jamais silencieux --
+ * SYSTEM_ARCHITECTURE.md Sec.7 exige un refus explicite en cas de message
+ * incomplet, invalide ou incompatible. */
+function require_module(): string
+{
+    $moduleId = module_id_for_token(bearer_token());
+    if ($moduleId === null) {
+        send_json(401, ['detail' => 'jeton porteur invalide']);
+    }
+    return $moduleId;
+}
+
+function require_admin(): void
+{
+    $adminToken = getenv('ADMIN_TOKEN') ?: '';
+    if ($adminToken === '') {
+        send_json(503, ['detail' => 'ADMIN_TOKEN non configure cote serveur']);
+    }
+    if (!hash_equals($adminToken, bearer_token())) {
+        send_json(401, ['detail' => 'jeton admin invalide']);
+    }
+}
+
+function read_json_body(): array
+{
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw ?: '', true);
+    if (!is_array($data)) {
+        send_json(400, ['detail' => 'corps JSON invalide']);
+    }
+    return $data;
+}
+
+function check_payload_size(array $payload): void
+{
+    if (strlen(json_encode($payload, JSON_UNESCAPED_UNICODE)) > MAX_PAYLOAD_BYTES) {
+        send_json(413, ['detail' => 'charge utile trop volumineuse']);
+    }
+}
+
+// ── Routage ──────────────────────────────────────────────────────────────────
+
+$method = $_SERVER['REQUEST_METHOD'];
+$path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/', '/') ?: '/';
+
+try {
+    if ($method === 'GET' && $path === '/health') {
+        send_json(200, ['ok' => true]);
+    }
+
+    // ── Routes module (jeton porteur par module) ────────────────────────────
+
+    if ($method === 'POST' && $path === '/v1/report') {
+        $moduleId = require_module();
+        $body = read_json_body();
+
+        $msgType = $body['type'] ?? null;
+        if (!in_array($msgType, VALID_MSG_TYPES, true)) {
+            send_json(400, ['detail' => 'type invalide, attendu parmi ' . implode(', ', VALID_MSG_TYPES)]);
+        }
+        $payload = $body['payload'] ?? null;
+        if (!is_array($payload)) {
+            send_json(400, ['detail' => 'payload doit etre un objet']);
+        }
+        check_payload_size($payload);
+
+        $correlationId = $body['correlationId'] ?? null;
+        insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
+        $firmware = in_array($msgType, ['status', 'state'], true) ? ($payload['firmware'] ?? null) : null;
+        touch_module($moduleId, $firmware);
+        send_json(200, ['ok' => true]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/pending-command') {
+        $moduleId = require_module();
+        $result = next_pending_command($moduleId);
+        send_json(200, $result ?? ['correlationId' => null, 'command' => null]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/command/ack') {
+        $moduleId = require_module();
+        $body = read_json_body();
+
+        $correlationId = $body['correlationId'] ?? null;
+        $state = $body['state'] ?? null;
+        if (!$correlationId || !in_array($state, ['accepted', 'refused', 'failed'], true)) {
+            send_json(400, ['detail' => 'correlationId et state (accepted|refused|failed) requis']);
+        }
+        $result = $body['result'] ?? null;
+        if ($result !== null && !is_array($result)) {
+            send_json(400, ['detail' => 'result doit etre un objet si present']);
+        }
+
+        $finalState = settle_command($moduleId, $correlationId, $state, $result);
+        if ($finalState === null) {
+            send_json(404, ['detail' => 'correlationId inconnu pour ce module']);
+        }
+        send_json(200, ['ok' => true, 'state' => $finalState]);
+    }
+
+    // ── Routes admin (jeton admin) ──────────────────────────────────────────
+
+    if ($method === 'GET' && $path === '/admin/modules') {
+        require_admin();
+        send_json(200, list_modules());
+    }
+
+    if ($method === 'POST' && $path === '/admin/module-token') {
+        require_admin();
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        $token = $body['token'] ?? bin2hex(random_bytes(32));
+        upsert_module_token($moduleId, $token, $body['label'] ?? null);
+        // Montre le jeton une seule fois, en clair -- a noter cote
+        // administrateur, jamais relisible depuis le serveur ensuite.
+        send_json(200, ['moduleId' => $moduleId, 'token' => $token]);
+    }
+
+    if ($method === 'POST' && $path === '/admin/command') {
+        require_admin();
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        $command = $body['command'] ?? null;
+        if (!is_array($command)) {
+            send_json(400, ['detail' => 'command doit etre un objet']);
+        }
+        check_payload_size($command);
+
+        $correlationId = create_command($moduleId, $command, $body['issuedBy'] ?? null);
+        send_json(200, ['correlationId' => $correlationId]);
+    }
+
+    send_json(404, ['detail' => 'route inconnue']);
+} catch (Throwable $e) {
+    // Jamais de trace technique renvoyee au client -- refus sur plutot que
+    // fuite d'information (SYSTEM_ARCHITECTURE.md Sec.7).
+    error_log('AquaLook API erreur: ' . $e->getMessage());
+    send_json(500, ['detail' => 'erreur interne']);
+}

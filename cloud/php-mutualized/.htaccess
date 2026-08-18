@@ -1,0 +1,11 @@
+# Renvoie tout vers index.php, qui route lui-meme sur REQUEST_URI.
+# Standard sur l'hebergement mutualise OVH (Apache + mod_rewrite deja actif).
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L]
+
+# Le .env et le schema ne doivent jamais etre servis directement.
+<FilesMatch "^(\.env|schema\.sql)$">
+    Require all denied
+</FilesMatch>
