@@ -1,5 +1,7 @@
 # Pile serveur AquaLook — « VPS maison »
 
+> **Différé depuis le 18 août 2026** : MQTT (donc cette pile, centrée sur Mosquitto) n'est plus la trajectoire retenue à court terme — voir `docs/architecture/SYSTEM_ARCHITECTURE.md` §5.0 et `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md` §7. Le transport privilégié est désormais HTTP/HTTPS à jeton porteur, sans courtier permanent, qui n'exige pas cette pile pour démarrer. Ce dossier reste documenté et fonctionnel si MQTT est un jour reconsidéré (carte PSRAM, besoin de flotte ou de commande temps réel).
+
 Configuration logicielle à déployer sur le mini PC. La même pile est destinée à être transposée telle quelle sur un VPS (Phase C de la roadmap) : c'est la raison d'être de la conteneurisation ici, et non un goût pour Docker.
 
 Contexte et justification des choix : `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md`. Invariants d'architecture et de sécurité : `docs/architecture/SYSTEM_ARCHITECTURE.md`.

@@ -30,9 +30,10 @@ Cette évolution ne doit pas transformer le cloud, l’application mobile ou Int
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │ Couche services distants                                    │
-│ MQTT, API, historique, notifications, supervision, OTA      │
+│ API HTTP/HTTPS, historique, notifications, supervision, OTA │
+│ (MQTT en extension differee, voir §5.0)                      │
 └───────────────────────────────▲──────────────────────────────┘
-                                │ MQTT/TLS et HTTPS
+                                │ HTTPS (jeton porteur), et MQTT/TLS si reconsidere
 ┌───────────────────────────────┴──────────────────────────────┐
 │ Couche applications                                         │
 │ Flutter iOS/Android, interface Web et outils d’administration│
@@ -85,7 +86,7 @@ L’application ne constitue pas l’autorité d’exécution. Elle demande une 
 
 La couche distante fournit progressivement :
 
-- un broker MQTT sécurisé ;
+- une API HTTP/HTTPS sécurisée, à jeton porteur (un broker MQTT peut s'y ajouter plus tard, voir §5.0) ;
 - le routage des états, événements, commandes et acquittements ;
 - l’historisation des données ;
 - l’authentification des utilisateurs et des modules ;
@@ -98,71 +99,73 @@ Le cloud transporte, conserve et présente les informations. Il ne remplace pas 
 
 ## 5. Trajectoire cloud validée
 
-### 5.1 Phase de validation — HiveMQ Cloud
+### 5.0 Arbitrage du 18 août 2026 — HTTP/HTTPS d'abord, MQTT différé
 
-HiveMQ Cloud est retenu comme broker MQTT de développement pour valider rapidement :
+Divergence explicitement arbitrée et documentée, conformément à la règle du §1.
 
-- la connexion MQTT/TLS de l’ESP32 ;
-- la publication des états et événements ;
-- la réception de commandes distantes ;
-- les acquittements et la corrélation requête/réponse ;
-- la reconnexion après coupure ;
-- la limitation de fréquence et de volume ;
-- l’intégration Flutter.
+**Constat matériel** : les mesures du 16 et du 18 août 2026 (voir `docs/engineering/38_MEMORY_MANAGEMENT.md` et `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md`) montrent qu'une connexion TLS même **ponctuelle** n'a aucune taille d'arène mémoire dédiée qui tienne sur l'ESP32 actuel (sans PSRAM) sans dégrader le démarrage WiFi. MQTT exige une connexion TLS **permanente** : structurellement plus coûteuse, et non couverte par les atténuations déjà en place (libération temporaire des tampons d'écran, inapplicable à une connexion tenue en continu).
 
-Cette étape doit rester un prototype contrôlé. Les topics, formats de messages et règles de sécurité doivent être conçus pour ne pas dépendre durablement d’un fournisseur particulier.
+**Constat d'usage** : le besoin exprimé (télémétrie de supervision prédictive, réglages poussés à distance) ne requiert pas de poussée temps réel. Un module unique, pas encore une flotte, réduit aussi l'intérêt immédiat du pub/sub MQTT.
+
+**Décision** : le transport par défaut pour la couche services distants devient **HTTP/HTTPS avec jeton porteur**, à connexions courtes (connecte → échange → ferme), sur le modèle déjà éprouvé en production par l'OTA et les notifications. Le module reste toujours l'initiateur (aucune connexion entrante acceptée), par sondage périodique — voir §6.1 révisé.
+
+**MQTT n'est pas abandonné, il est différé** : à reconsidérer si (a) une carte à PSRAM change le budget mémoire disponible, et/ou (b) un besoin réel de commande temps réel ou de flotte multi-modules apparaît. La section 5.1 ci-dessous reste documentée à ce titre, comme hypothèse ouverte plutôt que comme trajectoire validée.
+
+Conséquence directe : la couche services distants **peut** démarrer sur un hébergement Web simple (un script exécuté par requête suffit), sans processus permanent à faire tourner — voir `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md` pour le détail. Le mini PC / VPS restent pertinents pour la suite (historisation, tableaux de bord), mais ne sont plus un préalable obligé.
+
+### 5.1 Piste différée — HiveMQ Cloud et MQTT
+
+Conservé comme hypothèse ouverte, non comme trajectoire validée (voir §5.0). Si reconsidéré : HiveMQ Cloud comme broker MQTT de développement, pour valider la connexion MQTT/TLS, la publication d'états/événements, la réception de commandes, les acquittements, la reconnexion après coupure, la limitation de fréquence et de volume, l'intégration Flutter. Resterait un prototype contrôlé, topics et formats conçus pour ne pas dépendre durablement d'un fournisseur particulier.
 
 ### 5.2 Application mobile — Flutter
 
-Après validation des échanges MQTT, une application Flutter doit être construite progressivement :
+Une application Flutter doit être construite progressivement, sur la base des échanges HTTP/HTTPS validés (ou MQTT si cette piste est reconsidérée) :
 
 1. tableau de bord en lecture seule ;
-2. affichage temps réel des états ;
+2. affichage des états (sondage périodique) ;
 3. consultation des événements et diagnostics ;
 4. émission de commandes non critiques ;
 5. commandes d’équipements avec acquittement explicite ;
 6. notifications et gestion multi-modules ;
 7. intégration contrôlée des opérations OTA autorisées.
 
-### 5.3 Migration vers une infrastructure OVHcloud
+### 5.3 Migration vers une infrastructure dédiée
 
-Après validation fonctionnelle et mesure des besoins, l’infrastructure doit pouvoir migrer vers un VPS OVHcloud maîtrisé.
+Après validation fonctionnelle et mesure des besoins, l’infrastructure doit pouvoir migrer vers un hébergement dédié maîtrisé (VPS ou équivalent).
 
 La première cible envisagée est :
 
-- Mosquitto comme broker MQTT ;
+- une API AquaLook en HTTP/HTTPS (un broker MQTT peut s'y ajouter plus tard si §5.1 est reconsidérée) ;
 - Node-RED pour les scénarios de test, diagnostics et intégrations ;
 - une base de données adaptée à l’historique ;
-- une API AquaLook ;
 - un service de notifications ;
 - supervision, sauvegardes et journalisation centralisée.
 
-La migration ne doit pas imposer de réécriture du firmware ou de l’application. Les paramètres de connexion et certificats peuvent changer, mais les contrats MQTT et API doivent rester compatibles ou être versionnés.
+La migration ne doit pas imposer de réécriture du firmware ou de l’application. Les paramètres de connexion et secrets peuvent changer, mais les contrats d'API doivent rester compatibles ou être versionnés.
 
 ## 6. Principes de communication
 
-### 6.1 MQTT
+### 6.1 HTTP/HTTPS — transport distant privilégié (depuis le 18 août 2026, voir §5.0)
 
-MQTT est le transport privilégié pour :
+HTTP/HTTPS à jeton porteur, en connexions courtes initiées par le module (jamais de connexion entrante acceptée), est le transport privilégié pour :
 
-- les états temps réel ;
-- les événements ;
-- les demandes de commande ;
+- les états et événements, remontés par sondage périodique ou en fin de cycle ;
+- les demandes de commande et réglages, déposés côté serveur puis récupérés au sondage suivant du module ;
 - les acquittements ;
-- la présence et la disponibilité des modules ;
-- certaines notifications techniques.
-
-MQTT ne doit pas contenir la logique métier critique. Les messages doivent être versionnés, bornés, validés et traçables.
-
-### 6.2 HTTP/HTTPS
-
-HTTP reste pertinent pour :
-
-- l’interface Web locale ;
-- les API locales ;
+- certaines notifications techniques ;
+- l’interface Web locale, les API locales ;
 - le téléchargement OTA depuis GitHub Releases ou un relais autorisé ;
-- certains échanges cloud non temps réel ;
 - l’administration et la récupération.
+
+Aucune poussée temps réel : la fraîcheur des commandes distantes dépend de l'intervalle de sondage, ajustable indépendamment du reste (plus resserré pour une commande, plus large pour la télémétrie). Le contrôle local (WiFi domestique) reste instantané, inchangé par cette décision.
+
+Les messages doivent être versionnés, bornés, validés et traçables — même exigence qu'aurait imposée MQTT.
+
+### 6.2 MQTT — extension différée
+
+Non retenu dans la trajectoire actuelle (voir §5.0 pour l'arbitrage et ses raisons). Resterait pertinent si un besoin réel de commande temps réel ou de supervision multi-modules à grande échelle apparaissait, et si une évolution matérielle (PSRAM) lève la contrainte mémoire qui a motivé ce report.
+
+MQTT, si reconsidéré, ne devra pas contenir la logique métier critique. Les messages devront être versionnés, bornés, validés et traçables.
 
 ### 6.3 Contrats stables
 
@@ -184,7 +187,7 @@ Les exigences minimales sont :
 - chiffrement TLS ;
 - identifiants propres à chaque module ;
 - révocation et renouvellement des secrets ;
-- droits MQTT limités aux topics nécessaires ;
+- droits d’accès limités aux ressources nécessaires (routes API, ou topics si MQTT est reconsidéré) ;
 - absence de secret administrateur global dans le firmware ;
 - validation stricte de chaque message ;
 - protection contre le rejeu de commandes ;
@@ -199,9 +202,9 @@ Les commandes critiques doivent être explicites, acquittées et, lorsque néces
 AquaLook doit continuer à fonctionner normalement lorsque :
 
 - Internet est indisponible ;
-- le broker MQTT est inaccessible ;
+- l’API distante (ou le broker MQTT, si reconsidéré) est inaccessible ;
 - l’application mobile est fermée ;
-- le VPS est en maintenance ;
+- l’hébergement distant est en maintenance ;
 - une notification ne peut pas être envoyée ;
 - une synchronisation distante échoue.
 
@@ -213,11 +216,11 @@ Les données importantes non transmises peuvent être mises en attente dans une 
 2. Le cloud ne commande jamais directement un relais ; il transmet une demande que l’ESP32 valide.
 3. Une perte de cloud ne doit ni interrompre ni modifier silencieusement un cycle local.
 4. L’application Flutter ne contient pas l’autorité métier critique.
-5. MQTT transporte des messages ; il ne devient pas le moteur d’arrosage.
+5. Le transport distant (HTTP/HTTPS aujourd’hui, MQTT si reconsidéré — voir §5.0) transporte des messages ; il ne devient pas le moteur d’arrosage.
 6. Chaque commande distante produit un acquittement explicite ou expire sans exécution.
-7. Les interfaces MQTT et API sont versionnées et découplées du fournisseur cloud.
-8. La migration HiveMQ vers OVHcloud doit être possible sans remise en cause du moteur local.
-9. L’OTA reste indépendante de la disponibilité des notifications et du broker MQTT.
+7. Les interfaces distantes (API HTTP, et MQTT le cas échéant) sont versionnées et découplées du fournisseur cloud.
+8. Toute migration d’hébergement doit être possible sans remise en cause du moteur local.
+9. L’OTA reste indépendante de la disponibilité des notifications et de tout service cloud.
 10. Aucun nouveau service distant ne doit créer un point de défaillance unique pour le fonctionnement local.
 
 ## 10. Documents spécialisés à maintenir

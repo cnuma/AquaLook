@@ -417,6 +417,8 @@ Invariant impératif : l’absence d’Internet ou de réseau Wi-Fi externe ne d
 
 ### Écosystème AquaLook — cloud, MQTT et application mobile
 
+> **Réarbitré le 18 août 2026** : les phases A à C ci-dessous décrivent la trajectoire MQTT/HiveMQ/OVHcloud telle que planifiée avant cette date. Elle est différée au profit d'un transport HTTP/HTTPS à jeton porteur, sans courtier permanent — voir `docs/architecture/SYSTEM_ARCHITECTURE.md` §5.0 et `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md` §7 pour le raisonnement complet (contrainte mémoire mesurée sur l'ESP32 sans PSRAM, besoin réel ne justifiant pas de poussée temps réel). Les phases détaillées ci-dessous restent la référence si MQTT est reconsidéré ; elles ne sont plus la trajectoire immédiate.
+
 Faire évoluer AquaLook vers une architecture à trois couches : module ESP32 autonome, applications clientes et services distants. Le document de référence `docs/architecture/SYSTEM_ARCHITECTURE.md` formalise les responsabilités et invariants de cette architecture.
 
 #### Phase A — validation MQTT avec HiveMQ Cloud

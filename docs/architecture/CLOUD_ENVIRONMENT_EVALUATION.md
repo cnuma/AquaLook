@@ -4,6 +4,8 @@ Document d'aide à la décision, rédigé le 16 août 2026 à la demande de l'ut
 
 Il s'adosse à `SYSTEM_ARCHITECTURE.md` (trajectoire Phases A→D, invariants de sécurité et d'autonomie locale) et ne le remplace pas. En cas de divergence, ce sont les invariants de `SYSTEM_ARCHITECTURE.md` qui priment.
 
+> **Mise à jour du 18 août 2026** : la section 2 ci-dessous expliquait pourquoi « site hébergé mutualisé + MQTT externe » ne se refermait pas — le blocage venait spécifiquement du besoin de connexion permanente de MQTT, incompatible avec un hébergement qui exécute un script par requête puis le termine. Ce blocage n'existe plus : la trajectoire a été réarbitrée vers HTTP/HTTPS à jeton porteur plutôt que MQTT (voir `SYSTEM_ARCHITECTURE.md` §5.0 pour le raisonnement complet et §7 ci-dessous pour le détail). **Un hébergement Web simple redevient une option valable dès le départ.** Les sections 2 à 5 ci-dessous restent lisibles telles quelles pour comprendre pourquoi MQTT avait été écarté à l'époque, et pour la piste mini PC/Docker si MQTT est un jour reconsidéré ; la trajectoire réellement retenue est en section 7.
+
 ## 1. La réponse courte
 
 **Il ne faut pas choisir maintenant entre mini PC et VPS.** Le bon réflexe est de construire l'environnement de façon *portable* — tout en conteneurs, décrit dans un seul fichier `docker-compose.yml` — de sorte que la même pile tourne à l'identique sur le mini PC aujourd'hui et sur un VPS demain, sans réécriture. C'est exactement ce que prévoit déjà la roadmap : validation d'abord (Phase A), migration vers un VPS OVHcloud ensuite (Phase C), *sans* réécriture du firmware ni de l'application.
@@ -128,6 +130,46 @@ L'intérêt de cet ordre est qu'aucune étape ne rend la suivante plus coûteuse
 
 ## 6. Points à arbitrer, non tranchés ici
 
-- **HiveMQ Cloud ou Mosquitto local pour la Phase A ?** La roadmap prévoit HiveMQ Cloud. Un Mosquitto local est plus simple à itérer (le module est sur le même réseau) mais ne teste pas le trajet distant réel. Les deux sont peu coûteux ; le choix dépend de ce qu'on veut valider en premier, la mécanique MQTT ou l'accès distant.
-- **TimescaleDB ou InfluxDB** : deux approches valables pour des séries temporelles. PostgreSQL/TimescaleDB a l'avantage de rester du SQL classique, réutilisable pour les données non temporelles (utilisateurs, sites, modules).
-- **Dimensionnement du VPS** : à déduire des mesures faites sur le mini PC, pas à estimer à l'avance.
+- **HiveMQ Cloud ou Mosquitto local pour la Phase A ?** Question devenue sans objet tant que MQTT reste différé (voir section 7). À rouvrir si MQTT est un jour reconsidéré.
+- **TimescaleDB ou InfluxDB** : deux approches valables pour des séries temporelles. PostgreSQL/TimescaleDB a l'avantage de rester du SQL classique, réutilisable pour les données non temporelles (utilisateurs, sites, modules). Reste pertinent quel que soit le transport retenu.
+- **Dimensionnement de l'hébergement final** : à déduire de l'usage réel, pas à estimer à l'avance.
+
+## 7. Réarbitrage du 18 août 2026 — HTTP/HTTPS à jeton porteur plutôt que MQTT
+
+### 7.1 Ce qui a changé depuis la section 3
+
+La section 3 (16 août) avait déjà identifié la contrainte mémoire comme un risque pour MQTT et recommandé de trancher l'évaluation PSRAM avant d'engager le client MQTT. Le 18 août, cette évaluation a eu lieu, avec un résultat plus net que prévu : une arène mémoire dédiée pour une connexion TLS **ponctuelle** (quelques secondes, comme une vérification de mise à jour) n'a **aucune taille qui fonctionne** sur l'ESP32 actuel sans PSRAM — voir `docs/engineering/38_MEMORY_MANAGEMENT.md`, section "Tentative du 18 août 2026". Testée à 64 Ko (échec de lien), 40 Ko (le TLS échoue quand même) et 48 Ko (le pilote WiFi lui-même échoue à s'initialiser au démarrage).
+
+MQTT exige une connexion TLS **permanente**, structurellement plus coûteuse qu'une connexion ponctuelle qui échoue déjà. La conclusion de la section 3 ("trancher PSRAM avant MQTT") devient donc, en pratique : **MQTT n'est pas exploitable sur le matériel actuel, point final, pas seulement "à risque".**
+
+### 7.2 Le besoin réel ne demande pas MQTT
+
+Deux besoins avaient motivé MQTT : la télémétrie de supervision prédictive (section 3 bis) et la possibilité de pousser des réglages (créneaux d'arrosage, configuration) vers le module à distance. Ni l'un ni l'autre n'exige de poussée temps réel :
+
+- la télémétrie est par nature un **échantillonnage périodique** — la section 3 bis le dit déjà explicitement ("ce sont des tendances qui portent l'information, pas des valeurs instantanées") ;
+- pousser un réglage peut se faire par **sondage** : le serveur dépose un changement en attente, le module le récupère à son prochain passage périodique, l'applique, puis accuse réception — exactement le patron `MaintenanceRequest` → vérification → application → `MaintenanceResult` déjà éprouvé sur le canal OTA et le canal ressources Web (voir `docs/checkpoints/CHECKPOINT_2026-08-18_CANAL_WEB_INDICATEUR_VIOLET_ET_MEMOIRE.md`), simplement redirigé vers un serveur propre plutôt que GitHub.
+
+Un module unique aujourd'hui, pas une flotte, réduit aussi l'intérêt immédiat du pub/sub MQTT, dont l'avantage principal est l'efficacité à grande échelle.
+
+### 7.3 Architecture retenue
+
+- **Transport** : HTTP/HTTPS, jeton porteur, connexions courtes (connecte → échange → ferme), toujours initiées par le module — jamais de connexion entrante acceptée, même posture de sécurité que l'OTA aujourd'hui.
+- **Remontée (télémétrie)** : `POST` périodique d'un paquet de métriques bornées, sur le même rythme que les indicateurs précurseurs déjà identifiés en section 3 bis.
+- **Redescente (réglages, commandes non critiques)** : le module `GET` un point du type `/api/module/<id>/pending-config` à chaque passage périodique ; s'il y a un changement en attente, il le télécharge, l'applique, puis `POST` un accusé de réception.
+- **Latence assumée** : dépend de l'intervalle de sondage. Resserrable indépendamment pour les réglages (quelques minutes) sans toucher à celui de la télémétrie. Le contrôle local (WiFi domestique) reste instantané, inchangé.
+- **MQTT n'est pas supprimé du champ des possibles** — voir `SYSTEM_ARCHITECTURE.md` §5.0 et §6.2 — mais différé à une future carte PSRAM et/ou un besoin réel de flotte ou de commande temps réel.
+
+### 7.4 Conséquence sur le dimensionnement serveur
+
+Sans courtier MQTT à faire tourner en permanence, la contrainte qui imposait un processus permanent (section 2) disparaît. **Un hébergement Web simple (mutualisé, un script exécuté par requête) redevient une option valable dès le départ**, pas seulement comme étape transitoire vers un VPS. Le mini PC / Docker (section 4) reste pertinent si l'historisation (TimescaleDB, Grafana) ou Node-RED sont voulus rapidement, mais n'est plus un préalable obligé à la simple remontée + redescente de configuration.
+
+Trajectoire simplifiée proposée :
+
+1. **API minimale** — un point `POST /telemetry` et un couple `GET/POST /pending-config` + `/config/ack`, sur l'hébergement disponible le plus simple (mutualisé ou mini PC, au choix, sans que ça engage la suite).
+2. **Raccordement du module** — réutilise directement le patron `MaintenanceRequest`/`MaintenanceResult` déjà en place, pointé vers cette API au lieu de GitHub.
+3. **Historisation et tableaux de bord**, quand le besoin s'en fait sentir — PostgreSQL/TimescaleDB + Grafana, sur mini PC ou hébergement dédié selon ce qui est déjà en place à ce moment-là.
+4. **MQTT, Flutter temps réel, flotte** — reconsidérés ensemble si la PSRAM ou un besoin de flotte les rendent pertinents, pas avant.
+
+### 7.5 Écart connu de cette mise à jour
+
+Ce réarbitrage a mis à jour les documents faisant autorité (`SYSTEM_ARCHITECTURE.md`, ce document, `cloud/README.md`, `ROADMAP.md`). Une trentaine d'autres fichiers du dépôt référencent encore MQTT sans avoir été relus à cette date (notamment `docs/engineering/20_MQTT.md`, `22_NOTIFICATIONS.md`, `23_SECURITY_OPERATIONS.md`, `26_DATA_MODEL_AND_JSON.md`, `29_SOFTWARE_COMPONENT_CATALOG.md`, `docs/security/`, `docs/roadmap/`, `32_GLOSSARY.md`). Laissé explicitement en écart plutôt que corrigé par approximation — à harmoniser au fil de l'eau, ou en bloc si ce chantier redevient actif.
