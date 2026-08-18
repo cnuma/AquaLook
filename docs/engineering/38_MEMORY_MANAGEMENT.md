@@ -69,7 +69,44 @@ Ne pas cloisonner tous les consommateurs par défaut — la mémoire totale (320
 
 Ce document n'a pas encore été relié à `35_CODE_TRACEABILITY_REGISTER.md` ni évalué dans `33_DOCUMENT_MATURITY_MATRIX.md` selon leur méthodologie propre — laissé explicitement en écart plutôt que complété par approximation.
 
+## Tentative du 18 août 2026 — arène mbedTLS statique, résultat négatif
+
+Implémentation testée sur matériel réel (COM7), puis abandonnée : une arène
+statique et permanente (`.bss`, réservée au démarrage) n'a **aucune taille
+qui fonctionne** sur cet ESP32 sans PSRAM.
+
+| Taille | Résultat mesuré |
+|---|---|
+| 64 Ko | échec de lien : dépassement du segment DRAM de 15 712 octets (mesure du linker, pas une estimation) |
+| 40 Ko | compile et démarre, mais le TLS échoue quand même : `[ssl_client.cpp] SSL - Memory allocation failed` (-32512), pic mesuré 25 720/40 960 juste avant l'échec |
+| 48 Ko | **le pilote WiFi lui-même échoue à s'initialiser au démarrage** : `wifi:wifi nvs cfg alloc out of memory` — confirmé sur 2 tentatives consécutives, pas transitoire (à distinguer d'un échec `esp_wifi_init` isolé et transitoire, déjà observé par ailleurs sans arène, qui se résout en 2-3 tentatives) |
+
+La marge DRAM disponible sur cette plateforme est trop étroite pour loger
+une réserve permanente : le pilote WiFi en a besoin au démarrage, avant
+même qu'une connexion TLS soit tentée. Le code (`MbedtlsArena.h/.cpp`) a
+été retiré après ces tests ; le firmware restauré à l'état sans arène.
+
+**Piste corrigée, non implémentée** : une arène **dynamique**, allouée
+depuis le tas général uniquement au moment de l'appel TLS (après que
+`DisplayManager::suspendForMemoryRelief()` ait déjà libéré ~92 Ko), et
+rendue immédiatement après. Zéro coût permanent — aucun risque pour le
+démarrage WiFi — tout en gardant l'isolement pendant l'usage (mbedTLS ne
+fragmente pas le tas général avec ses nombreuses petites allocations
+pendant la poignée de main). Même filet de sécurité qu'aujourd'hui en cas
+d'échec de la seule grosse allocation initiale.
+
+**Décision** : chantier mis en attente d'une carte avec PSRAM, qui change
+la donne (budget mémoire nettement moins contraint, plus besoin d'arbitrer
+DRAM statique contre démarrage WiFi). Reprendre ici — piste dynamique
+ci-dessus — si une correction est nécessaire avant l'arrivée de cette
+carte.
+
 ## Historique
+
+### 0.2 — 18 août 2026
+
+Tentative d'arène mbedTLS statique, résultat négatif documenté ci-dessus.
+Mise en attente du chantier.
 
 ### 0.1 — 18 août 2026
 
