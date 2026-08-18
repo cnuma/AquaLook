@@ -139,4 +139,10 @@ Si `git status` échoue avec `fatal: mmap failed: Invalid argument` : corruption
 2. **Décider du sort de l'arène mbedTLS dynamique** (piste documentée dans `38_MEMORY_MANAGEMENT.md`) — soit l'implémenter, soit attendre la carte PSRAM comme prévu.
 3. **Garde mémoire pour `NotificationManager`** — identifié par la cartographie, jamais traité, cohérent avec l'incident de boucle du 17 août.
 4. Reste de la spécification UX d'origine, déjà réduite : la pastille Web est faite, mais vérifier son comportement en conditions réelles (plusieurs onglets, reconnexion réseau).
-5. Nouveau chantier à cadrer : évaluation d'un cloud connecté au module (environnement de test local avant serveur dédié) — discussion démarrée en fin de session, pas encore de document dédié.
+5. ~~Nouveau chantier à cadrer : évaluation d'un cloud connecté au module~~ — traité en fin de session (voir addendum ci-dessous).
+
+## Addendum — réarbitrage cloud (même journée, après clôture initiale)
+
+Discuté et documenté après la rédaction initiale de ce checkpoint : réorientation du transport distant vers HTTP/HTTPS à jeton porteur plutôt que MQTT, décision motivée directement par l'échec de l'arène mbedTLS ci-dessus (une connexion TLS ponctuelle n'a déjà aucune taille qui fonctionne ; MQTT en exigerait une permanente). Voir `docs/architecture/SYSTEM_ARCHITECTURE.md` §5.0 et `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md` §7 pour le raisonnement complet et l'architecture retenue (sondage périodique, patron `MaintenanceRequest`/`MaintenanceResult` réutilisé). Commit `e3408af`.
+
+Conséquence pratique pour la reprise : un hébergement Web simple suffit pour démarrer côté serveur, sans dépendre de la PSRAM ni de Docker/mini PC. Prochaine étape naturelle : esquisser l'API minimale (`POST /telemetry`, `GET/POST /pending-config`) — non commencée.
