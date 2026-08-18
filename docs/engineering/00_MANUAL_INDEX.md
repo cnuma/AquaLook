@@ -50,6 +50,7 @@ Ce manuel permet à un ingénieur qui ne connaît pas AquaLook de comprendre le 
 | `35_CODE_TRACEABILITY_REGISTER.md` | ancrages code, niveaux de preuve et écarts ouverts | D4 |
 | `36_DETAILED_EQUIPMENT_MODEL_SCHEMA.md` | schéma détaillé du modèle d’équipements | D4 |
 | `37_SECURITY_CONTRACTS_AND_CI.md` | contrats statiques de cybersécurité et workflow CI | D4 |
+| `38_MEMORY_MANAGEMENT.md` | cartographie mémoire, fragmentation et arènes dédiées | D2 |
 | `CODE_LINKED_REFERENCE_PROCESS.md` | processus obligatoire de consolidation depuis le code | D4 |
 
 ## Références spécialisées

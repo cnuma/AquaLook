@@ -22,6 +22,7 @@
 | compiler et tester | `17_BUILD_DEPLOYMENT_AND_HARDWARE_VALIDATION.md`, `30_TEST_AND_ANTI_REGRESSION_MATRIX.md` |
 | travailler sur réseau et sécurité | `18_NETWORK_AND_WIFI.md`, `19_HTTPS_AND_SESSIONS.md`, `23_SECURITY_OPERATIONS.md` |
 | préparer MQTT, OTA ou notifications | `20_MQTT.md`, `21_OTA.md`, `22_NOTIFICATIONS.md` |
+| diagnostiquer ou réduire la fragmentation mémoire | `38_MEMORY_MANAGEMENT.md` |
 | sauvegarder ou restaurer | `25_BACKUP_RESTORE_AND_MAINTENANCE.md` |
 | retrouver un terme | `32_GLOSSARY.md` |
 | évaluer la documentation | `33_DOCUMENT_MATURITY_MATRIX.md` |

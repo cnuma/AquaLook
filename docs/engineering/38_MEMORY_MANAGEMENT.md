@@ -1,0 +1,76 @@
+# AquaLook Engineering Reference — Gestion mémoire et fragmentation
+
+- Version documentaire : 0.1
+- Statut : cartographie initiale, issue d'une inspection directe du code le 18 août 2026
+- Maturité : D2 (architecture et constats vérifiés dans le code ; pas encore de tests de charge systématiques ni de suivi dans le temps)
+- Déclencheur : incident du 17 août 2026 (échec d'allocation des sprites d'écran après une rafale de notifications, voir `docs/checkpoints/CHECKPOINT_2026-08-17_RESILIENCE_BOOTLOOP_ET_MAJ_RESSOURCES_WEB.md`) et préparation de l'arène mbedTLS (voir feature suivante sur la branche `agent/ota-3.1-stage-inactive`)
+
+## Constat de départ
+
+Le module tourne avec ~320 Ko de RAM interne, sans PSRAM (`psramSize:0` confirmé sur matériel). Le tas est le seul espace disponible pour toute allocation dynamique, partagé sans cloisonnement par défaut entre l'affichage, le réseau, le Web et les notifications. Il n'existe pas de mécanisme de compaction en C/C++ (voir §"Pourquoi pas un ramasse-miettes") : un total libre confortable ne garantit jamais qu'un bloc contigu suffisant existe au moment voulu.
+
+Le seuil qui compte presque toujours est le **plus gros bloc libre contigu**, pas le total — c'est explicitement le sujet des gardes déjà en place (§ Garde-fous existants).
+
+## A. Consommateurs permanents (jamais libérés)
+
+| Poste | Taille | Fichier |
+|---|---|---|
+| Sprites `_sprTime` + `_sprSignal` | ~5 Ko (110×20 + 20×16, 2 o/px) | `DisplayManager.cpp:289-290` |
+| Journal `EventLog` | ~5,2 Ko (60 × 88 o) — tableau statique en `.bss`, pas le tas | `EventLog.h:13-20` |
+| Blob de configuration `ConfigManager` | ~4,9 Ko, NVS schéma 2 | `ConfigManager.cpp` |
+| Pile de la tâche `notify-supervisor` | 8 Ko, allouée une fois au démarrage, jamais rendue | `NotificationManager.cpp:38` |
+
+## B. Consommateurs dynamiques récurrents (churn à chaque cycle)
+
+| Poste | Taille | Fréquence | Fichier |
+|---|---|---|---|
+| **Pile de la tâche `notify-sender`** | **4 Ko** | **à chaque notification envoyée** | `NotificationManager.cpp:421,442` |
+| Sprites `_sprPlan` + `_sprBtn0` | ~92,3 Ko (56,25 + 36,1 Ko) | à chaque veille/réveil écran | `DisplayManager.h:113-150` |
+| `JsonDocument` (ArduinoJson 7) | variable, non borné a priori | à chaque réponse `/api/*` (22 occurrences) | `WebManager.cpp` et autres |
+| Réponse météo | ~17 Ko | toutes les 30 min | `WeatherManager.cpp` |
+
+**Point notable** : `notify-sender` n'est pas une tâche permanente réutilisée — `startSender()` appelle `xTaskCreatePinnedToCore()` à chaque envoi, et la tâche se termine par `vTaskDelete(nullptr)`. Chaque notification (zone, incident, mise à jour firmware ou ressources Web) provoque donc un cycle alloc/free de 4 Ko sur le tas général, exactement le type de churn qui fragmente avec le temps. Non corrigé à ce jour — identifié comme piste pour une évolution future, hors périmètre de l'arène mbedTLS.
+
+## C. Pics ponctuels — le sujet de la fragmentation critique
+
+| Poste | Taille | Contexte |
+|---|---|---|
+| **Tampons I/O mbedTLS** | **16 Ko** (`CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN`, vérifié dans le sdkconfig du framework `espressif32 @ 6.13.0`) | chaque connexion TLS réserve ce tampon plein, même pour un manifeste de 868 octets |
+| Contexte SSL, certificats DigiCert, calcul d'échange de clé | non mesuré précisément, s'ajoute au-dessus | idem |
+
+`WiFiClientSecure::setBufferSizes()` n'existe pas sur ce cœur Arduino-ESP32 (2.0.17) — la macro est redéfinie vers `setTimeout()` par nécessité de compilation (`NotificationManager.h:8-14`), donc **impossible de réduire ces tampons par l'API publique**. Toute connexion `WiFiClientSecure` du firmware (OTA, vérification de version, ressources Web) paie ce coût plein.
+
+Ceci explique a posteriori les mesures empiriques du 16 août 2026 (voir `DisplayManager.h:94-99`) : libérer un seul sprite (~37 Ko) avait amélioré l'erreur mbedTLS sans suffire ; libérer les deux (~95 Ko) a fonctionné. 16 Ko de tampon de base plus le contexte SSL/certificats situe le besoin réel quelque part entre les deux — cohérent avec l'observation.
+
+## D. Garde-fous déjà en place
+
+| Garde | Seuil | Fichier |
+|---|---|---|
+| Fetch météo | libre < 45 000 o ou plus gros bloc < 25 000 o → report 2 min | `WeatherManager.h:42-44` |
+| Requêtes SD simultanées | 8 max, ou libre < 12 000 o → 503 + Retry-After | `SdStaticHandler.cpp:26-27` |
+| Pages HTML embarquées simultanées | 1 max, ou libre < 12 000 o → 503 + Retry-After | `WebManager.cpp:54-55` |
+| Mémoire basse (global, avec hystérésis) | libre < 10 000 o (déclenche), > 16 000 o (récupère) | `SystemDiagnostics.h:53-55` |
+
+Tous ces gardes suivent le même principe : **refuser tôt et proprement plutôt que tenter puis s'effondrer**. C'est le sens de l'invariant applicatif déjà en place dans le projet.
+
+## E. Trou identifié (hors périmètre de cette itération)
+
+**`NotificationManager` n'a aucun garde mémoire avant l'envoi.** Contrairement à la météo et à la SD, il journalise le tas disponible à chaque étape (`heap=...`, `maxblock=...`) mais ne reporte ni ne refuse jamais un envoi faute de mémoire. C'est cohérent avec l'incident du 17 août (rafale de notifications, aucun frein, collision avec la recréation des sprites au réveil de l'écran). Non corrigé ici — l'arène mbedTLS ne couvre pas ce cas puisque les notifications passent en HTTP simple (port 80), pas en TLS.
+
+## Pourquoi pas un ramasse-miettes
+
+Un ramasse-miettes déplaçant (Java, JS) regroupe l'espace libre en repositionnant les objets encore utilisés, et met à jour toutes les références vers eux. En C/C++, un pointeur est une adresse brute : le déplacer sans réécrire tous les pointeurs qui le référencent (ici, par exemple, `TFT_eSprite` garde un pointeur direct vers son tampon) est indéfini et corromprait la mémoire. Une compaction sûre exigerait de faire transiter tout le firmware par un système de références indirectes (« poignées »), hors de proportion pour ce projet.
+
+## Principe retenu pour la suite
+
+Ne pas cloisonner tous les consommateurs par défaut — la mémoire totale (320 Ko) est trop restreinte pour que chaque réserve dédiée reste rentable. Cibler uniquement les collisions réelles entre gros consommateurs imprévisibles, identifiées par une cartographie comme celle-ci plutôt que par supposition. La première application de ce principe est l'arène mbedTLS dédiée (voir le commit associé), qui isole les tampons TLS du tas général sans toucher au mode maintenance (où l'allocateur standard reste utilisé, la mémoire y étant abondante).
+
+## Écarts connus de cette documentation
+
+Ce document n'a pas encore été relié à `35_CODE_TRACEABILITY_REGISTER.md` ni évalué dans `33_DOCUMENT_MATURITY_MATRIX.md` selon leur méthodologie propre — laissé explicitement en écart plutôt que complété par approximation.
+
+## Historique
+
+### 0.1 — 18 août 2026
+
+Cartographie initiale, en préparation de l'arène mbedTLS.
