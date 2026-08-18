@@ -20,6 +20,7 @@
 #include "StorageManager.h"
 #include "BootLoopGuard.h"
 #include "SystemDiagnostics.h"
+#include "CloudSync.h"
 #include "UpdateCheckScheduler.h"
 #include "RuntimeProfiler.h"
 #include "EquipmentManager.h"
@@ -41,6 +42,7 @@ WebManager webMgr;
 DisplayManager displayMgr;
 ConfigManager configMgr;
 UpdateCheckScheduler updateCheckScheduler;
+CloudSyncScheduler cloudSyncScheduler;
 StorageManager storageMgr;
 EquipmentManager equipmentMgr;
 EquipmentManager shadowEquipmentMgr;
@@ -599,6 +601,7 @@ void setup() {
 
     ntpMgr.begin(&configMgr);
     updateCheckScheduler.begin();
+    cloudSyncScheduler.begin();
     splashStep("NTP");
 
     webMgr.setOutputAdapter(&outputAdapter);
@@ -630,6 +633,7 @@ void setup() {
     );
     webMgr.setDisplay(&displayMgr);
     webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
+    webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", ESP.getPsramSize());
@@ -687,6 +691,16 @@ void loop() {
         ntpMgr.getHour(),
         ntpMgr.getMinute(),
         ntpMgr.getEpochDay(),
+        &wifiMgr,
+        &relaisMgr,
+        &configMgr
+    );
+
+    // Meme emplacement et meme raison que ci-dessus : apres le planificateur,
+    // jamais avant.
+    cloudSyncScheduler.update(
+        ntpMgr.isSynced(),
+        static_cast<uint32_t>(time(nullptr)),
         &wifiMgr,
         &relaisMgr,
         &configMgr

@@ -5,6 +5,7 @@
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
+#include "CloudSync.h"
 #include "UpdateCheckScheduler.h"
 #include "BootLoopGuard.h"
 #include "DisplayManager.h"
@@ -376,6 +377,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/display",       handleSetDisplay);
     POST_JSON("/api/logConfig",     handleSetLogConfig);
     POST_JSON("/api/updateCheck",   handleSetUpdateCheck);
+    POST_JSON("/api/cloudSync",     handleSetCloudSync);
 
     // Validation temporaire de WebAssetsUpdater::verifyOnly — voir la note
     // sur handleVerifyWebAsset (WebManager.h) et ROADMAP.md.
@@ -660,6 +662,27 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         chk["minute"]       = uc.minute;
         chk["intervalDays"] = uc.intervalDays;
         chk["lastCheckEpochDay"] = _updateCheck->lastCheckEpochDay();
+    }
+
+    // Synchronisation cloud
+    if (_cloudSync != nullptr) {
+        const CloudSyncConfig& cs = _cloudSync->config();
+        JsonObject cloud = doc["cloudSync"].to<JsonObject>();
+        cloud["enabled"] = cs.enabled;
+        cloud["host"] = cs.host;
+        cloud["port"] = cs.port;
+        cloud["useHttps"] = cs.useHttps;
+        cloud["moduleId"] = cs.moduleId;
+        cloud["intervalMinutes"] = cs.intervalMinutes;
+        // Jeton masque : meme principe que la cle OWM ci-dessous, jamais
+        // renvoye en clair une fois enregistre.
+        char masked[12] = "****";
+        if (strlen(cs.token) > 4) {
+            strncpy(masked, cs.token, 4);
+            masked[4] = '\0';
+            strcat(masked, "****");
+        }
+        cloud["tokenMasked"] = cs.token[0] ? masked : "";
     }
 
     // OWM
@@ -1180,7 +1203,8 @@ void WebManager::handleNvsStats(AsyncWebServerRequest* req) {
         "aq_notify",     // NotificationManager
         "aq_ota_guard",  // OtaBootGuard
         "aq_upd_chk",    // UpdateCheckScheduler — ajoute le 17/08/2026
-        "aq_boot"        // BootLoopGuard — ajoute le 17/08/2026
+        "aq_boot",       // BootLoopGuard — ajoute le 17/08/2026
+        "aq_cloud"       // CloudSyncScheduler — ajoute le 18/08/2026
     };
 
     JsonObject perNs = out["namespaces"].to<JsonObject>();
@@ -1228,6 +1252,25 @@ void WebManager::handleSetUpdateCheck(AsyncWebServerRequest* req, JsonDocument& 
     // lieu — silencieusement.
     if (!_updateCheck->set(enabled, hour, minute, days)) {
         sendError(req, "heure (0-23), minute (0-59) ou intervalle (1-30 jours) hors bornes");
+        return;
+    }
+    sendOk(req);
+}
+
+void WebManager::handleSetCloudSync(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_cloudSync) { sendError(req, "synchronisation cloud indisponible", 503); return; }
+
+    const CloudSyncConfig& current = _cloudSync->config();
+    const bool enabled = doc["enabled"] | current.enabled;
+    const char* host = doc["host"] | current.host;
+    const uint16_t port = doc["port"] | current.port;
+    const bool useHttps = doc["useHttps"] | current.useHttps;
+    const char* moduleId = doc["moduleId"] | current.moduleId;
+    const char* token = doc["token"] | current.token;
+    const uint16_t interval = doc["intervalMinutes"] | current.intervalMinutes;
+
+    if (!_cloudSync->set(enabled, host, port, useHttps, moduleId, token, interval)) {
+        sendError(req, "hote requis si active, ou intervalle (1-1440 min) hors bornes");
         return;
     }
     sendOk(req);

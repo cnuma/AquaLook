@@ -9,6 +9,7 @@
 #include <esp_ota_ops.h>
 #include <cstring>
 
+#include "CloudSync.h"
 #include "ConfigManager.h"
 #include "EventLog.h"
 #include "MaintenanceRequest.h"
@@ -557,7 +558,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         request != MaintenanceRequest::CHECK_VERSION &&
         request != MaintenanceRequest::DOWNLOAD_UPDATE_TEST &&
         request != MaintenanceRequest::STAGE_UPDATE_TEST &&
-        request != MaintenanceRequest::WEB_ASSETS_UPDATE) {
+        request != MaintenanceRequest::WEB_ASSETS_UPDATE &&
+        request != MaintenanceRequest::CLOUD_SYNC) {
         EventLog::log(LOG_WARN, "Maintenance: commande refusee type=%s implementation=absente",
                       MaintenanceRequestStore::name(request));
         return false;
@@ -674,6 +676,21 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
             EventLog::log(LOG_ERROR,
                           "Maintenance: echec sauvegarde resultat WEB_ASSETS_UPDATE");
         }
+    } else if (request == MaintenanceRequest::CLOUD_SYNC) {
+        const CloudSyncConfig cloudCfg = CloudSync::loadConfig();
+        const CloudSyncResult r = CloudSync::run(cloudCfg);
+        success = r.valid && r.reportSuccess;
+        EventLog::log(success ? LOG_INFO : LOG_ERROR,
+                      "Maintenance: CLOUD_SYNC rapport=%s commande=%s accuse=%s detail=%s",
+                      r.reportSuccess ? "ok" : "echec",
+                      r.commandReceived ? "recue" : "aucune",
+                      r.commandReceived ? (r.ackSuccess ? "ok" : "echec") : "n/a",
+                      r.detail);
+        // Pas de MaintenanceResult persiste ici : contrairement au firmware/
+        // ressources Web, il n'y a rien a afficher a l'utilisateur apres
+        // coup (pas de bouton "verifier" cote interface pour cette commande),
+        // et la prochaine synchro reessaiera de toute facon a l'echeance
+        // suivante. Le journal EventLog suffit pour le diagnostic.
     } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
         const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);

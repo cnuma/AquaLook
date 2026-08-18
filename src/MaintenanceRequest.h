@@ -18,7 +18,12 @@ enum class MaintenanceRequest : uint8_t {
     // Ce mode offre ~245 Ko de tas et une tache dediee, la ou le fonctionnement
     // normal n'en laisse que ~32 Ko avec une pile partagee — ce qui faisait
     // echouer les tentatives precedentes.
-    WEB_ASSETS_UPDATE = 8U
+    WEB_ASSETS_UPDATE = 8U,
+    // Synchronisation cloud (telemetrie + sondage de commande en attente,
+    // voir CloudSync.h). Meme raison qu'au-dessus : la connexion HTTPS vers
+    // le service AquaLook exige du tas contigu que le fonctionnement normal
+    // ne peut pas garantir (voir docs/engineering/38_MEMORY_MANAGEMENT.md).
+    CLOUD_SYNC = 9U
 };
 
 class MaintenanceRequestStore {

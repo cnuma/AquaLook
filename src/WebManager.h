@@ -25,6 +25,7 @@
 class DisplayManager;
 
 class UpdateCheckScheduler;
+class CloudSyncScheduler;
 
 class WebManager {
 public:
@@ -34,6 +35,7 @@ public:
     // de route et livre une page trouee sous un Content-Length complet. Un refus
     // explicite vaut mieux qu'une page fausse.
     void handleSetUpdateCheck(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetCloudSync(AsyncWebServerRequest* req, JsonDocument& doc);
 
     static void sendEmbeddedPage(AsyncWebServerRequest* req,
                                  const char* page,
@@ -59,6 +61,10 @@ public:
 
     void setUpdateCheckScheduler(UpdateCheckScheduler* scheduler) {
         _updateCheck = scheduler;
+    }
+
+    void setCloudSyncScheduler(CloudSyncScheduler* scheduler) {
+        _cloudSync = scheduler;
     }
 
     void registerSdStaticHandler(StorageManager* storage) {
@@ -471,6 +477,7 @@ private:
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     StorageManager* _storage = nullptr;
     UpdateCheckScheduler* _updateCheck = nullptr;
+    CloudSyncScheduler* _cloudSync = nullptr;
     bool _sdStaticHandlerRegistered = false;
     bool _faultRoutesRegistered = false;
 
