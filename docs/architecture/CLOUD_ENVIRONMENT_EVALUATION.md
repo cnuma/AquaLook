@@ -159,6 +159,19 @@ Un module unique aujourd'hui, pas une flotte, réduit aussi l'intérêt immédia
 - **Latence assumée** : dépend de l'intervalle de sondage. Resserrable indépendamment pour les réglages (quelques minutes) sans toucher à celui de la télémétrie. Le contrôle local (WiFi domestique) reste instantané, inchangé.
 - **MQTT n'est pas supprimé du champ des possibles** — voir `SYSTEM_ARCHITECTURE.md` §5.0 et §6.2 — mais différé à une future carte PSRAM et/ou un besoin réel de flotte ou de commande temps réel.
 
+### 7.3 bis Deux implémentations concrètes, même contrat de routes
+
+- `cloud/api/` — FastAPI + SQLite, sans Docker, pour un déploiement type VPS.
+- `cloud/php-mutualized/` — PHP + MySQL/MariaDB, pour un hébergement mutualisé OVH réel
+  (choix confirmé le 18 août 2026). C'est cette seconde piste qui a motivé la précision :
+  un hébergement mutualisé exécute du PHP par requête, il ne fait pas tourner de
+  processus Python permanent comme Uvicorn — pas une préférence, une contrainte
+  structurelle de ce type d'offre.
+
+Les deux exposent exactement les mêmes routes (`/v1/report`, `/v1/pending-command`,
+`/v1/command/ack`, `/admin/*`) sur le même schéma logique — le firmware, une fois
+raccordé, n'aura pas à savoir laquelle répond.
+
 ### 7.4 Conséquence sur le dimensionnement serveur
 
 Sans courtier MQTT à faire tourner en permanence, la contrainte qui imposait un processus permanent (section 2) disparaît. **Un hébergement Web simple (mutualisé, un script exécuté par requête) redevient une option valable dès le départ**, pas seulement comme étape transitoire vers un VPS. Le mini PC / Docker (section 4) reste pertinent si l'historisation (TimescaleDB, Grafana) ou Node-RED sont voulus rapidement, mais n'est plus un préalable obligé à la simple remontée + redescente de configuration.
