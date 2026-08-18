@@ -35,6 +35,8 @@ constexpr char KEY_TOKEN[]       = "tok";
 constexpr char KEY_INTERVAL[]    = "min";
 constexpr char KEY_LAST_SYNC[]   = "last";
 
+portMUX_TYPE g_cloudSyncMux = portMUX_INITIALIZER_UNLOCKED;
+
 constexpr uint32_t RESPONSE_TIMEOUT_MS = 10000UL;
 constexpr uint32_t BLOCKED_LOG_INTERVAL_MS = 3600000UL;  // 1/h, meme raison qu'UpdateCheckScheduler
 
@@ -255,8 +257,17 @@ CloudSyncConfig CloudSync::loadConfig() {
     return cfg;
 }
 
+String CloudSync::buildConfigBody(const ConfigManager& configManager) {
+    JsonDocument doc;
+    doc["type"] = "config";
+    buildConfigPayload(configManager, doc["payload"].to<JsonObject>());
+    String body;
+    serializeJson(doc, body);
+    return body;
+}
+
 CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
-                               const ConfigManager& configManager) {
+                               const String& configBody) {
     CloudSyncResult result;
 
     WiFiClient plainClient;
@@ -328,18 +339,12 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         return result;
     }
     {
-        JsonDocument doc;
-        doc["type"] = "config";
-        buildConfigPayload(configManager, doc["payload"].to<JsonObject>());
-
-        String body;
-        serializeJson(doc, body);
         EventLog::log(LOG_INFO, "CloudSync: config serialisee (%u octets)",
-                      static_cast<unsigned>(body.length()));
+                      static_cast<unsigned>(configBody.length()));
 
         int status = 0;
         String respBody;
-        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", cfg.token, body, status, respBody)) {
+        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", cfg.token, configBody, status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "config: pas de reponse");
             client->stop();
             result.valid = true;
@@ -488,12 +493,20 @@ void CloudSyncScheduler::update(bool ntpSynced,
                                 const WiFiManager* wifi,
                                 const RelaisManager* relais,
                                 const ConfigManager* config) {
-    // Mode degrade : surtout pas de redemarrage volontaire, meme raison
-    // qu'UpdateCheckScheduler.
+    // Recupere d'abord le resultat d'une synchro terminee : c'est la boucle
+    // principale qui journalise et libere la memoire, jamais la tache.
+    applyPendingResult();
+
     if (BootLoopGuard::isDegraded()) return;
     if (!_loaded || _triggered || !_cfg.enabled) return;
+    if (_syncInProgress) return;
 
     const uint32_t nowMs = millis();
+    // Report apres manque de memoire : ne pas reessayer en continu.
+    if (_deferUntilMs != 0U) {
+        if (nowMs < _deferUntilMs) return;
+        _deferUntilMs = 0U;
+    }
     if (wifi == nullptr || !wifi->isConnected()) {
         _wifiConnectedSinceMs = 0U;
     } else if (_wifiConnectedSinceMs == 0U) {
@@ -536,17 +549,117 @@ void CloudSyncScheduler::update(bool ntpSynced,
         }
     }
 
-    // Enregistre AVANT le redemarrage : un echec ne peut pas relancer une
-    // boucle, la prochaine tentative attendra l'echeance suivante.
-    saveLastSync(epochSec);
-
-    if (!MaintenanceRequestStore::save(MaintenanceRequest::CLOUD_SYNC)) {
-        EventLog::log(LOG_ERROR,
-                      "CloudSync: demande de maintenance non enregistree, synchro abandonnee");
+    if (config == nullptr) {
+        logBlocked("configuration indisponible");
         return;
     }
 
-    _triggered = true;
-    EventLog::log(LOG_WARN, "CloudSync: echeance atteinte, redemarrage en mode maintenance");
-    BootLoopGuard::restartDeliberately("synchronisation cloud");
+    // Lancement en tache dediee, sans redemarrage. Si la memoire manque,
+    // startSync() reporte et n'enregistre rien : la prochaine tentative aura
+    // lieu apres RETRY_ON_LOW_MEMORY_MS, sans perdre l'echeance.
+    if (!startSync(*config)) return;
+
+    // Enregistre seulement une fois la tache lancee : un report memoire ne
+    // doit pas consommer l'echeance.
+    saveLastSync(epochSec);
+}
+
+// Lance la synchronisation dans une tache dediee. Retourne false si la
+// memoire est insuffisante ou si la tache n'a pas pu etre creee.
+bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
+    if (_syncInProgress) return false;
+
+    const uint32_t freeBytes =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    const uint32_t largestBlock =
+        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    if (freeBytes < MIN_FREE_FOR_SYNC || largestBlock < MIN_BLOCK_FOR_SYNC) {
+        _deferUntilMs = millis() + RETRY_ON_LOW_MEMORY_MS;
+        EventLog::log(LOG_WARN,
+                      "CloudSync: reporte, memoire libre=%lu bloc=%lu",
+                      static_cast<unsigned long>(freeBytes),
+                      static_cast<unsigned long>(largestBlock));
+        return false;
+    }
+
+    // Serialise ICI, dans la boucle principale : voir CloudSync::buildConfigBody.
+    _taskConfigBody = CloudSync::buildConfigBody(configManager);
+    _taskCfg = _cfg;
+
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _pendingResult = CloudSyncResult{};
+    _syncInProgress = true;
+    _resultReady = false;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    // Epinglee au coeur 1, jamais laissee libre.
+    //
+    // Meme motif que WeatherManager : sans affinite, l'ordonnanceur peut
+    // placer la tache sur le coeur 0, ou tournent la pile WiFi et lwIP. Elle
+    // y prive IDLE0 de CPU et le chien de garde abat le systeme. C'est la
+    // meme famille de panne que celle corrigee dans httpExchange() le
+    // 18 aout 2026 (lectures en attente active), abordee cette fois par
+    // l'autre bout : ne pas concurrencer la pile reseau sur son propre coeur.
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        syncTaskEntry,
+        "cloud-sync",
+        SYNC_TASK_STACK_BYTES,
+        this,
+        SYNC_TASK_PRIORITY,
+        nullptr,
+        1
+    );
+
+    if (created != pdPASS) {
+        portENTER_CRITICAL(&g_cloudSyncMux);
+        _syncInProgress = false;
+        portEXIT_CRITICAL(&g_cloudSyncMux);
+        _taskConfigBody = String();
+        EventLog::log(LOG_ERROR, "CloudSync: creation de la tache impossible");
+        return false;
+    }
+
+    EventLog::log(LOG_INFO, "CloudSync: synchro asynchrone lancee");
+    return true;
+}
+
+void CloudSyncScheduler::syncTaskEntry(void* context) {
+    CloudSyncScheduler* self = static_cast<CloudSyncScheduler*>(context);
+    if (self) {
+        self->performSync();
+    }
+    vTaskDelete(nullptr);
+}
+
+void CloudSyncScheduler::performSync() {
+    const CloudSyncResult result = CloudSync::run(_taskCfg, _taskConfigBody);
+
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _pendingResult = result;   // POD : copie sure en section critique
+    _resultReady = true;
+    _syncInProgress = false;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+}
+
+void CloudSyncScheduler::applyPendingResult() {
+    if (!_resultReady) return;
+
+    CloudSyncResult result;
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    result = _pendingResult;
+    _resultReady = false;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    // Libere le corps serialise (~1,3 Ko) des que la tache n'en a plus besoin.
+    _taskConfigBody = String();
+
+    const bool ok = result.valid && result.reportSuccess && result.configSuccess;
+    EventLog::log(ok ? LOG_INFO : LOG_WARN,
+                  "CloudSync: cycle rapport=%s config=%s cmd=%s",
+                  result.reportSuccess ? "ok" : "echec",
+                  result.configSuccess ? "ok" : "echec",
+                  result.commandReceived ? (result.ackSuccess ? "ok" : "echec") : "aucune");
+    if (!ok && result.detail[0]) {
+        EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
+    }
 }

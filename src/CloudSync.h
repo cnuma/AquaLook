@@ -63,11 +63,20 @@ public:
     // hors de la boucle principale.
     static CloudSyncConfig loadConfig();
 
+    // Serialise la configuration effective en corps de requete pret a
+    // emettre. A appeler depuis la boucle principale, jamais depuis la tache
+    // de synchronisation : ConfigManager peut etre modifie a tout instant par
+    // l'interface web du module, et une lecture concurrente donnerait un
+    // instantane incoherent. Meme discipline que WeatherManager, qui copie sa
+    // requete avant de lancer sa tache.
+    static String buildConfigBody(const ConfigManager& configManager);
+
     // Envoie la telemetrie puis la configuration effective, sonde une
-    // commande en attente, l'accuse sans encore l'appliquer. A appeler
-    // uniquement en mode maintenance (voir note ci-dessus).
+    // commande en attente, l'accuse sans encore l'appliquer. Bloque plusieurs
+    // secondes : a executer dans une tache dediee (CloudSyncScheduler) ou en
+    // mode maintenance, jamais dans la boucle principale.
     static CloudSyncResult run(const CloudSyncConfig& cfg,
-                               const ConfigManager& configManager);
+                               const String& configBody);
 };
 
 class CloudSyncScheduler {
@@ -88,16 +97,48 @@ public:
 
     static constexpr uint32_t WIFI_STABLE_MS = 300000UL;   // 5 min, meme seuil qu'UpdateCheckScheduler
 
+    // ── Garde memoire, calquee sur WeatherManager ────────────────────────
+    //
+    // Le seuil porte sur le plus GROS BLOC autant que sur le total libre :
+    // le tas de ce module est fragmente par les tampons d'affichage
+    // permanents (~95 Ko), et un total confortable en blocs minuscules ne
+    // permet toujours pas d'allouer. Voir WeatherManager::startFetch(), ou
+    // l'absence de cette garde avait provoque une boucle de redemarrages
+    // (bad_alloc non rattrape dans AsyncServer::_accepted).
+    //
+    // Seuils plus bas que ceux de la meteo (45000/25000) : l'echange cloud
+    // porte ~1,3 Ko de corps et des reponses courtes, la ou la meteo
+    // telecharge ~17 Ko.
+    static constexpr uint32_t MIN_FREE_FOR_SYNC  = 35000UL;
+    static constexpr uint32_t MIN_BLOCK_FOR_SYNC = 15000UL;
+    static constexpr uint32_t RETRY_ON_LOW_MEMORY_MS = 120000UL;
+
+    static constexpr uint32_t   SYNC_TASK_STACK_BYTES = 8192;
+    static constexpr UBaseType_t SYNC_TASK_PRIORITY   = 1;
+
 private:
     void load();
     void save();
     void saveLastSync(uint32_t epochSec);
     void logBlocked(const char* reason);
 
+    bool startSync(const ConfigManager& configManager);
+    static void syncTaskEntry(void* context);
+    void performSync();
+    void applyPendingResult();
+
     CloudSyncConfig _cfg;
     uint32_t _lastSyncEpochSec = 0U;
     uint32_t _wifiConnectedSinceMs = 0U;
     uint32_t _blockedLogAtMs = 0U;
+    uint32_t _deferUntilMs = 0U;
     bool     _triggered = false;
     bool     _loaded = false;
+
+    // Etat partage avec la tache de synchronisation.
+    CloudSyncConfig  _taskCfg;
+    String           _taskConfigBody;
+    CloudSyncResult  _pendingResult;
+    volatile bool    _syncInProgress = false;
+    volatile bool    _resultReady    = false;
 };

@@ -678,7 +678,13 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         }
     } else if (request == MaintenanceRequest::CLOUD_SYNC) {
         const CloudSyncConfig cloudCfg = CloudSync::loadConfig();
-        const CloudSyncResult r = CloudSync::run(cloudCfg, configManager);
+        // Chemin conserve mais plus emprunte en fonctionnement normal depuis
+        // le 18 aout 2026 : la synchro s'execute desormais en tache dediee
+        // sans redemarrage (CloudSyncScheduler). Il redeviendra necessaire au
+        // passage en HTTPS, dont les tampons mbedTLS (~16 Ko contigus)
+        // n'entrent pas dans le tas du mode normal.
+        const CloudSyncResult r =
+            CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager));
         success = r.valid && r.reportSuccess && r.configSuccess;
         // Libelles compactes : EventLog tronque a LOG_MSG_LEN (72).
         EventLog::log(success ? LOG_INFO : LOG_ERROR,
