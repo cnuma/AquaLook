@@ -66,7 +66,11 @@ namespace Theme {
     constexpr uint16_t GREEN   = 0x07E0;
     constexpr uint16_t BLUE    = 0x049F;
     constexpr uint16_t AMBER   = 0xFD20;
-    constexpr uint16_t PURPLE  = 0x780F;
+    // Alignee le 18 aout 2026 sur --purple (#6633cc) de style-base.css :
+    // meme violet sur LCD, LED et Web pour tout ce qui signale une mise a
+    // jour disponible (firmware ou ressources Web). Non utilisee ailleurs
+    // avant ce changement, aucun autre affichage n'est affecte.
+    constexpr uint16_t PURPLE  = 0x6199;
     constexpr uint16_t RED     = 0xF800;
     constexpr uint16_t CYAN    = 0x07FF;
 

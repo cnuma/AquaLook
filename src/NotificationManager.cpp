@@ -82,6 +82,7 @@ volatile NotificationManager::WorkType g_work =
 NotificationManager::WorkType g_retryWork = NotificationManager::WorkType::NONE;
 volatile bool g_testPending = false;
 volatile bool g_updatePending = false;
+volatile bool g_webAssetsUpdatePending = false;
 MaintenanceResult g_updateResult;
 uint32_t g_attempts = 0U;
 uint32_t g_nextAttemptMs = 0U;
@@ -149,6 +150,11 @@ void loadPendingUpdateNotification() {
         g_updateResult.updateAvailable &&
         g_updateResult.notificationPending &&
         g_updateResult.availableVersion[0] != '\0';
+    g_webAssetsUpdatePending =
+        g_updateResult.valid &&
+        g_updateResult.webAssetsUpdateAvailable &&
+        g_updateResult.webAssetsNotificationPending &&
+        g_updateResult.webAssetsAvailableVersion[0] != '\0';
 
     if (g_updatePending) {
         EventLog::log(
@@ -156,6 +162,14 @@ void loadPendingUpdateNotification() {
             "Notification: mise a jour en attente installed=%s available=%s",
             g_updateResult.installedVersion,
             g_updateResult.availableVersion
+        );
+    }
+    if (g_webAssetsUpdatePending) {
+        EventLog::log(
+            LOG_INFO,
+            "Notification: mise a jour ressources Web en attente installed=%s available=%s",
+            g_updateResult.webAssetsInstalledVersion,
+            g_updateResult.webAssetsAvailableVersion
         );
     }
 }
@@ -172,6 +186,22 @@ bool markUpdateNotificationDelivered() {
     if (saved) {
         g_updateResult = result;
         g_updatePending = false;
+    }
+    return saved;
+}
+
+bool markWebAssetsUpdateNotificationDelivered() {
+    MaintenanceResult result = MaintenanceResultStore::load();
+    if (!result.valid ||
+        !result.webAssetsUpdateAvailable ||
+        result.webAssetsAvailableVersion[0] == '\0') {
+        return false;
+    }
+    result.webAssetsNotificationPending = false;
+    const bool saved = MaintenanceResultStore::save(result);
+    if (saved) {
+        g_updateResult = result;
+        g_webAssetsUpdatePending = false;
     }
     return saved;
 }
@@ -196,10 +226,11 @@ void NotificationManager::begin() {
 
     EventLog::log(
         LOG_INFO,
-        "Notification: pret enabled=%s configured=%s updatePending=%s",
+        "Notification: pret enabled=%s configured=%s updatePending=%s webAssetsUpdatePending=%s",
         g_config.enabled ? "yes" : "no",
         validServer(g_config.server) && validTopic(g_config.topic) ? "yes" : "no",
-        g_updatePending ? "yes" : "no"
+        g_updatePending ? "yes" : "no",
+        g_webAssetsUpdatePending ? "yes" : "no"
     );
 }
 
@@ -227,6 +258,9 @@ NotificationStatus NotificationManager::status() {
     value.workerRunning = g_result == WorkerResult::RUNNING;
     value.testPending = g_testPending;
     value.updatePending = g_updatePending;
+    value.webAssetsUpdatePending = g_webAssetsUpdatePending;
+    value.updateAvailable = g_updateResult.valid && g_updateResult.updateAvailable;
+    value.webAssetsUpdateAvailable = g_updateResult.valid && g_updateResult.webAssetsUpdateAvailable;
     value.pendingMask = IncidentManager::storageSd().pendingNotifications;
     value.pendingZoneEvents = g_zoneEventCount;
     value.attempts = g_attempts;
@@ -440,6 +474,11 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
             EventLog::log(LOG_INFO,
                           "Notification: accuse update ecrit, marge de pile=%u octets",
                           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+        } else if (g_work == WorkType::WEB_ASSETS_UPDATE_AVAILABLE) {
+            if (!markWebAssetsUpdateNotificationDelivered()) {
+                EventLog::log(LOG_WARN,
+                              "Notification: livraison update ressources Web non acquittee en NVS");
+            }
         } else {
             IncidentManager::markStorageSdNotificationDelivered(
                 incidentNotificationFor(g_work)
@@ -499,6 +538,7 @@ NotificationManager::WorkType NotificationManager::nextWork() {
     }
     if (g_testPending) return WorkType::MANUAL_TEST;
     if (g_updatePending) return WorkType::UPDATE_AVAILABLE;
+    if (g_webAssetsUpdatePending) return WorkType::WEB_ASSETS_UPDATE_AVAILABLE;
     if (g_zoneEventCount > 0U) return WorkType::ZONE_EVENT;
     return WorkType::NONE;
 }
@@ -630,6 +670,17 @@ bool NotificationManager::sendCurrentWork() {
             priority = "default";
             tags = "arrow_up,package";
             break;
+        case WorkType::WEB_ASSETS_UPDATE_AVAILABLE:
+            title = "AquaLook - ressources Web disponibles";
+            message = "Version installee : ";
+            message += g_updateResult.webAssetsInstalledVersion;
+            message += "\nVersion disponible : ";
+            message += g_updateResult.webAssetsAvailableVersion;
+            message += "\nLes ressources Web n'ont pas ete deployees. "
+                       "Depuis la page /ota, section Ressources Web.";
+            priority = "default";
+            tags = "arrow_up,globe_with_meridians";
+            break;
         default:
             client.stop();
             return false;
@@ -637,7 +688,8 @@ bool NotificationManager::sendCurrentWork() {
 
     if (g_work != WorkType::MANUAL_TEST &&
         g_work != WorkType::ZONE_EVENT &&
-        g_work != WorkType::UPDATE_AVAILABLE) {
+        g_work != WorkType::UPDATE_AVAILABLE &&
+        g_work != WorkType::WEB_ASSETS_UPDATE_AVAILABLE) {
         message += " Occurrences: ";
         message += incident.occurrences;
         message += ". Cause: ";
@@ -739,6 +791,7 @@ const char* NotificationManager::workCode(WorkType type) {
         case WorkType::MANUAL_TEST: return "manual-test";
         case WorkType::ZONE_EVENT: return "zone-event";
         case WorkType::UPDATE_AVAILABLE: return "update-available";
+        case WorkType::WEB_ASSETS_UPDATE_AVAILABLE: return "web-assets-update-available";
         default: return "none";
     }
 }

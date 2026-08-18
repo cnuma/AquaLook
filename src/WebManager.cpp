@@ -519,6 +519,15 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
     doc["uptime"]  = millis() / 1000UL;
     doc["heap"]    = ESP.getFreeHeap();
 
+    // Un seul indicateur pour le header Web : etat deja charge en memoire
+    // par NotificationManager (aucune lecture NVS supplementaire ici, un
+    // /api/status interroge frequemment ne doit pas ajouter d'allocations
+    // repetees -- voir MaintenanceResultStore::loadRaw()).
+    {
+        const NotificationStatus notifStatus = NotificationManager::status();
+        doc["updatePending"] = notifStatus.updateAvailable || notifStatus.webAssetsUpdateAvailable;
+    }
+
     // Etat reel de la persistance de la configuration. La sauvegarde etant
     // differee (anti-usure flash), une reponse HTTP "ok" ne signifie que
     // "accepte", jamais "enregistre" : sans cette information, l'interface

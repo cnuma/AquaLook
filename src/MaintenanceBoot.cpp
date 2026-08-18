@@ -590,8 +590,33 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         const String manifestUrl = String("https://") + OtaBuildIdentity::MANIFEST_HOST +
                                    OtaBuildIdentity::MANIFEST_PATH;
         const ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
-        const MaintenanceResult result = validateManifest(fetch);
+        MaintenanceResult result = validateManifest(fetch);
         success = result.success;
+
+        // Canal ressources Web, verifie dans le meme redemarrage de maintenance
+        // que le firmware plutot que d'en provoquer un second : le WiFi est deja
+        // etabli, et cette commande ne monte pas la SD en ecriture (comme
+        // WEB_ASSETS_UPDATE ci-dessous, cf. son commentaire sur l'isolation).
+        // checkForUpdate() ne telecharge ni ne deploie rien.
+        StorageManager webAssetsStorage;
+        webAssetsStorage.begin();
+        const WebAssetsUpdater::CheckResult webCheck =
+            WebAssetsUpdater::checkForUpdate(&webAssetsStorage);
+        if (webCheck.ok) {
+            result.webAssetsUpdateAvailable = webCheck.updateAvailable;
+            result.webAssetsNotificationPending = webCheck.updateAvailable;
+            copyText(result.webAssetsInstalledVersion, sizeof(result.webAssetsInstalledVersion),
+                     webCheck.installedVersion);
+            copyText(result.webAssetsAvailableVersion, sizeof(result.webAssetsAvailableVersion),
+                     webCheck.availableVersion);
+        }
+        EventLog::log(webCheck.ok ? LOG_INFO : LOG_WARN,
+                      "Maintenance: CHECK_VERSION (web-assets) ok=%s installed=%s available=%s "
+                      "update=%s detail=%s",
+                      webCheck.ok ? "yes" : "no", webCheck.installedVersion,
+                      webCheck.availableVersion[0] ? webCheck.availableVersion : "n/a",
+                      webCheck.updateAvailable ? "yes" : "no", webCheck.detail);
+
         if (!MaintenanceResultStore::save(result)) {
             EventLog::log(LOG_ERROR, "Maintenance: echec sauvegarde resultat CHECK_VERSION");
         }

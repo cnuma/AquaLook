@@ -31,6 +31,16 @@ private:
     uint8_t _normalLedGreen = 0;
     uint8_t _normalLedBlue = 0;
 
+    // Mise a jour en attente (firmware ou ressources Web) : chargee une
+    // seule fois, jamais rafraichie en cours de fonctionnement. Comme pour
+    // DisplayPlanningDecor::loadUpdateState(), c'est suffisant : toute
+    // verification de mise a jour redemarre le module (UpdateCheckScheduler
+    // via BootLoopGuard::restartDeliberately()), donc l'etat ne peut
+    // changer qu'au demarrage suivant.
+    bool _updateStateLoaded = false;
+    bool _updatePending = false;
+    void loadUpdateState();
+
     static constexpr uint8_t LED_CH_RED = 5;
     static constexpr uint8_t LED_CH_GREEN = 6;
     static constexpr uint8_t LED_CH_BLUE = 7;

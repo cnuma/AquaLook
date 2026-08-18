@@ -100,6 +100,13 @@ header {
   padding: 3px 8px; border: 1px solid var(--border2); border-radius: 4px;
   background: var(--bg2);
 }
+/* Meme violet que l'icone LCD (Theme::PURPLE) et la LED, pour une mise a
+   jour disponible (firmware ou ressources Web). Renvoie vers /ota. */
+#update-badge {
+  font-size: 14px; font-weight: bold; color: #fff; text-decoration: none;
+  padding: 3px 9px; border-radius: 4px; background: var(--purple);
+  animation: blink 2s infinite;
+}
 #btn-menu {
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px; background: var(--bg2);

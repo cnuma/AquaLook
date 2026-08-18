@@ -278,9 +278,17 @@ void simplifyWideButtons(DisplayManager& d) {
 
 void loadUpdateState() {
     const MaintenanceResult result = MaintenanceResultStore::load();
-    s_updateAvailable = result.valid &&
-                        result.updateAvailable &&
-                        result.availableVersion[0] != '\0';
+    // Un seul indicateur pour les deux canaux (firmware, ressources Web) :
+    // l'ecran d'accueil n'a pas la place pour deux icones distinctes, et le
+    // message pour l'utilisateur est le meme dans les deux cas -- "quelque
+    // chose t'attend sur /ota".
+    const bool firmwarePending = result.valid &&
+                                 result.updateAvailable &&
+                                 result.availableVersion[0] != '\0';
+    const bool webAssetsPending = result.valid &&
+                                  result.webAssetsUpdateAvailable &&
+                                  result.webAssetsAvailableVersion[0] != '\0';
+    s_updateAvailable = firmwarePending || webAssetsPending;
     s_updateStateLoaded = true;
 }
 
@@ -296,7 +304,7 @@ void drawUpdateAvailableIcon(DisplayManager& d) {
     const int16_t cy = headerH / 2;
     const int16_t radius = headerH <= 20 ? 7 : 8;
 
-    d._tft.fillCircle(cx, cy, radius, Theme::BLUE);
+    d._tft.fillCircle(cx, cy, radius, Theme::PURPLE);
     d._tft.drawFastVLine(cx, cy - 4, 7, Theme::TEXT);
     d._tft.drawLine(cx, cy - 5, cx - 3, cy - 2, Theme::TEXT);
     d._tft.drawLine(cx, cy - 5, cx + 3, cy - 2, Theme::TEXT);

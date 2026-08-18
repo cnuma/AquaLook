@@ -7,6 +7,11 @@ struct MaintenanceResult {
     bool success = false;
     bool updateAvailable = false;
     bool notificationPending = false;
+    // Canal ressources Web, distinct du firmware ci-dessus : verifie par
+    // WebAssetsUpdater::checkForUpdate() pendant le meme redemarrage de
+    // maintenance CHECK_VERSION, sans rien telecharger ni deployer.
+    bool webAssetsUpdateAvailable = false;
+    bool webAssetsNotificationPending = false;
     uint32_t tlsDurationMs = 0U;
     uint32_t recordedUptimeMs = 0U;
     uint32_t minFreeHeap = 0U;
@@ -19,6 +24,8 @@ struct MaintenanceResult {
     char detail[128] = "";
     char installedVersion[24] = "";
     char availableVersion[24] = "";
+    char webAssetsInstalledVersion[24] = "";
+    char webAssetsAvailableVersion[24] = "";
     char channel[16] = "";
     char target[16] = "";
     char environment[40] = "";

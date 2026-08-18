@@ -1,5 +1,6 @@
 #include "ScreenManager.h"
 #include "FaultManager.h"
+#include "MaintenanceResult.h"
 
 static const uint8_t LED_RAINBOW[6][3] = {
     {0, 255, 0},
@@ -32,6 +33,7 @@ void ScreenManager::begin(ConfigManager* config) {
     _normalLedRed = 0;
     _normalLedGreen = 0;
     _normalLedBlue = 0;
+    loadUpdateState();
     renderLed();
 
     _lastActivity = millis();
@@ -95,6 +97,18 @@ void ScreenManager::screenOff() {
     Serial.println("[Screen] Veille");
 }
 
+void ScreenManager::loadUpdateState() {
+    const MaintenanceResult result = MaintenanceResultStore::load();
+    const bool firmwarePending = result.valid &&
+                                 result.updateAvailable &&
+                                 result.availableVersion[0] != '\0';
+    const bool webAssetsPending = result.valid &&
+                                  result.webAssetsUpdateAvailable &&
+                                  result.webAssetsAvailableVersion[0] != '\0';
+    _updatePending = firmwarePending || webAssetsPending;
+    _updateStateLoaded = true;
+}
+
 void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     const uint32_t now = millis();
     const uint8_t mode =
@@ -130,6 +144,26 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
 
             if (_ledPhase) {
                 ledSetBrightness(255, 100, 0);
+            } else {
+                ledOff();
+            }
+        }
+        return;
+    }
+
+    // Mise a jour en attente (firmware ou ressources Web) : clignotement
+    // violet lent, meme teinte que l'icone LCD (Theme::PURPLE) et la
+    // pastille Web (--purple #6633cc). Priorite sous arrosage/WiFi, mais
+    // au-dessus du mode LED normal choisi par l'utilisateur -- une mise a
+    // jour disponible reste visible quel que soit le mode.
+    if (!_updateStateLoaded) loadUpdateState();
+    if (_updatePending) {
+        if (now - _ledTimer >= 1500UL) {
+            _ledTimer = now;
+            _ledPhase ^= 1U;
+
+            if (_ledPhase) {
+                ledSetBrightness(102, 51, 204);
             } else {
                 ledOff();
             }

@@ -26,6 +26,14 @@ struct NotificationStatus {
     bool workerRunning = false;
     bool testPending = false;
     bool updatePending = false;
+    bool webAssetsUpdatePending = false;
+    // Persistant jusqu'au deploiement reel, contrairement aux deux champs
+    // ci-dessus qui ne durent que jusqu'a l'envoi de LA notification.
+    // C'est ce que doivent lire les indicateurs visuels permanents (LED,
+    // icone LCD, pastille Web) : une notification deja livree ne signifie
+    // pas qu'il n'y a plus rien a deployer.
+    bool updateAvailable = false;
+    bool webAssetsUpdateAvailable = false;
     uint8_t pendingMask = 0;
     uint8_t pendingZoneEvents = 0;
     uint32_t attempts = 0;
@@ -43,7 +51,8 @@ public:
         INCIDENT_RECOVERY,
         MANUAL_TEST,
         ZONE_EVENT,
-        UPDATE_AVAILABLE
+        UPDATE_AVAILABLE,
+        WEB_ASSETS_UPDATE_AVAILABLE
     };
 
     enum class WorkerResult : uint8_t {

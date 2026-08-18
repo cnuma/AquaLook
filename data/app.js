@@ -78,6 +78,8 @@ function renderAll() {
   if (!status) return;
   document.getElementById('wifi-badge').textContent =
     status.synced ? status.time.slice(11,16) : 'NTP...';
+  document.getElementById('update-badge').style.display =
+    status.updatePending ? 'inline-block' : 'none';
   renderZones();
   // Sans ce catch, une exception ici (reseau ou JS) laissait la carte
   // Planning definitivement vide et totalement silencieuse — aucune trace

@@ -7,7 +7,12 @@ namespace {
 constexpr char NVS_NAMESPACE[] = "aq_maint_res";
 constexpr char NVS_KEY[] = "blob";
 constexpr uint32_t NVS_MAGIC = 0x53455252UL; // "RRES" lu petit-boutiste
-constexpr uint16_t NVS_SCHEMA = 1U;
+// Schema 2 (18 aout 2026) : ajout des champs webAssets* (canal ressources Web
+// dans la verification periodique). Un blob schema 1 differe en taille, donc
+// loadRaw() le rejette et repart d'un MaintenanceResult{} par defaut -- migration
+// deja geree par le controle payloadSize/CRC existant, aucun code de migration
+// explicite necessaire pour ce blob transitoire.
+constexpr uint16_t NVS_SCHEMA = 2U;
 
 // Bloc unique, a l'image de PersistedConfig dans ConfigManager : une seule
 // ecriture NVS au lieu d'une quinzaine de cles separees. Chaque cle NVS a un
@@ -92,6 +97,8 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     const bool isStageTest = strcmp(result.command, "stage_update_test") == 0;
     const bool successfulVersionCheck = isVersionCheck && result.success;
     const bool successfulInstall = strcmp(result.command, "install_update") == 0 && result.success;
+    const bool successfulWebAssetsDeploy =
+        strcmp(result.command, "web_assets_update") == 0 && result.success;
 
     const bool previousUpdateAvailable = previous.updateAvailable;
     const bool previousNotificationPending = previous.notificationPending;
@@ -120,6 +127,18 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         copyText(merged.board, sizeof(merged.board), previous.board);
         copyText(merged.firmwareUrl, sizeof(merged.firmwareUrl), previous.firmwareUrl);
         copyText(merged.sha256, sizeof(merged.sha256), previous.sha256);
+        // Meme principe que ci-dessus, pour le canal ressources Web : un
+        // WEB_ASSETS_UPDATE reussi consomme la mise a jour en attente ; toute
+        // autre commande (y compris un CHECK_VERSION en echec, cf. commentaire
+        // de save()) preserve le dernier resultat connu du canal Web.
+        merged.webAssetsUpdateAvailable =
+            successfulWebAssetsDeploy ? false : previous.webAssetsUpdateAvailable;
+        merged.webAssetsNotificationPending =
+            successfulWebAssetsDeploy ? false : previous.webAssetsNotificationPending;
+        copyText(merged.webAssetsInstalledVersion, sizeof(merged.webAssetsInstalledVersion),
+                 previous.webAssetsInstalledVersion);
+        copyText(merged.webAssetsAvailableVersion, sizeof(merged.webAssetsAvailableVersion),
+                 successfulWebAssetsDeploy ? "" : previous.webAssetsAvailableVersion);
         if (!isDownloadTest && !isStageTest) {
             merged.downloadedSize = previous.downloadedSize;
             merged.downloadDurationMs = previous.downloadDurationMs;
@@ -133,6 +152,14 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
             strcmp(previous.availableVersion, result.availableVersion) == 0 &&
             !previousNotificationPending) {
             merged.notificationPending = false;
+        }
+        // Meme deduplication pour le canal Web : une verification qui retrouve
+        // la meme version deja notifiee ne doit pas remettre la notification en
+        // attente chaque jour.
+        if (result.webAssetsUpdateAvailable && previous.webAssetsUpdateAvailable &&
+            strcmp(previous.webAssetsAvailableVersion, result.webAssetsAvailableVersion) == 0 &&
+            !previous.webAssetsNotificationPending) {
+            merged.webAssetsNotificationPending = false;
         }
     }
 
