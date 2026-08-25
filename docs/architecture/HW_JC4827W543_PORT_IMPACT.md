@@ -1,15 +1,32 @@
-# Analyse d'impact — portage vers Guition JC4827W543C (ESP32-S3)
+# Analyse d'impact — portage vers Guition JC4827W543C_I (ESP32-S3)
 
-> ## 🌙 Chantier en sommeil — mis en veille le 16 août 2026
+> ## 🌤️ Reprise du chantier — 25 août 2026
 >
-> **Motif :** cartes commandées, livraison en attente. Rien ne peut avancer utilement sans le matériel : les deux étapes décisives (§8, tests 4 et 6) sont des mesures physiques.
+> **Cartes reçues.** Référence confirmée : **JC4827W543C_I** (le fabricant décline ce modèle en `C`/`R` — capacitif/résistif — et en `_I`, la révision reçue ici). Variante capacitive comme prévu au §5.
 >
-> **Branche :** `hw/jc4827w543-esp32s3-port`. Le firmware en service n'est pas impacté — aucune ligne de code n'a été modifiée, ce document est le seul livrable.
+> Nouvelle branche `hw/jc4827w543-esp32s3-port-v2`, repartie du HEAD courant de `agent/ota-3.1-stage-inactive` (commit `949c309`) plutôt que de l'ancien point de fourche : la branche `hw/jc4827w543-esp32s3-port` d'origine datait d'avant tout le travail cloud/OTA de ces deux dernières semaines. Les deux commits de cette analyse ont été rapatriés par cherry-pick ; aucun autre historique n'a été repris. La décision du 16 août reste valable : aucun code à deux cartes.
 >
-> ### Où reprendre, à réception des cartes
+> ### Brochage croisé par des sources communautaires, avant toute mesure physique
 >
-> 1. Dérouler les validations par sous-système du **§8**, en commençant par les tests **4** (coût d'un rafraîchissement plein écran depuis la PSRAM) et **6** (bus I2C et bloc relais). Ces deux-là peuvent invalider la stratégie ; tout le reste en dépend.
-> 2. Consigner le brochage réellement constaté : la documentation de ce fabricant s'est déjà révélée fautive (mention « LX6 » pour un ESP32-S3, contrôleur annoncé ST77xx alors qu'il s'agit d'un NV3041A).
+> Les mêmes réserves qu'au 16 août s'appliquent (documentation constructeur déjà fautive deux fois) : ce qui suit vient de plusieurs projets tiers convergents ([atomic14.com](https://www.atomic14.com/esp32/boards/guition-jc4827w543/), [profi-max/JC4827W543_4.3inch_ESP32S3_board](https://github.com/profi-max/JC4827W543_4.3inch_ESP32S3_board)), pas d'une mesure sur la carte reçue — statut inchangé tant que le test 1 du §8 n'a pas été fait.
+>
+> | Fonction | Broches |
+> |---|---|
+> | LCD NV3041A (QSPI) | CS=45, SCK=47, D0=21, D1=48, D2=40, D3=39 |
+> | Rétroéclairage | GPIO1 (PWM) |
+> | Tactile GT911 (I2C) | SCL=4, SDA=8, RST=38, INT=3 |
+> | Carte SD (SPI **dédié**, pas le bus QSPI de l'écran) | MISO=13, MOSI=11, SCLK=12, CS=10 |
+>
+> 15 broches ainsi comptées. Ni la doc constructeur ni les sources communautaires ne listent les broches restantes parmi les « 10 IO utilisateur » annoncées — celles pour le bus I2C du bloc relais (test **6**, décisif) et pour un WS2812 restent à identifier sur la carte réelle.
+>
+> **Correction du §8 (test 7)** : pas de voyant RGB embarqué sur cette carte, contrairement à l'hypothèse initiale — des broches libres supplémentaires sont disponibles pour câbler un WS2812 (ou équivalent) en externe si un indicateur visuel est voulu. Le test 7 devient donc conditionnel : à faire seulement si un WS2812 est effectivement câblé.
+>
+> **Trouvaille complémentaire** ([discussion Arduino_GFX #557](https://github.com/moononournation/Arduino_GFX/discussions/557)) qui précise le §7 existant : `gfx->flush()` peut monopoliser le bus SPI et casser des accès concurrents à la SD si elle partage le même périphérique SPI que l'écran. Parade constatée par un tiers : isoler la SD sur un bus SPI dédié (`HSPI`) distinct du QSPI de l'écran — cohérent avec le brochage ci-dessus, qui donne déjà des broches SD séparées de celles du LCD.
+>
+> ### Où reprendre concrètement
+>
+> 1. Dérouler les validations par sous-système du **§8**, en commençant par les tests **1** (démarrage + PSRAM, prérequis à tout le reste), puis **4** (coût d'un rafraîchissement plein écran) et **6** (bus I2C et bloc relais) — décisifs, cf. ci-dessus.
+> 2. Consigner le brochage **réellement constaté**, y compris s'il confirme le tableau ci-dessus : celui-ci reste une source tierce, pas une mesure.
 > 3. Seulement ensuite, engager le portage selon l'ordre du **§9**.
 >
 > ### Hypothèses à revérifier avant de s'y fier
@@ -25,7 +42,7 @@
 
 ---
 
-Document d'analyse préalable, rédigé le 16 août 2026 sur la branche `hw/jc4827w543-esp32s3-port`, avant réception du matériel. Aucune modification de code n'accompagne cette analyse : elle sert à dimensionner le travail et à identifier ce qui doit être vérifié sur la carte réelle.
+Document d'analyse préalable, rédigé le 16 août 2026 sur la branche `hw/jc4827w543-esp32s3-port`, avant réception du matériel. Aucune modification de code n'accompagne cette analyse : elle sert à dimensionner le travail et à identifier ce qui doit être vérifié sur la carte réelle. Voir le callout de reprise ci-dessus pour l'état au 25 août 2026.
 
 Décision d'architecture applicable (actée le 16 août 2026) : **le projet ne comportera jamais de code gérant deux cartes**. Ce portage est donc une bascule de socle, pas l'ajout d'une variante.
 
@@ -148,7 +165,7 @@ Le projet pratique déjà cette approche : `platformio.ini` comporte les environ
 | 4 | **Performance d'affichage** | Combien coûte un rafraîchissement plein écran depuis la PSRAM ? | **mesure chiffrée** — décide de la stratégie du §3 |
 | 5 | Tactile GT911 | Adresse I2C, coordonnées, orientation cohérente avec l'écran ? | appui restitué au bon endroit, sans étalonnage |
 | 6 | **Bus I2C et bloc relais** | Quels GPIO sont libres, le XL9535 répond-il en 0x20 ? | **commutation réelle d'une voie**, cohabitation avec le GT911 |
-| 7 | Voyant RGB | Les trois canaux répondent-ils, sur quelles broches ? | rouge, vert, bleu, et mélanges |
+| 7 | Voyant RGB (si câblé) | **Pas de voyant embarqué sur cette carte** — test conditionnel, seulement si un WS2812 externe est câblé sur une broche libre | rouge, vert, bleu, et mélanges |
 | 8 | Carte SD | Présence, brochage, montage, lecture et écriture | fichier écrit puis relu à l'identique |
 | 9 | WiFi | Connexion et portée | association, adresse IP, RSSI correct |
 
