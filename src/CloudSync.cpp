@@ -408,7 +408,16 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
     client->stop();
     result.valid = true;
-    if (result.reportSuccess) {
+
+    // Resume de succes uniquement si TOUTES les etapes ont abouti, et sans
+    // jamais ecraser un detail deja pose.
+    //
+    // Le 18 aout 2026, un cycle a journalise "config=echec ... detail ok,
+    // rien en attente" : la condition ne testait que reportSuccess, et comme
+    // la telemetrie avait reussi, le detail utile ("config: http=500") etait
+    // remplace par le resume de succes. Le journal devenait trompeur au
+    // moment precis ou il servait a diagnostiquer.
+    if (result.reportSuccess && result.configSuccess && result.detail[0] == '\0') {
         copyText(result.detail, sizeof(result.detail),
                 result.commandReceived ? "ok, commande recue" : "ok, rien en attente");
     }
