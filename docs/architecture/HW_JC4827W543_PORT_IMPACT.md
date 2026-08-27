@@ -38,6 +38,50 @@
 > Reste du §8 : test **9** (WiFi). Le **7** (voyant RGB) reste conditionnel,
 > sans objet tant qu'aucun WS2812 n'est câblé.
 
+> ## 🚧 Phase A du portage — socle + splash, en cours — 27 août 2026
+>
+> Bascule dans l'adaptation du firmware réel (pas seulement des bancs de
+> test) : commit `feat(hw): socle de compilation ESP32-S3 + adaptateur
+> TFT_eSPI (phase A)`. Contrainte actée par l'utilisateur : **la carte
+> actuelle reste l'unité de production réelle**, son build
+> (`env:ProgrammeArrosage`) ne doit jamais régresser — vérifié après
+> chaque étape tout au long de cette phase, toujours au vert.
+>
+> Approche : adaptateur `lib/tft_espi_compat_s3/` exposant les classes
+> `TFT_eSPI`/`TFT_eSprite` sur `Arduino_GFX` — `DisplayManager.cpp` et
+> consorts compilent **sans modification** pour la partie dessin, seule
+> la bibliothèque liée change selon l'environnement PlatformIO. Tactile
+> excepté : édition directe et confinée de `getTouchPoint()` (choix
+> explicite de l'utilisateur, pas un adaptateur XPT2046).
+>
+> Trois bugs réels trouvés et corrigés sur matériel réel, tous par
+> décodage de backtrace (`addr2line`), pas par supposition :
+>
+> 1. **Double init du bus QSPI** — `TFT_eSprite::createSprite()` devait
+>    passer `GFX_SKIP_OUTPUT_BEGIN` à `Arduino_Canvas::begin()` : sans ça,
+>    le panneau déjà initialisé par `TFT_eSPI::init()` était réinitialisé
+>    à la création du premier sprite → `abort()` immédiat.
+> 2. **Bus I2C partagé à tort** — `TAMC_GT911` (tierce) est câblée en dur
+>    sur l'objet `Wire` global ; son `begin()` y déplaçait le bus déjà
+>    configuré pour le relais XL9535, qui retentait alors en continu sur
+>    les mauvaises broches. Le relais utilise désormais `Wire1` (macro
+>    `RELAY_WIRE_BUS`), le tactile garde `Wire`.
+> 3. **Watchdog d'interruption cœur 1** — `SystemDiagnostics::sampleMemory()`
+>    appelle `heap_caps_get_largest_free_block()` à chaque tour de
+>    boucle ; sur cette carte (8 Mo de PSRAM), le parcours bloc par bloc
+>    est devenu assez lent pour déclencher le watchdog, juste après le
+>    scan WiFi. Un premier essai (restreindre à la RAM interne) n'a pas
+>    suffi — même crash identique. Appel retiré pour cette carte plutôt
+>    que re-deviné une deuxième fois.
+>
+> **État à la clôture de cette session** : démarrage complet stable et
+> reproductible (COM4), les 8 étapes du splash s'exécutent, portail
+> captif WiFi actif, aucun crash sur 30 s d'observation continue.
+> **Rendu visuel du splash NON CONFIRMÉ** — pas d'accès physique au
+> module à ce moment de la session pour vérifier à l'œil ce qui
+> s'affiche réellement sur l'écran 480×272. À faire dès que possible
+> avant de considérer la phase A terminée.
+
 > ## 🌤️ Reprise du chantier — 25 août 2026
 >
 > **Cartes reçues.** Référence confirmée : **JC4827W543C_I** (le fabricant décline ce modèle en `C`/`R` — capacitif/résistif — et en `_I`, la révision reçue ici). Variante capacitive comme prévu au §5.
