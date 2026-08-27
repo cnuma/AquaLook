@@ -20,20 +20,23 @@
 #include <Arduino_GFX_Library.h>
 #include <TAMC_GT911.h>
 
-#define TOUCH_SDA 8
-#define TOUCH_SCL 4
-#define TOUCH_INT 3
-#define TOUCH_RST 38
-#define TOUCH_WIDTH 480
-#define TOUCH_HEIGHT 272
+// Brochage/parametres carte : voir la section [jc4827w543c_i] de
+// platformio.ini - source de verite unique, partagee par tous les
+// env test_*_s3, plutot que des #define disperses et divergents.
+#define TOUCH_SDA AQ_S3_TOUCH_SDA
+#define TOUCH_SCL AQ_S3_TOUCH_SCL
+#define TOUCH_INT AQ_S3_TOUCH_INT
+#define TOUCH_RST AQ_S3_TOUCH_RST
+#define TOUCH_WIDTH AQ_S3_SCREEN_WIDTH
+#define TOUCH_HEIGHT AQ_S3_SCREEN_HEIGHT
 
-#define LCD_BL 1
-#define LCD_BL_CHANNEL 0
+#define LCD_BL AQ_S3_LCD_BL
+#define LCD_BL_CHANNEL AQ_S3_LCD_BL_CHANNEL
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
-    45 /* cs */, 47 /* sck */, 21 /* d0 */, 48 /* d1 */, 40 /* d2 */, 39 /* d3 */);
-Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, true /* IPS, confirme le 26 aout */);
-Arduino_GFX *gfx = new Arduino_Canvas(480, 272, panel);
+    AQ_S3_LCD_CS, AQ_S3_LCD_SCK, AQ_S3_LCD_D0, AQ_S3_LCD_D1, AQ_S3_LCD_D2, AQ_S3_LCD_D3);
+Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, AQ_S3_LCD_IPS /* confirme le 26 aout */);
+Arduino_GFX *gfx = new Arduino_Canvas(AQ_S3_SCREEN_WIDTH, AQ_S3_SCREEN_HEIGHT, panel);
 
 TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
 
@@ -61,12 +64,13 @@ static void drawTouch(int16_t x, int16_t y, uint8_t index) {
     gfx->print(F("AquaLook - test tactile GT911 (S3)"));
     gfx->setTextSize(1);
     gfx->setCursor(10, 40);
-    gfx->printf("Contact #%d : x=%d y=%d (ecran 480x272)", index, x, y);
+    gfx->printf("Contact #%d : x=%d y=%d (ecran %dx%d)", index, x, y,
+                AQ_S3_SCREEN_WIDTH, AQ_S3_SCREEN_HEIGHT);
 
     // Reperes visuels : croix pleine + cercle a l'endroit touche, pour
     // juger l'orientation/la precision a l'oeil.
-    gfx->drawFastHLine(0, y, 480, 0x8410);
-    gfx->drawFastVLine(x, 0, 272, 0x8410);
+    gfx->drawFastHLine(0, y, AQ_S3_SCREEN_WIDTH, 0x8410);
+    gfx->drawFastVLine(x, 0, AQ_S3_SCREEN_HEIGHT, 0x8410);
     gfx->fillCircle(x, y, 10, 0x07E0);
     gfx->drawCircle(x, y, 10, 0xFFFF);
 
@@ -99,9 +103,11 @@ void setup() {
     }
 
     ts.begin();
-    // ROTATION_NORMAL donnait les deux axes inverses (rotation 180) par
-    // rapport a l'ecran sur cette carte reelle, constate le 27 aout 2026.
-    ts.setRotation(ROTATION_INVERTED);
+    // AQ_S3_TOUCH_ROTATION=1 (ROTATION_INVERTED, TAMC_GT911.h) : la valeur
+    // par defaut ROTATION_NORMAL=3 donnait les deux axes inverses (rotation
+    // 180) par rapport a l'ecran sur cette carte reelle, constate le
+    // 27 aout 2026.
+    ts.setRotation(AQ_S3_TOUCH_ROTATION);
 
     drawIdle();
     Serial.println(F("Pret. Touchez l'ecran - coordonnees imprimees ici et affichees a l'ecran."));

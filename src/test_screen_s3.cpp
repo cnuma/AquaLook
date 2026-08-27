@@ -15,20 +15,24 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 
-#define LCD_BL 1  // retroeclairage, PWM (test isole n°2)
-#define LCD_BL_CHANNEL 0  // API LEDC par canal (ledcSetup/ledcAttachPin) -
-                          // ce framework n'a pas encore l'API par broche
+// Brochage/parametres carte : voir la section [jc4827w543c_i] de
+// platformio.ini - source de verite unique, partagee par tous les
+// env test_*_s3, plutot que des #define disperses et divergents.
+#define LCD_BL AQ_S3_LCD_BL
+#define LCD_BL_CHANNEL AQ_S3_LCD_BL_CHANNEL  // API LEDC par canal
+                                             // (ledcSetup/ledcAttachPin) -
+                                             // ce framework n'a pas l'API par broche
 
 // Bus + panneau + surface : repris de l'exemple communautaire cite plus
 // haut. Arduino_Canvas alloue le framebuffer 480x272 en PSRAM et ne
 // l'envoie au panneau qu'au flush() explicite (voir §3/§7 du document
 // d'impact sur la contention de bus que cela implique avec la SD).
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
-    45 /* cs */, 47 /* sck */, 21 /* d0 */, 48 /* d1 */, 40 /* d2 */, 39 /* d3 */);
+    AQ_S3_LCD_CS, AQ_S3_LCD_SCK, AQ_S3_LCD_D0, AQ_S3_LCD_D1, AQ_S3_LCD_D2, AQ_S3_LCD_D3);
 // ips=true, comme l'exemple communautaire de reference : confirme correct
 // sur cette carte reelle (ips=false essaye a tort le 26 aout, plus faux).
-Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED /* RST */, 0 /* rotation */, true /* IPS */);
-Arduino_GFX *gfx = new Arduino_Canvas(480 /* width */, 272 /* height */, panel);
+Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED /* RST */, 0 /* rotation */, AQ_S3_LCD_IPS);
+Arduino_GFX *gfx = new Arduino_Canvas(AQ_S3_SCREEN_WIDTH, AQ_S3_SCREEN_HEIGHT, panel);
 
 static void setBacklight(uint8_t percent) {
     uint32_t duty = (uint32_t)percent * 4095u / 100u;

@@ -1,5 +1,34 @@
 # Analyse d'impact — portage vers Guition JC4827W543C_I (ESP32-S3)
 
+> ## ✅ Brochage confirmé sur matériel réel — 27 août 2026
+>
+> Les tests **1, 2, 3, 5, 6** du §8 sont passés sur la carte reçue (COM4).
+> Le brochage croisé du 25 août ci-dessous est confirmé pour l'écran et le
+> tactile ; deux réglages ont dû être ajustés par rapport aux hypothèses
+> de départ (voir tableau). Détail des sessions de test : commits
+> `test(hw): env test_boot_s3/test_screen_s3/test_relay_s3/test_touch_s3`
+> sur `hw/jc4827w543-esp32s3-port-v2`.
+>
+> **Source de vérité pour tout code futur** : la section `[jc4827w543c_i]`
+> de `platformio.ini` (broches en `-D` `AQ_S3_*`), réutilisée par tous les
+> `env:test_*_s3` — ne pas redéfinir ces broches en dur ailleurs.
+>
+> | Sous-système | Brochage | Statut |
+> |---|---|---|
+> | Écran NV3041A (QSPI) | CS=45, SCK=47, D0=21, D1=48, D2=40, D3=39 | **confirmé** — mire couleur correcte avec `ips=true` (l'inverse, `ips=false`, essayé à tort le 26 août, est pire) |
+> | Rétroéclairage | GPIO1, PWM (canal LEDC 0, style `ledcSetup`/`ledcAttachPin` — ce framework n'a pas l'API LEDC par broche des cœurs plus récents) | **confirmé** |
+> | Tactile GT911 (I2C) | SCL=4, SDA=8, RST=38, INT=3 | **confirmé** — nécessite `ts.setRotation(ROTATION_INVERTED)` (valeur 1), pas `ROTATION_NORMAL` (deux axes inversés sinon) ; lib `tamctec/TAMC_GT911` |
+> | Bloc relais XL9535 (I2C dédié, câblage banc de test) | SCL=17, SDA=18, adresse 0x20 | **confirmé** — logique **DIRECTE** (bit=1→ON), la même que `RelayTopology::LOGIC_DIRECT` déjà en production (`main.cpp:245`), pas réinventée |
+> | Carte SD | MISO=13, MOSI=11, SCLK=12, CS=10 | **toujours non confirmé** — test 8 restant |
+>
+> **Bug réel trouvé par le test tactile** : `TAMC_GT911` ne déclare que
+> `points[5]`, mais `ts.touches` a été observé jusqu'à 14 sur cette carte —
+> boucler sur `ts.touches` sans borne lit hors tableau. Se limiter à
+> `ts.points[0]` et borner à 5 par sécurité.
+>
+> Restent du §8 : test **4** (performance d'affichage, décisif), **8**
+> (SD), **9** (WiFi).
+
 > ## 🌤️ Reprise du chantier — 25 août 2026
 >
 > **Cartes reçues.** Référence confirmée : **JC4827W543C_I** (le fabricant décline ce modèle en `C`/`R` — capacitif/résistif — et en `_I`, la révision reçue ici). Variante capacitive comme prévu au §5.

@@ -32,22 +32,25 @@
 #include <Wire.h>
 #include <Arduino_GFX_Library.h>
 
-#define REL_SCL_PIN   17
-#define REL_SDA_PIN   18
-#define XL9535_ADDR   0x20
+// Brochage/parametres carte : voir la section [jc4827w543c_i] de
+// platformio.ini - source de verite unique, partagee par tous les
+// env test_*_s3, plutot que des #define disperses et divergents.
+#define REL_SCL_PIN   AQ_S3_RELAY_SCL
+#define REL_SDA_PIN   AQ_S3_RELAY_SDA
+#define XL9535_ADDR   AQ_S3_RELAY_ADDR
 
 #define XL9535_REG_OUTPUT_P0  0x02
 #define XL9535_REG_OUTPUT_P1  0x03
 #define XL9535_REG_CONFIG_P0  0x06
 #define XL9535_REG_CONFIG_P1  0x07
 
-#define LCD_BL 1
-#define LCD_BL_CHANNEL 0
+#define LCD_BL AQ_S3_LCD_BL
+#define LCD_BL_CHANNEL AQ_S3_LCD_BL_CHANNEL
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
-    45 /* cs */, 47 /* sck */, 21 /* d0 */, 48 /* d1 */, 40 /* d2 */, 39 /* d3 */);
-Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, true /* IPS, confirme le 26 aout */);
-Arduino_GFX *gfx = new Arduino_Canvas(480, 272, panel);
+    AQ_S3_LCD_CS, AQ_S3_LCD_SCK, AQ_S3_LCD_D0, AQ_S3_LCD_D1, AQ_S3_LCD_D2, AQ_S3_LCD_D3);
+Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, AQ_S3_LCD_IPS /* confirme le 26 aout */);
+Arduino_GFX *gfx = new Arduino_Canvas(AQ_S3_SCREEN_WIDTH, AQ_S3_SCREEN_HEIGHT, panel);
 
 static uint16_t g_outP0 = 0x00;
 static uint16_t g_outP1 = 0x00;
