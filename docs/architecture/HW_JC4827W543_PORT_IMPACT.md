@@ -2,12 +2,20 @@
 
 > ## ✅ Brochage confirmé sur matériel réel — 27 août 2026
 >
-> Les tests **1, 2, 3, 5, 6** du §8 sont passés sur la carte reçue (COM4).
-> Le brochage croisé du 25 août ci-dessous est confirmé pour l'écran et le
-> tactile ; deux réglages ont dû être ajustés par rapport aux hypothèses
-> de départ (voir tableau). Détail des sessions de test : commits
-> `test(hw): env test_boot_s3/test_screen_s3/test_relay_s3/test_touch_s3`
-> sur `hw/jc4827w543-esp32s3-port-v2`.
+> Les tests **1, 2, 3, 4, 5, 6** du §8 sont passés sur la carte reçue
+> (COM4). Le brochage croisé du 25 août ci-dessous est confirmé pour
+> l'écran et le tactile ; deux réglages ont dû être ajustés par rapport
+> aux hypothèses de départ (voir tableau). Détail des sessions de test :
+> commits `test(hw): env test_boot_s3/test_screen_s3/test_relay_s3/
+> test_touch_s3/test_perf_s3` sur `hw/jc4827w543-esp32s3-port-v2`.
+>
+> **Test 4 (décisif) — résultat chiffré** : `fillScreen` (dessin en PSRAM)
+> ~7,4 ms, `flush()` (transfert QSPI vers le panneau) ~29,3 ms, soit
+> ~36,7 ms par rafraîchissement plein écran complet — **34 images/s**
+> maximum, **71 Mbit/s** effectifs. Tranche la question laissée ouverte au
+> §3 : largement suffisant pour une interface de statut/contrôle sans
+> animation, le framebuffer plein écran unique en PSRAM est validé, pas
+> seulement envisagé.
 >
 > **Source de vérité pour tout code futur** : la section `[jc4827w543c_i]`
 > de `platformio.ini` (broches en `-D` `AQ_S3_*`), réutilisée par tous les
@@ -26,8 +34,7 @@
 > boucler sur `ts.touches` sans borne lit hors tableau. Se limiter à
 > `ts.points[0]` et borner à 5 par sécurité.
 >
-> Restent du §8 : test **4** (performance d'affichage, décisif), **8**
-> (SD), **9** (WiFi).
+> Restent du §8 : test **8** (SD), **9** (WiFi).
 
 > ## 🌤️ Reprise du chantier — 25 août 2026
 >
@@ -140,7 +147,7 @@ Gains attendus :
 - **suppression du correctif de libération des sprites en veille** (ajouté le 16 août 2026 pour cause de saturation mémoire) et, avec lui, de toute la classe de bugs « RAM interne saturée » — page Web qui ne se charge pas, poignée de main TLS en échec ;
 - levée du plafond de connexions HTTP simultanées, aujourd'hui de deux écran allumé.
 
-À arbitrer après mesure : un framebuffer plein écran en PSRAM impose de transférer 261 Ko à chaque rafraîchissement complet. C'est précisément le point de performance à mesurer en premier (voir §8).
+**Arbitré par la mesure du 27 août 2026 (test 4, §8)** : un framebuffer plein écran en PSRAM impose de transférer 261 Ko à chaque rafraîchissement complet, mesuré à ~29,3 ms (`flush()` seul) sur la carte réelle — 34 images/s maximum, très au-delà du besoin d'une interface de statut/contrôle sans animation. Le framebuffer plein écran unique est retenu, les sprites partiels abandonnés.
 
 ## 4. Mise en page — 320×240 vers 480×272
 
