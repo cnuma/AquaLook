@@ -113,6 +113,51 @@ Divergence explicitement arbitrée et documentée, conformément à la règle du
 
 Conséquence directe : la couche services distants **peut** démarrer sur un hébergement Web simple (un script exécuté par requête suffit), sans processus permanent à faire tourner — voir `docs/architecture/CLOUD_ENVIRONMENT_EVALUATION.md` pour le détail. Le mini PC / VPS restent pertinents pour la suite (historisation, tableaux de bord), mais ne sont plus un préalable obligé.
 
+### 5.0 bis Réexamen du 27 août 2026 — condition (a) du §5.0 potentiellement remplie
+
+La condition (a) posée au §5.0 pour reconsidérer MQTT — « une carte à PSRAM
+change le budget mémoire disponible » — est en cours de vérification : la
+carte ESP32-S3 JC4827W543C_I (8 Mo de PSRAM) est en main, portage en
+cours (`docs/architecture/HW_JC4827W543_PORT_IMPACT.md`).
+
+**Chiffres mesurés sur le firmware S3 réel** (`ESP.getFreeHeap()`, RAM
+interne exclusivement — `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`,
+vérifié dans `Esp.cpp` du framework) :
+
+| | Carte actuelle (sans PSRAM) | Carte S3 (8 Mo PSRAM) |
+|---|---|---|
+| RAM interne libre, écran actif | **~32 Ko** (2 sprites ~95 Ko résidents) | **~292-299 Ko** (sprites/canvas déplacés en PSRAM par l'adaptateur d'affichage) |
+| Plus gros bloc contigu | ~17 Ko | non mesuré, mais sans le même verrou de fragmentation permanent |
+| Pic mbedTLS observé (poignée de main) | ~25,7 Ko | non mesuré sur matériel |
+
+Le tampon mbedTLS lui-même reste forcé en RAM interne sur cette carte
+aussi (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=1`, voir
+`docs/engineering/38_MEMORY_MANAGEMENT.md`) — la PSRAM n'héberge pas
+mbedTLS directement. Mais le concurrent qui rendait la marge intenable
+sur l'ancienne carte (les sprites d'écran, un consommateur **permanent**
+de RAM interne, justement le type de concurrent qu'une connexion
+**permanente** MQTT/TLS aurait aggravé selon le §5.0) a lui-même migré
+en PSRAM. Sur la marge résultante (~290 Ko contre ~32 Ko), un pic
+mbedTLS de l'ordre de 25 Ko ne représente plus une menace comparable.
+
+**Ce que ça change, et ce que ça ne change pas encore** : le calcul
+numérique rend une connexion MQTT/TLS permanente plausible sur cette
+carte, ce qui n'était clairement pas le cas avant. Mais ces chiffres
+viennent d'un boot à vide, pas d'une session MQTT réellement tenue sur
+la durée (fragmentation par petites allocations mbedTLS répétées,
+reconnexions, trafic Web/OTA concurrent) — le risque qui avait motivé
+l'écart du 16 août (« l'atténuation de libérer les sprites ne s'applique
+pas à une connexion permanente ») n'est plus structurellement bloquant,
+mais reste à mesurer dans la durée avant toute décision définitive.
+
+**Décision à ce stade** : ne pas basculer l'architecture cloud déjà
+construite et validée (`CloudSync.cpp`, API PHP/FastAPI, sondage HTTP
+périodique — plusieurs commits validés sur `agent/ota-3.1-stage-inactive`)
+sur la seule base de ce calcul. MQTT redevient une option sérieuse à
+prototyper dès que le matériel est accessible pour mesurer une session
+tenue dans la durée, pas une réécriture à engager maintenant sans cette
+mesure. Le HTTP/HTTPS du §6.1 reste le transport en service.
+
 ### 5.1 Piste différée — HiveMQ Cloud et MQTT
 
 Conservé comme hypothèse ouverte, non comme trajectoire validée (voir §5.0). Si reconsidéré : HiveMQ Cloud comme broker MQTT de développement, pour valider la connexion MQTT/TLS, la publication d'états/événements, la réception de commandes, les acquittements, la reconnexion après coupure, la limitation de fréquence et de volume, l'intégration Flutter. Resterait un prototype contrôlé, topics et formats conçus pour ne pas dépendre durablement d'un fournisseur particulier.
@@ -164,6 +209,11 @@ Les messages doivent être versionnés, bornés, validés et traçables — mêm
 ### 6.2 MQTT — extension différée
 
 Non retenu dans la trajectoire actuelle (voir §5.0 pour l'arbitrage et ses raisons). Resterait pertinent si un besoin réel de commande temps réel ou de supervision multi-modules à grande échelle apparaissait, et si une évolution matérielle (PSRAM) lève la contrainte mémoire qui a motivé ce report.
+
+La condition PSRAM est en cours de vérification depuis le 27 août 2026
+(voir §5.0 bis) : le calcul numérique sur la carte S3 est encourageant,
+mais non confirmé par une session MQTT/TLS réellement tenue sur
+matériel. Le transport en service reste HTTP/HTTPS (§6.1).
 
 MQTT, si reconsidéré, ne devra pas contenir la logique métier critique. Les messages devront être versionnés, bornés, validés et traçables.
 

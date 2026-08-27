@@ -183,6 +183,21 @@ Trajectoire simplifiée proposée :
 3. **Historisation et tableaux de bord**, quand le besoin s'en fait sentir — PostgreSQL/TimescaleDB + Grafana, sur mini PC ou hébergement dédié selon ce qui est déjà en place à ce moment-là.
 4. **MQTT, Flutter temps réel, flotte** — reconsidérés ensemble si la PSRAM ou un besoin de flotte les rendent pertinents, pas avant.
 
+### 7.4 bis Réexamen du 27 août 2026 — carte PSRAM en main
+
+La recommandation du §3 (« trancher l'évaluation PSRAM avant d'engager
+MQTT ») est en cours de tranchage : carte ESP32-S3 (8 Mo PSRAM) reçue et
+en cours de portage. Analyse chiffrée complète dans
+`SYSTEM_ARCHITECTURE.md` §5.0 bis : la RAM interne libre passe de ~32 Ko
+à ~292-299 Ko une fois les sprites d'écran déplacés en PSRAM (le
+concurrent qui rendait une connexion permanente intenable, pas mbedTLS
+lui-même, qui reste forcé en RAM interne par le framework). MQTT
+redevient une option sérieuse à prototyper, pas encore une décision —
+la mesure manquante est une session MQTT/TLS réellement tenue sur la
+durée, pas seulement un calcul à l'idle. Le sondage HTTP déjà construit
+et validé (§7.3 bis) reste le transport en service tant que cette
+mesure n'est pas faite.
+
 ### 7.5 Écart connu de cette mise à jour
 
 Ce réarbitrage a mis à jour les documents faisant autorité (`SYSTEM_ARCHITECTURE.md`, ce document, `cloud/README.md`, `ROADMAP.md`). Une trentaine d'autres fichiers du dépôt référencent encore MQTT sans avoir été relus à cette date (notamment `docs/engineering/20_MQTT.md`, `22_NOTIFICATIONS.md`, `23_SECURITY_OPERATIONS.md`, `26_DATA_MODEL_AND_JSON.md`, `29_SOFTWARE_COMPONENT_CATALOG.md`, `docs/security/`, `docs/roadmap/`, `32_GLOSSARY.md`). Laissé explicitement en écart plutôt que corrigé par approximation — à harmoniser au fil de l'eau, ou en bloc si ce chantier redevient actif.
