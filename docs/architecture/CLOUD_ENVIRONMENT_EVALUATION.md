@@ -198,6 +198,16 @@ durée, pas seulement un calcul à l'idle. Le sondage HTTP déjà construit
 et validé (§7.3 bis) reste le transport en service tant que cette
 mesure n'est pas faite.
 
+**Clôture, décision de l'utilisateur (27 août 2026)** : MQTT remis en
+veille au profit du HTTP — la contrainte décisive n'est plus la mémoire
+du module mais l'incertitude sur la capacité à héberger un broker MQTT
+(processus permanent, port dédié) sur l'infrastructure cloud réelle
+visée, rejoignant directement le blocage du §2 ci-dessus pour un
+hébergement mutualisé. Un canal HTTP/HTTPS classique — l'équivalent
+serveur d'un appel AJAX, un script exécuté par requête — s'y héberge
+sans difficulté. Le calcul mémoire ci-dessus reste documenté pour
+référence si l'hébergement change un jour.
+
 ### 7.5 Écart connu de cette mise à jour
 
 Ce réarbitrage a mis à jour les documents faisant autorité (`SYSTEM_ARCHITECTURE.md`, ce document, `cloud/README.md`, `ROADMAP.md`). Une trentaine d'autres fichiers du dépôt référencent encore MQTT sans avoir été relus à cette date (notamment `docs/engineering/20_MQTT.md`, `22_NOTIFICATIONS.md`, `23_SECURITY_OPERATIONS.md`, `26_DATA_MODEL_AND_JSON.md`, `29_SOFTWARE_COMPONENT_CATALOG.md`, `docs/security/`, `docs/roadmap/`, `32_GLOSSARY.md`). Laissé explicitement en écart plutôt que corrigé par approximation — à harmoniser au fil de l'eau, ou en bloc si ce chantier redevient actif.

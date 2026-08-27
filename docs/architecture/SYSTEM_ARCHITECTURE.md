@@ -158,6 +158,20 @@ prototyper dès que le matériel est accessible pour mesurer une session
 tenue dans la durée, pas une réécriture à engager maintenant sans cette
 mesure. Le HTTP/HTTPS du §6.1 reste le transport en service.
 
+**Clôture du réexamen, décision de l'utilisateur (27 août 2026)** : MQTT
+est remis en veille au profit du HTTP, indépendamment de la question
+mémoire ci-dessus — **la contrainte décisive n'est plus le module mais
+l'hébergement côté serveur** : l'utilisateur n'est pas certain de pouvoir
+faire tourner un broker MQTT (processus permanent, port dédié) sur son
+infrastructure cloud réelle, alors qu'un canal HTTP/HTTPS classique
+(l'équivalent serveur d'un appel AJAX — un script exécuté par requête)
+s'y héberge sans difficulté. Ce point rejoint directement le blocage
+déjà identifié au §2 de `CLOUD_ENVIRONMENT_EVALUATION.md` pour un
+hébergement mutualisé. Le calcul mémoire du 27 août reste documenté
+ci-dessus pour référence future (si l'hébergement change un jour), mais
+ne motive plus, à lui seul, une reprise de MQTT tant que cette
+contrainte serveur n'est pas levée.
+
 ### 5.1 Piste différée — HiveMQ Cloud et MQTT
 
 Conservé comme hypothèse ouverte, non comme trajectoire validée (voir §5.0). Si reconsidéré : HiveMQ Cloud comme broker MQTT de développement, pour valider la connexion MQTT/TLS, la publication d'états/événements, la réception de commandes, les acquittements, la reconnexion après coupure, la limitation de fréquence et de volume, l'intégration Flutter. Resterait un prototype contrôlé, topics et formats conçus pour ne pas dépendre durablement d'un fournisseur particulier.
