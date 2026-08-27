@@ -80,8 +80,13 @@ static bool intervalDayIsPlanned(const ZoneSchedule& zs,
            ((targetDay - anchor) % interval) == 0;
 }
 
+#if AQUALOOK_BOARD_S3
+#define SCREEN_W   AQ_S3_SCREEN_WIDTH
+#define SCREEN_H   AQ_S3_SCREEN_HEIGHT
+#else
 #define SCREEN_W   320
 #define SCREEN_H   240
+#endif
 
 // Cache de rendu des boutons de zones.
 // Objectif : ne jamais redessiner une carte complète chaque seconde.
@@ -259,6 +264,12 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _tft.fillScreen(Theme::BG);
     _tft.setTextDatum(TL_DATUM);
 
+#if AQUALOOK_TOUCH_GT911
+    // GT911 capacitif, I2C dedie - pas de calibration (voir getTouchPoint()),
+    // rotation confirmee sur materiel reel le 27 aout 2026.
+    _touch.begin();
+    _touch.setRotation(AQ_S3_TOUCH_ROTATION);
+#else
     // Invariant I5 : XPT2046 direct, bus VSPI séparé
     // Note : le warning addApbChangeCallback vient de TFT_eSPI qui ré-enregistre
     // son callback APB lors du second passage dans begin(). Suppression du log parasite
@@ -268,6 +279,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _touch.begin(_touchSPI);
     esp_log_level_set("*", ESP_LOG_WARN);   // restaurer apres initialisation complete
     _touch.setRotation(1);
+#endif
 
     // Déterminer le mode HOME selon le nb de zones actives
     _nbZones = _config ? _config->nbZones() : NB_ZONES;
@@ -532,6 +544,19 @@ void DisplayManager::drawMenuIcon(TFT_eSPI& gfx, uint16_t x, uint16_t y, uint16_
 //  Touch
 // ═══════════════════════════════════════════════════════════════
 bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
+#if AQUALOOK_TOUCH_GT911
+    // Capacitif : coordonnees natives en pixels ecran, pas d'etalonnage
+    // (§5 du document d'impact - TOUCH_X_MIN/MAX etc. sans objet ici).
+    // ts.touches a ete observe jusqu'a 14 sur cette carte reelle alors
+    // que TAMC_GT911.h ne declare que points[5] - se limiter au premier
+    // contact et ne jamais boucler sur ts.touches sans le borner (bug
+    // trouve par test_touch_s3.cpp le 27 aout 2026).
+    _touch.read();
+    if (!_touch.isTouched || _touch.touches < 1) return false;
+    tx = (uint16_t)constrain((int)_touch.points[0].x, 0, SCREEN_W - 1);
+    ty = (uint16_t)constrain((int)_touch.points[0].y, 0, SCREEN_H - 1);
+    return true;
+#else
     if (!_touch.tirqTouched() || !_touch.touched()) return false;
     TS_Point p = _touch.getPoint();
 
@@ -543,6 +568,7 @@ bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
     tx = (uint16_t)constrain(map(p.x, xMin, xMax, 0, SCREEN_W - 1), 0, SCREEN_W - 1);
     ty = (uint16_t)constrain(map(p.y, yMin, yMax, 0, SCREEN_H - 1), 0, SCREEN_H - 1);
     return true;
+#endif
 }
 
 void DisplayManager::handleTouch() {

@@ -2,7 +2,11 @@
 #include <TFT_eSPI.h>
 #include <TJpg_Decoder.h>
 #include <LittleFS.h>
+#if AQUALOOK_TOUCH_GT911
+#include <TAMC_GT911.h>
+#else
 #include <XPT2046_Touchscreen.h>
+#endif
 #include "config.h"
 #include "NTPManager.h"
 #include "WeatherManager.h"

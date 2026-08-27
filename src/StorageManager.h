@@ -143,7 +143,15 @@ private:
 
     static void recoveryTaskEntry(void* parameter);
 
+#if AQUALOOK_BOARD_S3
+    // Bus SPI dedie a la SD, distinct du QSPI ecran - pas de partage de
+    // broches avec l'affichage comme sur la carte actuelle (d'ou le SPI
+    // logiciel historique la-bas). SPI materiel direct suffit ici,
+    // confirme sur materiel reel par test_sd_s3.cpp (27 aout 2026).
+    SPIClass _sdSpi { HSPI };
+#else
     SoftSpiDriver<SD_MISO_PIN, SD_MOSI_PIN, SD_SCLK_PIN> _softSpi;
+#endif
     SdFs _sd;
 
     // Le bus SPI logiciel de la carte SD est touche a la fois par la boucle

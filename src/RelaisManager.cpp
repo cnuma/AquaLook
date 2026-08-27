@@ -331,10 +331,10 @@ bool RelaisManager::applyBoard(uint8_t boardIndex) {
 }
 
 bool RelaisManager::writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
-    Wire.beginTransmission(addr);
-    Wire.write(reg);
-    Wire.write(val);
-    const uint8_t err = Wire.endTransmission();
+    RELAY_WIRE_BUS.beginTransmission(addr);
+    RELAY_WIRE_BUS.write(reg);
+    RELAY_WIRE_BUS.write(val);
+    const uint8_t err = RELAY_WIRE_BUS.endTransmission();
 
     if (err != 0) {
         FaultManager::setActive(FaultId::RELAY_I2C, true);
@@ -349,10 +349,10 @@ bool RelaisManager::writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
 }
 
 uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
-    Wire.beginTransmission(addr);
-    Wire.write(reg);
+    RELAY_WIRE_BUS.beginTransmission(addr);
+    RELAY_WIRE_BUS.write(reg);
 
-    const uint8_t err = Wire.endTransmission(false);
+    const uint8_t err = RELAY_WIRE_BUS.endTransmission(false);
     if (err != 0) {
         FaultManager::setActive(FaultId::RELAY_I2C, true);
         EventLog::log(
@@ -363,8 +363,8 @@ uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
         return 0xFF;
     }
 
-    Wire.requestFrom(addr, static_cast<uint8_t>(1));
-    return Wire.available() ? Wire.read() : 0xFF;
+    RELAY_WIRE_BUS.requestFrom(addr, static_cast<uint8_t>(1));
+    return RELAY_WIRE_BUS.available() ? RELAY_WIRE_BUS.read() : 0xFF;
 }
 
 uint8_t RelaisManager::nbRelaisPhysical() const {

@@ -558,12 +558,22 @@ bool StorageManager::mountSd(bool publishAvailability) {
     _sd.end();
     resetCardMetadata();
 
+#if AQUALOOK_BOARD_S3
+    _sdSpi.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+    const SdSpiConfig sdConfig(
+        SD_CS_PIN,
+        DEDICATED_SPI,
+        SD_SCK_MHZ(25),
+        &_sdSpi
+    );
+#else
     const SdSpiConfig sdConfig(
         SD_CS_PIN,
         SHARED_SPI,
         SD_SCK_MHZ(0),
         &_softSpi
     );
+#endif
 
     if (!_sd.begin(sdConfig)) {
         _status = StorageStatus::SD_UNAVAILABLE;

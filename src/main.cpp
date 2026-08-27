@@ -463,13 +463,13 @@ void setup() {
     EventLog::log(LOG_INFO, "AquaLook v2.0 demarrage");
     SystemDiagnostics::begin();
 
-    Wire.begin(SDA_PIN, SCL_PIN);
+    RELAY_WIRE_BUS.begin(SDA_PIN, SCL_PIN);
 
     EventLog::log(LOG_INFO, "I2C: scan demarre");
     uint8_t found = 0;
     for (uint8_t addr = 1; addr < 127; addr++) {
-        Wire.beginTransmission(addr);
-        if (Wire.endTransmission() == 0) {
+        RELAY_WIRE_BUS.beginTransmission(addr);
+        if (RELAY_WIRE_BUS.endTransmission() == 0) {
             EventLog::log(LOG_INFO, "I2C: peripherique trouve a 0x%02X", addr);
             found++;
         }

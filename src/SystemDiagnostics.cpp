@@ -224,8 +224,23 @@ void SystemDiagnostics::sampleMemory(uint32_t nowMs) {
 
     const uint32_t freeBytes =
         static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+#if AQUALOOK_BOARD_S3
+    // heap_caps_get_largest_free_block() parcourt bloc par bloc
+    // (tlsf_walk_pool). Restreindre le masque de capacites a la RAM
+    // interne seule n'a pas suffi a l'essai (27 aout 2026, meme crash
+    // identique) : le parcours reste assez lent pour declencher le
+    // watchdog d'interruption du coeur 1 (loopTask) - "Interrupt wdt
+    // timeout on CPU1", juste apres le scan WiFi (tas interne
+    // vraisemblablement fragmente par l'activite reseau/mbedTLS, pas
+    // seulement une question de taille de tas). Appel retire plutot que
+    // re-devine une seconde fois : freeBytes (O(1), pas de parcours)
+    // reste mesure, seul le plus gros bloc contigu ne l'est plus sur
+    // cette carte.
+    const uint32_t largest = freeBytes;
+#else
     const uint32_t largest =
         static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+#endif
 
     if (freeBytes < _minFreeBytes)   _minFreeBytes = freeBytes;
     if (largest   < _minLargestBlock) _minLargestBlock = largest;

@@ -3,7 +3,11 @@
 #include <TFT_eSPI.h>
 #include <TJpg_Decoder.h>
 #include <LittleFS.h>
+#if AQUALOOK_TOUCH_GT911
+#include <TAMC_GT911.h>
+#else
 #include <XPT2046_Touchscreen.h>
+#endif
 #include "config.h"
 #include "NTPManager.h"
 #include "WeatherManager.h"
@@ -190,8 +194,16 @@ private:
 
     // ── Hardware ──────────────────────────────
     TFT_eSPI            _tft;
+#if AQUALOOK_TOUCH_GT911
+    // Pas de bus SPI dedie au tactile en GT911 (I2C) ; VSPI n'existe de
+    // toute facon pas sur ESP32-S3 (nommage different des peripheriques
+    // SPI materiels par rapport a l'ESP32 d'origine).
+    TAMC_GT911 _touch { AQ_S3_TOUCH_SDA, AQ_S3_TOUCH_SCL, AQ_S3_TOUCH_INT,
+                         AQ_S3_TOUCH_RST, AQ_S3_SCREEN_WIDTH, AQ_S3_SCREEN_HEIGHT };
+#else
     SPIClass            _touchSPI { VSPI };
     XPT2046_Touchscreen _touch    { TOUCH_CS, TOUCH_IRQ };
+#endif
 
     // ── Sprites HOME ──────────────────────────
     // Invariant I15 : sprite bouton unique, rendu successif Z1 puis Z2

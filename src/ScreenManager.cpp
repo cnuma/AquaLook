@@ -26,9 +26,18 @@ void ScreenManager::begin(ConfigManager* config) {
     ledcSetup(LED_CH_GREEN, 5000, 8);
     ledcSetup(LED_CH_BLUE, 5000, 8);
 
+#if !AQUALOOK_BOARD_S3
+    // Pas de voyant RGB embarque sur la carte JC4827W543C_I (constate le
+    // 25 aout 2026, docs/architecture/HW_JC4827W543_PORT_IMPACT.md §8
+    // test 7) - et PIN_LED_RED/PIN_LED_BLUE (4/17) percutent directement
+    // le tactile GT911 (SCL) et le bus I2C du bloc relais (SCL) sur
+    // cette carte. ledcSetup()/renderLed() restent inoffensifs sans
+    // attache de broche (ecriture sur un canal LEDC non attache = sans
+    // effet), seul l'attachement physique est a eviter ici.
     ledcAttachPin(PIN_LED_RED, LED_CH_RED);
     ledcAttachPin(PIN_LED_GREEN, LED_CH_GREEN);
     ledcAttachPin(PIN_LED_BLUE, LED_CH_BLUE);
+#endif
 
     _normalLedRed = 0;
     _normalLedGreen = 0;

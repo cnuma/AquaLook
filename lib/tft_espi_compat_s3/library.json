@@ -1,0 +1,13 @@
+{
+  "name": "tft_espi_compat_s3",
+  "version": "0.1.0",
+  "description": "Adaptateur TFT_eSPI/TFT_eSprite pour la carte Guition JC4827W543C_I (ESP32-S3, ecran NV3041A QSPI), implemente au-dessus d'Arduino_GFX. Permet a DisplayManager.cpp et consorts de compiler sans modification pour la partie dessin (docs/architecture/HW_JC4827W543_PORT_IMPACT.md §3/§11).",
+  "keywords": ["display", "tft", "esp32-s3", "nv3041a", "aqualook"],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "moononournation/GFX Library for Arduino": "1.4.9",
+    "adafruit/Adafruit GFX Library": "^1.11.9",
+    "adafruit/Adafruit BusIO": "^1.16.1"
+  }
+}
