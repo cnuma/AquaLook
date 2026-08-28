@@ -36,8 +36,14 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
     const bool degraded = isDegradedStep(label);
     const uint16_t accent = degraded ? Theme::AMBER : Theme::SPLASH_ACCENT;
 
-    tft.fillRect(0, overlayY, 320, overlayH, TFT_WHITE);
-    tft.drawFastHLine(0, overlayY, 320, Theme::SPLASH_TRACK);
+    // Largeur et centre repris de DisplayManager (source de verite unique)
+    // et non ecrits en dur : sur l'ESP32-S3 (480x272) un 320 fige laissait
+    // 160 px non peints a droite et centrait le texte hors du milieu.
+    constexpr int16_t W  = DisplayManager::SCREEN_W;
+    constexpr int16_t CX = DisplayManager::SCREEN_W / 2;
+
+    tft.fillRect(0, overlayY, W, overlayH, TFT_WHITE);
+    tft.drawFastHLine(0, overlayY, W, Theme::SPLASH_TRACK);
 
     tft.setFreeFont(nullptr);
     tft.setTextDatum(TC_DATUM);
@@ -52,7 +58,7 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
         OtaBuildIdentity::PRODUCT,
         OtaBuildIdentity::VERSION
     );
-    tft.drawString(productLine, 160, overlayY + 5);
+    tft.drawString(productLine, CX, overlayY + 5);
 
     char buildLine[80];
     snprintf(
@@ -64,7 +70,7 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
         OtaBuildIdentity::GIT_SHA
     );
     tft.setTextColor(accent, TFT_WHITE);
-    tft.drawString(buildLine, 160, overlayY + 18);
+    tft.drawString(buildLine, CX, overlayY + 18);
 
     char stateLine[72];
     snprintf(
@@ -77,7 +83,7 @@ void drawIdentityOverlay(DisplayManager& display, uint8_t step, const char* labe
         label ? label : "Initialisation"
     );
     tft.setTextColor(degraded ? Theme::RED : Theme::SPLASH_MUTED2, TFT_WHITE);
-    tft.drawString(stateLine, 160, overlayY + 31);
+    tft.drawString(stateLine, CX, overlayY + 31);
     tft.setTextDatum(TL_DATUM);
 }
 

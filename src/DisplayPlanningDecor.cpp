@@ -110,9 +110,12 @@ void redrawListWeather(DisplayManager& d) {
 
     TFT_eSPI& tft = d._tft;
     const CfgDisplay& disp = d._config->display();
-    const uint16_t labelW = 22;
-    const uint16_t dayW = 42;
-    const uint16_t planY = 28;
+    // Reprises de DisplayManager plutot que recopiees : ce rafraichissement
+    // meteo se superpose au bandeau planning dessine par renderPlanSprite(),
+    // les deux geometries doivent coincider au pixel pres.
+    const uint16_t labelW = DisplayManager::PL_LABEL_W;
+    const uint16_t dayW = DisplayManager::PL_DAY_W;
+    const uint16_t planY = DisplayManager::PL_PLAN_Y;
 
     for (uint8_t col = 0; col < 5; ++col) {
         ForecastDay fd = d._weather ? d._weather->getForecastDay(col) : ForecastDay{};
@@ -257,7 +260,12 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
 
     uint16_t zoneH = (198 - 28) / nbZ;
     if (zoneH < 4) zoneH = 4;
-    const uint16_t dayW = (320 - 22) / 7;
+    // Doit reproduire EXACTEMENT le calcul de colonnes de
+    // DisplayManager::renderPlanSpriteFull() : ce hachurage se superpose a
+    // la grille dessinee la-bas, un ecart d'un pixel decale les hachures
+    // des colonnes. D'ou les memes constantes plutot que 320/22 en dur,
+    // qui devenaient faux des que l'ecran n'est plus large de 320 px.
+    const uint16_t dayW = (DisplayManager::SCREEN_W - DisplayManager::PL_LABEL_W) / 7;
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
 
     for (uint8_t zi = 0; zi < nbZ; ++zi) {
@@ -268,7 +276,8 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
         const uint16_t rowY = 20 + 28 + zi * zoneH;
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft, 22 + col * dayW + 1, rowY + 1, dayW - 2, zoneH - 2);
+            hatchRect(d._tft, DisplayManager::PL_LABEL_W + col * dayW + 1,
+                      rowY + 1, dayW - 2, zoneH - 2);
         }
     }
 }
@@ -304,7 +313,7 @@ void drawUpdateAvailableIcon(DisplayManager& d) {
     // L'icône d'erreur conserve sa propre position et peut rester visible.
     const uint16_t headerH = d._homeMode == HomeMode::GRID4 ? 20U :
                              (d._homeMode == HomeMode::GRID2 ? 25U : 28U);
-    const int16_t cx = 285;
+    const int16_t cx = DisplayManager::HDR_UPDATE_X;
     const int16_t cy = headerH / 2;
     const int16_t radius = headerH <= 20 ? 7 : 8;
 

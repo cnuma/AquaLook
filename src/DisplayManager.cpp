@@ -80,13 +80,9 @@ static bool intervalDayIsPlanned(const ZoneSchedule& zs,
            ((targetDay - anchor) % interval) == 0;
 }
 
-#if AQUALOOK_BOARD_S3
-#define SCREEN_W   AQ_S3_SCREEN_WIDTH
-#define SCREEN_H   AQ_S3_SCREEN_HEIGHT
-#else
-#define SCREEN_W   320
-#define SCREEN_H   240
-#endif
+// SCREEN_W / SCREEN_H sont desormais des constantes publiques de la
+// classe (DisplayManager.h) : elles etaient definies ici en #define, donc
+// invisibles des autres fichiers qui dessinent sur le meme ecran.
 
 // Cache de rendu des boutons de zones.
 // Objectif : ne jamais redessiner une carte complète chaque seconde.
@@ -121,7 +117,7 @@ static const char* zoneButtonName(const ConfigManager* config, uint8_t zone,
 bool DisplayManager::tftOutputCallback(int16_t x, int16_t y,
                                         uint16_t w, uint16_t h,
                                         uint16_t* bitmap) {
-    if (y >= 240) return true;  // hors écran
+    if (y >= SCREEN_H) return true;  // hors écran
     // TFT_eSPI pushImage gère le clipping
     extern TFT_eSPI _tftInstance;  // forward — remplacé par instance membre
     // On passe par un sprite temporaire pour éviter le flicker
@@ -302,8 +298,8 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
 
 // ─────────────────────────────────────────────
 void DisplayManager::createSprites() {
-    _sprTime.createSprite(110, 20);  // heure size2 + température size1 côte à côte
-    _sprSignal.createSprite(20, 16);
+    _sprTime.createSprite(HDR_TIME_W, 20);  // heure size2 + température size1 côte à côte
+    _sprSignal.createSprite(HDR_SIGNAL_W, 16);
     _sprPlan.createSprite(PL_PLAN_W, PL_PLAN_H);
     _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
     _spritesReady = true;
@@ -767,7 +763,7 @@ void DisplayManager::renderTimeSprite() {
     String t = (_ntp && _ntp->isSynced()) ? _ntp->getHHMM() : "--:--";
     _sprTime.drawString(t.c_str(), 55, 10);
     _sprTime.setTextDatum(TL_DATUM);
-    _sprTime.pushSprite(182, 6);
+    _sprTime.pushSprite(HDR_TIME_X, 6);
 }
 
 // Recherche WiFi (ni connecte, ni portail captif — connexion en cours ou
@@ -789,7 +785,7 @@ void DisplayManager::renderSignalSprite() {
                 _sprSignal.fillRect(i * 5, 16 - h, 4, h, Theme::AMBER);
             }
         }
-        _sprSignal.pushSprite(296, 6);
+        _sprSignal.pushSprite(HDR_SIGNAL_X, 6);
         return;
     }
 
@@ -801,7 +797,7 @@ void DisplayManager::renderSignalSprite() {
         uint8_t  h   = 4 + i * 3;
         _sprSignal.fillRect(i * 5, 16 - h, 4, h, col);
     }
-    _sprSignal.pushSprite(296, 6);
+    _sprSignal.pushSprite(HDR_SIGNAL_X, 6);
 }
 
 void DisplayManager::renderPlanSprite() {
@@ -811,10 +807,10 @@ void DisplayManager::renderPlanSprite() {
     _sprPlan.fillSprite(Theme::BG);
 
     // ── Séparateurs horizontaux — uniquement sur les lignes utilisées ──
-    _sprPlan.drawFastHLine(0, _planHdrH - 1, 320, Theme::BORDER);
+    _sprPlan.drawFastHLine(0, _planHdrH - 1, PL_PLAN_W, Theme::BORDER);
     for (uint8_t z = 0; z < nbPlan; z++) {
         uint16_t rowY = _planHdrH + z * _planZoneH;
-        _sprPlan.drawFastHLine(0, rowY + _planZoneH - 1, 320, Theme::BORDER);
+        _sprPlan.drawFastHLine(0, rowY + _planZoneH - 1, PL_PLAN_W, Theme::BORDER);
     }
 
     // ── Noms de jours : première colonne = jour courant ──

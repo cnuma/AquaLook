@@ -68,6 +68,22 @@ enum class AdminPage : uint8_t {
 
 class DisplayManager {
 public:
+    // Dimensions de la dalle - SOURCE DE VERITE UNIQUE du projet.
+    // Publiques et dans l'en-tete (et non un #define local a
+    // DisplayManager.cpp comme avant le 28 aout 2026) parce que d'autres
+    // fichiers dessinent sur le meme ecran - DisplaySplashWrap.cpp,
+    // DisplayPlanningDecor.cpp - et recopiaient jusqu'ici 320/240 a la
+    // main, valeurs qui deviennent fausses sur l'ESP32-S3 (480x272).
+    // Toute nouvelle mesure liee a la taille de l'ecran doit partir d'ici,
+    // jamais d'un litteral.
+#if AQUALOOK_BOARD_S3
+    static constexpr uint16_t SCREEN_W = AQ_S3_SCREEN_WIDTH;
+    static constexpr uint16_t SCREEN_H = AQ_S3_SCREEN_HEIGHT;
+#else
+    static constexpr uint16_t SCREEN_W = 320;
+    static constexpr uint16_t SCREEN_H = 240;
+#endif
+
     // ── Splash screen (boot) ──────────────────
     /// Appelé AVANT begin() — initialise juste le TFT + LittleFS
     void initTft();
@@ -297,6 +313,17 @@ private:
     static constexpr uint16_t PL_Z3_ROW_Y = 73;
     static constexpr uint16_t PL_DAY_W    = 42;
     static constexpr uint16_t PL_LABEL_W  = 22;
+    // Bandeau d'en-tete : elements cales sur le bord DROIT de l'ecran.
+    // Exprimes en retrait depuis SCREEN_W et non en absolu (182/296/285
+    // avant le 28 aout 2026) - ces valeurs figees valaient pour une dalle
+    // de 320 px et laissaient l'horloge et l'icone signal flotter au
+    // milieu du bandeau sur l'ESP32-S3 (480 px). Les retraits ci-dessous
+    // redonnent exactement les anciennes positions quand SCREEN_W = 320.
+    static constexpr uint16_t HDR_TIME_W   = 110;  // largeur sprite heure
+    static constexpr uint16_t HDR_SIGNAL_W = 20;   // largeur sprite signal
+    static constexpr uint16_t HDR_SIGNAL_X = SCREEN_W - HDR_SIGNAL_W - 4;
+    static constexpr uint16_t HDR_TIME_X   = SCREEN_W - HDR_TIME_W - 28;
+    static constexpr uint16_t HDR_UPDATE_X = SCREEN_W - 35;  // pastille MAJ
     // Boutons zones (1-2 zones, sprites larges)
     static constexpr uint16_t PL_BTN_Y    = 119;  // PL_PLAN_Y + PL_PLAN_H + 1
     static constexpr uint16_t PL_BTN_W    = 154;
