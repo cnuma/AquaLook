@@ -19,8 +19,22 @@ static const bool LED_BICOLOR[2][3] = {
 void ScreenManager::begin(ConfigManager* config) {
     _config = config;
 
+#if !AQUALOOK_BOARD_S3
     pinMode(PIN_TFT_BL, OUTPUT);
     digitalWrite(PIN_TFT_BL, HIGH);
+#endif
+    // Sur la JC4827W543C_I, PIN_TFT_BL (=21, retroeclairage de l'ancienne
+    // carte) est en realite AQ_S3_LCD_D0, une ligne de donnees du bus QSPI
+    // de l'ecran (platformio.ini). pinMode()/digitalWrite() dessus la
+    // reconfigurait en simple GPIO et cassait le bus QSPI en silence des
+    // ce begin() - trouve le 28 aout 2026 par bissection : le splash
+    // (dessine avant ScreenManager::begin()) marchait, tout dessin
+    // ulterieur (HOME, sprites, meme un fillRect direct) restait invisible.
+    // Retroeclairage S3 (AQ_S3_LCD_BL sur GPIO1, PWM LEDC) non encore
+    // cable ici - fonctionne par defaut sans pilotage logiciel pour
+    // l'instant ; screenOn()/screenOff() n'eteignent donc pas encore
+    // l'ecran en veille sur cette carte (limitation connue, pas une
+    // regression : c'etait deja inoperant avant ce correctif).
 
     ledcSetup(LED_CH_RED, 5000, 8);
     ledcSetup(LED_CH_GREEN, 5000, 8);
@@ -90,7 +104,9 @@ void ScreenManager::wakeUp() {
 
 void ScreenManager::screenOn() {
     _sleeping = false;
+#if !AQUALOOK_BOARD_S3
     digitalWrite(PIN_TFT_BL, HIGH);
+#endif
     ledOff();
 
     Serial.println("[Screen] Réveil");
@@ -101,7 +117,9 @@ void ScreenManager::screenOff() {
     _ledTimer = 0;
     _ledPhase = 0;
 
+#if !AQUALOOK_BOARD_S3
     digitalWrite(PIN_TFT_BL, LOW);
+#endif
 
     Serial.println("[Screen] Veille");
 }
