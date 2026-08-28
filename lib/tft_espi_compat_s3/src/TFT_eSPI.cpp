@@ -10,6 +10,15 @@ void TFT_eSPI::init() {
     // Brochage/parametres : section [jc4827w543c_i] de platformio.ini,
     // construction identique a celle validee sur materiel reel par
     // test_screen_s3.cpp (ips=AQ_S3_LCD_IPS=1, rotation=0).
+    //
+    // Orientation reconfirmee le 28 aout 2026 par test_rotation_s3.cpp
+    // (balayage des 4 rotations avec coins de couleur nommes et cadre) :
+    // rotation=0 avec les dimensions natives 480x272 est bien la bonne
+    // valeur pour cette carte. Une tentative de rotation=1 avec des
+    // dimensions inversees (272x480) a ete essayee le meme jour et est
+    // fausse : elle rend en portrait et fait deborder l'adressage (les
+    // 480 px de large ecrits dans une fenetre qui n'en accepte que 272
+    // s'enroulent sur la ligne suivante). Ne pas la reintroduire.
     Arduino_DataBus *bus = new Arduino_ESP32QSPI(
         AQ_S3_LCD_CS, AQ_S3_LCD_SCK, AQ_S3_LCD_D0, AQ_S3_LCD_D1, AQ_S3_LCD_D2, AQ_S3_LCD_D3);
     Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, AQ_S3_LCD_IPS);

@@ -133,7 +133,7 @@ public:
         if (!_spritesFreed) return true;
 
         const bool btnOk  = _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H) != nullptr;
-        const bool planOk = _sprPlan.createSprite(320, PL_PLAN_H) != nullptr;
+        const bool planOk = _sprPlan.createSprite(PL_PLAN_W, PL_PLAN_H) != nullptr;
 
         if (!btnOk || !planOk) {
             // Liberer le tampon partiellement obtenu : le garder ne servirait
@@ -277,6 +277,18 @@ private:
     //
     static constexpr uint16_t PL_PLAN_Y   = 28;   // y départ sprite planning
     static constexpr uint16_t PL_PLAN_H   = 90;   // hauteur sprite planning
+    // Largeur du sprite planning. Doit imperativement etre utilisee A LA
+    // FOIS a la creation du sprite et au pushImage() qui l'envoie a
+    // l'ecran : le tampon est lineaire (largeur x hauteur x 2 octets,
+    // sans remplissage de fin de ligne), donc pousser une largeur
+    // differente de celle allouee decale chaque ligne par rapport a la
+    // precedente. C'etait le cas avant le 28 aout 2026 (createSprite(320)
+    // mais pushImage(SCREEN_W)) : invisible sur la carte historique ou
+    // SCREEN_W vaut justement 320, mais sur l'ESP32-S3 (SCREEN_W=480) le
+    // bandeau partait en cisaillement - traits verticaux en pointilles
+    // obliques et libelles de jours haches, constate sur materiel reel.
+    // 7 colonnes de PL_DAY_W + PL_LABEL_W = 316, d'ou 320.
+    static constexpr uint16_t PL_PLAN_W   = 320;  // largeur sprite planning
     static constexpr uint16_t PL_HDR_H    = 28;   // ligne jours + icônes météo
     static constexpr uint16_t PL_ZONE_H   = 15;   // hauteur d'une ligne zone planning
     static constexpr uint16_t PL_Z0_ROW_Y = 28;   // = PL_HDR_H

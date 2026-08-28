@@ -265,10 +265,14 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _tft.setTextDatum(TL_DATUM);
 
 #if AQUALOOK_TOUCH_GT911
+#if !AQ_DIAG_DISABLE_I2C
     // GT911 capacitif, I2C dedie - pas de calibration (voir getTouchPoint()),
     // rotation confirmee sur materiel reel le 27 aout 2026.
     _touch.begin();
     _touch.setRotation(AQ_S3_TOUCH_ROTATION);
+#else
+    Serial.println("[Display] Tactile GT911 desactive (diagnostic)");
+#endif
 #else
     // Invariant I5 : XPT2046 direct, bus VSPI séparé
     // Note : le warning addApbChangeCallback vient de TFT_eSPI qui ré-enregistre
@@ -300,7 +304,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
 void DisplayManager::createSprites() {
     _sprTime.createSprite(110, 20);  // heure size2 + température size1 côte à côte
     _sprSignal.createSprite(20, 16);
-    _sprPlan.createSprite(320, PL_PLAN_H);
+    _sprPlan.createSprite(PL_PLAN_W, PL_PLAN_H);
     _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
     _spritesReady = true;
 }
@@ -545,6 +549,10 @@ void DisplayManager::drawMenuIcon(TFT_eSPI& gfx, uint16_t x, uint16_t y, uint16_
 // ═══════════════════════════════════════════════════════════════
 bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
 #if AQUALOOK_TOUCH_GT911
+#if AQ_DIAG_DISABLE_I2C
+    (void)tx; (void)ty;
+    return false;  // GT911 jamais initialise (diagnostic) - pas de lecture
+#else
     // Capacitif : coordonnees natives en pixels ecran, pas d'etalonnage
     // (§5 du document d'impact - TOUCH_X_MIN/MAX etc. sans objet ici).
     // ts.touches a ete observe jusqu'a 14 sur cette carte reelle alors
@@ -556,6 +564,7 @@ bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
     tx = (uint16_t)constrain((int)_touch.points[0].x, 0, SCREEN_W - 1);
     ty = (uint16_t)constrain((int)_touch.points[0].y, 0, SCREEN_H - 1);
     return true;
+#endif  // AQ_DIAG_DISABLE_I2C
 #else
     if (!_touch.tirqTouched() || !_touch.touched()) return false;
     TS_Point p = _touch.getPoint();
@@ -937,7 +946,7 @@ void DisplayManager::renderPlanSprite() {
     // Pousser uniquement la hauteur réellement utilisée.
     // Un pushSprite() complet ferait 90 px de haut et recouvrirait le haut
     // des boutons lorsque leur position dynamique commence avant y=118.
-    _tft.pushImage(0, PL_PLAN_Y, SCREEN_W, spriteH,
+    _tft.pushImage(0, PL_PLAN_Y, PL_PLAN_W, spriteH,
                    static_cast<uint16_t*>(_sprPlan.getPointer()));
 }
 

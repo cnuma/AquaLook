@@ -111,11 +111,11 @@ public:
     void init();
 
     // No-op documente : le panneau est deja monte dans l'orientation
-    // attendue (rotation=0 au constructeur, confirme sur materiel reel
-    // par test_screen_s3.cpp) - DisplayManager.cpp appelle
-    // setRotation(1) par habitude de l'ancien panneau ILI9341 (portrait
-    // natif, tourne en paysage), ce qui n'a pas de sens ici (NV3041A
-    // deja nativement 480x272 paysage).
+    // attendue (rotation=0 au constructeur, reconfirme sur materiel reel
+    // le 28 aout 2026 par test_rotation_s3.cpp) - DisplayManager.cpp
+    // appelle setRotation(1) par habitude de l'ancien panneau ILI9341
+    // (portrait natif, tourne en paysage), ce qui n'a pas de sens ici
+    // (NV3041A deja nativement 480x272 paysage).
     void setRotation(uint8_t r);
 
     void fillScreen(uint16_t color);
