@@ -39,6 +39,37 @@ static uint8_t weatherRainBarHeight(float rainMm, uint8_t maxHeight) {
     return h == 0 ? 1 : h;
 }
 
+#if AQUALOOK_BOARD_S3
+// Point cardinal d'ou vient le vent, meme convention que la page Web
+// (weatherWindCardinal dans data/app.js) : 8 secteurs de 45°, centres sur
+// le nord. Rendu en 2 caracteres au plus pour tenir dans une colonne.
+static const char* weatherWindCardinal(int16_t deg) {
+    if (deg < 0) return "";
+    static const char* kPoints[8] = {"N", "NE", "E", "SE", "S", "SO", "O", "NO"};
+    return kPoints[(uint8_t)(((deg + 22) % 360) / 45)];
+}
+
+// Petite fleche indiquant la direction du vent. Huit orientations
+// seulement : a cette taille (7x7 px) une rotation continue serait
+// illisible, et le cardinal affiche a cote leve toute ambiguite.
+static void drawWindArrow(TFT_eSprite& spr, int16_t cx, int16_t cy,
+                          int16_t deg, uint16_t color) {
+    if (deg < 0) return;
+    const uint8_t sector = (uint8_t)(((deg + 22) % 360) / 45);
+    // Vecteur unitaire approche par secteur (x vers la droite, y vers le bas).
+    static const int8_t dx[8] = {  0,  2,  3,  2,  0, -2, -3, -2 };
+    static const int8_t dy[8] = { -3, -2,  0,  2,  3,  2,  0, -2 };
+    const int16_t tipX = cx + dx[sector];
+    const int16_t tipY = cy + dy[sector];
+    spr.drawLine(cx - dx[sector], cy - dy[sector], tipX, tipY, color);
+    // Deux barbes formant la pointe, perpendiculaires au vecteur.
+    spr.drawLine(tipX, tipY, tipX - dx[sector] / 2 + dy[sector] / 2,
+                 tipY - dy[sector] / 2 - dx[sector] / 2, color);
+    spr.drawLine(tipX, tipY, tipX - dx[sector] / 2 - dy[sector] / 2,
+                 tipY - dy[sector] / 2 + dx[sector] / 2, color);
+}
+#endif  // AQUALOOK_BOARD_S3
+
 // ─────────────────────────────────────────────────────────────
 //  Remplit un rectangle avec un motif de hachures diagonales plutot
 //  qu'un aplat uni — plus explicite pour signaler un etat particulier
@@ -873,6 +904,90 @@ void DisplayManager::renderPlanSprite() {
     // ── Icônes et/ou températures météo J+0..J+4 ──
     // Rendu conditionnel selon showWeatherIcon / showWeatherTemp
     const CfgDisplay& disp = _config ? _config->display() : CfgDisplay{};
+#if AQUALOOK_BOARD_S3
+    // Cellule meteo enrichie : reprend ce que montre deja la page Web pour
+    // chaque jour - icone, pastilles min/max, vent (fleche + cardinal +
+    // km/h) et pluie en mm. Impossible en 42 px de large ; les 65 px du
+    // 480x272 et l'en-tete de 50 px le permettent.
+    if (disp.showWeatherIcon || disp.showWeatherTemp) {
+        for (uint8_t col = 0; col < 5; col++) {
+            const ForecastDay fd = _weather ? _weather->getForecastDay(col)
+                                            : ForecastDay{};
+            const int16_t x0 = PL_LABEL_W + col * PL_DAY_W + 1;
+            const int16_t cx = PL_LABEL_W + col * PL_DAY_W + PL_DAY_W / 2;
+
+            if (!fd.valid) {
+                _sprPlan.setTextSize(1);
+                _sprPlan.setTextDatum(MC_DATUM);
+                _sprPlan.setTextColor(Theme::BORDER, Theme::BG);
+                _sprPlan.drawString("--", cx, 26);
+                _sprPlan.setTextDatum(TL_DATUM);
+                continue;
+            }
+
+            // Jauge de pluie verticale, calee a droite de la colonne : elle
+            // occupe une bande reservee pour qu'aucun texte ne la recouvre.
+            const int16_t gaugeX = x0 + PL_DAY_W - 8;
+            const int16_t gaugeY = 12;
+            const int16_t gaugeH = 32;
+            _sprPlan.drawRect(gaugeX, gaugeY, 5, gaugeH, Theme::BORDER);
+            const uint8_t barH = weatherRainBarHeight(fd.rainMm, gaugeH - 2);
+            if (barH) {
+                _sprPlan.fillRect(gaugeX + 1, gaugeY + gaugeH - 1 - barH,
+                                  3, barH, Theme::BLUE);
+            }
+
+            // Zone de contenu : tout ce qui suit reste a gauche de la jauge.
+            const int16_t contentCx = x0 + (PL_DAY_W - 10) / 2;
+
+            if (disp.showWeatherIcon) {
+                drawWeatherIcon(_sprPlan, contentCx - 7, 12,
+                                fd.rainMm, fd.tempMax, true, /*showTemp=*/false);
+            }
+
+            if (disp.showWeatherTemp && fd.tempMax > -50.0f) {
+                const int16_t pillW = 24;
+                const int16_t pillH = 11;
+                const int16_t pillY = 26;
+                const int16_t minX  = contentCx - pillW - 1;
+                const int16_t maxX  = contentCx + 1;
+                char tmin[6], tmax[6];
+                snprintf(tmin, sizeof(tmin), "%.0f", fd.tempMin);
+                snprintf(tmax, sizeof(tmax), "%.0f", fd.tempMax);
+                _sprPlan.fillRoundRect(minX, pillY, pillW, pillH, 4,
+                                       weatherTempBg565(fd.tempMin));
+                _sprPlan.fillRoundRect(maxX, pillY, pillW, pillH, 4,
+                                       weatherTempBg565(fd.tempMax));
+                _sprPlan.setTextSize(1);
+                _sprPlan.setTextDatum(MC_DATUM);
+                _sprPlan.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMin));
+                _sprPlan.drawString(tmin, minX + pillW / 2, pillY + pillH / 2);
+                _sprPlan.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMax));
+                _sprPlan.drawString(tmax, maxX + pillW / 2, pillY + pillH / 2);
+                _sprPlan.setTextDatum(TL_DATUM);
+            }
+
+            // Derniere ligne : pluie annoncee si elle existe, sinon vent.
+            // La pluie prime — c'est elle qui conditionne l'arrosage.
+            _sprPlan.setTextSize(1);
+            _sprPlan.setTextDatum(MC_DATUM);
+            if (fd.rainMm > 0.0f) {
+                char rain[10];
+                snprintf(rain, sizeof(rain), "%.1fmm", fd.rainMm);
+                _sprPlan.setTextColor(Theme::BLUE, Theme::BG);
+                _sprPlan.drawString(rain, contentCx, 43);
+            } else if (fd.windMaxKmh > 0.0f) {
+                char wind[12];
+                snprintf(wind, sizeof(wind), "%s%.0f",
+                         weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
+                _sprPlan.setTextColor(Theme::MUTED, Theme::BG);
+                _sprPlan.drawString(wind, contentCx + 4, 43);
+                drawWindArrow(_sprPlan, x0 + 5, 43, fd.windDeg, Theme::MUTED);
+            }
+            _sprPlan.setTextDatum(TL_DATUM);
+        }
+    }
+#else
     if (disp.showWeatherIcon || disp.showWeatherTemp) {
         for (uint8_t col = 0; col < 5; col++) {
             ForecastDay fd = _weather ? _weather->getForecastDay(col) : ForecastDay{};
@@ -911,6 +1026,8 @@ void DisplayManager::renderPlanSprite() {
             }
         }
     }
+
+#endif  // AQUALOOK_BOARD_S3
 
     // ── Repères couleur des zones + barres de slots ──
     for (uint8_t z = 0; z < nbPlan; z++) {
@@ -1203,6 +1320,92 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
     }
 }
 
+// Libelle du prochain arrosage d'une zone : "auj. 06:30", "demain 07:15",
+// "jeudi 06:00", ou "--:--" si rien n'est planifie ou si l'heure est
+// inconnue.
+//
+// Extrait de renderBtnSprite() le 29 aout 2026 : la mise en page 480x272
+// en a besoin avec une disposition differente, et recopier ce calcul aurait
+// laisse les deux versions diverger en silence.
+String DisplayManager::nextSlotLabel(uint8_t zone) {
+    // Prochain slot — toujours chercher le créneau futur le plus proche.
+    // Les slots peuvent être enregistrés dans un ordre quelconque : ne jamais
+    // considérer que slots[0] est chronologiquement le premier.
+    String next = "--:--";
+    if (_schedule && _ntp && _ntp->isSynced()) {
+        ZoneSchedule zs   = _schedule->getZoneSchedule(zone);
+        const int todayEsp = todayEspIdx();
+        const uint32_t epochNow = _ntp->getEpochDay();
+        const int nowMin = _ntp->getHour() * 60 + _ntp->getMinute();
+        const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
+
+        auto findEarliestSlot = [](const DaySchedule& ds, int minExclusive,
+                                   uint8_t& outHour, uint8_t& outMinute) -> bool {
+            int bestMin = 24 * 60;
+            bool found = false;
+            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+                const TimeSlot& slot = ds.slots[s];
+                if (!slot.enabled) continue;
+                const int slotMin = slot.hour * 60 + slot.minute;
+                if (slotMin <= minExclusive || slotMin >= bestMin) continue;
+                bestMin = slotMin;
+                outHour = slot.hour;
+                outMinute = slot.minute;
+                found = true;
+            }
+            return found;
+        };
+
+        if (zs.mode == 0) {
+            // Jours fixes : aujourd'hui, ignorer les créneaux passés ; pour les
+            // jours suivants, choisir le premier créneau chronologique du jour.
+            for (int d = 0; d < NB_DAYS; d++) {
+                const int dayIdx = (todayEsp + d) % NB_DAYS;
+                uint8_t hour = 0, minute = 0;
+                const int minExclusive = (d == 0) ? nowMin : -1;
+                if (!findEarliestSlot(zs.daySlots[dayIdx], minExclusive, hour, minute)) continue;
+
+                char buf2[20];
+                if (d == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
+                else if (d == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
+                else             snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[dayIdx], hour, minute);
+                next = buf2;
+                break;
+            }
+        } else {
+            // Intervalle : déterminer le prochain jour autorisé, puis chercher le
+            // premier créneau encore futur. Si tous les créneaux du jour sont
+            // passés, avancer d'un intervalle complet.
+            const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
+            uint32_t nextDay = zs.intervalAnchorDay;
+            if (nextDay == 0) {
+                nextDay = epochNow;
+            } else {
+                while (nextDay < epochNow) nextDay += interval;
+            }
+
+            uint8_t hour = 0, minute = 0;
+            int minExclusive = (nextDay == epochNow) ? nowMin : -1;
+            if (!findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute) &&
+                nextDay == epochNow) {
+                nextDay += interval;
+                minExclusive = -1;
+            }
+
+            if (findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute)) {
+                const int32_t daysAhead = (int32_t)(nextDay - epochNow);
+                const uint8_t nextEspIdx = (uint8_t)((nextDay + 3) % 7);
+                char buf2[20];
+                if (daysAhead == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
+                else if (daysAhead == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
+                else                     snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[nextEspIdx], hour, minute);
+                next = buf2;
+            }
+        }
+    }
+    return next;
+}
+
 void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     bool    active   = _relais && _relais->getState(zone);
     uint16_t bg      = active ? Theme::ACTIVE_BG : Theme::SURFACE;
@@ -1227,6 +1430,109 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, visibleH, Theme::R_LG, bg, border, false);
     drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG, zColor);
 
+#if AQUALOOK_BOARD_S3
+    // ── Carte 228x156 (480x272) ────────────────────────────────
+    // Barre d'accent a gauche + relief leger, mise en page choisie avec
+    // l'utilisateur le 29 aout 2026. La version 154x120 de la carte
+    // historique tenait sur trois lignes serrees ; ici la hauteur permet
+    // une vraie hierarchie : identite en haut, information utile au
+    // centre, action rappelee en bas.
+    constexpr int16_t PAD    = 14;   // marge interne, apres la barre d'accent
+    const int16_t     innerW = PL_BTN_W - 2 * PAD;
+
+    _sprBtn0.setFreeFont(nullptr);
+
+    // Entete : nom de zone en gros, pastille d'etat calee a droite.
+    char fallbackName[16];
+    const char* zoneName =
+        zoneButtonName(_config, zone, fallbackName, sizeof(fallbackName));
+    _sprBtn0.setTextSize(2);
+    _sprBtn0.setTextColor(Theme::TEXT, bg);
+    _sprBtn0.setTextDatum(TL_DATUM);
+    _sprBtn0.drawString(zoneName, PAD, 10);
+
+    // La pastille porte la couleur de la zone quand elle arrose : c'est le
+    // seul element vif de la carte au repos, donc l'etat se lit d'un coup
+    // d'oeil sans avoir a dechiffrer le texte.
+    {
+        constexpr int16_t pillW = 46;
+        constexpr int16_t pillH = 20;
+        const int16_t pillX = PL_BTN_W - PAD - pillW;
+        _sprBtn0.fillRoundRect(pillX, 9, pillW, pillH, pillH / 2,
+                               active ? zColor : Theme::SURFACE2);
+        _sprBtn0.setTextSize(1);
+        _sprBtn0.setTextColor(active ? Theme::BG : Theme::MUTED,
+                              active ? zColor : Theme::SURFACE2);
+        _sprBtn0.setTextDatum(MC_DATUM);
+        _sprBtn0.drawString(active ? "ON" : "OFF", pillX + pillW / 2, 9 + pillH / 2);
+        _sprBtn0.setTextDatum(TL_DATUM);
+    }
+
+    _sprBtn0.drawFastHLine(PAD, 38, innerW, Theme::BORDER);
+
+    _sprBtn0.setTextSize(1);
+
+    if (active) {
+        const uint32_t elapsed = _schedule ? _schedule->getElapsedMs(zone) : 0;
+        const uint32_t remain  = _schedule ? _schedule->getRemainingMs(zone) : 0;
+        const uint32_t total   = elapsed + remain;
+
+        _sprBtn0.setTextColor(Theme::MUTED, bg);
+        _sprBtn0.drawString("Temps restant", PAD, 48);
+
+        char rbuf[10];
+        snprintf(rbuf, sizeof(rbuf), "%02lu:%02lu",
+                 remain / 60000UL, (remain % 60000UL) / 1000UL);
+        _sprBtn0.setTextSize(3);
+        _sprBtn0.setTextColor(Theme::TEXT, bg);
+        _sprBtn0.drawString(rbuf, PAD, 62);
+        _sprBtn0.setTextSize(1);
+
+        const uint8_t pct = (total > 0) ? (uint8_t)((elapsed * 100UL) / total) : 0;
+        const int16_t barW = (int16_t)((int32_t)innerW * pct / 100);
+        _sprBtn0.fillRoundRect(PAD, 98, innerW, 8, 4, Theme::SURFACE2);
+        if (barW > 0) _sprBtn0.fillRoundRect(PAD, 98, barW, 8, 4, zColor);
+
+        char ebuf[20];
+        snprintf(ebuf, sizeof(ebuf), "ecoule %02lu:%02lu",
+                 elapsed / 60000UL, (elapsed % 60000UL) / 1000UL);
+        _sprBtn0.setTextColor(Theme::MUTED, bg);
+        _sprBtn0.drawString(ebuf, PAD, 112);
+
+    } else {
+        const String next = nextSlotLabel(zone);
+
+        _sprBtn0.setTextColor(Theme::MUTED, bg);
+        _sprBtn0.drawString("Prochain arrosage", PAD, 48);
+
+        // Size 2 tant que le libelle tient dans la largeur utile (12 px par
+        // caractere a cette taille) ; les noms de jour longs repassent en
+        // size 1 plutot que d'etre tronques.
+        const bool wide = (next.length() * 12) <= (unsigned)innerW;
+        _sprBtn0.setTextSize(wide ? 2 : 1);
+        _sprBtn0.setTextColor(Theme::TEXT, bg);
+        _sprBtn0.drawString(next.c_str(), PAD, wide ? 64 : 68);
+        _sprBtn0.setTextSize(1);
+
+        if (_schedule) {
+            const ZoneSchedule zs = _schedule->getZoneSchedule(zone);
+            char modeBuf[28];
+            if (zs.mode == 0) snprintf(modeBuf, sizeof(modeBuf), "Jours fixes");
+            else              snprintf(modeBuf, sizeof(modeBuf),
+                                       "Intervalle / %uj", (unsigned)zs.intervalDays);
+            _sprBtn0.setTextColor(Theme::MUTED, bg);
+            _sprBtn0.drawString(modeBuf, PAD, 96);
+        }
+    }
+
+    // Rappel de l'action, cale sur le bas reel de la carte.
+    _sprBtn0.setTextColor(Theme::MUTED, bg);
+    _sprBtn0.setTextDatum(BC_DATUM);
+    _sprBtn0.drawString(active ? "Appuyer pour arreter" : "Appuyer pour arroser",
+                        PL_BTN_W / 2,
+                        (visibleH > 24) ? (int16_t)(visibleH - 12) : (int16_t)visibleH);
+    _sprBtn0.setTextDatum(TL_DATUM);
+#else
     _sprBtn0.setFreeFont(nullptr);
     _sprBtn0.setTextSize(1);
 
@@ -1291,81 +1597,7 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.setTextDatum(TL_DATUM);
 
     } else {
-        // Prochain slot — toujours chercher le créneau futur le plus proche.
-        // Les slots peuvent être enregistrés dans un ordre quelconque : ne jamais
-        // considérer que slots[0] est chronologiquement le premier.
-        String next = "--:--";
-        if (_schedule && _ntp && _ntp->isSynced()) {
-            ZoneSchedule zs   = _schedule->getZoneSchedule(zone);
-            const int todayEsp = todayEspIdx();
-            const uint32_t epochNow = _ntp->getEpochDay();
-            const int nowMin = _ntp->getHour() * 60 + _ntp->getMinute();
-            const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
-
-            auto findEarliestSlot = [](const DaySchedule& ds, int minExclusive,
-                                       uint8_t& outHour, uint8_t& outMinute) -> bool {
-                int bestMin = 24 * 60;
-                bool found = false;
-                for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                    const TimeSlot& slot = ds.slots[s];
-                    if (!slot.enabled) continue;
-                    const int slotMin = slot.hour * 60 + slot.minute;
-                    if (slotMin <= minExclusive || slotMin >= bestMin) continue;
-                    bestMin = slotMin;
-                    outHour = slot.hour;
-                    outMinute = slot.minute;
-                    found = true;
-                }
-                return found;
-            };
-
-            if (zs.mode == 0) {
-                // Jours fixes : aujourd'hui, ignorer les créneaux passés ; pour les
-                // jours suivants, choisir le premier créneau chronologique du jour.
-                for (int d = 0; d < NB_DAYS; d++) {
-                    const int dayIdx = (todayEsp + d) % NB_DAYS;
-                    uint8_t hour = 0, minute = 0;
-                    const int minExclusive = (d == 0) ? nowMin : -1;
-                    if (!findEarliestSlot(zs.daySlots[dayIdx], minExclusive, hour, minute)) continue;
-
-                    char buf2[20];
-                    if (d == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
-                    else if (d == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
-                    else             snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[dayIdx], hour, minute);
-                    next = buf2;
-                    break;
-                }
-            } else {
-                // Intervalle : déterminer le prochain jour autorisé, puis chercher le
-                // premier créneau encore futur. Si tous les créneaux du jour sont
-                // passés, avancer d'un intervalle complet.
-                const uint32_t interval = zs.intervalDays > 0 ? zs.intervalDays : 1;
-                uint32_t nextDay = zs.intervalAnchorDay;
-                if (nextDay == 0) {
-                    nextDay = epochNow;
-                } else {
-                    while (nextDay < epochNow) nextDay += interval;
-                }
-
-                uint8_t hour = 0, minute = 0;
-                int minExclusive = (nextDay == epochNow) ? nowMin : -1;
-                if (!findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute) &&
-                    nextDay == epochNow) {
-                    nextDay += interval;
-                    minExclusive = -1;
-                }
-
-                if (findEarliestSlot(zs.intervalSlots, minExclusive, hour, minute)) {
-                    const int32_t daysAhead = (int32_t)(nextDay - epochNow);
-                    const uint8_t nextEspIdx = (uint8_t)((nextDay + 3) % 7);
-                    char buf2[20];
-                    if (daysAhead == 0)      snprintf(buf2, sizeof(buf2), "auj. %02d:%02d", hour, minute);
-                    else if (daysAhead == 1) snprintf(buf2, sizeof(buf2), "demain %02d:%02d", hour, minute);
-                    else                     snprintf(buf2, sizeof(buf2), "%s %02d:%02d", JOURS[nextEspIdx], hour, minute);
-                    next = buf2;
-                }
-            }
-        }
+        const String next = nextSlotLabel(zone);
         _sprBtn0.setTextColor(Theme::MUTED, bg);
         _sprBtn0.drawString("Prochain :", 6, 20);
         // Size 2 si <= 11 chars (ex "dem 06:30"), sinon size 1 pour les noms longs
@@ -1394,6 +1626,8 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.drawString("Appuyer pour arroser", PL_BTN_W / 2, hintY);
         _sprBtn0.setTextDatum(TL_DATUM);
     }
+
+#endif  // AQUALOOK_BOARD_S3
 
     const uint16_t pushX = (zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X;
 
@@ -1724,6 +1958,16 @@ void DisplayManager::applyDisplayConfig() {
     _g2Gpad  = d.g2Gpad;
     _g4Gpad  = d.g4Gpad;
 
+#if AQUALOOK_BOARD_S3
+    // 480x272 : la cellule meteo enrichie (icone, pastilles min/max, vent,
+    // pluie et jauge) a besoin d'une hauteur fixe de 50 px, quel que soit le
+    // detail demande - les elements sont empiles a des ordonnees figees, les
+    // masquer laisse simplement du vide plutot que de comprimer la colonne.
+    // L'espace ne manque pas ici, contrairement au 320x240 ou chaque option
+    // devait etre compensee ligne par ligne.
+    _planHdrH  = (d.showWeatherIcon || d.showWeatherTemp) ? PL_HDR_H : 16;
+    _planZoneH = PL_ZONE_H;
+#else
     // Hauteur header planning — séparation nette entre jours, icônes et températures.
     // L'espace supplémentaire est pris sur la grande zone des boutons située dessous.
     // Le cas 4 zones reste strictement contenu dans PL_PLAN_H=90px.
@@ -1743,6 +1987,7 @@ void DisplayManager::applyDisplayConfig() {
         _planHdrH  = (_nbZones <= 3) ? 42 : 38;
         _planZoneH = (_nbZones <= 3) ? 15 : 13;
     }
+#endif  // AQUALOOK_BOARD_S3
 }
 
 // ═══════════════════════════════════════════════════════════════

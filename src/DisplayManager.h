@@ -287,7 +287,11 @@ private:
     //    Sous-vue FORCE : drawZoneRow scrollable + bouton bascule bas
     //
     static constexpr uint16_t PL_PLAN_Y   = 28;   // y départ sprite planning
+#if AQUALOOK_BOARD_S3
+    static constexpr uint16_t PL_PLAN_H   = 114;  // 50 + 4*16
+#else
     static constexpr uint16_t PL_PLAN_H   = 90;   // hauteur sprite planning
+#endif
     // Largeur du sprite planning. Doit imperativement etre utilisee A LA
     // FOIS a la creation du sprite et au pushImage() qui l'envoie a
     // l'ecran : le tampon est lineaire (largeur x hauteur x 2 octets,
@@ -299,15 +303,30 @@ private:
     // bandeau partait en cisaillement - traits verticaux en pointilles
     // obliques et libelles de jours haches, constate sur materiel reel.
     // 7 colonnes de PL_DAY_W + PL_LABEL_W = 316, d'ou 320.
-    static constexpr uint16_t PL_PLAN_W   = 320;  // largeur sprite planning
+    static constexpr uint16_t PL_PLAN_W   = SCREEN_W;  // largeur sprite planning
+#if AQUALOOK_BOARD_S3
+    // 480x272 : l'en-tete meteo est nettement plus haut qu'en 320x240 pour
+    // porter, par jour, ce que montre deja la page Web - icone, pastilles
+    // de temperature min et max, vent (fleche + cardinal + km/h) et pluie
+    // en mm avec sa jauge. Les 65 px de large par colonne (contre 42) le
+    // permettent enfin.
+    static constexpr uint16_t PL_HDR_H    = 50;
+    static constexpr uint16_t PL_ZONE_H   = 16;
+#else
     static constexpr uint16_t PL_HDR_H    = 28;   // ligne jours + icônes météo
     static constexpr uint16_t PL_ZONE_H   = 15;   // hauteur d'une ligne zone planning
+#endif
     static constexpr uint16_t PL_Z0_ROW_Y = 28;   // = PL_HDR_H
     static constexpr uint16_t PL_Z1_ROW_Y = 43;
     static constexpr uint16_t PL_Z2_ROW_Y = 58;
     static constexpr uint16_t PL_Z3_ROW_Y = 73;
-    static constexpr uint16_t PL_DAY_W    = 42;
     static constexpr uint16_t PL_LABEL_W  = 22;
+    // Derivee de la largeur d'ecran plutot que figee : redonne exactement
+    // 42 px sur la carte historique ((320-22)/7), et 65 px sur la
+    // JC4827W543C_I ((480-22)/7). Aucun ecart pour la carte de production,
+    // et l'espace supplementaire du 480 profite automatiquement aux
+    // colonnes meteo.
+    static constexpr uint16_t PL_DAY_W    = (SCREEN_W - PL_LABEL_W) / 7;
     // Bandeau d'en-tete : elements cales sur le bord DROIT de l'ecran.
     // Exprimes en retrait depuis SCREEN_W et non en absolu (182/296/285
     // avant le 28 aout 2026) - ces valeurs figees valaient pour une dalle
@@ -320,6 +339,21 @@ private:
     static constexpr uint16_t HDR_TIME_X   = SCREEN_W - HDR_TIME_W - 28;
     static constexpr uint16_t HDR_UPDATE_X = SCREEN_W - 35;  // pastille MAJ
     // Boutons zones (1-2 zones, sprites larges)
+#if AQUALOOK_BOARD_S3
+    // Deux cartes de 228 px separees et bordees de 8 px de marge :
+    // 8 + 228 + 8 + 228 + 8 = 480. Elles gagnent 74 px de large et 36 de
+    // haut par rapport au 320x240, ce qui laisse enfin la place a une
+    // vraie hierarchie visuelle plutot qu'a trois lignes serrees.
+    static constexpr uint16_t PL_BTN_Y    = 116;
+    static constexpr uint16_t PL_BTN_W    = 228;
+    static constexpr uint16_t PL_BTN_H    = 156;
+    static constexpr uint16_t PL_BTN_Z1_X = 8;
+    static constexpr uint16_t PL_BTN_Z2_X = 244;
+    static constexpr uint16_t PL_CBTN_W   = 117;  // 4 colonnes : 4*117 + 3*4 = 480
+    static constexpr uint16_t PL_CBTN_H   = 156;
+    static constexpr uint16_t PL_CBTN_Y   = 116;
+    static constexpr uint16_t PL_CBTN_GAP = 4;
+#else
     static constexpr uint16_t PL_BTN_Y    = 119;  // PL_PLAN_Y + PL_PLAN_H + 1
     static constexpr uint16_t PL_BTN_W    = 154;
     static constexpr uint16_t PL_BTN_H    = 120;
@@ -329,6 +363,7 @@ private:
     static constexpr uint16_t PL_CBTN_H   = 120;
     static constexpr uint16_t PL_CBTN_Y   = 119;
     static constexpr uint16_t PL_CBTN_GAP = 2;
+#endif
     // PL_PLAN_GAP : était constexpr, maintenant membre runtime _planGap (chargé depuis CfgDisplay)
 
     static constexpr uint16_t G2_HDR_H     = 25;
@@ -398,6 +433,7 @@ private:
                                uint8_t zStart, uint8_t zEnd);        // GRID4 : 7 cols, N zones
     void renderPlanSpriteCompact(uint16_t sprH, uint16_t destY,
                                   uint16_t planW = 320);              // GRID2 : 2 cols
+    String nextSlotLabel(uint8_t zone);
     void renderBtnSprite(uint8_t zone, uint16_t pushY = PL_BTN_Y);
 
     // ── Pages ADMIN ────────────────────────────
