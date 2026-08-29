@@ -244,6 +244,13 @@ bool ConfigManager::loadNvs() {
     _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
     _loaded = true;
     loadWindAlert();
+    {
+        Preferences prefs;
+        if (prefs.begin(CFG_NVS_NAMESPACE, true)) {
+            _configRevision = prefs.getUInt(CFG_NVS_REVISION_KEY, 0);
+            prefs.end();
+        }
+    }
     EventLog::log(LOG_INFO, "Config: charge depuis NVS (schema %u)", CFG_NVS_SCHEMA);
     return true;
 }
@@ -450,6 +457,20 @@ void ConfigManager::defaults() {
 //  Sauvegarde NVS binaire versionnée + CRC32
 //  LittleFS reste strictement en lecture pour le Web et le splash.
 // ─────────────────────────────────────────────────────────────
+// Incremente la version de configuration et la persiste. Appelee par save()
+// et par les ecritures qui ne passent pas par le bloc principal (seuils
+// d'alerte vent), pour qu'AUCUNE modification locale n'echappe au compteur -
+// sinon une commande distante pourrait s'appliquer sur une base perimee en
+// croyant etre a jour.
+void ConfigManager::bumpRevision() {
+    _configRevision++;
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putUInt(CFG_NVS_REVISION_KEY, _configRevision);
+        prefs.end();
+    }
+}
+
 void ConfigManager::save() {
     PersistedConfig* blob = static_cast<PersistedConfig*>(malloc(sizeof(PersistedConfig)));
     if (!blob) {
@@ -496,6 +517,7 @@ void ConfigManager::save() {
     markSaveOk();
     EventLog::log(LOG_INFO, "Config: sauvegarde NVS OK (%u octets, schema %u)",
                   (unsigned)written, CFG_NVS_SCHEMA);
+    bumpRevision();
 }
 
 // Un echec de sauvegarde doit devenir VISIBLE, pas rester au fond d'un
@@ -759,6 +781,7 @@ void ConfigManager::setWindAlert(const CfgWindAlert& w) {
         prefs.putBytes(CFG_NVS_WIND_ALERT_KEY, &_windAlert, sizeof(_windAlert));
         prefs.end();
     }
+    bumpRevision();
     EventBus::displayDirty = true;   // le bandeau meteo relira au prochain rendu
 }
 

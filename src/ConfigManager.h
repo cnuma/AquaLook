@@ -21,6 +21,13 @@
 // l'ancienne structure pour migrer. Un reglage d'affichage ne justifie pas
 // ce risque sur une installation en service.
 #define CFG_NVS_WIND_ALERT_KEY "windAlert"
+// Compteur de version de la configuration, incremente a CHAQUE ecriture
+// locale. Il sert au verrouillage optimiste des commandes distantes : une
+// commande porte la version sur laquelle le serveur s'est appuye, et le
+// module la refuse si elle ne correspond plus (voir
+// docs/architecture/CLOUD_REMOTE_CONFIG.md). Cle NVS distincte du bloc
+// principal, pour la meme raison que windAlert ci-dessus.
+#define CFG_NVS_REVISION_KEY "cfgRev"
 #define CFG_NVS_SCHEMA    2
 
 static constexpr uint8_t ZONE_NOTIFY_START = 1U << 0;
@@ -289,8 +296,14 @@ public:
     // affichee est remplacee par la rafale sur fond rouge. severeKmh :
     // au-dela, toute la cellule du jour passe en rouge.
     const CfgWindAlert& windAlert() const { return _windAlert; }
+
+    // Version courante de la configuration. Toute ecriture locale
+    // l'incremente : c'est ce qui permet a une commande distante de savoir
+    // si elle s'appuie encore sur une vue a jour.
+    uint32_t configRevision() const { return _configRevision; }
     void setWindAlert(const CfgWindAlert& w);
     void loadWindAlert();
+    void bumpRevision();
     void setWeatherVisualsEnabled(bool enabled);
 
     // Planning
@@ -330,6 +343,7 @@ private:
     CfgSystem _system;
     CfgDisplay _display;
     CfgWindAlert _windAlert;
+    uint32_t _configRevision = 0;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
     uint8_t   _zoneNotificationMasks[MAX_ZONES] = {};
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
