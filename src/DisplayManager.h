@@ -288,7 +288,7 @@ private:
     //
     static constexpr uint16_t PL_PLAN_Y   = 28;   // y départ sprite planning
 #if AQUALOOK_BOARD_S3
-    static constexpr uint16_t PL_PLAN_H   = 114;  // 50 + 4*16
+    static constexpr uint16_t PL_PLAN_H   = 126;  // 62 + 4*16
 #else
     static constexpr uint16_t PL_PLAN_H   = 90;   // hauteur sprite planning
 #endif
@@ -310,7 +310,7 @@ private:
     // de temperature min et max, vent (fleche + cardinal + km/h) et pluie
     // en mm avec sa jauge. Les 65 px de large par colonne (contre 42) le
     // permettent enfin.
-    static constexpr uint16_t PL_HDR_H    = 50;
+    static constexpr uint16_t PL_HDR_H    = 62;
     static constexpr uint16_t PL_ZONE_H   = 16;
 #else
     static constexpr uint16_t PL_HDR_H    = 28;   // ligne jours + icônes météo
@@ -344,14 +344,14 @@ private:
     // 8 + 228 + 8 + 228 + 8 = 480. Elles gagnent 74 px de large et 36 de
     // haut par rapport au 320x240, ce qui laisse enfin la place a une
     // vraie hierarchie visuelle plutot qu'a trois lignes serrees.
-    static constexpr uint16_t PL_BTN_Y    = 116;
+    static constexpr uint16_t PL_BTN_Y    = 128;
     static constexpr uint16_t PL_BTN_W    = 228;
-    static constexpr uint16_t PL_BTN_H    = 156;
+    static constexpr uint16_t PL_BTN_H    = 138;
     static constexpr uint16_t PL_BTN_Z1_X = 8;
     static constexpr uint16_t PL_BTN_Z2_X = 244;
     static constexpr uint16_t PL_CBTN_W   = 117;  // 4 colonnes : 4*117 + 3*4 = 480
-    static constexpr uint16_t PL_CBTN_H   = 156;
-    static constexpr uint16_t PL_CBTN_Y   = 116;
+    static constexpr uint16_t PL_CBTN_H   = 138;
+    static constexpr uint16_t PL_CBTN_Y   = 128;
     static constexpr uint16_t PL_CBTN_GAP = 4;
 #else
     static constexpr uint16_t PL_BTN_Y    = 119;  // PL_PLAN_Y + PL_PLAN_H + 1

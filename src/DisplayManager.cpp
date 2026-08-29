@@ -929,7 +929,7 @@ void DisplayManager::renderPlanSprite() {
             // occupe une bande reservee pour qu'aucun texte ne la recouvre.
             const int16_t gaugeX = x0 + PL_DAY_W - 8;
             const int16_t gaugeY = 12;
-            const int16_t gaugeH = 32;
+            const int16_t gaugeH = 44;
             _sprPlan.drawRect(gaugeX, gaugeY, 5, gaugeH, Theme::BORDER);
             const uint8_t barH = weatherRainBarHeight(fd.rainMm, gaugeH - 2);
             if (barH) {
@@ -967,24 +967,35 @@ void DisplayManager::renderPlanSprite() {
                 _sprPlan.setTextDatum(TL_DATUM);
             }
 
-            // Derniere ligne : pluie annoncee si elle existe, sinon vent.
-            // La pluie prime — c'est elle qui conditionne l'arrosage.
+            // Vent puis pluie, sur deux lignes distinctes. Une premiere
+            // version n'affichait la pluie QUE s'il n'y en avait pas, et le
+            // vent seulement sinon : des qu'une averse etait annoncee - donc
+            // presque tous les jours - le vent disparaissait de la colonne.
+            // La page Web montre les deux, c'est la reference demandee.
             _sprPlan.setTextSize(1);
-            _sprPlan.setTextDatum(MC_DATUM);
+            if (fd.windMaxKmh > 0.0f) {
+                char wind[12];
+                snprintf(wind, sizeof(wind), "%s %.0f",
+                         weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
+                _sprPlan.setTextColor(Theme::MUTED, Theme::BG);
+                _sprPlan.setTextDatum(ML_DATUM);
+                // Fleche collee au texte plutot qu'au bord de la colonne :
+                // detachee, elle se lisait mal et semblait sans rapport avec
+                // le cardinal affiche a cote.
+                const int16_t textW = (int16_t)strlen(wind) * 6;
+                const int16_t groupX = contentCx - (textW + 10) / 2;
+                drawWindArrow(_sprPlan, groupX + 4, 45, fd.windDeg, Theme::MUTED);
+                _sprPlan.drawString(wind, groupX + 10, 45);
+                _sprPlan.setTextDatum(TL_DATUM);
+            }
             if (fd.rainMm > 0.0f) {
                 char rain[10];
                 snprintf(rain, sizeof(rain), "%.1fmm", fd.rainMm);
                 _sprPlan.setTextColor(Theme::BLUE, Theme::BG);
-                _sprPlan.drawString(rain, contentCx, 43);
-            } else if (fd.windMaxKmh > 0.0f) {
-                char wind[12];
-                snprintf(wind, sizeof(wind), "%s%.0f",
-                         weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
-                _sprPlan.setTextColor(Theme::MUTED, Theme::BG);
-                _sprPlan.drawString(wind, contentCx + 4, 43);
-                drawWindArrow(_sprPlan, x0 + 5, 43, fd.windDeg, Theme::MUTED);
+                _sprPlan.setTextDatum(MC_DATUM);
+                _sprPlan.drawString(rain, contentCx, 55);
+                _sprPlan.setTextDatum(TL_DATUM);
             }
-            _sprPlan.setTextDatum(TL_DATUM);
         }
     }
 #else
@@ -1074,7 +1085,19 @@ void DisplayManager::renderPlanSprite() {
                 float frac = (float)(sl.hour * 60 + sl.minute) / 1440.0f;
                 int sx = x0 + (int)(frac * (PL_DAY_W - 2));
                 int sw = max(2, (int)((float)sl.duration / 1440.0f * (PL_DAY_W - 2)));
-                _sprPlan.fillRoundRect(sx, rowY + 2, sw, _planZoneH - 4, 1, slotColor);
+                // Rectangle FRANC et non arrondi tant que la barre est etroite.
+                // fillRoundRect(w=2, r=1) degenere : son remplissage central
+                // vaut fillRect(x+1, y, w-2r=0, h), soit rien du tout, et seuls
+                // les quatre arcs de coin subsistent - la barre s'affichait donc
+                // comme un crochet "[". Un arrosage de 10 min sur une colonne de
+                // 65 px fait 0,4 px, donc ramene au minimum de 2 px : le cas
+                // degenere est la regle, pas l'exception (constate sur materiel
+                // reel le 29 aout 2026).
+                if (sw <= 4) {
+                    _sprPlan.fillRect(sx, rowY + 2, sw, _planZoneH - 4, slotColor);
+                } else {
+                    _sprPlan.fillRoundRect(sx, rowY + 2, sw, _planZoneH - 4, 1, slotColor);
+                }
             }
         }
     }
@@ -1631,10 +1654,23 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
 
     const uint16_t pushX = (zone == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X;
 
+#if AQUALOOK_BOARD_S3
+    // Ne nettoyer QUE la bande situee sous la carte, pas la carte elle-meme :
+    // le sprite pousse juste apres la recouvre integralement, donc la
+    // repeindre d'abord en couleur de fond ne sert a rien et produit un
+    // eclair visible a chaque rafraichissement. Le minuteur se redessinant
+    // chaque seconde pendant un arrosage, cela donnait un scintillement
+    // permanent de la carte (constate sur materiel reel le 29 aout 2026).
+    if (SCREEN_H > pushY + visibleH) {
+        _tft.fillRect(pushX, pushY + visibleH, PL_BTN_W,
+                      SCREEN_H - pushY - visibleH, Theme::BG);
+    }
+#else
     // Nettoyer toute la colonne, puis transférer uniquement la hauteur utile.
     // Ne jamais pousser PL_BTN_H complet ici : la partie basse inutilisée du
     // sprite était la source du rectangle coloré visible sous les boutons.
     _tft.fillRect(pushX, pushY, PL_BTN_W, SCREEN_H - pushY, Theme::BG);
+#endif
     _tft.pushImage(pushX, pushY, PL_BTN_W, visibleH,
                    static_cast<uint16_t*>(_sprBtn0.getPointer()));
 }
@@ -1858,6 +1894,24 @@ void DisplayManager::updateHomeDynamic_list() {
         if (!active || remainSec == s_zoneRemainSecCache[z]) continue;
 
         // Zone active : rafraîchir uniquement le timer/progrès, jamais le fond rouge complet.
+#if AQUALOOK_BOARD_S3
+        if (_nbZones <= 2) {
+            // Redessin complet de la carte plutot qu'un rafraichissement
+            // partiel place a la main. Le bloc ci-dessous (branche carte
+            // historique) ecrit directement sur l'ecran a des ordonnees
+            // figees - btnY+16, +17, +30, +56, +64 - qui correspondent a la
+            // carte 154x120. Sur la carte 228x156 elles tombaient en plein
+            // milieu du nouveau contenu et SUPERPOSAIENT l'ancien affichage
+            // au nouveau (constate sur materiel reel le 29 aout 2026 :
+            // "~ ON" et "+00:12" par-dessus "Temps restant" et "ecoule").
+            //
+            // Passer par renderBtnSprite() garde une seule source de verite
+            // pour la mise en page de la carte. Le cout est acceptable : le
+            // sprite est envoye en un seul transfert, donc sans
+            // scintillement, contrairement a un fond redessine a l'ecran.
+            renderBtnSprite(z, btnY);
+        }
+#else
         if (_nbZones <= 2) {
             const uint16_t x = (z == 0) ? PL_BTN_Z1_X : PL_BTN_Z2_X;
             const uint16_t bg = Theme::ACTIVE_BG;
@@ -1885,7 +1939,9 @@ void DisplayManager::updateHomeDynamic_list() {
             char ebuf[16];
             snprintf(ebuf, sizeof(ebuf), "+%02lu:%02lu", elapsed / 60000UL, (elapsed % 60000UL) / 1000UL);
             _tft.drawString(ebuf, x + 6, btnY + 64);
-        } else if (_nbZones <= 4) {
+        }
+#endif  // AQUALOOK_BOARD_S3
+        if (_nbZones > 2 && _nbZones <= 4) {
             const uint16_t x = z * (PL_CBTN_W + PL_CBTN_GAP);
             const uint16_t bg = Theme::ACTIVE_BG;
             const uint32_t elapsed = _schedule ? _schedule->getElapsedMs(z) : 0;

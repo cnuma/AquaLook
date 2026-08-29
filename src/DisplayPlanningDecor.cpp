@@ -220,10 +220,20 @@ void hatchIntervalDaysList(DisplayManager& d) {
         const ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
 
-        const uint16_t rowY = 28 + d._planHdrH + z * d._planZoneH;
+        const uint16_t rowY = DisplayManager::PL_PLAN_Y + d._planHdrH + z * d._planZoneH;
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft, 22 + col * 42 + 2, rowY + 1, 38, d._planZoneH - 2);
+            // Geometrie reprise de DisplayManager plutot que recopiee : ces
+            // hachures se superposent aux colonnes tracees par
+            // renderPlanSprite(). Les valeurs figees 22/42/38 valaient pour
+            // des colonnes de 42 px et decalaient visiblement les jours non
+            // arroses des que la colonne passait a 65 px (constate sur
+            // materiel reel le 29 aout 2026).
+            hatchRect(d._tft,
+                      DisplayManager::PL_LABEL_W + col * DisplayManager::PL_DAY_W + 2,
+                      rowY + 1,
+                      DisplayManager::PL_DAY_W - 4,
+                      d._planZoneH - 2);
         }
     }
 }
@@ -342,7 +352,17 @@ void displayPlanningDecorDraw(DisplayManager& display) {
     s_lastGrid4View = display._grid4View;
 
     switch (display._homeMode) {
+#if AQUALOOK_BOARD_S3
+        // En 480x272, renderPlanSprite() dessine deja une cellule meteo
+        // complete (icone, pastilles min/max, vent, pluie et jauge) dans un
+        // en-tete de 50 px. Ce repassage-ci a ete ecrit pour l'en-tete de
+        // 28 px de la carte historique : ses ordonnees figees (planY+11,
+        // +13, +28) tombaient au mauvais endroit et superposaient une
+        // seconde meteo decalee a la premiere.
+        case HomeMode::LIST:  break;
+#else
         case HomeMode::LIST:  redrawListWeather(display);  break;
+#endif
         case HomeMode::GRID2: redrawGrid2Weather(display); break;
         case HomeMode::GRID4: break;
     }
