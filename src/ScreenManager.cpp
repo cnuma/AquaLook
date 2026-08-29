@@ -16,12 +16,33 @@ static const bool LED_BICOLOR[2][3] = {
     {false, false, true}
 };
 
+#if AQUALOOK_BOARD_S3
+// Retroeclairage de la JC4827W543C_I : AQ_S3_LCD_BL (GPIO1), pilote en PWM
+// et non en tout-ou-rien comme PIN_TFT_BL sur la carte historique.
+//
+// Le canal LEDC est deja configure par TFT_eSPI::init()
+// (lib/tft_espi_compat_s3), appele par DisplayManager::initTft() bien avant
+// ScreenManager::begin() dans setup(). On se contente donc d'ecrire le
+// rapport cyclique, sans reconfigurer : reconfigurer ici risquerait de
+// diverger silencieusement des reglages de l'adaptateur.
+//
+// Resolution 12 bits => pleine echelle a 4095. Avant le 29 aout 2026 la
+// veille ecran etait inoperante sur cette carte : ScreenManager ne pilotait
+// que PIN_TFT_BL (=21), qui est en realite une ligne de donnees du bus QSPI
+// ici et ne devait surtout pas etre touchee.
+static inline void setBacklight(bool on) {
+    ledcWrite(AQ_S3_LCD_BL_CHANNEL, on ? 4095 : 0);
+}
+#endif
+
 void ScreenManager::begin(ConfigManager* config) {
     _config = config;
 
 #if !AQUALOOK_BOARD_S3
     pinMode(PIN_TFT_BL, OUTPUT);
     digitalWrite(PIN_TFT_BL, HIGH);
+#else
+    setBacklight(true);
 #endif
     // Sur la JC4827W543C_I, PIN_TFT_BL (=21, retroeclairage de l'ancienne
     // carte) est en realite AQ_S3_LCD_D0, une ligne de donnees du bus QSPI
@@ -30,11 +51,7 @@ void ScreenManager::begin(ConfigManager* config) {
     // ce begin() - trouve le 28 aout 2026 par bissection : le splash
     // (dessine avant ScreenManager::begin()) marchait, tout dessin
     // ulterieur (HOME, sprites, meme un fillRect direct) restait invisible.
-    // Retroeclairage S3 (AQ_S3_LCD_BL sur GPIO1, PWM LEDC) non encore
-    // cable ici - fonctionne par defaut sans pilotage logiciel pour
-    // l'instant ; screenOn()/screenOff() n'eteignent donc pas encore
-    // l'ecran en veille sur cette carte (limitation connue, pas une
-    // regression : c'etait deja inoperant avant ce correctif).
+    // D'ou le pilotage par setBacklight() ci-dessus, sur la vraie broche.
 
     ledcSetup(LED_CH_RED, 5000, 8);
     ledcSetup(LED_CH_GREEN, 5000, 8);
@@ -104,7 +121,9 @@ void ScreenManager::wakeUp() {
 
 void ScreenManager::screenOn() {
     _sleeping = false;
-#if !AQUALOOK_BOARD_S3
+#if AQUALOOK_BOARD_S3
+    setBacklight(true);
+#else
     digitalWrite(PIN_TFT_BL, HIGH);
 #endif
     ledOff();
@@ -117,7 +136,9 @@ void ScreenManager::screenOff() {
     _ledTimer = 0;
     _ledPhase = 0;
 
-#if !AQUALOOK_BOARD_S3
+#if AQUALOOK_BOARD_S3
+    setBacklight(false);
+#else
     digitalWrite(PIN_TFT_BL, LOW);
 #endif
 
