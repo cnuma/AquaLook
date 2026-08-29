@@ -456,6 +456,14 @@ private:
     void renderPlanSpriteCompact(uint16_t sprH, uint16_t destY,
                                   uint16_t planW = 320);              // GRID2 : 2 cols
     String nextSlotLabel(uint8_t zone);
+#if AQUALOOK_BOARD_S3
+    // Encart meteo detaille du jour touche dans le bandeau planning.
+    // -1 = ferme. Tant qu'il est ouvert, update() suspend le rafraichissement
+    // dynamique : sans cela le rendu periodique repasserait par-dessus.
+    int8_t _wxPopupDay = -1;
+    void drawWeatherPopup(uint8_t dayCol);
+    bool handleWeatherPopupTouch(uint16_t tx, uint16_t ty);
+#endif
     void updateGrid2Geometry();
     void renderBtnSprite(uint8_t zone, uint16_t pushY = PL_BTN_Y);
 

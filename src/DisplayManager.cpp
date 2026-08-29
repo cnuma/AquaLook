@@ -44,6 +44,15 @@ static void drawSlotBar(Gfx& gfx, int16_t x, int16_t y, int16_t w, int16_t h,
     else        gfx.fillRoundRect(x, y, w, h, 1, color);
 }
 
+// Petite goutte, posee devant la valeur de pluie pour dire ce qu'elle
+// represente sans depenser la largeur d'un mot ("Pluie" mangerait la moitie
+// d'une colonne de 65 px). Le vent, lui, est deja annonce par sa fleche.
+template <typename Gfx>
+static void drawDropIcon(Gfx& gfx, int16_t x, int16_t y, uint16_t color) {
+    gfx.fillTriangle(x + 3, y, x, y + 4, x + 6, y + 4, color);
+    gfx.fillCircle(x + 3, y + 5, 3, color);
+}
+
 static uint16_t weatherTempBg565(float tempC) {
     if (tempC < 5.0f)  return 0x11A9; // bleu froid sombre
     if (tempC < 12.0f) return 0x1A4B; // bleu clair sombre
@@ -79,7 +88,11 @@ template <typename Gfx>
 static void drawWindArrow(Gfx& spr, int16_t cx, int16_t cy,
                           int16_t deg, uint16_t color) {
     if (deg < 0) return;
-    const uint8_t sector = (uint8_t)(((deg + 22) % 360) / 45);
+    // La fleche montre OU VA le vent, pas d'ou il vient : un vent de nord
+    // (deg=0, convention meteo "provenance") pointe donc vers le BAS.
+    // Choix explicite de l'utilisateur le 29 aout 2026 - le libelle cardinal
+    // affiche a cote garde, lui, la convention meteo de provenance.
+    const uint8_t sector = (uint8_t)(((deg + 180 + 22) % 360) / 45);
     // Vecteur unitaire approche par secteur (x vers la droite, y vers le bas).
     static const int8_t dx[8] = {  0,  2,  3,  2,  0, -2, -3, -2 };
     static const int8_t dy[8] = { -3, -2,  0,  2,  3,  2,  0, -2 };
@@ -92,6 +105,65 @@ static void drawWindArrow(Gfx& spr, int16_t cx, int16_t cy,
     spr.drawLine(tipX, tipY, tipX - dx[sector] / 2 - dy[sector] / 2,
                  tipY - dy[sector] / 2 + dx[sector] / 2, color);
 }
+// ── Vent et rafales dans une cellule meteo ──────────────────────────
+//
+// Seuils choisis avec l'utilisateur le 29 aout 2026, inspires de la
+// presentation de Meteo-France :
+//   >= 30 km/h de rafale : la vitesse de vent est REMPLACEE par la rafale,
+//                          sur pastille rouge - on parle alors de rafale,
+//                          pas de vent moyen ;
+//   >= 50 km/h de vent   : toute la cellule du jour passe sur fond rouge.
+//
+// Substitution et non alternance : le bandeau planning n'est redessine que
+// sur changement de donnees, une animation imposerait de forcer un redessin
+// permanent pour un gain de lisibilite discutable.
+static constexpr float WIND_GUST_ALERT_KMH   = 30.0f;
+static constexpr float WIND_SEVERE_KMH       = 50.0f;
+static constexpr uint16_t WIND_ALERT_BG      = 0xC000;  // rouge sombre
+static constexpr uint16_t WIND_SEVERE_CELL_BG = 0x5000; // rouge tres sombre
+
+static bool weatherWindIsGusty(const ForecastDay& fd) {
+    return fd.valid && fd.gustMaxKmh >= WIND_GUST_ALERT_KMH;
+}
+
+static bool weatherWindIsSevere(const ForecastDay& fd) {
+    return fd.valid && fd.windMaxKmh >= WIND_SEVERE_KMH;
+}
+
+// Dessine la ligne vent (ou rafale) centree sur cx. Retourne la largeur
+// occupee, pour que l'appelant puisse centrer d'autres elements dessus.
+template <typename Gfx>
+static void drawWindLine(Gfx& gfx, int16_t cx, int16_t y,
+                         const ForecastDay& fd, uint16_t cellBg) {
+    const bool gusty = weatherWindIsGusty(fd);
+    char buf[16];
+    // Pas de point cardinal dans le texte : la fleche porte deja la
+    // direction, et "SO 12 km/h" (10 caracteres, 60 px a cette taille)
+    // debordait sur les colonnes voisines d'une grille de 65 px. Meteo-France
+    // procede de meme - fleche puis vitesse, sans cardinal.
+    snprintf(buf, sizeof(buf), "%.0f km/h",
+             gusty ? fd.gustMaxKmh : fd.windMaxKmh);
+
+    const int16_t textW = (int16_t)strlen(buf) * 6;
+    const int16_t groupW = 10 + textW;
+    const int16_t groupX = cx - groupW / 2;
+
+    if (gusty) {
+        // Pastille rouge : la valeur affichee n'est plus le vent moyen.
+        gfx.fillRoundRect(groupX - 2, y - 5, groupW + 4, 11, 4, WIND_ALERT_BG);
+        gfx.setTextColor(Theme::TEXT, WIND_ALERT_BG);
+    } else {
+        // Fond REEL de la cellule, pas Theme::BG : le texte opaque decoupait
+        // sinon un rectangle noir dans le fond colore de la journee.
+        gfx.setTextColor(Theme::MUTED, cellBg);
+    }
+    drawWindArrow(gfx, groupX + 4, y, fd.windDeg,
+                  gusty ? Theme::TEXT : Theme::MUTED);
+    gfx.setTextDatum(ML_DATUM);
+    gfx.drawString(buf, groupX + 10, y);
+    gfx.setTextDatum(TL_DATUM);
+}
+
 #endif  // AQUALOOK_BOARD_S3
 
 // ─────────────────────────────────────────────────────────────
@@ -497,6 +569,12 @@ void DisplayManager::update() {
 
     uint32_t interval = anyActive ? _refreshActMs : _refreshNomMs;
 
+#if AQUALOOK_BOARD_S3
+    // Encart meteo ouvert : ne rien redessiner dessous, le rendu periodique
+    // repasserait par-dessus et le hacherait.
+    if (_wxPopupDay >= 0) return;
+#endif
+
     if (now - _lastUpdate >= interval) {
         _lastUpdate = now;
         switch (_screen) {
@@ -684,7 +762,137 @@ void DisplayManager::handleTouchHome(uint16_t tx, uint16_t ty) {
     }
 }
 
+#if AQUALOOK_BOARD_S3
+// ── Encart meteo detaille ───────────────────────────────────────────
+//
+// Reprend l'infobulle de la page Web : toutes ces donnees sont deja dans
+// ForecastDay mais aucune ne tenait dans une colonne de 65 px. Le bandeau
+// planning ne reagissait a rien au-dessus des lignes de zone, cette bande
+// etait donc libre pour ouvrir l'encart.
+//
+// Dessine directement sur l'ecran, sans sprite : il est pose une seule fois
+// a l'ouverture, pas rafraichi, et un tampon de 320x190 couterait 118 Ko de
+// PSRAM pour rien.
+void DisplayManager::drawWeatherPopup(uint8_t dayCol) {
+    const ForecastDay fd = _weather ? _weather->getForecastDay(dayCol)
+                                    : ForecastDay{};
+
+    constexpr int16_t W = 330;
+    constexpr int16_t H = 196;
+    const int16_t x = (SCREEN_W - W) / 2;
+    const int16_t y = (SCREEN_H - H) / 2;
+
+    drawCardBg(_tft, x, y, W, H, Theme::R_LG, Theme::SURFACE, Theme::BORDER, false);
+
+    static const char* kJours[] = {"Lundi", "Mardi", "Mercredi", "Jeudi",
+                                   "Vendredi", "Samedi", "Dimanche"};
+    const int today = todayEspIdx();
+    const int espIdx = ((today >= 0 ? today : 0) + dayCol) % 7;
+
+    _tft.setFreeFont(nullptr);
+    _tft.setTextDatum(TL_DATUM);
+    _tft.setTextSize(2);
+    _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
+    _tft.drawString(kJours[espIdx], x + 14, y + 12);
+
+    _tft.setTextSize(1);
+    if (!fd.valid) {
+        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        _tft.drawString("Aucune prevision disponible pour ce jour.", x + 14, y + 44);
+        _tft.setTextDatum(BC_DATUM);
+        _tft.drawString("Toucher pour fermer", x + W / 2, y + H - 10);
+        _tft.setTextDatum(TL_DATUM);
+        return;
+    }
+
+    if (fd.description[0]) {
+        _tft.setTextColor(Theme::TEXT2, Theme::SURFACE);
+        _tft.drawString(fd.description, x + 14, y + 34);
+    }
+    _tft.drawFastHLine(x + 14, y + 48, W - 28, Theme::BORDER);
+
+    // Deux colonnes de couples libelle/valeur : la largeur de l'encart le
+    // permet et cela evite une liste de huit lignes difficile a parcourir.
+    struct Row { const char* label; char value[16]; };
+    Row left[4];
+    Row right[4];
+
+    snprintf(left[0].value, sizeof(left[0].value), "%.0f / %.0f C",
+             fd.tempMin, fd.tempMax);
+    left[0].label = "Temperature";
+    snprintf(left[1].value, sizeof(left[1].value), "%.0f C", fd.feelsLikeMax);
+    left[1].label = "Ressenti max";
+    snprintf(left[2].value, sizeof(left[2].value), "%.1f mm", fd.rainMm);
+    left[2].label = "Pluie";
+    snprintf(left[3].value, sizeof(left[3].value), "%u %%",
+             (unsigned)fd.rainProbability);
+    left[3].label = "Prob. pluie";
+
+    snprintf(right[0].value, sizeof(right[0].value), "%s %.0f km/h",
+             weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
+    right[0].label = "Vent";
+    snprintf(right[1].value, sizeof(right[1].value), "%.0f km/h", fd.gustMaxKmh);
+    right[1].label = "Rafales";
+    snprintf(right[2].value, sizeof(right[2].value), "%u %%",
+             (unsigned)fd.humidityMax);
+    right[2].label = "Humidite";
+    snprintf(right[3].value, sizeof(right[3].value), "%u hPa",
+             (unsigned)fd.pressureAvg);
+    right[3].label = "Pression";
+
+    const int16_t colX[2] = { (int16_t)(x + 14), (int16_t)(x + W / 2 + 4) };
+    for (uint8_t i = 0; i < 4; i++) {
+        const int16_t rowY = y + 58 + i * 26;
+        for (uint8_t c = 0; c < 2; c++) {
+            const Row& r = (c == 0) ? left[i] : right[i];
+            _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+            _tft.drawString(r.label, colX[c], rowY);
+            _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
+            _tft.drawString(r.value, colX[c], rowY + 11);
+        }
+    }
+
+    // Rafales fortes : meme code couleur que la cellule du bandeau, pour que
+    // les deux se lisent de la meme facon.
+    if (weatherWindIsGusty(fd)) {
+        _tft.fillRoundRect(colX[1] - 4, y + 58 + 26 - 3, 96, 25, 5, WIND_ALERT_BG);
+        _tft.setTextColor(Theme::TEXT, WIND_ALERT_BG);
+        _tft.drawString(right[1].label, colX[1], y + 58 + 26);
+        _tft.drawString(right[1].value, colX[1], y + 58 + 26 + 11);
+    }
+
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    _tft.setTextDatum(BC_DATUM);
+    _tft.drawString("Toucher pour fermer", x + W / 2, y + H - 10);
+    _tft.setTextDatum(TL_DATUM);
+}
+
+// Retourne true si le toucher a ete consomme par l'encart (ouverture ou
+// fermeture), auquel cas l'appelant ne doit rien faire d'autre.
+bool DisplayManager::handleWeatherPopupTouch(uint16_t tx, uint16_t ty) {
+    if (_wxPopupDay >= 0) {          // ouvert : n'importe ou pour fermer
+        _wxPopupDay = -1;
+        _needsFullRedraw = true;
+        return true;
+    }
+
+    // Bande meteo du bandeau planning, au-dessus des lignes de zone.
+    if (ty < PL_PLAN_Y || ty >= PL_PLAN_Y + _planHdrH) return false;
+    if (tx < PL_LABEL_W) return false;
+
+    const uint8_t col = (uint8_t)((tx - PL_LABEL_W) / PL_DAY_W);
+    if (col >= 5) return false;      // au-dela de J+4, pas de prevision
+
+    _wxPopupDay = (int8_t)col;
+    drawWeatherPopup(col);
+    return true;
+}
+#endif  // AQUALOOK_BOARD_S3
+
 void DisplayManager::handleTouchHome_list(uint16_t tx, uint16_t ty) {
+#if AQUALOOK_BOARD_S3
+    if (handleWeatherPopupTouch(tx, ty)) return;
+#endif
     // [≡] menu → ADMIN
     if (hitTest(0, 0, 28, 28, tx, ty)) { goTo(Screen::ADMIN); return; }
 
@@ -909,9 +1117,6 @@ void DisplayManager::renderPlanSprite() {
             if (h <= 0) continue;
             // Fond neutre : seules les pastilles de température portent la couleur.
             _sprPlan.fillRect(x0, y0, PL_DAY_W - 2, h, Theme::SURFACE2);
-            _sprPlan.drawRect(x0 + PL_DAY_W - 7, y0 + 2, 4, h - 4, Theme::BLUE);
-            uint8_t barH = weatherRainBarHeight(fd.rainMm, h > 6 ? h - 6 : 0);
-            if (barH) _sprPlan.fillRect(x0 + PL_DAY_W - 6, y0 + h - 3 - barH, 2, barH, Theme::BLUE);
         }
     }
     for (int col = 0; col < 7; col++) {
@@ -950,20 +1155,22 @@ void DisplayManager::renderPlanSprite() {
                 continue;
             }
 
-            // Jauge de pluie verticale, calee a droite de la colonne : elle
-            // occupe une bande reservee pour qu'aucun texte ne la recouvre.
-            const int16_t gaugeX = x0 + PL_DAY_W - 8;
-            const int16_t gaugeY = 12;
-            const int16_t gaugeH = 44;
-            _sprPlan.drawRect(gaugeX, gaugeY, 5, gaugeH, Theme::BORDER);
-            const uint8_t barH = weatherRainBarHeight(fd.rainMm, gaugeH - 2);
-            if (barH) {
-                _sprPlan.fillRect(gaugeX + 1, gaugeY + gaugeH - 1 - barH,
-                                  3, barH, Theme::BLUE);
+            // Vent annonce violent : toute la cellule du jour passe sur fond
+            // rouge, avant que quoi que ce soit d'autre n'y soit dessine.
+            if (weatherWindIsSevere(fd)) {
+                _sprPlan.fillRect(x0, 10, PL_DAY_W - 2, _planHdrH - 11,
+                                  WIND_SEVERE_CELL_BG);
             }
 
-            // Zone de contenu : tout ce qui suit reste a gauche de la jauge.
-            const int16_t contentCx = x0 + (PL_DAY_W - 10) / 2;
+            // Jauge de pluie verticale supprimee le 29 aout 2026 : peu utile a
+            // l'usage, et la bande qu'elle reservait a droite retrecissait
+            // toutes les autres lignes. La goutte posee devant la valeur en
+            // millimetres dit deja clairement de quoi il s'agit.
+            const int16_t contentCx = x0 + (PL_DAY_W - 2) / 2;
+            // Couleur de fond effective de la cellule du jour, propagee a
+            // tous les textes opaques qui y sont poses.
+            const uint16_t cellBg = weatherWindIsSevere(fd) ? WIND_SEVERE_CELL_BG
+                                  : (weatherVisuals ? Theme::SURFACE2 : Theme::BG);
 
             if (disp.showWeatherIcon) {
                 drawWeatherIcon(_sprPlan, contentCx - 7, 12,
@@ -998,27 +1205,22 @@ void DisplayManager::renderPlanSprite() {
             // presque tous les jours - le vent disparaissait de la colonne.
             // La page Web montre les deux, c'est la reference demandee.
             _sprPlan.setTextSize(1);
+            // Chaque ligne est centree sur la zone de contenu : le
+            // pictogramme et son texte forment un groupe dont la largeur
+            // totale est mesuree avant d'etre posee.
             if (fd.windMaxKmh > 0.0f) {
-                char wind[12];
-                snprintf(wind, sizeof(wind), "%s %.0f",
-                         weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
-                _sprPlan.setTextColor(Theme::MUTED, Theme::BG);
-                _sprPlan.setTextDatum(ML_DATUM);
-                // Fleche collee au texte plutot qu'au bord de la colonne :
-                // detachee, elle se lisait mal et semblait sans rapport avec
-                // le cardinal affiche a cote.
-                const int16_t textW = (int16_t)strlen(wind) * 6;
-                const int16_t groupX = contentCx - (textW + 10) / 2;
-                drawWindArrow(_sprPlan, groupX + 4, 45, fd.windDeg, Theme::MUTED);
-                _sprPlan.drawString(wind, groupX + 10, 45);
-                _sprPlan.setTextDatum(TL_DATUM);
+                _sprPlan.setTextSize(1);
+                drawWindLine(_sprPlan, contentCx, 45, fd, cellBg);
             }
             if (fd.rainMm > 0.0f) {
                 char rain[10];
                 snprintf(rain, sizeof(rain), "%.1fmm", fd.rainMm);
-                _sprPlan.setTextColor(Theme::BLUE, Theme::BG);
-                _sprPlan.setTextDatum(MC_DATUM);
-                _sprPlan.drawString(rain, contentCx, 55);
+                const int16_t groupW = 9 + (int16_t)strlen(rain) * 6;
+                const int16_t groupX = contentCx - groupW / 2;
+                drawDropIcon(_sprPlan, groupX, 52, Theme::BLUE);
+                _sprPlan.setTextColor(Theme::BLUE, cellBg);
+                _sprPlan.setTextDatum(ML_DATUM);
+                _sprPlan.drawString(rain, groupX + 9, 55);
                 _sprPlan.setTextDatum(TL_DATUM);
             }
         }
@@ -1172,10 +1374,6 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
 
             if (visuals) {
                 _tft.fillRect(cx + 1, boxY, COL_W - 2, boxH, Theme::SURFACE2);
-                _tft.drawRect(cx + COL_W - 6, boxY + 1, 4, boxH - 2, Theme::BLUE);
-                uint8_t barH = weatherRainBarHeight(fd.rainMm, boxH > 4 ? boxH - 4 : 0);
-                if (barH)
-                    _tft.fillRect(cx + COL_W - 5, boxY + boxH - 2 - barH, 2, barH, Theme::BLUE);
 
                 const uint16_t iconX = cx + 3;
                 const uint16_t iconY = destY + 12;
@@ -1186,32 +1384,56 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 } else {
                     _tft.fillCircle(iconX + 4, iconY + 4, 3, Theme::AMBER);
                 }
-#if AQUALOOK_BOARD_S3
-                // Vent a droite de l'icone : la colonne elargie laisse la
-                // place, et cette information manquait ici alors qu'elle est
-                // presente en mode 1-4 zones comme sur la page Web.
-                if (fd.windMaxKmh > 0.0f) {
-                    char wbuf[10];
-                    snprintf(wbuf, sizeof(wbuf), "%s%.0f",
-                             weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
-                    drawWindArrow(_tft, iconX + 15, iconY + 4,
-                                  fd.windDeg, Theme::MUTED);
-                    _tft.setTextSize(1);
-                    _tft.setTextColor(Theme::MUTED, Theme::BG);
-                    _tft.setTextDatum(ML_DATUM);
-                    _tft.drawString(wbuf, iconX + 21, iconY + 4);
-                    _tft.setTextDatum(TL_DATUM);
-                }
-#endif
+
 
                 char tmin[5], tmax[5];
                 snprintf(tmin, sizeof(tmin), "%.0f", fd.tempMin);
                 snprintf(tmax, sizeof(tmax), "%.0f", fd.tempMax);
+#if AQUALOOK_BOARD_S3
+                // Meme ordre vertical que la page Web : icone, puis les deux
+                // temperatures cote a cote (mini a gauche), puis le vent,
+                // puis la pluie. Le vent etait auparavant colle a l'icone,
+                // ce qui donnait une lecture differente de celle du Web pour
+                // la meme donnee.
+                const uint16_t pillH = 11;
+                const uint16_t pillW = (COL_W - 12) / 2;
+                const uint16_t pillY = destY + 24;
+                const uint16_t minX  = cx + 2;
+                const uint16_t maxX  = minX + pillW + 2;
+                _tft.fillRoundRect(minX, pillY, pillW, pillH, 4, weatherTempBg565(fd.tempMin));
+                _tft.fillRoundRect(maxX, pillY, pillW, pillH, 4, weatherTempBg565(fd.tempMax));
+                _tft.setTextSize(1);
+                _tft.setTextDatum(MC_DATUM);
+                _tft.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMin));
+                _tft.drawString(tmin, minX + pillW / 2, pillY + pillH / 2);
+                _tft.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMax));
+                _tft.drawString(tmax, maxX + pillW / 2, pillY + pillH / 2);
+                _tft.setTextDatum(TL_DATUM);
+
+                const int16_t cellCx = cx + COL_W / 2;
+                const uint16_t cellBg = weatherWindIsSevere(fd) ? WIND_SEVERE_CELL_BG
+                                                                : Theme::SURFACE2;
+                if (fd.windMaxKmh > 0.0f) {
+                    _tft.setTextSize(1);
+                    drawWindLine(_tft, cellCx, destY + 42, fd, cellBg);
+                }
+                if (fd.rainMm > 0.0f) {
+                    char rbuf[10];
+                    snprintf(rbuf, sizeof(rbuf), "%.1fmm", fd.rainMm);
+                    const int16_t groupW = 9 + (int16_t)strlen(rbuf) * 6;
+                    const int16_t groupX = cellCx - groupW / 2;
+                    drawDropIcon(_tft, groupX, destY + 49, Theme::BLUE);
+                    _tft.setTextColor(Theme::BLUE, cellBg);
+                    _tft.setTextDatum(ML_DATUM);
+                    _tft.drawString(rbuf, groupX + 9, destY + 52);
+                    _tft.setTextDatum(TL_DATUM);
+                }
+#else
                 const uint16_t pillX = cx + 2;
                 const uint16_t pillW = COL_W - 9;
-                const uint16_t pillH = (HDR_H >= 56) ? 10 : 8;
-                const uint16_t maxY = destY + HDR_H - 26;
-                const uint16_t minY = destY + HDR_H - 15;
+                const uint16_t pillH = 8;
+                const uint16_t maxY = destY + 24;
+                const uint16_t minY = destY + 33;
                 _tft.fillRoundRect(pillX, maxY, pillW, pillH, 3, weatherTempBg565(fd.tempMax));
                 _tft.fillRoundRect(pillX, minY, pillW, pillH, 3, weatherTempBg565(fd.tempMin));
                 _tft.setTextDatum(MC_DATUM);
@@ -1219,6 +1441,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 _tft.drawString(tmax, pillX + pillW / 2, maxY + pillH / 2);
                 _tft.setTextColor(Theme::TEXT, weatherTempBg565(fd.tempMin));
                 _tft.drawString(tmin, pillX + pillW / 2, minY + pillH / 2);
+#endif
             } else {
                 const uint16_t wx = cx + 3;
                 const uint16_t wy = destY + 13;
@@ -2205,21 +2428,26 @@ void DisplayManager::updateGrid2Geometry() {
 
     const uint8_t  nb   = min(_nbZones, (uint8_t)8);
     const uint8_t  rows = (uint8_t)((nb + 1) / 2);   // toujours 2 colonnes
+    // Ecart minimal entre cartes : la valeur de configuration vaut 1 ou 2 px,
+    // suffisant en 320x240 ou les cartes etaient serrees par necessite. Ici
+    // elles paraissaient soudees les unes aux autres.
+    const uint16_t gap = max<uint16_t>(_g2Gpad, 10);
     const uint16_t availW = SCREEN_W - _g2GridX - marginX;
-    _g2Gw = (uint16_t)((availW - _g2Gpad) / 2);
+    _g2Gw = (uint16_t)((availW - gap) / 2);
 
     if (rows > 0) {
         const uint16_t availH = G2_CONTENT_H - 2 * marginY;
-        _g2Gh = (uint16_t)((availH - (rows - 1) * _g2Gpad) / rows);
+        _g2Gh = (uint16_t)((availH - (rows - 1) * gap) / rows);
         // Plafond de lisibilite : au-dela, une carte de 2 lignes de texte
         // parait vide plutot que genereuse.
         if (_g2Gh > 86) _g2Gh = 86;
 
-        const uint16_t blockH = rows * _g2Gh + (rows - 1) * _g2Gpad;
+        const uint16_t blockH = rows * _g2Gh + (rows - 1) * gap;
         _g2GridY = G2_CONTENT_Y +
                    (uint16_t)((G2_CONTENT_H > blockH)
                               ? (G2_CONTENT_H - blockH) / 2 : 0);
     }
+    _g2Gpad = gap;   // les sites de dessin et de test tactile l'utilisent
     _g2PlanHdrH = 58;
 #else
     _g2PlanW = 64;
