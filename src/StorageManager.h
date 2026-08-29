@@ -148,7 +148,24 @@ private:
     // broches avec l'affichage comme sur la carte actuelle (d'ou le SPI
     // logiciel historique la-bas). SPI materiel direct suffit ici,
     // confirme sur materiel reel par test_sd_s3.cpp (27 aout 2026).
-    SPIClass _sdSpi { HSPI };
+    //
+    // Le numero passe a SPIClass est un INDICE dans le tableau interne
+    // d'Arduino (_spi_bus_array, esp32-hal-spi.c), pas un numero de
+    // peripherique materiel. Sur ESP32-S3 ce tableau ne compte que deux
+    // entrees : indice 0 -> SPI2, indice 1 -> SPI3. Autrement dit HSPI
+    // (=1 sur S3, esp32-hal-spi.h) designe deja SPI3, le bus libre - il
+    // ne percute PAS le SPI2 cable en dur par Arduino_ESP32QSPI pour
+    // l'ecran.
+    //
+    // Un essai avec la valeur 2 (le 27 aout 2026, en croyant a tort que
+    // HSPI valait SPI2 sur cette puce) pointait hors du tableau :
+    // spiStartBus() echouait, donc SdFat::begin() aussi, et le serveur
+    // web basculait en silence sur le repli LittleFS - "Not found" sur
+    // toute l'interface, diagnostique le 29 aout 2026 par le log serie
+    // (Stockage: remontage 5/5 echoue raison=sd_begin_failed).
+    // test_sd_s3.cpp utilisait bien HSPI, ecran actif, sans conflit.
+    static constexpr uint8_t SD_SPI_HOST_S3 = HSPI;  // = 1 = SPI3 sur S3
+    SPIClass _sdSpi { SD_SPI_HOST_S3 };
 #else
     SoftSpiDriver<SD_MISO_PIN, SD_MOSI_PIN, SD_SCLK_PIN> _softSpi;
 #endif

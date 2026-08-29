@@ -560,9 +560,32 @@ bool StorageManager::mountSd(bool publishAvailability) {
 
 #if AQUALOOK_BOARD_S3
     _sdSpi.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+    // SHARED_SPI et non DEDICATED_SPI, malgre un bus reellement dedie a la
+    // SD sur cette carte. DEDICATED_SPI autorise SdFat a laisser la
+    // transaction SPI OUVERTE entre deux appels (c'est tout son interet :
+    // eviter de la reprendre a chaque operation). Or l'objet SPIClass
+    // d'Arduino protege le bus par un mutex FreeRTOS, et un mutex doit
+    // etre rendu par la tache qui l'a pris.
+    //
+    // Ici les acces SD viennent de DEUX taches : la boucle principale
+    // (StorageManager::update, lectures applicatives) et la tache AsyncTCP
+    // (SdStaticHandler::canHandle -> existsOnSd, service des fichiers
+    // /www). lockSd() serialise bien ces appels, mais ne garantit pas que
+    // la tache qui referme une transaction soit celle qui l'a ouverte :
+    // la boucle ouvrait un readStart(), AsyncTCP tombait ensuite sur
+    // syncDevice() -> readStop() -> endTransaction() et rendait un mutex
+    // detenu par une autre tache. Plantage immediat a la premiere requete
+    // HTTP (assert xQueueGenericSend queue.c:832, backtrace decodee le
+    // 29 aout 2026).
+    //
+    // La carte historique n'a jamais montre ce defaut parce que sa SD
+    // utilise SoftSpiDriver (bit-banging), dont begin/endTransaction sont
+    // des no-op sans mutex - et elle declare deja SHARED_SPI.
+    // SHARED_SPI apparie prise et liberation dans le meme appel, donc dans
+    // la meme tache. Cout : une reprise de transaction par operation.
     const SdSpiConfig sdConfig(
         SD_CS_PIN,
-        DEDICATED_SPI,
+        SHARED_SPI,
         SD_SCK_MHZ(25),
         &_sdSpi
     );
