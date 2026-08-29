@@ -1,5 +1,103 @@
 # Analyse d'impact — portage vers Guition JC4827W543C_I (ESP32-S3)
 
+> ## ✅ Phase A terminée — écran, tactile, SD, relais et interface Web validés — 29 août 2026
+>
+> Le **rendu visuel est confirmé sur matériel réel**, ce que la clôture du
+> 27 août laissait explicitement en suspens. L'écran affiche le splash puis
+> l'accueil complet (planning 7 jours lisible, cartes de zone, horloge et
+> icône signal calées à droite), les relais commutent, l'interface Web est
+> servie depuis la carte SD et entièrement fonctionnelle.
+>
+> **Sept défauts trouvés et corrigés**, chacun validé séparément sur la carte.
+> Quatre venaient de la conversion vers le matériel du S3 : le bit-banging et
+> le petit écran de la carte historique toléraient des choses que le SPI
+> matériel et les 8 Mo de PSRAM ne tolèrent pas.
+>
+> | # | Défaut | Nature |
+> |---|---|---|
+> | 1 | `ScreenManager` reprogrammait GPIO21 | `PIN_TFT_BL` (=21) est le rétroéclairage de l'ancienne carte, mais **la ligne D0 du bus QSPI** ici. `pinMode()` dessus cassait le bus en silence : splash correct (dessiné avant), puis plus rien — ni HOME, ni sprites, ni même un `fillRect` direct |
+> | 2 | Sprite planning cisaillé | créé à 320 px de large, poussé avec `SCREEN_W` : identiques sur la carte historique, 320 contre 480 ici. Chaque ligne repartait décalée de 160 px — traits verticaux en pointillés obliques, libellés de jours en fragments |
+> | 3 | `320`/`240` recopiés à la main | `SCREEN_W`/`SCREEN_H` étaient un `#define` local à `DisplayManager.cpp`, invisible des autres fichiers qui dessinent sur le même écran |
+> | 4 | Indice de bus SPI de la SD hors plage | le nombre passé à `SPIClass` est un **indice** dans `_spi_bus_array` (esp32-hal-spi.c), pas un numéro de périphérique. Sur S3 ce tableau n'a que deux entrées : 0→SPI2, 1→SPI3. `HSPI` (=1) est donc déjà le bus libre ; la valeur 2 pointait hors du tableau |
+> | 5 | Transaction SPI à cheval sur deux tâches | `DEDICATED_SPI` laisse SdFat garder la transaction ouverte entre appels, mais le mutex de `SPIClass` doit être rendu par la tâche qui l'a pris. La boucle ouvrait, AsyncTCP refermait → `assert` immédiat à la première requête HTTP |
+> | 6 | Parcours du tas et chien de garde | `heap_caps_get_largest_free_block()` et `heap_caps_get_info()` parcourent le tas bloc par bloc ; sur 8 Mo de PSRAM cela dépasse le délai du chien de garde d'**interruption**. Le module ne ralentit pas : il redémarre |
+> | 7 | `app.js` inanalysable | un `confirm()` écrit sur trois lignes avec des apostrophes simples. Le navigateur rejette **tout le fichier**, donc aucune fonction définie : conteneurs vides et menus inertes. Antérieur au portage (17 août), pas sur `main` |
+>
+> **Le défaut n° 6 a mordu trois fois**, à trois endroits, et a été corrigé
+> trois fois site par site avant qu'un point de passage unique
+> (`src/HeapMetrics.h`) ne soit créé et les onze appels du firmware routés
+> à travers lui. Le troisième cas était le pire : `fillJson()` sert
+> `/api/diagnostics`, donc un navigateur avec la page de diagnostic ouverte
+> relançait sa requête à chaque redémarrage — boucle auto-entretenue de
+> 58 cycles. **Leçon : chercher toute la classe de défaut dès la première
+> occurrence, pas le site signalé.**
+>
+> ### Correction du 27 août — le tactile n'est pas la seule cause du n° 3 de la phase A
+>
+> Le troisième bug de la phase A (watchdog d'interruption) était attribué au
+> seul `sampleMemory()`. C'était incomplet : voir le n° 6 ci-dessus.
+>
+> ### Performance — mesures réelles, pas estimations
+>
+> Instrumentation temporaire de `DisplayManager::update()` le 29 août, parce
+> que la lecture du code n'expliquait pas un coût de 55 ms par passage :
+>
+> | Poste | Avant | Après | Cause |
+> |---|---|---|---|
+> | Lecture d'état des relais | 98 ms | ~20 µs | bus I2C du XL9535 resté à 100 kHz (défaut Arduino) |
+> | Scrutation tactile | 32 à 102 ms | à confirmer | 100 ms = exactement **deux** expirations de 50 ms, et `TAMC_GT911::read()` fait deux transactions quand rien n'est touché |
+> | Redessin complet | ~60 ms | inchangé | coût réel du dessin, à revoir avec la refonte de mise en page |
+>
+> Les avertissements `Timing` attribuaient ces blocages tantôt à `display`,
+> tantôt à `schedule`, `web` ou `ntp` : le composant signalé n'était que
+> celui qui passait au moment du blocage. Les deux bus I2C étaient restés à
+> la vitesse par défaut ; le délai d'expiration du bus tactile est désormais
+> borné à 10 ms pour qu'un contrôleur muet ne puisse plus bloquer la boucle.
+>
+> ### Rétroéclairage — désormais piloté
+>
+> `screenOn()`/`screenOff()` agissent enfin sur la vraie broche
+> (`AQ_S3_LCD_BL`, GPIO1, PWM), au lieu de `PIN_TFT_BL` qu'il ne fallait
+> surtout pas toucher (défaut n° 1). La veille écran était inopérante sur
+> cette carte jusque-là.
+>
+> ### Orientation — validée par un test dédié
+>
+> `test_screen_s3.cpp` avait validé couleurs et absence d'inversion avec une
+> mire d'aplats — **un aplat ne peut pas révéler une erreur d'orientation**.
+> `test_rotation_s3.cpp` balaie les 4 rotations avec coins de couleur nommés
+> et cadre de contrôle : `rotation=0` avec les dimensions natives 480×272 est
+> confirmée. Une tentative à `rotation=1` avec dimensions inversées est
+> fausse (rendu portrait + enroulement de l'adressage) et documentée comme
+> telle dans l'adaptateur pour ne pas être réintroduite.
+>
+> ### Ressources Web
+>
+> Elles vivent sur la **carte SD**, dans `/www` — la partition LittleFS
+> (108 Kio) ne peut pas les contenir (145 Kio). `tools/sync-sd-assets.ps1`
+> les y copie avec vérification SHA-256. La route
+> `POST /api/debug/deploy-file?name=…` permet de pousser un fichier isolé
+> par HTTP, sans ressortir la carte du module.
+>
+> ### Ce qui reste ouvert
+>
+> - **Refonte de la mise en page 480×272** (§4) : le bandeau planning
+>   n'occupe que 320 px de large sur 480, et le design des boutons est à
+>   revoir. C'est la phase B, un vrai travail de conception.
+> - **LED WS2812** à câbler sur un GPIO libre : cette carte n'a pas de
+>   voyant RGB, donc `ScreenManager::updateLed()` et ses modes ne pilotent
+>   plus rien (test 7 du §8, toujours conditionnel).
+> - **Test 9 (WiFi)** : jamais fait en test isolé, mais le WiFi fonctionne
+>   en conditions réelles (association, portail captif, serveur web). Le
+>   RSSI observé oscille entre -60 et -90 dBm selon l'orientation du module.
+> - **Indicateur « plus gros bloc contigu »** : rend la taille libre totale
+>   sur cette carte, faute de variante bornée en temps. Valeur optimiste.
+> - `WiFiManager` cesse définitivement de retenter après 5 échecs, sans
+>   bascule en portail captif sur ce chemin. Comportement hérité, pas une
+>   régression, mais une fragilité : une box qui redémarre après le module
+>   le laisse hors ligne jusqu'au redémarrage suivant.
+
+
 > ## ✅ Brochage confirmé sur matériel réel — 27 août 2026
 >
 > Les tests **1, 2, 3, 4, 5, 6, 8** du §8 sont passés sur la carte reçue
