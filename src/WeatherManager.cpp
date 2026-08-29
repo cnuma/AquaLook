@@ -139,7 +139,7 @@ bool WeatherManager::startFetch() {
     // Une meteo reportee est invisible pour l'utilisateur : le prochain cycle
     // reessaiera. Un redemarrage ne l'est pas.
     const uint32_t freeBytes =
-        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::freeBytes());
     const uint32_t largestBlock =
         static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
     if (freeBytes < MIN_FREE_FOR_FETCH || largestBlock < MIN_BLOCK_FOR_FETCH) {

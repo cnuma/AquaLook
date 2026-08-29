@@ -35,14 +35,35 @@
 namespace AquaLook {
 namespace Heap {
 
+// RAM INTERNE, et non MALLOC_CAP_8BIT seul.
+//
+// Sur la carte JC4827W543C_I, MALLOC_CAP_8BIT englobe les 8 Mo de PSRAM :
+// toute mesure fondee dessus repond ~8,4 Mo en permanence et devient
+// aveugle. Constate le 29 aout 2026 - le "minimum de tas libre observe"
+// remonte valait 8 391 087 octets, soit plus que le tas lui-meme.
+//
+// Consequences reelles, pas theoriques : le seuil de memoire basse ne
+// pouvait plus se declencher, et la garde qui protege la poignee de main
+// TLS de CloudSync laissait demarrer une synchronisation sans RAM interne
+// disponible - alors que c'est precisement ce qu'elle existe pour empecher.
+//
+// La RAM interne est la vraie ressource rare : piles de taches, tampons
+// DMA et mbedTLS n'y echappent pas (CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=1).
+// La PSRAM ne les remplace pas, elle n'accueille que les gros tampons
+// applicatifs comme les sprites.
+//
+// Sur la carte historique, sans PSRAM, ce masque donne exactement les
+// memes valeurs qu'avant : aucun changement de comportement.
+constexpr uint32_t INTERNAL_CAPS = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+
 // Interrogent des compteurs tenus a jour par l'allocateur : pas de
 // parcours, cout constant. Sans danger dans n'importe quel contexte.
 inline uint32_t freeBytes() {
-    return static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    return static_cast<uint32_t>(heap_caps_get_free_size(INTERNAL_CAPS));
 }
 
 inline uint32_t minFreeBytes() {
-    return static_cast<uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT));
+    return static_cast<uint32_t>(heap_caps_get_minimum_free_size(INTERNAL_CAPS));
 }
 
 inline uint32_t freePsramBytes() {

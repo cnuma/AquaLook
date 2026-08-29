@@ -224,7 +224,7 @@ void SystemDiagnostics::sampleMemory(uint32_t nowMs) {
     _memSampleAtMs = nowMs;
 
     const uint32_t freeBytes =
-        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::freeBytes());
     // Le plus gros bloc contigu passe par AquaLook::Heap (voir
     // HeapMetrics.h) : sur ESP32-S3 la mesure exacte parcourt le tas et
     // declenche le watchdog d'interruption, l'aide rend donc une valeur

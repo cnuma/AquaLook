@@ -310,7 +310,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         payload["firmware"] = AQUALOOK_VERSION;
         payload["gitSha"] = AQUALOOK_GIT_SHA;
         payload["uptimeSec"] = millis() / 1000UL;
-        payload["heapFree"] = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        payload["heapFree"] = static_cast<uint32_t>(AquaLook::Heap::freeBytes());
         payload["heapLargestBlock"] =
             static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
@@ -615,7 +615,7 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
     if (_syncInProgress) return false;
 
     const uint32_t freeBytes =
-        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::freeBytes());
     const uint32_t largestBlock =
         static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
     if (freeBytes < MIN_FREE_FOR_SYNC || largestBlock < MIN_BLOCK_FOR_SYNC) {

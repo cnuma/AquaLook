@@ -1,4 +1,5 @@
 #include "SdStaticHandler.h"
+#include "HeapMetrics.h"
 
 #include <LittleFS.h>
 #include <memory>
@@ -147,7 +148,7 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
     // reessaiera de lui-meme, ce qui degrade le temps de chargement au lieu de
     // rendre le module muet.
     const uint32_t freeBytes =
-        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::freeBytes());
     bool refuse = false;
     uint8_t inflightNow = 0U;
 

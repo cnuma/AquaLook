@@ -1,4 +1,5 @@
 #include "WebManager.h"
+#include "HeapMetrics.h"
 #include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
@@ -76,7 +77,7 @@ void WebManager::sendEmbeddedPage(AsyncWebServerRequest* req,
                                   const char* extraHeaderValue) {
     const uint32_t nowMs = millis();
     const uint32_t freeBytes =
-        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::freeBytes());
 
     bool refuse = false;
     bool unstuck = false;
