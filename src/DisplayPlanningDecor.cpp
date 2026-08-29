@@ -241,18 +241,23 @@ void hatchIntervalDaysList(DisplayManager& d) {
 void hatchIntervalDaysGrid2(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced()) return;
 
-    const uint16_t labelW = 12;
-    const uint16_t colW = (64 - labelW) / 2;
+    // Geometrie reprise de DisplayManager, plus recopiee : ces hachures se
+    // superposent aux cellules tracees par renderPlanSpriteCompact(). Les
+    // valeurs figees 12 / (64-12)/2 / 42 / 215 valaient pour une colonne
+    // planning de 64 px ; passee a 150 px sur la carte 480x272, les hachures
+    // tombaient sur la mauvaise journee et ne remplissaient pas la cellule
+    // (constate sur materiel reel le 29 aout 2026).
+    const uint16_t labelW = DisplayManager::G2_PLAN_LABEL_W;
+    const uint16_t colW = d._g2PlanColW;
     const uint8_t nbPlan = min(d._nbZones, (uint8_t)8);
-    uint16_t zoneH = nbPlan > 0 ? (215 - 42) / nbPlan : 215 - 42;
-    if (zoneH < 4) zoneH = 4;
+    const uint16_t zoneH = d._g2PlanZoneH;
 
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
     for (uint8_t z = 0; z < nbPlan; ++z) {
         const ZoneSchedule zs = d._schedule->getZoneSchedule(z);
         if (zs.mode == 0) continue;
 
-        const uint16_t rowY = 25 + 42 + z * zoneH;
+        const uint16_t rowY = DisplayManager::G2_CONTENT_Y + d._g2PlanHdrH + z * zoneH;
         for (uint8_t col = 0; col < 2; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
             hatchRect(d._tft, labelW + col * colW + 1, rowY + 1, colW - 2, zoneH - 2);
@@ -363,7 +368,15 @@ void displayPlanningDecorDraw(DisplayManager& display) {
 #else
         case HomeMode::LIST:  redrawListWeather(display);  break;
 #endif
+#if AQUALOOK_BOARD_S3
+        // Meme raison qu'en LIST ci-dessus : ce repassage utilise sa propre
+        // geometrie figee (destY=25, planW=64, hdrH=42) et empilait un
+        // deuxieme puis un troisieme jeu de pastilles de temperature sous la
+        // meme journee.
+        case HomeMode::GRID2: break;
+#else
         case HomeMode::GRID2: redrawGrid2Weather(display); break;
+#endif
         case HomeMode::GRID4: break;
     }
 

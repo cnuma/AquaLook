@@ -366,14 +366,36 @@ private:
 #endif
     // PL_PLAN_GAP : était constexpr, maintenant membre runtime _planGap (chargé depuis CfgDisplay)
 
+#if AQUALOOK_BOARD_S3
+    static constexpr uint16_t G2_HDR_H     = 28;
+    static constexpr uint16_t G2_CONTENT_Y = 28;
+    static constexpr uint16_t G2_CONTENT_H = SCREEN_H - 28;
+#else
     static constexpr uint16_t G2_HDR_H     = 25;
     static constexpr uint16_t G2_CONTENT_Y = 25;
     static constexpr uint16_t G2_CONTENT_H = 215;
-    static constexpr uint16_t G2_PLAN_W    = 64;
-    static constexpr uint16_t G2_GRID_X    = 65;
+#endif
     static constexpr uint16_t G2_GRID_W    = 255;
-    static constexpr uint16_t G2_GW        = 126;
-    static constexpr uint16_t G2_GH        = 50;
+    // Geometrie de la grille 5-8 zones : calculee par updateGrid2Geometry()
+    // et non figee, pour occuper toute la largeur disponible et adapter la
+    // hauteur des cartes au nombre reel de zones. Elle est lue par le
+    // dessin, la mise a jour ET le test tactile : une seule source evite
+    // qu'un bouton reponde ailleurs qu'a l'endroit ou il s'affiche.
+    uint16_t _g2PlanW = 64;
+    uint16_t _g2GridX = 65;
+    uint16_t _g2Gw    = 126;
+    uint16_t _g2Gh    = 50;
+    // Geometrie interne de la colonne planning du mode 5-8 zones. Partagee
+    // avec DisplayPlanningDecor, qui superpose ses hachures aux cellules
+    // tracees par renderPlanSpriteCompact() : ce fichier recopiait
+    // labelW=12 / colW=26 / hdrH=42, valeurs calees sur une colonne de
+    // 64 px. Passee a 150 px, les hachures tombaient sur la mauvaise
+    // journee et ne remplissaient pas la cellule.
+    uint16_t _g2GridY = 25;
+    uint16_t _g2PlanHdrH  = 42;
+    uint16_t _g2PlanColW  = 26;
+    uint16_t _g2PlanZoneH = 21;
+    static constexpr uint16_t G2_PLAN_LABEL_W = 12;
     // G2_GPAD : était constexpr, maintenant membre runtime _g2Gpad
 
     static constexpr uint16_t G4_HDR_H     = 20;
@@ -434,6 +456,7 @@ private:
     void renderPlanSpriteCompact(uint16_t sprH, uint16_t destY,
                                   uint16_t planW = 320);              // GRID2 : 2 cols
     String nextSlotLabel(uint8_t zone);
+    void updateGrid2Geometry();
     void renderBtnSprite(uint8_t zone, uint16_t pushY = PL_BTN_Y);
 
     // ── Pages ADMIN ────────────────────────────

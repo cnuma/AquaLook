@@ -23,6 +23,27 @@ static uint16_t hexToRgb565(const char* hex) {
 }
 
 
+// Barre horaire d'un creneau d'arrosage, sur le planning.
+//
+// Passage OBLIGE des trois modes d'affichage (LIST, GRID2, GRID4) : une
+// barre etroite ne doit PAS etre dessinee avec fillRoundRect. Celui-ci
+// degenere des que la largeur descend a 2 px avec un rayon de 1 - son
+// remplissage central vaut fillRect(x+1, y, w-2r=0, h), soit rien, et seuls
+// les quatre arcs de coin subsistent : la barre s'affiche comme un crochet
+// "[". Or un arrosage de 10 min sur une colonne de 65 px fait 0,4 px, donc
+// ramene au minimum de 2 px : le cas degenere est la regle, pas l'exception.
+//
+// Corrige d'abord dans le seul mode LIST le 29 aout 2026 ; les deux autres
+// modes ont ressorti le meme defaut aussitot. D'ou ce point de passage
+// unique plutot qu'une troisieme correction locale.
+template <typename Gfx>
+static void drawSlotBar(Gfx& gfx, int16_t x, int16_t y, int16_t w, int16_t h,
+                        uint16_t color) {
+    if (w <= 0 || h <= 0) return;
+    if (w <= 4) gfx.fillRect(x, y, w, h, color);
+    else        gfx.fillRoundRect(x, y, w, h, 1, color);
+}
+
 static uint16_t weatherTempBg565(float tempC) {
     if (tempC < 5.0f)  return 0x11A9; // bleu froid sombre
     if (tempC < 12.0f) return 0x1A4B; // bleu clair sombre
@@ -52,7 +73,10 @@ static const char* weatherWindCardinal(int16_t deg) {
 // Petite fleche indiquant la direction du vent. Huit orientations
 // seulement : a cette taille (7x7 px) une rotation continue serait
 // illisible, et le cardinal affiche a cote leve toute ambiguite.
-static void drawWindArrow(TFT_eSprite& spr, int16_t cx, int16_t cy,
+// Gabarit : appelee tantot sur un sprite (bandeau planning 1-4 zones),
+// tantot directement sur l'ecran (colonne compacte 5-8 zones).
+template <typename Gfx>
+static void drawWindArrow(Gfx& spr, int16_t cx, int16_t cy,
                           int16_t deg, uint16_t color) {
     if (deg < 0) return;
     const uint8_t sector = (uint8_t)(((deg + 22) % 360) / 45);
@@ -346,6 +370,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     if (_nbZones <= 4) _homeMode = HomeMode::LIST;
     else               _homeMode = HomeMode::GRID2;
 
+    updateGrid2Geometry();
     resetZoneRefreshCache();
     createSprites();
     _screenMgr.begin(_config);
@@ -1093,11 +1118,7 @@ void DisplayManager::renderPlanSprite() {
                 // 65 px fait 0,4 px, donc ramene au minimum de 2 px : le cas
                 // degenere est la regle, pas l'exception (constate sur materiel
                 // reel le 29 aout 2026).
-                if (sw <= 4) {
-                    _sprPlan.fillRect(sx, rowY + 2, sw, _planZoneH - 4, slotColor);
-                } else {
-                    _sprPlan.fillRoundRect(sx, rowY + 2, sw, _planZoneH - 4, 1, slotColor);
-                }
+                drawSlotBar(_sprPlan, sx, rowY + 2, sw, _planZoneH - 4, slotColor);
             }
         }
     }
@@ -1120,14 +1141,15 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
 
     // Mode 5-8 zones : densifier les huit lignes de planning afin de
     // réserver une vraie zone météo en haut (jour, icône, mini, maxi, pluie).
-    const uint16_t HDR_H       = 42;
-    const uint16_t LABEL_W_G2  = 12;
-    uint16_t zoneAreaH         = sprH - HDR_H;
-    uint8_t  nbPlan            = min(_nbZones, (uint8_t)8);
-    uint16_t zoneH             = (nbPlan > 0) ? (zoneAreaH / nbPlan) : zoneAreaH;
-    if (zoneH < 4) zoneH = 4;
-
-    const uint16_t COL_W = (planW - LABEL_W_G2) / 2;
+    // Geometrie partagee avec DisplayPlanningDecor (voir DisplayManager.h) :
+    // les hachures des jours non arroses doivent se superposer exactement
+    // aux cellules tracees ici.
+    const uint16_t HDR_H      = _g2PlanHdrH;
+    const uint16_t LABEL_W_G2 = G2_PLAN_LABEL_W;
+    const uint16_t zoneH      = _g2PlanZoneH;
+    const uint8_t  nbPlan     = min(_nbZones, (uint8_t)8);
+    const uint16_t COL_W      = _g2PlanColW;
+    (void)planW;
     int todayIdx = todayEspIdx();
     int baseIdx = (todayIdx >= 0) ? todayIdx : 0;
     const char* jours[] = {"Lu","Ma","Me","Je","Ve","Sa","Di"};
@@ -1164,15 +1186,32 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 } else {
                     _tft.fillCircle(iconX + 4, iconY + 4, 3, Theme::AMBER);
                 }
+#if AQUALOOK_BOARD_S3
+                // Vent a droite de l'icone : la colonne elargie laisse la
+                // place, et cette information manquait ici alors qu'elle est
+                // presente en mode 1-4 zones comme sur la page Web.
+                if (fd.windMaxKmh > 0.0f) {
+                    char wbuf[10];
+                    snprintf(wbuf, sizeof(wbuf), "%s%.0f",
+                             weatherWindCardinal(fd.windDeg), fd.windMaxKmh);
+                    drawWindArrow(_tft, iconX + 15, iconY + 4,
+                                  fd.windDeg, Theme::MUTED);
+                    _tft.setTextSize(1);
+                    _tft.setTextColor(Theme::MUTED, Theme::BG);
+                    _tft.setTextDatum(ML_DATUM);
+                    _tft.drawString(wbuf, iconX + 21, iconY + 4);
+                    _tft.setTextDatum(TL_DATUM);
+                }
+#endif
 
                 char tmin[5], tmax[5];
                 snprintf(tmin, sizeof(tmin), "%.0f", fd.tempMin);
                 snprintf(tmax, sizeof(tmax), "%.0f", fd.tempMax);
                 const uint16_t pillX = cx + 2;
                 const uint16_t pillW = COL_W - 9;
-                const uint16_t pillH = 8;
-                const uint16_t maxY = destY + 24;
-                const uint16_t minY = destY + 33;
+                const uint16_t pillH = (HDR_H >= 56) ? 10 : 8;
+                const uint16_t maxY = destY + HDR_H - 26;
+                const uint16_t minY = destY + HDR_H - 15;
                 _tft.fillRoundRect(pillX, maxY, pillW, pillH, 3, weatherTempBg565(fd.tempMax));
                 _tft.fillRoundRect(pillX, minY, pillW, pillH, 3, weatherTempBg565(fd.tempMin));
                 _tft.setTextDatum(MC_DATUM);
@@ -1243,7 +1282,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 float frac = (float)(slot.hour * 60 + slot.minute) / 1440.0f;
                 int sx = cx + 1 + (int)(frac * (COL_W - 2));
                 int sw = max(2, (int)((float)slot.duration / 1440.0f * (COL_W - 2)));
-                _tft.fillRoundRect(sx, rowY + 2, sw, max(2, (int)zoneH - 4), 1, slotColor);
+                drawSlotBar(_tft, sx, rowY + 2, sw, max(2, (int)zoneH - 4), slotColor);
             }
         }
     }
@@ -1337,7 +1376,7 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                 int sx = x0 + (int)(frac * (DAY_W - 2));
                 int sw = max(2, (int)((float)sl.duration / 1440.0f * (DAY_W - 2)));
                 uint16_t barH = max((uint16_t)2, (uint16_t)(zoneH - 4));
-                _tft.fillRoundRect(sx, rowY + 2, sw, barH, 1, slotColor);
+                drawSlotBar(_tft, sx, rowY + 2, sw, barH, slotColor);
             }
         }
     }
@@ -2013,6 +2052,7 @@ void DisplayManager::applyDisplayConfig() {
     _planGap = d.planGap;
     _g2Gpad  = d.g2Gpad;
     _g4Gpad  = d.g4Gpad;
+    updateGrid2Geometry();   // depend de _g2Gpad, recalculer apres chargement
 
 #if AQUALOOK_BOARD_S3
     // 480x272 : la cellule meteo enrichie (icone, pastilles min/max, vent,
@@ -2064,9 +2104,65 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     _tft.setFreeFont(nullptr);
     _tft.setTextSize(1);
 
-    // Nom de zone dans le bouton ; aucune bulle ici.
     char fallbackName[16];
     const char* zoneName = zoneButtonName(_config, zone, fallbackName, sizeof(fallbackName));
+
+#if AQUALOOK_BOARD_S3
+    // Meme vocabulaire visuel que les cartes 1-4 zones validees le 29 aout
+    // 2026 : nom a gauche, pastille d'etat a droite portant la couleur de la
+    // zone quand elle arrose. Les cartes de la grille font ici 161 px de
+    // large (contre 126) et de 60 a 86 px de haut : le contenu d'origine,
+    // reduit au seul mot "Appuyer", y paraissait vide.
+    {
+        constexpr int16_t pad = 10;
+        _tft.setTextColor(Theme::TEXT, bg);
+        _tft.setTextDatum(TL_DATUM);
+        _tft.drawString(zoneName, x + pad, y + 6);
+
+        const int16_t pillW = 34;
+        const int16_t pillH = 14;
+        const int16_t pillX = x + w - pad - pillW;
+        _tft.fillRoundRect(pillX, y + 5, pillW, pillH, pillH / 2,
+                           active ? zColor : Theme::SURFACE2);
+        _tft.setTextColor(active ? Theme::BG : Theme::MUTED,
+                          active ? zColor : Theme::SURFACE2);
+        _tft.setTextDatum(MC_DATUM);
+        _tft.drawString(active ? "ON" : "OFF", pillX + pillW / 2, y + 5 + pillH / 2);
+
+        // Corps 2 seulement quand la hauteur le permet : a 60 px (8 zones)
+        // il deborderait sur la pastille.
+        const bool roomy = (h >= 70);
+        _tft.setTextDatum(TL_DATUM);
+        if (active && _schedule) {
+            const uint32_t rem = _schedule->getRemainingMs(zone);
+            char buf[12];
+            snprintf(buf, sizeof(buf), "%02lu:%02lu",
+                     rem / 60000UL, (rem % 60000UL) / 1000UL);
+            _tft.setTextSize(roomy ? 2 : 1);
+            _tft.setTextColor(Theme::TEXT, bg);
+            _tft.drawString(buf, x + pad, y + 26);
+            _tft.setTextSize(1);
+
+            const uint32_t elapsed = _schedule->getElapsedMs(zone);
+            const uint32_t total   = elapsed + rem;
+            const uint8_t  pct     = total ? (uint8_t)((elapsed * 100UL) / total) : 0;
+            const int16_t  barW    = (int16_t)((int32_t)(w - 2 * pad) * pct / 100);
+            _tft.fillRoundRect(x + pad, y + h - 14, w - 2 * pad, 6, 3, Theme::SURFACE2);
+            if (barW > 0) _tft.fillRoundRect(x + pad, y + h - 14, barW, 6, 3, zColor);
+        } else {
+            _tft.setTextColor(Theme::MUTED, bg);
+            _tft.drawString("Prochain", x + pad, y + 26);
+            _tft.setTextColor(Theme::TEXT, bg);
+            _tft.setTextSize(roomy ? 2 : 1);
+            _tft.drawString(nextSlotLabel(zone).c_str(), x + pad, y + 38);
+            _tft.setTextSize(1);
+        }
+        _tft.setTextDatum(TL_DATUM);
+        return;
+    }
+#endif
+
+    // Nom de zone dans le bouton ; aucune bulle ici.
     _tft.setTextColor(Theme::TEXT, bg);
     _tft.setTextDatum(TC_DATUM);
     _tft.drawString(zoneName, x + w / 2, y + 3);
@@ -2088,6 +2184,58 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     _tft.setTextDatum(TL_DATUM);
 }
 
+// Geometrie de la grille 5-8 zones. Appelee au demarrage et a chaque
+// rechargement de configuration : la hauteur des cartes depend du nombre de
+// zones, la largeur de celle de l'ecran.
+//
+// Sur la carte historique les valeurs restent celles d'origine (64/65/126/50,
+// calees sur 320x240). Sur la JC4827W543C_I la grille etait simplement
+// recopiee telle quelle et laissait 160 px de large et 32 px de haut
+// inutilises - c'est ce que l'utilisateur a releve le 29 aout 2026.
+void DisplayManager::updateGrid2Geometry() {
+#if AQUALOOK_BOARD_S3
+    _g2PlanW = 150;                 // colonne planning, elargie
+    // Marges autour du bloc de boutons : sans elles les cartes collaient au
+    // separateur du planning a gauche et au bord de la dalle a droite et en
+    // bas. Le bloc est ensuite centre verticalement dans la place restante.
+    constexpr uint16_t marginX = 10;
+    constexpr uint16_t marginY = 8;
+
+    _g2GridX = _g2PlanW + 2 + marginX;
+
+    const uint8_t  nb   = min(_nbZones, (uint8_t)8);
+    const uint8_t  rows = (uint8_t)((nb + 1) / 2);   // toujours 2 colonnes
+    const uint16_t availW = SCREEN_W - _g2GridX - marginX;
+    _g2Gw = (uint16_t)((availW - _g2Gpad) / 2);
+
+    if (rows > 0) {
+        const uint16_t availH = G2_CONTENT_H - 2 * marginY;
+        _g2Gh = (uint16_t)((availH - (rows - 1) * _g2Gpad) / rows);
+        // Plafond de lisibilite : au-dela, une carte de 2 lignes de texte
+        // parait vide plutot que genereuse.
+        if (_g2Gh > 86) _g2Gh = 86;
+
+        const uint16_t blockH = rows * _g2Gh + (rows - 1) * _g2Gpad;
+        _g2GridY = G2_CONTENT_Y +
+                   (uint16_t)((G2_CONTENT_H > blockH)
+                              ? (G2_CONTENT_H - blockH) / 2 : 0);
+    }
+    _g2PlanHdrH = 58;
+#else
+    _g2PlanW = 64;
+    _g2GridX = 65;
+    _g2Gw    = 126;
+    _g2Gh    = 50;
+    _g2GridY = G2_CONTENT_Y;
+    _g2PlanHdrH = 42;
+#endif
+    _g2PlanColW = (uint16_t)((_g2PlanW - G2_PLAN_LABEL_W) / 2);
+    const uint8_t nbPlan = min(_nbZones, (uint8_t)8);
+    _g2PlanZoneH = nbPlan ? (uint16_t)((G2_CONTENT_H - _g2PlanHdrH) / nbPlan)
+                          : (uint16_t)(G2_CONTENT_H - _g2PlanHdrH);
+    if (_g2PlanZoneH < 4) _g2PlanZoneH = 4;
+}
+
 void DisplayManager::drawHomeFull_grid2() {
     _tft.fillScreen(Theme::BG);
 
@@ -2103,19 +2251,22 @@ void DisplayManager::drawHomeFull_grid2() {
     renderSignalSprite();
 
     // ── Séparateur vertical planning | grille ──
-    _tft.drawFastVLine(G2_GRID_X - 1, G2_CONTENT_Y, G2_CONTENT_H, Theme::BORDER);
+    // Separateur cale juste apres la colonne planning, pas contre les cartes :
+    // _g2GridX inclut desormais la marge laterale du bloc de boutons, l'y
+    // poser collait le trait aux bordures des cartes.
+    _tft.drawFastVLine(_g2PlanW + 2, G2_CONTENT_Y, G2_CONTENT_H, Theme::BORDER);
 
     // ── Colonne gauche : planning aujourd'hui (toutes les zones) ──
-    renderPlanSpriteCompact(G2_CONTENT_H, G2_CONTENT_Y, G2_PLAN_W);
+    renderPlanSpriteCompact(G2_CONTENT_H, G2_CONTENT_Y, _g2PlanW);
 
     // ── Colonne droite : grille marche forcée ──
     uint8_t maxZ = min(_nbZones, (uint8_t)8);
     for (uint8_t z = 0; z < maxZ; z++) {
         uint8_t  col = z % 2;
         uint8_t  row = z / 2;
-        uint16_t bx  = G2_GRID_X + col * (G2_GW + _g2Gpad);
-        uint16_t by  = G2_CONTENT_Y + row * (G2_GH + _g2Gpad);
-        drawZoneBtn(z, bx, by, G2_GW, G2_GH);
+        uint16_t bx  = _g2GridX + col * (_g2Gw + _g2Gpad);
+        uint16_t by  = _g2GridY + row * (_g2Gh + _g2Gpad);
+        drawZoneBtn(z, bx, by, _g2Gw, _g2Gh);
     }
 }
 
@@ -2129,38 +2280,48 @@ void DisplayManager::updateHomeDynamic_grid2() {
         _hc.rainMm    = rainMm;
         _hc.ntpSynced = ntpSync;
         _hc.todayIdx  = todayNow;
-        renderPlanSpriteCompact(G2_CONTENT_H, G2_CONTENT_Y, G2_PLAN_W);
+        renderPlanSpriteCompact(G2_CONTENT_H, G2_CONTENT_Y, _g2PlanW);
     }
 
     const uint8_t maxZ = min(_nbZones, (uint8_t)8);
     for (uint8_t z = 0; z < maxZ; ++z) {
         const uint8_t col = z % 2;
         const uint8_t row = z / 2;
-        const uint16_t x = G2_GRID_X + col * (G2_GW + _g2Gpad);
-        const uint16_t y = G2_CONTENT_Y + row * (G2_GH + _g2Gpad);
+        const uint16_t x = _g2GridX + col * (_g2Gw + _g2Gpad);
+        const uint16_t y = _g2GridY + row * (_g2Gh + _g2Gpad);
         const bool active = _relais && _relais->getState(z);
         const uint32_t remainMs = (active && _schedule) ? _schedule->getRemainingMs(z) : 0;
         const uint32_t remainSec = active ? (remainMs / 1000UL) : UINT32_MAX;
 
         if (s_zoneActiveCache[z] != (active ? 1 : 0)) {
-            drawZoneBtn(z, x, y, G2_GW, G2_GH);
+            drawZoneBtn(z, x, y, _g2Gw, _g2Gh);
             s_zoneActiveCache[z] = active ? 1 : 0;
             s_zoneRemainSecCache[z] = remainSec;
             continue;
         }
         if (!active || remainSec == s_zoneRemainSecCache[z]) continue;
 
+#if AQUALOOK_BOARD_S3
+        // Redessin complet de la carte, comme en mode 1-4 zones. Le
+        // rafraichissement partiel ci-dessous efface une bande a y+15 et
+        // reecrit l'heure centree a y+16 : ces positions visent la carte
+        // 126x50 d'origine et tombent en plein sur le nom de zone et la
+        // pastille d'etat de la carte 161xN, qu'elles recouvrent a moitie
+        // (constate sur materiel reel le 29 aout 2026, zone 7).
+        drawZoneBtn(z, x, y, _g2Gw, _g2Gh);
+#else
         // Mise à jour locale du timer : pas de ré-écriture du fond rouge ni des bordures.
-        _tft.fillRect(x + 10, y + 15, G2_GW - 20, 22, Theme::ACTIVE_BG);
+        _tft.fillRect(x + 10, y + 15, _g2Gw - 20, 22, Theme::ACTIVE_BG);
         _tft.setFreeFont(nullptr);
         _tft.setTextDatum(MC_DATUM);
         _tft.setTextSize(2);
         _tft.setTextColor(Theme::TEXT, Theme::ACTIVE_BG);
         char buf[12];
         snprintf(buf, sizeof(buf), "%02lu:%02lu", remainMs / 60000UL, (remainMs % 60000UL) / 1000UL);
-        _tft.drawString(buf, x + G2_GW / 2, y + 16);
+        _tft.drawString(buf, x + _g2Gw / 2, y + 16);
         _tft.setTextSize(1);
         _tft.setTextDatum(TL_DATUM);
+#endif
         s_zoneRemainSecCache[z] = remainSec;
     }
 }
@@ -2170,14 +2331,14 @@ void DisplayManager::handleTouchHome_grid2(uint16_t tx, uint16_t ty) {
     if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) { goTo(Screen::ADMIN); return; }
 
     // Colonne droite uniquement : grille → toggle arrosage direct
-    if (tx >= G2_GRID_X) {
+    if (tx >= _g2GridX) {
         uint8_t maxZ = min(_nbZones, (uint8_t)8);
         for (uint8_t z = 0; z < maxZ; z++) {
             uint8_t  col = z % 2;
             uint8_t  row = z / 2;
-            uint16_t bx  = G2_GRID_X + col * (G2_GW + _g2Gpad);
-            uint16_t by  = G2_CONTENT_Y + row * (G2_GH + _g2Gpad);
-            if (hitTest(bx, by, G2_GW, G2_GH, tx, ty)) {
+            uint16_t bx  = _g2GridX + col * (_g2Gw + _g2Gpad);
+            uint16_t by  = _g2GridY + row * (_g2Gh + _g2Gpad);
+            if (hitTest(bx, by, _g2Gw, _g2Gh, tx, ty)) {
                 if (_relais && _relais->getState(z)) {
                     if (_schedule) _schedule->stopManualWatering(z);
                 } else {
