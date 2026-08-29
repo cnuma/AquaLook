@@ -462,8 +462,24 @@ void ConfigManager::defaults() {
 // d'alerte vent), pour qu'AUCUNE modification locale n'echappe au compteur -
 // sinon une commande distante pourrait s'appliquer sur une base perimee en
 // croyant etre a jour.
+// Increment EN MEMOIRE seulement : la persistance suit dans save().
+// Ecrire en NVS a chaque appel annulerait le benefice de deferSave(), qui
+// regroupe une rafale de modifications en une seule ecriture.
+//
+// Le drapeau garantit UN increment par lot logique : deferSave() incremente
+// tout de suite (pour que la version soit juste immediatement), save()
+// n'incremente que s'il n'a pas ete precede d'un deferSave - sinon un
+// enregistrement differe compterait deux fois, et un appel direct a save()
+// comme setDisplay() ne compterait pas du tout.
 void ConfigManager::bumpRevision() {
+    if (_revisionBumped) return;
     _configRevision++;
+    _revisionBumped = true;
+}
+
+// Persiste la version courante. Appelee depuis save(), ou l'ecriture NVS a
+// deja lieu de toute facon.
+void ConfigManager::persistRevision() {
     Preferences prefs;
     if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
         prefs.putUInt(CFG_NVS_REVISION_KEY, _configRevision);
@@ -517,7 +533,9 @@ void ConfigManager::save() {
     markSaveOk();
     EventLog::log(LOG_INFO, "Config: sauvegarde NVS OK (%u octets, schema %u)",
                   (unsigned)written, CFG_NVS_SCHEMA);
-    bumpRevision();
+    bumpRevision();        // sans effet si deferSave l'a deja fait
+    persistRevision();
+    _revisionBumped = false;   // lot suivant
 }
 
 // Un echec de sauvegarde doit devenir VISIBLE, pas rester au fond d'un
@@ -537,6 +555,16 @@ void ConfigManager::markSaveOk() {
 }
 
 void ConfigManager::deferSave() {
+    // La version suit le changement LOGIQUE, pas le moment de l'ecriture.
+    //
+    // Elle etait auparavant incrementee dans save(), donc jusqu'a 800 ms
+    // plus tard. Consequence mesuree le 29 aout 2026 : l'accuse d'une
+    // commande distante annoncait la version d'AVANT son application. Plus
+    // grave, une modification locale suivie d'une commande dans cette
+    // fenetre aurait vu une version non encore incrementee - et la commande
+    // se serait appliquee sur une base perimee en se croyant a jour, ce que
+    // le verrouillage optimiste existe precisement pour empecher.
+    bumpRevision();
     _saveDirty = true;
     _saveDueMs = millis() + SAVE_DEBOUNCE_MS;
 }
@@ -782,6 +810,8 @@ void ConfigManager::setWindAlert(const CfgWindAlert& w) {
         prefs.end();
     }
     bumpRevision();
+    persistRevision();
+    _revisionBumped = false;
     EventBus::displayDirty = true;   // le bandeau meteo relira au prochain rendu
 }
 

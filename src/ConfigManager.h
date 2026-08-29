@@ -304,6 +304,7 @@ public:
     void setWindAlert(const CfgWindAlert& w);
     void loadWindAlert();
     void bumpRevision();
+    void persistRevision();
     void setWeatherVisualsEnabled(bool enabled);
 
     // Planning
@@ -344,6 +345,7 @@ private:
     CfgDisplay _display;
     CfgWindAlert _windAlert;
     uint32_t _configRevision = 0;
+    bool     _revisionBumped = false;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
     uint8_t   _zoneNotificationMasks[MAX_ZONES] = {};
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};

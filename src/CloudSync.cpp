@@ -10,6 +10,8 @@
 
 #include "BootLoopGuard.h"
 #include "ConfigManager.h"
+#include "ScheduleManager.h"
+#include "EventBus.h"
 #include "EventLog.h"
 #include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
@@ -781,18 +783,94 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
         if (applied) _configTarget->setWindAlert(w);
     }
 
+    // Duree maximale autorisee : un creneau distant ne doit jamais pouvoir
+    // depasser la limite que l'utilisateur a fixee localement. Sans ce
+    // plafond, une commande pourrait programmer un arrosage de 24 h.
+    const uint16_t maxDurationMin = _configTarget->system().maxWateringMin;
+
     JsonArrayConst zones = cmd["zones"];
     if (!zones.isNull()) {
         for (JsonObjectConst z : zones) {
             if (!z["i"].is<uint8_t>()) continue;
             const uint8_t idx = z["i"].as<uint8_t>();
             if (idx >= MAX_ZONES) continue;
+
             if (z["name"].is<const char*>()) {
                 _configTarget->setZoneName(idx, z["name"].as<const char*>());
                 applied++;
             }
+            if (z["mode"].is<uint8_t>()) {
+                const uint8_t mode = z["mode"].as<uint8_t>();
+                if (mode <= SCHEDULE_MODE_INTERVAL) {
+                    _configTarget->setZoneMode(idx, mode);
+                    if (_scheduleTarget) _scheduleTarget->setMode(idx, mode);
+                    applied++;
+                }
+            }
+            if (z["intervalDays"].is<uint8_t>()) {
+                const uint8_t days = z["intervalDays"].as<uint8_t>();
+                if (days >= 1U && days <= 30U) {
+                    _configTarget->setZoneIntervalDays(idx, days);
+                    if (_scheduleTarget) _scheduleTarget->setIntervalDays(idx, days);
+                    applied++;
+                }
+            }
+            JsonVariantConst rain = z["rain"];
+            if (rain.is<JsonObjectConst>() &&
+                rain["threshMm"].is<float>() && rain["hours"].is<uint8_t>()) {
+                const float thresh = rain["threshMm"].as<float>();
+                const uint8_t hours = rain["hours"].as<uint8_t>();
+                if (thresh >= 0.0f && thresh <= 100.0f && hours <= MAX_FORECAST_HOURS) {
+                    _configTarget->setZoneRain(idx, thresh, hours);
+                    if (_scheduleTarget) _scheduleTarget->setRainConfig(idx, thresh, hours);
+                    applied++;
+                }
+            }
+
+            // ── Creneaux par jour fixe ────────────────────────────────
+            JsonArrayConst daySlots = z["daySlots"];
+            if (!daySlots.isNull()) {
+                for (JsonObjectConst sl : daySlots) {
+                    const uint8_t day  = sl["day"]  | 255U;
+                    const uint8_t slot = sl["slot"] | 255U;
+                    const uint8_t h    = sl["h"]    | 255U;
+                    const uint8_t m    = sl["m"]    | 255U;
+                    const uint16_t dur = sl["dur"]  | 0U;
+                    const bool on      = sl["on"]   | false;
+                    if (day >= NB_DAYS || slot >= MAX_SLOTS) continue;
+                    if (h >= 24U || m >= 60U) continue;
+                    if (dur == 0U || dur > maxDurationMin) continue;
+                    _configTarget->setZoneDaySlot(idx, day, slot, h, m, dur, on);
+                    if (_scheduleTarget) {
+                        _scheduleTarget->setDaySlot(idx, day, slot, h, m, dur, on);
+                    }
+                    applied++;
+                }
+            }
+
+            // ── Creneaux du mode intervalle ───────────────────────────
+            JsonArrayConst intSlots = z["intervalSlots"];
+            if (!intSlots.isNull()) {
+                for (JsonObjectConst sl : intSlots) {
+                    const uint8_t slot = sl["slot"] | 255U;
+                    const uint8_t h    = sl["h"]    | 255U;
+                    const uint8_t m    = sl["m"]    | 255U;
+                    const uint16_t dur = sl["dur"]  | 0U;
+                    const bool on      = sl["on"]   | false;
+                    if (slot >= MAX_SLOTS) continue;
+                    if (h >= 24U || m >= 60U) continue;
+                    if (dur == 0U || dur > maxDurationMin) continue;
+                    _configTarget->setZoneIntervalSlot(idx, slot, h, m, dur, on);
+                    if (_scheduleTarget) {
+                        _scheduleTarget->setIntervalSlot(idx, slot, h, m, dur, on);
+                    }
+                    applied++;
+                }
+            }
         }
     }
+
+    if (applied > 0U) EventBus::displayDirty = true;
 
     if (applied == 0U) {
         copyText(_pendingAck.detail, sizeof(_pendingAck.detail),

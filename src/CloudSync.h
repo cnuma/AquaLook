@@ -5,6 +5,7 @@
 class WiFiManager;
 class RelaisManager;
 class ConfigManager;
+class ScheduleManager;
 
 // ═══════════════════════════════════════════════════════════════
 //  CloudSync — telemetrie et sondage de commande vers un service
@@ -115,6 +116,12 @@ public:
     // qu'une reference constante pour construire son rapport.
     void setConfigTarget(ConfigManager* configManager) { _configTarget = configManager; }
 
+    // Un creneau doit etre ecrit AUX DEUX endroits : ScheduleManager pour
+    // l'execution, ConfigManager pour la persistance. En oublier un ferait
+    // diverger le planning actif de celui enregistre - c'est d'ailleurs ce
+    // que fait deja WebManager::handleSetDaySlot pour la voie locale.
+    void setScheduleTarget(ScheduleManager* schedule) { _scheduleTarget = schedule; }
+
     bool set(bool enabled, const char* host, uint16_t port, bool useHttps,
              const char* moduleId, const char* token, uint16_t intervalMinutes);
 
@@ -171,6 +178,7 @@ private:
     volatile bool    _resultReady    = false;
 
     ConfigManager*   _configTarget = nullptr;
+    ScheduleManager* _scheduleTarget = nullptr;
 
     // Accuse en attente d'emission, produit par applyCommand() et transmis
     // au cycle suivant. Le serveur representera la meme commande tant
