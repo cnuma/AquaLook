@@ -261,14 +261,10 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _tft.setTextDatum(TL_DATUM);
 
 #if AQUALOOK_TOUCH_GT911
-#if !AQ_DIAG_DISABLE_I2C
     // GT911 capacitif, I2C dedie - pas de calibration (voir getTouchPoint()),
     // rotation confirmee sur materiel reel le 27 aout 2026.
     _touch.begin();
     _touch.setRotation(AQ_S3_TOUCH_ROTATION);
-#else
-    Serial.println("[Display] Tactile GT911 desactive (diagnostic)");
-#endif
 #else
     // Invariant I5 : XPT2046 direct, bus VSPI séparé
     // Note : le warning addApbChangeCallback vient de TFT_eSPI qui ré-enregistre
@@ -545,10 +541,6 @@ void DisplayManager::drawMenuIcon(TFT_eSPI& gfx, uint16_t x, uint16_t y, uint16_
 // ═══════════════════════════════════════════════════════════════
 bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
 #if AQUALOOK_TOUCH_GT911
-#if AQ_DIAG_DISABLE_I2C
-    (void)tx; (void)ty;
-    return false;  // GT911 jamais initialise (diagnostic) - pas de lecture
-#else
     // Capacitif : coordonnees natives en pixels ecran, pas d'etalonnage
     // (§5 du document d'impact - TOUCH_X_MIN/MAX etc. sans objet ici).
     // ts.touches a ete observe jusqu'a 14 sur cette carte reelle alors
@@ -560,7 +552,6 @@ bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
     tx = (uint16_t)constrain((int)_touch.points[0].x, 0, SCREEN_W - 1);
     ty = (uint16_t)constrain((int)_touch.points[0].y, 0, SCREEN_H - 1);
     return true;
-#endif  // AQ_DIAG_DISABLE_I2C
 #else
     if (!_touch.tirqTouched() || !_touch.touched()) return false;
     TS_Point p = _touch.getPoint();
