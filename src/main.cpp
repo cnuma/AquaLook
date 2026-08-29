@@ -471,6 +471,14 @@ void setup() {
     SystemDiagnostics::begin();
 
     RELAY_WIRE_BUS.begin(SDA_PIN, SCL_PIN);
+    // 400 kHz (mode rapide) plutot que les 100 kHz par defaut d'Arduino. Le
+    // XL9535 le supporte, et la lecture d'etat des relais s'est revelee
+    // couter jusqu'a 98 ms par passage de boucle sur la carte S3 - mesure
+    // le 29 aout 2026 en instrumentant DisplayManager::update(), qui
+    // interroge getState() pour chaque zone a chaque tour.
+    // Meme correctif que pour le bus tactile (voir DisplayManager::begin) :
+    // les deux bus etaient restes a la vitesse par defaut.
+    RELAY_WIRE_BUS.setClock(400000UL);
 
     EventLog::log(LOG_INFO, "I2C: scan demarre");
     uint8_t found = 0;

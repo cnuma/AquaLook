@@ -265,6 +265,38 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     // rotation confirmee sur materiel reel le 27 aout 2026.
     _touch.begin();
     _touch.setRotation(AQ_S3_TOUCH_ROTATION);
+
+    // 400 kHz (mode rapide), au lieu des 100 kHz par defaut d'Arduino que
+    // TAMC_GT911::begin() laisse en place via son Wire.begin().
+    Wire.setClock(400000UL);
+
+    // Delai d'expiration ramene de 50 ms (defaut Arduino) a 10 ms. La
+    // scrutation tactile coutait 100 ms par passage, toutes les 80 ms,
+    // mesure le 29 aout 2026 en instrumentant DisplayManager::update() :
+    // c'est exactement DEUX expirations de 50 ms, et TAMC_GT911::read()
+    // fait exactement deux transactions quand rien n'est touche (lecture
+    // du registre d'etat, puis remise a zero). Autrement dit le controleur
+    // ne repondait pas du tout - la vitesse du bus n'y changeait rien.
+    // Borner le delai empeche qu'un tactile muet bloque la boucle
+    // principale, quel que soit le resultat du diagnostic ci-dessous.
+    Wire.setTimeOut(10);
+
+    // Balayage du bus tactile, comme celui deja fait sur le bus relais
+    // dans main.cpp : dit sans ambiguite si le GT911 repond, et a quelle
+    // adresse (la sienne depend de la sequence de reset INT/RST : 0x5D ou
+    // 0x14). test_touch_s3.cpp fonctionnait sur ce meme brochage, donc un
+    // silence ici signalerait une difference d'integration, pas un defaut
+    // materiel.
+    uint8_t touchFound = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("[Touch] I2C: peripherique a 0x%02X\n", addr);
+            touchFound++;
+        }
+    }
+    Serial.printf("[Touch] I2C: %u peripherique(s) sur SDA=%d SCL=%d\n",
+                  touchFound, (int)AQ_S3_TOUCH_SDA, (int)AQ_S3_TOUCH_SCL);
 #else
     // Invariant I5 : XPT2046 direct, bus VSPI séparé
     // Note : le warning addApbChangeCallback vient de TFT_eSPI qui ré-enregistre
