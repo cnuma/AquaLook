@@ -44,6 +44,14 @@ struct CloudSyncConfig {
     uint16_t intervalMinutes = 15U;
 };
 
+// Accuse a emettre pour une commande deja traitee par la boucle principale.
+// La tache ne decide de rien : elle transporte.
+struct CloudSyncPendingAck {
+    char correlationId[40] = "";
+    char state[16]         = "";   // "accepted" ou "refused"
+    char detail[96]        = "";
+};
+
 struct CloudSyncResult {
     bool     valid           = false;
     bool     reportSuccess   = false;
@@ -52,6 +60,15 @@ struct CloudSyncResult {
     char     correlationId[40] = "";
     bool     ackSuccess      = false;
     char     detail[64]      = "";
+
+    // Commande recue et NON encore traitee. Tampon alloue par la tache de
+    // synchronisation, dont la boucle principale prend la propriete et
+    // qu'elle libere apres traitement.
+    //
+    // Un pointeur et non un tableau : _pendingResult est copie sous section
+    // critique, ou recopier plusieurs kilo-octets bloquerait les
+    // interruptions bien trop longtemps. Un pointeur se copie en un mot.
+    char*    commandJson     = nullptr;
 };
 
 class CloudSync {
@@ -76,7 +93,8 @@ public:
     // secondes : a executer dans une tache dediee (CloudSyncScheduler) ou en
     // mode maintenance, jamais dans la boucle principale.
     static CloudSyncResult run(const CloudSyncConfig& cfg,
-                               const String& configBody);
+                               const String& configBody,
+                               const CloudSyncPendingAck& pendingAck);
 };
 
 class CloudSyncScheduler {
@@ -92,6 +110,11 @@ public:
                 const ConfigManager* config);
 
     const CloudSyncConfig& config() const { return _cfg; }
+    // Cible des modifications de configuration recues. Fournie separement de
+    // update() parce qu'elle doit etre MODIFIABLE, la ou update() ne recoit
+    // qu'une reference constante pour construire son rapport.
+    void setConfigTarget(ConfigManager* configManager) { _configTarget = configManager; }
+
     bool set(bool enabled, const char* host, uint16_t port, bool useHttps,
              const char* moduleId, const char* token, uint16_t intervalMinutes);
 
@@ -126,6 +149,11 @@ private:
     static void syncTaskEntry(void* context);
     void performSync();
     void applyPendingResult();
+    // Applique une commande de configuration. Appelee UNIQUEMENT depuis la
+    // boucle principale : elle ecrit en NVS et touche l'etat partage avec
+    // l'affichage, ce que la tache de synchronisation n'a pas le droit de
+    // faire (voir la note sur applyPendingResult dans CloudSync.cpp).
+    void applyCommand(const char* json, const char* correlationId);
 
     CloudSyncConfig _cfg;
     uint32_t _lastSyncEpochSec = 0U;
@@ -141,4 +169,15 @@ private:
     CloudSyncResult  _pendingResult;
     volatile bool    _syncInProgress = false;
     volatile bool    _resultReady    = false;
+
+    ConfigManager*   _configTarget = nullptr;
+
+    // Accuse en attente d'emission, produit par applyCommand() et transmis
+    // au cycle suivant. Le serveur representera la meme commande tant
+    // qu'elle n'est pas reglee : la comparaison des correlationId evite de
+    // l'appliquer deux fois.
+    CloudSyncPendingAck _pendingAck;
+    // Reveille le cycle suivant sans attendre l'intervalle complet, pour que
+    // l'accuse parte en quelques secondes plutot qu'au bout de 15 minutes.
+    bool             _ackSyncSoon = false;
 };

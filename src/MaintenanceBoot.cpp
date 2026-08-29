@@ -681,11 +681,24 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         const CloudSyncConfig cloudCfg = CloudSync::loadConfig();
         // Chemin conserve mais plus emprunte en fonctionnement normal depuis
         // le 18 aout 2026 : la synchro s'execute desormais en tache dediee
-        // sans redemarrage (CloudSyncScheduler). Il redeviendra necessaire au
-        // passage en HTTPS, dont les tampons mbedTLS (~16 Ko contigus)
-        // n'entrent pas dans le tas du mode normal.
+        // sans redemarrage (CloudSyncScheduler).
+        //
+        // Il etait prevu qu'il redevienne necessaire en HTTPS, les tampons
+        // mbedTLS (~16 Ko contigus) n'entrant pas dans le tas du mode normal.
+        // MESURE le 29 aout 2026 sur la carte JC4827W543C_I : c'est faux ici.
+        // Le cycle HTTPS complet passe en mode normal, avec validation de
+        // certificat, sans redemarrage. Cette carte offre ~207 Ko de tas
+        // libre contre ~17 Ko sur l'ESP32-2432S028R, et cela suffit malgre
+        // les tampons mbedTLS forces en RAM interne
+        // (docs/architecture/CLOUD_REMOTE_CONFIG.md).
+        //
+        // Accuse vide : ce chemin ne traite pas les commandes, il ne fait que
+        // rapporter. La commande eventuellement recue est donc liberee sans
+        // etre appliquee ni acquittee - le mode normal s'en chargera.
         const CloudSyncResult r =
-            CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager));
+            CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager),
+                           CloudSyncPendingAck{});
+        if (r.commandJson) free(r.commandJson);
         success = r.valid && r.reportSuccess && r.configSuccess;
         // Libelles compactes : EventLog tronque a LOG_MSG_LEN (72).
         EventLog::log(success ? LOG_INFO : LOG_ERROR,

@@ -183,6 +183,11 @@ bool httpExchange(Client& client, const char* method, const char* host,
 // tas du module reste la vraie contrainte.
 void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
     payload["schema"] = 1;
+    // Version de la configuration : c'est sur elle que le serveur s'appuie
+    // pour proposer une modification, et c'est elle que le module compare a
+    // baseRevision avant d'appliquer quoi que ce soit
+    // (docs/architecture/CLOUD_REMOTE_CONFIG.md).
+    payload["revision"] = cm.configRevision();
 
     const CfgSystem& sys = cm.system();
     JsonObject system = payload["system"].to<JsonObject>();
@@ -268,7 +273,8 @@ String CloudSync::buildConfigBody(const ConfigManager& configManager) {
 }
 
 CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
-                               const String& configBody) {
+                               const String& configBody,
+                               const CloudSyncPendingAck& pendingAck) {
     CloudSyncResult result;
 
     WiFiClient plainClient;
@@ -382,20 +388,51 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
                 if (corr && corr[0]) {
                     result.commandReceived = true;
                     copyText(result.correlationId, sizeof(result.correlationId), corr);
+
+                    // Recopier la commande pour la boucle principale, SAUF si
+                    // c'est celle qu'elle vient justement de traiter : le
+                    // serveur la represente tant qu'elle n'est pas reglee, et
+                    // l'appliquer deux fois serait une faute.
+                    const bool alreadyHandled =
+                        pendingAck.correlationId[0] &&
+                        strcmp(pendingAck.correlationId, corr) == 0;
+                    if (!alreadyHandled) {
+                        JsonVariantConst cmd = doc["command"];
+                        if (!cmd.isNull()) {
+                            const size_t needed = measureJson(cmd) + 1U;
+                            char* buf = static_cast<char*>(malloc(needed));
+                            if (buf) {
+                                serializeJson(cmd, buf, needed);
+                                result.commandJson = buf;
+                            } else {
+                                EventLog::log(LOG_ERROR,
+                                    "CloudSync: commande non recopiee, memoire insuffisante");
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // ── 4. Accuse reception (sans encore appliquer -- voir CloudSync.h) ─
-    if (result.commandReceived) {
+    // ── 4. Accuse reception ────────────────────────────────────────────
+    //
+    // N'accuse QUE la commande deja traitee par la boucle principale : c'est
+    // elle qui applique, jamais cette tache. Une commande fraichement recue
+    // repart donc sans accuse et sera acquittee au cycle suivant, declenche
+    // immediatement apres son application (voir _ackSyncSoon).
+    const bool ackReady =
+        pendingAck.correlationId[0] &&
+        strcmp(pendingAck.correlationId, result.correlationId) == 0;
+
+    if (result.commandReceived && ackReady) {
         client->stop();
         if (client->connect(cfg.host, port)) {
             JsonDocument doc;
             doc["correlationId"] = result.correlationId;
-            doc["state"] = "accepted";
+            doc["state"] = pendingAck.state[0] ? pendingAck.state : "accepted";
             JsonObject r = doc["result"].to<JsonObject>();
-            r["note"] = "recue, application non encore implementee cote firmware";
+            if (pendingAck.detail[0]) r["detail"] = pendingAck.detail;
             String body;
             serializeJson(doc, body);
 
@@ -516,6 +553,13 @@ void CloudSyncScheduler::update(bool ntpSynced,
 
     if (!ntpSynced) return;
 
+    // Un accuse est du : ne pas faire attendre le serveur un intervalle
+    // complet pour apprendre le sort de sa commande.
+    if (_ackSyncSoon && _lastSyncEpochSec != 0U) {
+        _lastSyncEpochSec = 0U;
+        _ackSyncSoon = false;
+    }
+
     // Premiere execution : ne pas synchroniser immediatement, meme raison
     // qu'UpdateCheckScheduler (eviter un redemarrage surprise a l'instant
     // ou la synchro cloud est activee).
@@ -633,13 +677,135 @@ void CloudSyncScheduler::syncTaskEntry(void* context) {
 }
 
 void CloudSyncScheduler::performSync() {
-    const CloudSyncResult result = CloudSync::run(_taskCfg, _taskConfigBody);
+    const CloudSyncResult result = CloudSync::run(_taskCfg, _taskConfigBody, _pendingAck);
 
     portENTER_CRITICAL(&g_cloudSyncMux);
     _pendingResult = result;   // POD : copie sure en section critique
     _resultReady = true;
     _syncInProgress = false;
     portEXIT_CRITICAL(&g_cloudSyncMux);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Application d'une commande de configuration
+//
+//  Appelee UNIQUEMENT depuis la boucle principale : elle ecrit en NVS et
+//  modifie l'etat que lit l'affichage. La tache de synchronisation n'a le
+//  droit ni de l'un ni de l'autre.
+//
+//  Regles, arretees avec l'utilisateur le 29 aout 2026
+//  (docs/architecture/CLOUD_REMOTE_CONFIG.md) :
+//    - PERIMETRE : configuration seulement. Demarrer un arrosage, changer
+//      les identifiants WiFi ou declencher une mise a jour sont refuses,
+//      quelle que soit la commande.
+//    - CONFLIT : le local gagne toujours. Verrouillage optimiste sur
+//      baseRevision - si la version a bouge depuis que le serveur a lu la
+//      configuration, la commande est refusee avec son motif.
+//    - FORMAT : partiel. Seuls les champs presents sont appliques, ce qui
+//      empeche une commande tronquee d'effacer ce qu'elle ne mentionne pas.
+// ═══════════════════════════════════════════════════════════════
+void CloudSyncScheduler::applyCommand(const char* json, const char* correlationId) {
+    copyText(_pendingAck.correlationId, sizeof(_pendingAck.correlationId), correlationId);
+    copyText(_pendingAck.state, sizeof(_pendingAck.state), "refused");
+
+    if (!_configTarget) {
+        copyText(_pendingAck.detail, sizeof(_pendingAck.detail),
+                 "configuration indisponible cote module");
+        return;
+    }
+
+    JsonDocument cmd;
+    if (deserializeJson(cmd, json) != DeserializationError::Ok) {
+        copyText(_pendingAck.detail, sizeof(_pendingAck.detail), "json-illisible");
+        return;
+    }
+
+    const char* type = cmd["type"] | "";
+    if (strcmp(type, "config.apply") != 0) {
+        // Refus explicite plutot que silencieux : un type inconnu peut etre
+        // une commande d'action deguisee, ou un contrat plus recent que ce
+        // firmware. Dans les deux cas, ne rien faire et le dire.
+        snprintf(_pendingAck.detail, sizeof(_pendingAck.detail),
+                 "type-non-supporte: %.40s", type[0] ? type : "(absent)");
+        return;
+    }
+
+    // ── Verrouillage optimiste ────────────────────────────────────────
+    if (!cmd["baseRevision"].is<uint32_t>()) {
+        // Sans base de comparaison, appliquer reviendrait a ecrire a
+        // l'aveugle - exactement ce que la regle "le local gagne" interdit.
+        copyText(_pendingAck.detail, sizeof(_pendingAck.detail),
+                 "baseRevision-absente");
+        return;
+    }
+    const uint32_t base = cmd["baseRevision"].as<uint32_t>();
+    const uint32_t current = _configTarget->configRevision();
+    if (base != current) {
+        snprintf(_pendingAck.detail, sizeof(_pendingAck.detail),
+                 "config-modifiee-localement (attendu=%lu courant=%lu)",
+                 (unsigned long)base, (unsigned long)current);
+        EventLog::log(LOG_WARN,
+                      "CloudSync: commande refusee, config modifiee localement "
+                      "(base=%lu courant=%lu)",
+                      (unsigned long)base, (unsigned long)current);
+        return;
+    }
+
+    // ── Application partielle ─────────────────────────────────────────
+    uint8_t applied = 0U;
+
+    JsonVariantConst sys = cmd["system"];
+    if (sys.is<JsonObjectConst>()) {
+        if (sys["screenTimeoutMin"].is<uint8_t>()) {
+            _configTarget->setSystemScreenTimeout(sys["screenTimeoutMin"].as<uint8_t>());
+            applied++;
+        }
+        if (sys["maxWateringMin"].is<uint16_t>()) {
+            _configTarget->setSystemMaxWatering(sys["maxWateringMin"].as<uint16_t>());
+            applied++;
+        }
+        if (sys["ledMode"].is<uint8_t>()) {
+            _configTarget->setSystemLedMode(sys["ledMode"].as<uint8_t>());
+            applied++;
+        }
+        // nbZones, nbRelais et relayLogic ne sont volontairement PAS
+        // applicables a distance : ils engagent le cablage physique, et une
+        // valeur fausse ferait commuter les mauvaises vannes.
+    }
+
+    JsonVariantConst wind = cmd["windAlert"];
+    if (wind.is<JsonObjectConst>()) {
+        CfgWindAlert w = _configTarget->windAlert();
+        if (wind["gustKmh"].is<uint8_t>())   { w.gustKmh   = wind["gustKmh"].as<uint8_t>();   applied++; }
+        if (wind["severeKmh"].is<uint8_t>()) { w.severeKmh = wind["severeKmh"].as<uint8_t>(); applied++; }
+        if (applied) _configTarget->setWindAlert(w);
+    }
+
+    JsonArrayConst zones = cmd["zones"];
+    if (!zones.isNull()) {
+        for (JsonObjectConst z : zones) {
+            if (!z["i"].is<uint8_t>()) continue;
+            const uint8_t idx = z["i"].as<uint8_t>();
+            if (idx >= MAX_ZONES) continue;
+            if (z["name"].is<const char*>()) {
+                _configTarget->setZoneName(idx, z["name"].as<const char*>());
+                applied++;
+            }
+        }
+    }
+
+    if (applied == 0U) {
+        copyText(_pendingAck.detail, sizeof(_pendingAck.detail),
+                 "aucun champ applicable dans la commande");
+        return;
+    }
+
+    copyText(_pendingAck.state, sizeof(_pendingAck.state), "accepted");
+    snprintf(_pendingAck.detail, sizeof(_pendingAck.detail),
+             "%u champ(s) applique(s), revision=%lu",
+             (unsigned)applied, (unsigned long)_configTarget->configRevision());
+    EventLog::log(LOG_INFO, "CloudSync: commande appliquee, %u champ(s), revision=%lu",
+                  (unsigned)applied, (unsigned long)_configTarget->configRevision());
 }
 
 void CloudSyncScheduler::applyPendingResult() {
@@ -662,5 +828,22 @@ void CloudSyncScheduler::applyPendingResult() {
                   result.commandReceived ? (result.ackSuccess ? "ok" : "echec") : "aucune");
     if (!ok && result.detail[0]) {
         EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
+    }
+
+    // Commande fraichement recue : c'est ICI qu'elle est appliquee, dans la
+    // boucle principale, jamais dans la tache. Le tampon appartient
+    // desormais a cette fonction, qui doit le liberer dans tous les cas.
+    if (result.commandJson) {
+        applyCommand(result.commandJson, result.correlationId);
+        free(result.commandJson);
+        result.commandJson = nullptr;
+        // Le serveur attend son accuse : declencher le cycle suivant tout de
+        // suite plutot que de le laisser patienter l'intervalle complet.
+        _ackSyncSoon = true;
+    } else if (result.commandReceived && result.ackSuccess) {
+        // Accuse parti : la commande est reglee cote serveur, oublier son
+        // identifiant pour ne pas le comparer indefiniment.
+        _pendingAck = CloudSyncPendingAck{};
+        _ackSyncSoon = false;
     }
 }

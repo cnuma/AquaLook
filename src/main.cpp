@@ -616,6 +616,7 @@ void setup() {
 
     ntpMgr.begin(&configMgr);
     updateCheckScheduler.begin();
+    cloudSyncScheduler.setConfigTarget(&configMgr);
     cloudSyncScheduler.begin();
     splashStep("NTP");
 
