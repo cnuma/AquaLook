@@ -788,9 +788,15 @@ async function saveCfgNtp() {
   toast('NTP mis a jour');
 }
 async function clearBootGuard() {
-  if (!confirm('Réactiver la météo, les mises à jour et les notifications ?
+  // Gabarit (accents graves) et non apostrophes simples : le message tient
+  // volontairement sur deux paragraphes, et une chaine simple ne peut pas
+  // contenir de saut de ligne brut. Ecrit ainsi le 17 aout 2026, ce
+  // confirm() rendait TOUT app.js inanalysable - donc aucune fonction
+  // definie, page reduite a sa coquille HTML et menu inerte
+  // ("openDrawer is not defined"). Trouve le 29 aout 2026.
+  if (!confirm(`Réactiver la météo, les mises à jour et les notifications ?
 
-Si la cause du problème n’est pas résolue, AquaLook peut se remettre à redémarrer.')) return;
+Si la cause du problème n’est pas résolue, AquaLook peut se remettre à redémarrer.`)) return;
   await api('/api/bootguard/clear', {});
   toast('Fonctions réactivées au prochain démarrage');
   fetchAdminStatus();
