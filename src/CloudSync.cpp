@@ -11,6 +11,7 @@
 #include "BootLoopGuard.h"
 #include "ConfigManager.h"
 #include "EventLog.h"
+#include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
 #include "OtaTlsTrust.h"
 #include "RelaisManager.h"
@@ -305,7 +306,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         payload["uptimeSec"] = millis() / 1000UL;
         payload["heapFree"] = static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
         payload["heapLargestBlock"] =
-            static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+            static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
 
         String body;
@@ -572,7 +573,7 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
     const uint32_t freeBytes =
         static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
     const uint32_t largestBlock =
-        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
     if (freeBytes < MIN_FREE_FOR_SYNC || largestBlock < MIN_BLOCK_FOR_SYNC) {
         _deferUntilMs = millis() + RETRY_ON_LOW_MEMORY_MS;
         EventLog::log(LOG_WARN,

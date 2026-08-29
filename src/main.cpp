@@ -4,6 +4,7 @@
 #include "config.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "HeapMetrics.h"
 #include "FaultManager.h"
 #include "OtaBootGuard.h"
 #include "WiFiManager.h"
@@ -461,6 +462,12 @@ void setup() {
     FaultManager::begin();
     EventLog::begin();
     EventLog::log(LOG_INFO, "AquaLook v2.0 demarrage");
+    // Mesure ici, une fois pour toutes, les tailles totales de tas et de
+    // PSRAM : l'IDF ne les expose qu'au prix d'un parcours complet du tas,
+    // qui plus tard - WiFi actif, requetes HTTP en cours - ferait sauter le
+    // chien de garde d'interruption (voir HeapMetrics.h). A ce point du
+    // demarrage la radio n'est pas encore lancee : c'est le moment sur.
+    AquaLook::Heap::warmUp();
     SystemDiagnostics::begin();
 
     RELAY_WIRE_BUS.begin(SDA_PIN, SCL_PIN);
@@ -636,7 +643,7 @@ void setup() {
     webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
-    EventLog::log(LOG_INFO, "HW: PSRAM %u octets", ESP.getPsramSize());
+    EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
 }
 
 void loop() {

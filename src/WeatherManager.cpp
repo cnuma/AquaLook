@@ -3,6 +3,7 @@
 #include "EventBus.h"
 #include "BootLoopGuard.h"
 #include "EventLog.h"
+#include "HeapMetrics.h"
 
 #include <esp_heap_caps.h>
 #include <HTTPClient.h>
@@ -140,7 +141,7 @@ bool WeatherManager::startFetch() {
     const uint32_t freeBytes =
         static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
     const uint32_t largestBlock =
-        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
     if (freeBytes < MIN_FREE_FOR_FETCH || largestBlock < MIN_BLOCK_FOR_FETCH) {
         _fetchDeferredForMemory = true;
         portENTER_CRITICAL(&g_weatherMux);

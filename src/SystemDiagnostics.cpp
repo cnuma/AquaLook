@@ -1,4 +1,5 @@
 #include "SystemDiagnostics.h"
+#include "HeapMetrics.h"
 
 // Taille minimale attendue par slot OTA. Doit suivre aqualook_partitions.csv :
 // ramenee de 0x1F0000 a 0x1E0000 le 16 aout 2026 pour agrandir la NVS (voir
@@ -80,7 +81,7 @@ void logOtaStartupDiagnostics() {
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMinFreeHeap()),
         static_cast<unsigned long>(
-            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)
+            AquaLook::Heap::largestFreeBlock()
         )
     );
 
@@ -224,23 +225,11 @@ void SystemDiagnostics::sampleMemory(uint32_t nowMs) {
 
     const uint32_t freeBytes =
         static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
-#if AQUALOOK_BOARD_S3
-    // heap_caps_get_largest_free_block() parcourt bloc par bloc
-    // (tlsf_walk_pool). Restreindre le masque de capacites a la RAM
-    // interne seule n'a pas suffi a l'essai (27 aout 2026, meme crash
-    // identique) : le parcours reste assez lent pour declencher le
-    // watchdog d'interruption du coeur 1 (loopTask) - "Interrupt wdt
-    // timeout on CPU1", juste apres le scan WiFi (tas interne
-    // vraisemblablement fragmente par l'activite reseau/mbedTLS, pas
-    // seulement une question de taille de tas). Appel retire plutot que
-    // re-devine une seconde fois : freeBytes (O(1), pas de parcours)
-    // reste mesure, seul le plus gros bloc contigu ne l'est plus sur
-    // cette carte.
-    const uint32_t largest = freeBytes;
-#else
-    const uint32_t largest =
-        static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-#endif
+    // Le plus gros bloc contigu passe par AquaLook::Heap (voir
+    // HeapMetrics.h) : sur ESP32-S3 la mesure exacte parcourt le tas et
+    // declenche le watchdog d'interruption, l'aide rend donc une valeur
+    // sure. Trouve ici en premier le 27 aout 2026.
+    const uint32_t largest = AquaLook::Heap::largestFreeBlock();
 
     if (freeBytes < _minFreeBytes)   _minFreeBytes = freeBytes;
     if (largest   < _minLargestBlock) _minLargestBlock = largest;
@@ -428,9 +417,8 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     JsonObject memory = doc["memory"].to<JsonObject>();
     memory["heapFree"] = ESP.getFreeHeap();
     memory["heapMin"] = ESP.getMinFreeHeap();
-    memory["heapLargestBlock"] =
-        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    memory["heapSize"] = ESP.getHeapSize();
+    memory["heapLargestBlock"] = AquaLook::Heap::largestFreeBlock();
+    memory["heapSize"] = AquaLook::Heap::totalHeapBytes();
     // Planchers releves par sampleMemory(). Le plus gros bloc contigu minimum
     // est le meilleur predicteur d'echec d'allocation : une allocation echoue
     // parce qu'aucun bloc assez grand n'existe, pas parce que le total manque.
@@ -440,7 +428,7 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     memory["minLargestBlockSeen"] =
         _minLargestBlock == UINT32_MAX ? 0UL : _minLargestBlock;
     memory["lowMemoryActive"] = _memLowActive;
-    memory["psramSize"] = ESP.getPsramSize();
+    memory["psramSize"] = AquaLook::Heap::totalPsramBytes();
     memory["psramFree"] = ESP.getFreePsram();
     memory["loopStackHighWaterWords"] = uxTaskGetStackHighWaterMark(nullptr);
 

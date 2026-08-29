@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 
 #include "EventLog.h"
+#include "HeapMetrics.h"
 
 namespace {
 constexpr char HTTPS_HOST[] = "api.github.com";
@@ -28,7 +29,7 @@ void logMemory(const char* stage) {
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMinFreeHeap()),
         static_cast<unsigned long>(
-            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)
+            AquaLook::Heap::largestFreeBlock()
         ),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );

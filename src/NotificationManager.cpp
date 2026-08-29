@@ -7,6 +7,7 @@
 
 #include "BootLoopGuard.h"
 #include "EventLog.h"
+#include "HeapMetrics.h"
 #include "ConfigManager.h"
 #include "MaintenanceResult.h"
 
@@ -561,7 +562,7 @@ bool NotificationManager::sendCurrentWork() {
         dnsResult == 1 ? "ok" : "failed",
         dnsResult == 1 ? resolvedIp.toString().c_str() : "-",
         static_cast<unsigned long>(ESP.getFreeHeap()),
-        static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+        static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
         static_cast<unsigned long>(epoch),
         WiFi.RSSI(),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
@@ -579,7 +580,7 @@ bool NotificationManager::sendCurrentWork() {
         LOG_INFO,
         "Notification: tcp preparation heap=%lu maxblock=%lu stackFree=%u",
         static_cast<unsigned long>(ESP.getFreeHeap()),
-        static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+        static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );
 
@@ -591,7 +592,7 @@ bool NotificationManager::sendCurrentWork() {
             "Notification: tcp host=%s port=80 status=failed heap=%lu maxblock=%lu epoch=%lu stackFree=%u",
             host.c_str(),
             static_cast<unsigned long>(ESP.getFreeHeap()),
-            static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+            static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
             static_cast<unsigned long>(epoch),
             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
         );
@@ -604,7 +605,7 @@ bool NotificationManager::sendCurrentWork() {
         "Notification: tcp host=%s port=80 status=ok heap=%lu maxblock=%lu stackFree=%u",
         host.c_str(),
         static_cast<unsigned long>(ESP.getFreeHeap()),
-        static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+        static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );
 

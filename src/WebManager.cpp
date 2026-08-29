@@ -1155,6 +1155,23 @@ void WebManager::runPendingVerify() {
 // heap_caps_print_heap_info() liste chaque bloc libre sur le port Serie
 // (visible dans le journal), heap_caps_get_info() donne le resume expose ici.
 void WebManager::handleHeapInfo(AsyncWebServerRequest* req) {
+#if AQUALOOK_BOARD_S3
+    // Cette route existe precisement pour parcourir le tas bloc par bloc -
+    // c'est tout son interet sur la carte historique. Sur l'ESP32-S3 et ses
+    // 8 Mo de PSRAM, ce meme parcours depasse le delai du chien de garde
+    // d'interruption et fait REDEMARRER le module (voir HeapMetrics.h).
+    // Repondre une explication vaut mieux qu'offrir un bouton qui plante.
+    JsonDocument out;
+    out["available"] = false;
+    out["reason"] = "heap-walk-unsafe-on-s3";
+    out["detail"] = "Parcours complet du tas desactive sur cette carte : "
+                    "il declenche le watchdog d'interruption (voir "
+                    "HeapMetrics.h). Utiliser /api/diagnostic.";
+    String body;
+    serializeJson(out, body);
+    req->send(503, "application/json", body);
+    return;
+#else
     multi_heap_info_t info;
     heap_caps_get_info(&info, MALLOC_CAP_8BIT);
 
@@ -1170,6 +1187,7 @@ void WebManager::handleHeapInfo(AsyncWebServerRequest* req) {
     out["freeBlocks"] = info.free_blocks;
     out["totalBlocks"] = info.total_blocks;
     sendJson(req, out);
+#endif
 }
 
 // Diagnostic temporaire de saturation NVS — voir ROADMAP.md. Lecture seule :

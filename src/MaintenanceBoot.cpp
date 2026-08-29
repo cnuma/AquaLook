@@ -12,6 +12,7 @@
 #include "CloudSync.h"
 #include "ConfigManager.h"
 #include "EventLog.h"
+#include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
 #include "OtaBootGuard.h"
@@ -60,7 +61,7 @@ void logMemory(const char* stage) {
         stage,
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMinFreeHeap()),
-        static_cast<unsigned long>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT))
+        static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock())
     );
 }
 
