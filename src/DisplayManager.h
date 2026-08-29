@@ -9,6 +9,7 @@
 #include <XPT2046_Touchscreen.h>
 #endif
 #include "config.h"
+#include "ScreenGeometry.h"
 #include "NTPManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
@@ -68,21 +69,15 @@ enum class AdminPage : uint8_t {
 
 class DisplayManager {
 public:
-    // Dimensions de la dalle - SOURCE DE VERITE UNIQUE du projet.
-    // Publiques et dans l'en-tete (et non un #define local a
+    // Dimensions de la dalle. Publiques (et non un #define local a
     // DisplayManager.cpp comme avant le 28 aout 2026) parce que d'autres
     // fichiers dessinent sur le meme ecran - DisplaySplashWrap.cpp,
     // DisplayPlanningDecor.cpp - et recopiaient jusqu'ici 320/240 a la
     // main, valeurs qui deviennent fausses sur l'ESP32-S3 (480x272).
-    // Toute nouvelle mesure liee a la taille de l'ecran doit partir d'ici,
-    // jamais d'un litteral.
-#if AQUALOOK_BOARD_S3
-    static constexpr uint16_t SCREEN_W = AQ_S3_SCREEN_WIDTH;
-    static constexpr uint16_t SCREEN_H = AQ_S3_SCREEN_HEIGHT;
-#else
-    static constexpr uint16_t SCREEN_W = 320;
-    static constexpr uint16_t SCREEN_H = 240;
-#endif
+    // Les valeurs elles-memes vivent dans ScreenGeometry.h, qui peut etre
+    // inclus par TJpg_Decoder.h la ou cet en-tete-ci ne le peut pas.
+    static constexpr uint16_t SCREEN_W = AquaLook::Panel::WIDTH;
+    static constexpr uint16_t SCREEN_H = AquaLook::Panel::HEIGHT;
 
     // ── Splash screen (boot) ──────────────────
     /// Appelé AVANT begin() — initialise juste le TFT + LittleFS
