@@ -243,6 +243,7 @@ bool ConfigManager::loadNvs() {
     _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
     _loaded = true;
+    loadWindAlert();
     EventLog::log(LOG_INFO, "Config: charge depuis NVS (schema %u)", CFG_NVS_SCHEMA);
     return true;
 }
@@ -731,6 +732,34 @@ void ConfigManager::setWeatherVisualsEnabled(bool enabled) {
         prefs.end();
     }
     EventBus::displayDirty = true;
+}
+
+// Seuils d'alerte vent : cle NVS distincte du blob principal (voir la note
+// sur CFG_NVS_WIND_ALERT_KEY dans ConfigManager.h). Absence de la cle =
+// valeurs par defaut, ce qui rend la lecture sure sur une installation qui
+// n'a jamais enregistre ces reglages.
+void ConfigManager::loadWindAlert() {
+    Preferences prefs;
+    if (!prefs.begin(CFG_NVS_NAMESPACE, true)) return;
+    CfgWindAlert w;
+    const size_t read = prefs.getBytes(CFG_NVS_WIND_ALERT_KEY, &w, sizeof(w));
+    prefs.end();
+    if (read == sizeof(w)) {
+        _windAlert.gustKmh   = constrain(w.gustKmh,   (uint8_t)5, (uint8_t)150);
+        _windAlert.severeKmh = constrain(w.severeKmh, (uint8_t)5, (uint8_t)200);
+    }
+}
+
+void ConfigManager::setWindAlert(const CfgWindAlert& w) {
+    _windAlert.gustKmh   = constrain(w.gustKmh,   (uint8_t)5, (uint8_t)150);
+    _windAlert.severeKmh = constrain(w.severeKmh, (uint8_t)5, (uint8_t)200);
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_WIND_ALERT_KEY, &_windAlert, sizeof(_windAlert));
+        prefs.end();
+    }
+    EventBus::displayDirty = true;   // le bandeau meteo relira au prochain rendu
 }
 
 void ConfigManager::setDisplay(const CfgDisplay& d) {

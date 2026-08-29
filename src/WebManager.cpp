@@ -1440,6 +1440,8 @@ void WebManager::handleGetDisplay(AsyncWebServerRequest* req) {
     doc["refreshActMs"] = d.refreshActMs;
     // Layout
     doc["planGap"]    = d.planGap;
+    doc["windGustAlertKmh"] = _config->windAlert().gustKmh;
+    doc["windSevereKmh"]    = _config->windAlert().severeKmh;
     doc["g2Gpad"]     = d.g2Gpad;
     doc["g4Gpad"]     = d.g4Gpad;
     // Options météo LCD
@@ -1500,6 +1502,12 @@ void WebManager::handleSetDisplay(AsyncWebServerRequest* req, JsonDocument& doc)
         d.refreshActMs = constrain(v, (uint16_t)200, (uint16_t)5000);
     }
     if (doc["planGap"].is<int>()) d.planGap = constrain((uint8_t)(doc["planGap"] | 6), (uint8_t)0, (uint8_t)20);
+    if (doc["windGustAlertKmh"].is<int>() || doc["windSevereKmh"].is<int>()) {
+        CfgWindAlert w = _config->windAlert();
+        if (doc["windGustAlertKmh"].is<int>()) w.gustKmh   = (uint8_t)(doc["windGustAlertKmh"] | 30);
+        if (doc["windSevereKmh"].is<int>())    w.severeKmh = (uint8_t)(doc["windSevereKmh"] | 50);
+        _config->setWindAlert(w);
+    }
     if (doc["g2Gpad"].is<int>())  d.g2Gpad  = constrain((uint8_t)(doc["g2Gpad"]  | 1), (uint8_t)0, (uint8_t)8);
     if (doc["g4Gpad"].is<int>())  d.g4Gpad  = constrain((uint8_t)(doc["g4Gpad"]  | 1), (uint8_t)0, (uint8_t)8);
     if (doc["showWeatherIcon"].is<bool>()) d.showWeatherIcon = doc["showWeatherIcon"];

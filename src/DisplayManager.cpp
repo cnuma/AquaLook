@@ -122,20 +122,25 @@ static constexpr float WIND_SEVERE_KMH       = 50.0f;
 static constexpr uint16_t WIND_ALERT_BG      = 0xC000;  // rouge sombre
 static constexpr uint16_t WIND_SEVERE_CELL_BG = 0x5000; // rouge tres sombre
 
-static bool weatherWindIsGusty(const ForecastDay& fd) {
-    return fd.valid && fd.gustMaxKmh >= WIND_GUST_ALERT_KMH;
+// Seuils lus dans la configuration : l'utilisateur choisit a partir de quelle
+// valeur il veut voir l'alerte, plutot que de subir un chiffre code en dur.
+// Les constantes ci-dessus ne servent plus que de repli si la configuration
+// n'est pas encore chargee.
+static bool weatherWindIsGusty(const ForecastDay& fd, uint8_t thresholdKmh) {
+    return fd.valid && fd.gustMaxKmh >= (float)thresholdKmh;
 }
 
-static bool weatherWindIsSevere(const ForecastDay& fd) {
-    return fd.valid && fd.windMaxKmh >= WIND_SEVERE_KMH;
+static bool weatherWindIsSevere(const ForecastDay& fd, uint8_t thresholdKmh) {
+    return fd.valid && fd.windMaxKmh >= (float)thresholdKmh;
 }
 
 // Dessine la ligne vent (ou rafale) centree sur cx. Retourne la largeur
 // occupee, pour que l'appelant puisse centrer d'autres elements dessus.
 template <typename Gfx>
 static void drawWindLine(Gfx& gfx, int16_t cx, int16_t y,
-                         const ForecastDay& fd, uint16_t cellBg) {
-    const bool gusty = weatherWindIsGusty(fd);
+                         const ForecastDay& fd, uint16_t cellBg,
+                         uint8_t gustThresholdKmh) {
+    const bool gusty = weatherWindIsGusty(fd, gustThresholdKmh);
     char buf[16];
     // Pas de point cardinal dans le texte : la fleche porte deja la
     // direction, et "SO 12 km/h" (10 caracteres, 60 px a cette taille)
@@ -854,7 +859,7 @@ void DisplayManager::drawWeatherPopup(uint8_t dayCol) {
 
     // Rafales fortes : meme code couleur que la cellule du bandeau, pour que
     // les deux se lisent de la meme facon.
-    if (weatherWindIsGusty(fd)) {
+    if (weatherWindIsGusty(fd, _config ? _config->windAlert().gustKmh : 30)) {
         _tft.fillRoundRect(colX[1] - 4, y + 58 + 26 - 3, 96, 25, 5, WIND_ALERT_BG);
         _tft.setTextColor(Theme::TEXT, WIND_ALERT_BG);
         _tft.drawString(right[1].label, colX[1], y + 58 + 26);
@@ -1140,6 +1145,8 @@ void DisplayManager::renderPlanSprite() {
     // km/h) et pluie en mm. Impossible en 42 px de large ; les 65 px du
     // 480x272 et l'en-tete de 50 px le permettent.
     if (disp.showWeatherIcon || disp.showWeatherTemp) {
+        // Seuils d'alerte vent lus une fois pour les cinq colonnes.
+        const CfgWindAlert wa = _config ? _config->windAlert() : CfgWindAlert{};
         for (uint8_t col = 0; col < 5; col++) {
             const ForecastDay fd = _weather ? _weather->getForecastDay(col)
                                             : ForecastDay{};
@@ -1157,7 +1164,7 @@ void DisplayManager::renderPlanSprite() {
 
             // Vent annonce violent : toute la cellule du jour passe sur fond
             // rouge, avant que quoi que ce soit d'autre n'y soit dessine.
-            if (weatherWindIsSevere(fd)) {
+            if (weatherWindIsSevere(fd, wa.severeKmh)) {
                 _sprPlan.fillRect(x0, 10, PL_DAY_W - 2, _planHdrH - 11,
                                   WIND_SEVERE_CELL_BG);
             }
@@ -1169,7 +1176,8 @@ void DisplayManager::renderPlanSprite() {
             const int16_t contentCx = x0 + (PL_DAY_W - 2) / 2;
             // Couleur de fond effective de la cellule du jour, propagee a
             // tous les textes opaques qui y sont poses.
-            const uint16_t cellBg = weatherWindIsSevere(fd) ? WIND_SEVERE_CELL_BG
+            const uint16_t cellBg = weatherWindIsSevere(fd, wa.severeKmh)
+                                  ? WIND_SEVERE_CELL_BG
                                   : (weatherVisuals ? Theme::SURFACE2 : Theme::BG);
 
             if (disp.showWeatherIcon) {
@@ -1210,7 +1218,7 @@ void DisplayManager::renderPlanSprite() {
             // totale est mesuree avant d'etre posee.
             if (fd.windMaxKmh > 0.0f) {
                 _sprPlan.setTextSize(1);
-                drawWindLine(_sprPlan, contentCx, 45, fd, cellBg);
+                drawWindLine(_sprPlan, contentCx, 45, fd, cellBg, wa.gustKmh);
             }
             if (fd.rainMm > 0.0f) {
                 char rain[10];
@@ -1411,11 +1419,12 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 _tft.setTextDatum(TL_DATUM);
 
                 const int16_t cellCx = cx + COL_W / 2;
-                const uint16_t cellBg = weatherWindIsSevere(fd) ? WIND_SEVERE_CELL_BG
-                                                                : Theme::SURFACE2;
+                const CfgWindAlert wa = _config ? _config->windAlert() : CfgWindAlert{};
+                const uint16_t cellBg = weatherWindIsSevere(fd, wa.severeKmh)
+                                      ? WIND_SEVERE_CELL_BG : Theme::SURFACE2;
                 if (fd.windMaxKmh > 0.0f) {
                     _tft.setTextSize(1);
-                    drawWindLine(_tft, cellCx, destY + 42, fd, cellBg);
+                    drawWindLine(_tft, cellCx, destY + 42, fd, cellBg, wa.gustKmh);
                 }
                 if (fd.rainMm > 0.0f) {
                     char rbuf[10];

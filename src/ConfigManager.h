@@ -12,6 +12,15 @@
 #define CFG_NVS_NAMESPACE "aqualook"
 #define CFG_NVS_KEY       "config"
 #define CFG_NVS_INTERVAL_ANCHORS_KEY "intAnchors"
+// Seuils d'alerte vent. Cle NVS DISTINCTE du blob de configuration, sur le
+// modele de intAnchors ci-dessus, et non un champ ajoute a CfgDisplay :
+// cette derniere est stockee PAR VALEUR dans PersistedConfig, dont la
+// taille est verifiee au chargement (read == sizeof(PersistedConfig)).
+// L'agrandir invaliderait tout bloc deja enregistre - identifiants WiFi,
+// noms de zones et planning compris - a moins de figer une copie de
+// l'ancienne structure pour migrer. Un reglage d'affichage ne justifie pas
+// ce risque sur une installation en service.
+#define CFG_NVS_WIND_ALERT_KEY "windAlert"
 #define CFG_NVS_SCHEMA    2
 
 static constexpr uint8_t ZONE_NOTIFY_START = 1U << 0;
@@ -140,6 +149,11 @@ struct CfgZone {
 //
 //  Hot-reload : toutes les valeurs prennent effet au prochain cycle
 //  DisplayManager::update() sans reboot (EventBus::displayDirty).
+struct CfgWindAlert {
+    uint8_t gustKmh   = 30;
+    uint8_t severeKmh = 50;
+};
+
 struct CfgDisplay {
     // Couleurs de fond / surfaces
     char cBg[8]        = "#101818";  // Theme::BG
@@ -270,6 +284,13 @@ public:
 
     // Affichage LCD (display tokens)
     void setDisplay(const CfgDisplay& d);  // hot-reload, pas de reboot
+
+    // Seuils d'alerte vent, en km/h. gustKmh : au-dela, la vitesse de vent
+    // affichee est remplacee par la rafale sur fond rouge. severeKmh :
+    // au-dela, toute la cellule du jour passe en rouge.
+    const CfgWindAlert& windAlert() const { return _windAlert; }
+    void setWindAlert(const CfgWindAlert& w);
+    void loadWindAlert();
     void setWeatherVisualsEnabled(bool enabled);
 
     // Planning
@@ -308,6 +329,7 @@ private:
     CfgOwm    _owm;
     CfgSystem _system;
     CfgDisplay _display;
+    CfgWindAlert _windAlert;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
     uint8_t   _zoneNotificationMasks[MAX_ZONES] = {};
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
