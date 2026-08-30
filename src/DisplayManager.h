@@ -526,6 +526,13 @@ private:
     static bool tftOutputCallback(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap);
     int   jsToEsp(int tmWday);
     int   todayEspIdx();
+
+    // Masque des zones dont l'arrosage du jour est suspendu par la pluie
+    // (bit z levé = zone z bloquée). Alimente le voyant WS2812, qui montre
+    // ces zones en orange — la même teinte que le planning leur donne déjà.
+    // S'appuie sur rainBlocksDay(), le prédicat partagé avec les trois
+    // rendus de planning, pour qu'écran et ruban ne puissent pas diverger.
+    uint16_t rainBlockedMaskToday();
     const char* adminPageName(AdminPage p);
     float       zonePct(uint8_t zone);  // fraction durée écoulée [0..1]
     void        applyDisplayConfig();   // lit ConfigManager::display() → Theme:: + membres runtime

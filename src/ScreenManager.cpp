@@ -1,6 +1,8 @@
 #include "ScreenManager.h"
 #include "FaultManager.h"
 #include "MaintenanceResult.h"
+#include "StatusLed.h"
+#include "Theme.h"
 
 static const uint8_t LED_RAINBOW[6][3] = {
     {0, 255, 0},
@@ -53,22 +55,15 @@ void ScreenManager::begin(ConfigManager* config) {
     // ulterieur (HOME, sprites, meme un fillRect direct) restait invisible.
     // D'ou le pilotage par setBacklight() ci-dessus, sur la vraie broche.
 
-    ledcSetup(LED_CH_RED, 5000, 8);
-    ledcSetup(LED_CH_GREEN, 5000, 8);
-    ledcSetup(LED_CH_BLUE, 5000, 8);
-
-#if !AQUALOOK_BOARD_S3
-    // Pas de voyant RGB embarque sur la carte JC4827W543C_I (constate le
-    // 25 aout 2026, docs/architecture/HW_JC4827W543_PORT_IMPACT.md §8
-    // test 7) - et PIN_LED_RED/PIN_LED_BLUE (4/17) percutent directement
-    // le tactile GT911 (SCL) et le bus I2C du bloc relais (SCL) sur
-    // cette carte. ledcSetup()/renderLed() restent inoffensifs sans
-    // attache de broche (ecriture sur un canal LEDC non attache = sans
-    // effet), seul l'attachement physique est a eviter ici.
-    ledcAttachPin(PIN_LED_RED, LED_CH_RED);
-    ledcAttachPin(PIN_LED_GREEN, LED_CH_GREEN);
-    ledcAttachPin(PIN_LED_BLUE, LED_CH_BLUE);
-#endif
+    // Voyant d'etat : canaux LEDC de la LED RGB embarquee sur la carte
+    // historique, ruban WS2812 sur GPIO46 sur la S3 (qui n'a aucun
+    // voyant embarque - HW_JC4827W543_PORT_IMPACT.md §8 test 7, et les
+    // anciennes broches 4/17 y percutent le tactile GT911 et le bus I2C
+    // du bloc relais). Le choix est confine dans StatusLed.cpp.
+    AquaLook::StatusLed::begin();
+    if (_config) {
+        AquaLook::StatusLed::setZoneCount(_config->system().nbZones);
+    }
 
     _normalLedRed = 0;
     _normalLedGreen = 0;
@@ -82,7 +77,9 @@ void ScreenManager::begin(ConfigManager* config) {
     Serial.println("[Screen] ScreenManager OK");
 }
 
-void ScreenManager::update(bool anyRelayActive, bool wifiSearching) {
+void ScreenManager::update(bool anyRelayActive, bool wifiSearching,
+                           uint16_t activeZoneMask, uint8_t nbZones,
+                           uint16_t rainBlockedMask) {
     const uint32_t now = millis();
 
     if (anyRelayActive && !_relayWasActive) {
@@ -104,8 +101,12 @@ void ScreenManager::update(bool anyRelayActive, bool wifiSearching) {
     // recherche WiFi visible meme ecran off, pas seulement en usage normal.
     if (_sleeping) {
         updateLed(anyRelayActive, wifiSearching);
+        renderZones(activeZoneMask, rainBlockedMask, nbZones);
     } else {
         ledOff();
+        // Ecran allume : l'utilisateur a les cartes de zone sous les yeux,
+        // le ruban n'apporte rien et resterait allume pour rien.
+        AquaLook::StatusLed::clearZones();
     }
 
     renderLed();
@@ -328,9 +329,71 @@ void ScreenManager::renderLed() {
         blue
     );
 
-    ledcWrite(LED_CH_RED, 255 - red);
-    ledcWrite(LED_CH_GREEN, 255 - green);
-    ledcWrite(LED_CH_BLUE, 255 - blue);
+    // Seule sortie materielle du voyant de tout le firmware. La logique
+    // ci-dessus (updateLed, FaultManager) ne sait pas et n'a pas a savoir
+    // s'il s'agit d'une LED RGB embarquee ou d'un ruban WS2812.
+    AquaLook::StatusLed::setStatus(red, green, blue);
+    AquaLook::StatusLed::commit();
+}
+
+void ScreenManager::renderZones(uint16_t activeZoneMask, uint16_t rainBlockedMask,
+                                uint8_t nbZones) {
+#if !AQUALOOK_BOARD_S3
+    // Carte historique : voyant unique, aucune LED de zone a piloter.
+    // Neutralise a la compilation plutot qu'en s'appuyant sur le fait que
+    // StatusLed::setZone() n'y fait rien : sinon la carte de production
+    // paierait a chaque tour de boucle une sinusoide calculee pour rien.
+    (void)activeZoneMask; (void)rainBlockedMask; (void)nbZones;
+#else
+    if (nbZones == 0U) return;   // appelant qui ne fournit pas l'etat par zone
+
+    AquaLook::StatusLed::setZoneCount(nbZones);
+
+    // Respiration commune : sinusoide sur 2 s, jamais totalement eteinte
+    // pour que la zone reste identifiable meme au creux.
+    const float phase = (millis() % 2000UL) / 2000.0f;
+    const float wave  = 0.5f * (1.0f - cosf(phase * 2.0f * (float)PI));
+    const uint16_t level = (uint16_t)(40.0f + wave * 215.0f);
+
+    for (uint8_t z = 0; z < nbZones; z++) {
+        const uint16_t bit = (uint16_t)(1U << z);
+
+        // La LED porte un ETAT, pas une identite : la position designe
+        // deja la zone, la couleur est donc libre de dire autre chose.
+        //
+        //   bleu    arrosage en cours
+        //   orange  arrosage prevu mais suspendu par la pluie
+        //   eteint  rien de prevu
+        //
+        // L'arrosage prime sur le blocage : une zone qui arrose n'est,
+        // par definition, pas bloquee.
+        uint16_t themeColor;
+        if (activeZoneMask & bit) {
+            themeColor = Theme::BLUE;
+        } else if (rainBlockedMask & bit) {
+            // Exactement la teinte dont le planning colore deja un creneau
+            // suspendu pour cause de pluie (rainBlk ? Theme::AMBER : ...),
+            // pour que le ruban et l'ecran ne puissent pas se contredire.
+            themeColor = Theme::AMBER;
+        } else {
+            AquaLook::StatusLed::setZone(z, 0, 0, 0);
+            continue;
+        }
+
+        // 565 -> 888, puis mise a l'echelle par la respiration. Passer par
+        // les constantes du theme plutot que par des valeurs recopiees
+        // garantit que ruban et LCD suivent la meme source.
+        const uint16_t r5 = (uint16_t)((themeColor >> 11) & 0x1FU);
+        const uint16_t g6 = (uint16_t)((themeColor >> 5)  & 0x3FU);
+        const uint16_t b5 = (uint16_t)(themeColor         & 0x1FU);
+
+        const uint8_t r = (uint8_t)((r5 * 255U / 31U) * level / 255U);
+        const uint8_t g = (uint8_t)((g6 * 255U / 63U) * level / 255U);
+        const uint8_t b = (uint8_t)((b5 * 255U / 31U) * level / 255U);
+
+        AquaLook::StatusLed::setZone(z, r, g, b);
+    }
+#endif
 }
 
 void ScreenManager::ledOff() {

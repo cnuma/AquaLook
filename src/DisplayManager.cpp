@@ -212,6 +212,34 @@ static bool intervalDayIsPlanned(const ZoneSchedule& zs,
            ((targetDay - anchor) % interval) == 0;
 }
 
+// Arrosage prévu ce jour-là, mais suspendu parce que la pluie annoncée
+// atteint le seuil de la zone.
+//
+// Point de passage unique : la condition était écrite à l'identique dans
+// les trois rendus de planning (LIST, GRID2, GRID4), et le voyant WS2812
+// en aurait ajouté une quatrième copie. Or c'est exactement le travers
+// qui a imposé de corriger trois fois le même défaut avant que
+// HeapMetrics.h n'existe — une règle métier recopiée finit toujours par
+// diverger d'un site à l'autre.
+//
+// Les trois sites étaient déjà subtilement différents : deux gardaient
+// l'appel météo derrière un `col < 5`, le troisième non. Sans effet ici,
+// getForecastDay() bornant lui-même son argument, mais l'écart montre
+// bien la dérive commencée.
+static bool rainBlocksDay(const ZoneSchedule& zs,
+                          const DaySchedule& ds,
+                          uint8_t col,
+                          const WeatherManager* weather) {
+    bool hasAny = false;
+    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+        if (ds.slots[s].enabled) { hasAny = true; break; }
+    }
+    if (!hasAny) return false;
+
+    const ForecastDay fd = weather ? weather->getForecastDay(col) : ForecastDay{};
+    return fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+}
+
 // SCREEN_W / SCREEN_H sont desormais des constantes publiques de la
 // classe (DisplayManager.h) : elles etaient definies ici en #define, donc
 // invisibles des autres fichiers qui dessinent sur le meme ecran.
@@ -474,18 +502,64 @@ void DisplayManager::createSprites() {
 //    - EventBus::displayDirty → immédiat
 //    - Nominal → 5s
 // ═══════════════════════════════════════════════════════════════
+uint16_t DisplayManager::rainBlockedMaskToday() {
+    if (!_schedule) return 0U;
+
+    const int      todayIdx      = todayEspIdx();
+    const uint8_t  baseIdx       = (todayIdx >= 0) ? (uint8_t)todayIdx : 0U;
+    const uint32_t todayEpochDay = (_ntp && _ntp->isSynced()) ? _ntp->getEpochDay() : 0U;
+
+    uint16_t mask = 0U;
+    for (uint8_t z = 0; z < _nbZones && z < MAX_ZONES; z++) {
+        const ZoneSchedule zs = _schedule->getZoneSchedule(z);
+
+        // Mode intervalle : le jour doit d'abord être un jour d'arrosage.
+        // Même garde que les rendus de planning, colonne 0 = aujourd'hui.
+        if (zs.mode != 0) {
+            if (todayEpochDay == 0U ||
+                !intervalDayIsPlanned(zs, todayEpochDay, 0U)) {
+                continue;
+            }
+        }
+        const DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[baseIdx]
+                                               : zs.intervalSlots;
+        if (rainBlocksDay(zs, ds, 0U, _weather)) {
+            mask |= (uint16_t)(1U << z);
+        }
+    }
+    return mask;
+}
+
 void DisplayManager::update() {
     const uint32_t now = millis();
 
     // ScreenManager — veille/réveil/LED
     // Vérification sur toutes les zones actives (pas uniquement Z0/Z1)
+    // Le masque sert au ruban WS2812 de la carte S3, qui a une LED par
+    // zone : on ne peut donc plus sortir de la boucle des la premiere
+    // zone active, il faut les relever toutes.
     bool anyActive = false;
+    uint16_t activeZoneMask = 0U;
     if (_relais) {
-        for (uint8_t z = 0; z < _nbZones; z++) {
-            if (_relais->getState(z)) { anyActive = true; break; }
+        for (uint8_t z = 0; z < _nbZones && z < MAX_ZONES; z++) {
+            if (_relais->getState(z)) {
+                anyActive = true;
+                activeZoneMask |= (uint16_t)(1U << z);
+            }
         }
     }
-    _screenMgr.update(anyActive, isWifiSearching());
+    // Masque de blocage pluie : calculé uniquement là où il sert, c'est-à-dire
+    // sur la carte S3 (ruban WS2812) et en veille écran (seul moment où le
+    // ruban est piloté). rainBlockedMaskToday() lit le planning complet de
+    // chaque zone : le laisser tourner sur la carte historique, dont le
+    // voyant unique ne peut rien en faire, serait payer à chaque tour de
+    // boucle pour un résultat jeté — le même travers que renderZones().
+#if AQUALOOK_BOARD_S3
+    const uint16_t rainMask = _screenMgr.isAsleep() ? rainBlockedMaskToday() : 0U;
+#else
+    const uint16_t rainMask = 0U;
+#endif
+    _screenMgr.update(anyActive, isWifiSearching(), activeZoneMask, _nbZones, rainMask);
 
     // Si en veille : ne pas redessiner, juste gérer le touch pour réveil
     if (_screenMgr.isAsleep()) {
@@ -1303,12 +1377,7 @@ void DisplayManager::renderPlanSprite() {
                 }
             }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
-            bool hasAny = false;
-            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                if (ds.slots[s].enabled) { hasAny = true; break; }
-            }
-            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
-            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const bool rainBlk = rainBlocksDay(zs, ds, (uint8_t)col, _weather);
             if (rainBlk) {
                 fillHatchRect(_sprPlan, x0, rowY + 1, PL_DAY_W - 2, _planZoneH - 2,
                               Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
@@ -1497,12 +1566,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 }
             }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
-            bool hasAny = false;
-            for (uint8_t sl = 0; sl < MAX_SLOTS; sl++) {
-                if (ds.slots[sl].enabled) { hasAny = true; break; }
-            }
-            const ForecastDay fd = _weather ? _weather->getForecastDay(c) : ForecastDay{};
-            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const bool rainBlk = rainBlocksDay(zs, ds, (uint8_t)c, _weather);
             if (rainBlk) {
                 fillHatchRect(_tft, cx + 1, rowY + 1, COL_W - 2, max(2, (int)zoneH - 2),
                               Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
@@ -1589,12 +1653,7 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                 }
             }
             DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[espIdx] : zs.intervalSlots;
-            bool hasAny = false;
-            for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-                if (ds.slots[s].enabled) { hasAny = true; break; }
-            }
-            const ForecastDay fd = (col < 5 && _weather) ? _weather->getForecastDay(col) : ForecastDay{};
-            const bool rainBlk = hasAny && fd.valid && fd.rainMm >= zs.rain.thresholdMm;
+            const bool rainBlk = rainBlocksDay(zs, ds, (uint8_t)col, _weather);
             if (rainBlk) {
                 uint16_t cellH = max((uint16_t)2, (uint16_t)(zoneH - 2));
                 fillHatchRect(_tft, x0, rowY + 1, DAY_W - 2, cellH,

@@ -1,5 +1,94 @@
 # Analyse d'impact — portage vers Guition JC4827W543C_I (ESP32-S3)
 
+> ## 🚧 Voyant d'état — ruban WS2812 sur GPIO46 — 30 août 2026
+>
+> Cette carte n'a **aucun voyant RGB embarqué** (§8 test 7). Toute la
+> logique de `ScreenManager::updateLed()` — priorités arrosage / recherche
+> WiFi / mise à jour en attente, les cinq modes utilisateur, la surcharge
+> rouge de `FaultManager` — tournait donc dans le vide depuis le début du
+> portage. Un ruban WS2812 externe la rend visible.
+>
+> **Le point favorable** : cette logique était déjà indépendante du
+> matériel. `updateLed()` calcule une couleur, et `renderLed()` était le
+> **seul** site qui touchait le matériel. Il n'y avait donc qu'un point à
+> porter, pas une classe de sites à traquer — l'inverse du défaut n° 6
+> ci-dessous.
+>
+> `src/StatusLed.{h,cpp}` devient ce point de passage unique, sur le
+> modèle de `HeapMetrics.h` : la logique appelante ignore si elle pilote
+> une LED RGB en LEDC (carte historique, logique inversée) ou un ruban
+> WS2812 (S3). Les broches et canaux du voyant ont quitté `ScreenManager.h`
+> pour ce fichier, où ils relèvent réellement du matériel.
+>
+> | Décision | Valeur | Motif |
+> |---|---|---|
+> | Broche | GPIO46 | Seule broche libre de tout périphérique (écran, tactile, relais, SD). Broche de *strapping* tirée au bas en interne : ne rien y ajouter comme tirage au haut |
+> | Nombre de LED | `nbZones + 1` | Règle posée par l'utilisateur. LED 0 = état général, LED 1+z = zone z |
+> | Luminosité | plafonnée à 40/255 | 9 LED en blanc plein tireraient ~540 mA, au-delà du rail 5 V du module |
+> | Initialisation | chenillard, une passe | Témoin de démarrage du module ; confirme au passage que toutes les LED répondent et dans quel ordre. Seul endroit bloquant du voyant, ~1 s dans `setup()` |
+>
+> **Ce que montre une LED de zone.** Spécification arrêtée par l'utilisateur
+> le 30 août 2026, après validation du rendu sur matériel :
+>
+> | État de la zone | Rendu |
+> |---|---|
+> | Arrosage en cours | respiration **bleue** (`Theme::BLUE`) |
+> | Arrosage prévu, suspendu par la pluie | respiration **orange** (`Theme::AMBER`) |
+> | Rien de prévu | éteinte |
+>
+> La LED porte un **état**, pas une identité : la position désigne déjà la
+> zone, la couleur est donc libre de dire autre chose. C'est une
+> simplification par rapport à la première version, qui reprenait les
+> couleurs de zone du thème — celles-ci ne faisaient que répéter une
+> information déjà portée par la position.
+>
+> L'orange n'est pas choisi au hasard : c'est la teinte dont le planning du
+> LCD colore déjà un créneau suspendu pour cause de pluie. Ruban et écran
+> disent la même chose avec la même couleur, et par construction : les deux
+> lisent `Theme::AMBER`, converti 565→888 pour la LED.
+>
+> **Un quatrième site évité.** La condition « arrosage prévu mais bloqué par
+> la pluie » était écrite à l'identique dans les trois rendus de planning
+> (LIST, GRID2, GRID4) ; le voyant en aurait ajouté une quatrième copie.
+> Elle est désormais dans `rainBlocksDay()`, appelée par les quatre. Les
+> trois sites d'origine avaient d'ailleurs déjà commencé à diverger — deux
+> gardaient l'appel météo derrière un `col < 5`, le troisième non (sans
+> conséquence, `getForecastDay()` bornant lui-même son argument, mais
+> l'écart était là).
+>
+> `commit()` est séparé des setters parce que `renderLed()` est appelée à
+> **chaque tour de boucle** : le ruban n'est transmis que si une couleur a
+> réellement changé. Sur la carte historique, `renderZones()` est neutralisé
+> à la compilation (`#if !AQUALOOK_BOARD_S3`) pour qu'elle ne paie pas une
+> sinusoïde calculée pour rien.
+>
+> **Réserve levée — niveau logique.** Un WS2812 alimenté en 5 V attend un
+> niveau haut d'au moins 0,7 × VDD = 3,5 V ; un GPIO d'ESP32-S3 ne monte
+> qu'à 3,3 V, donc **sous** le seuil de la fiche technique. L'utilisateur a
+> monté un décaleur de niveau à **deux BS170 en série** (deux étages
+> inverseurs, la polarité est donc restituée), validé sur matériel le
+> 30 août 2026 : le ruban répond, couleurs justes.
+>
+> Points à connaître si le montage est refait ou déplacé — ce sont des
+> défauts **électriques**, aucun code ne les corrige :
+>
+> - **Résistances de tirage.** Chaque étage est un inverseur à drain
+>   ouvert : il tire fort vers le bas, mais remonte à travers sa résistance.
+>   Le front montant est donc un RC. Avec 10 kΩ et ~50 pF, τ ≈ 500 ns, soit
+>   plus que le bit « 0 » du WS2812 qui ne dure que 400 ns. Rester vers
+>   1 kΩ, voire 470 Ω.
+> - **Résistance série de 330–470 Ω** sur la ligne de données, en sortie du
+>   décaleur : amortit les réflexions dans le câble.
+> - **Condensateur de 1000 µF** en entrée du ruban : les WS2812 appellent le
+>   courant par à-coups très brefs.
+> - Le premier étage est le maillon faible : sa grille ne reçoit que 3,3 V
+>   alors que le BS170 annonce un Vgs(th) pouvant atteindre 3,0 V.
+>
+> **Comment séparer logiciel et matériel** : `test_ws2812_scope_s3` envoie
+> une trame **figée**. Un scintillement observé sur une image qui ne varie
+> pas ne peut venir que du montage — l'ESP32-S3 produit ce signal par son
+> périphérique RMT, en matériel.
+
 > ## ✅ Phase A terminée — écran, tactile, SD, relais et interface Web validés — 29 août 2026
 >
 > Le **rendu visuel est confirmé sur matériel réel**, ce que la clôture du
@@ -84,9 +173,9 @@
 > - **Refonte de la mise en page 480×272** (§4) : le bandeau planning
 >   n'occupe que 320 px de large sur 480, et le design des boutons est à
 >   revoir. C'est la phase B, un vrai travail de conception.
-> - **LED WS2812** à câbler sur un GPIO libre : cette carte n'a pas de
->   voyant RGB, donc `ScreenManager::updateLed()` et ses modes ne pilotent
->   plus rien (test 7 du §8, toujours conditionnel).
+> - **LED WS2812** : le code est en place depuis le 30 août 2026 (voir
+>   l'encart « Voyant d'état » ci-dessous) ; reste la validation sur ruban
+>   réellement câblé, notamment la réserve sur le niveau logique 3,3 V.
 > - **Test 9 (WiFi)** : jamais fait en test isolé, mais le WiFi fonctionne
 >   en conditions réelles (association, portail captif, serveur web). Le
 >   RSSI observé oscille entre -60 et -90 dBm selon l'orientation du module.

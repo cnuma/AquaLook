@@ -3,9 +3,10 @@
 #include "ConfigManager.h"
 
 #define PIN_TFT_BL    21
-#define PIN_LED_RED    4
-#define PIN_LED_GREEN 16
-#define PIN_LED_BLUE  17
+
+// Les broches et canaux du voyant RGB embarque ont demenage dans
+// src/StatusLed.cpp : ce sont des details du materiel du voyant, et la
+// carte S3 n'en a aucun (ruban WS2812 externe a la place).
 
 class ScreenManager {
 public:
@@ -13,7 +14,19 @@ public:
     // wifiSearching : WiFi ni connecte ni en portail captif (connexion en
     // cours ou reconnexion apres detection zombie) — priorite d'affichage
     // juste sous l'arrosage actif, au-dessus du mode LED normal.
-    void update(bool anyRelayActive, bool wifiSearching);
+    //
+    // activeZoneMask  : bit z leve = zone z en cours d'arrosage.
+    // rainBlockedMask : bit z leve = arrosage prevu aujourd'hui pour la
+    //                   zone z, mais suspendu car la pluie annoncee
+    //                   atteint son seuil.
+    //
+    // Les deux servent au ruban WS2812 de la carte S3, qui a une LED par
+    // zone (voir StatusLed.h). Sans effet sur la carte historique, dont le
+    // voyant unique ne peut montrer qu'un etat global — d'ou les valeurs
+    // par defaut, qui laissent les appels existants inchanges.
+    void update(bool anyRelayActive, bool wifiSearching,
+                uint16_t activeZoneMask = 0U, uint8_t nbZones = 0U,
+                uint16_t rainBlockedMask = 0U);
     void wakeUp();
 
     bool isAsleep() const { return _sleeping; }
@@ -41,14 +54,15 @@ private:
     bool _updatePending = false;
     void loadUpdateState();
 
-    static constexpr uint8_t LED_CH_RED = 5;
-    static constexpr uint8_t LED_CH_GREEN = 6;
-    static constexpr uint8_t LED_CH_BLUE = 7;
-
     void screenOn();
     void screenOff();
     void updateLed(bool relayActive, bool wifiSearching);
     void renderLed();
+    // Une LED par zone : bleu si elle arrose, orange si son arrosage du
+    // jour est suspendu par la pluie, eteinte sinon.
+    // Ne fait rien sur la carte historique (voyant unique).
+    void renderZones(uint16_t activeZoneMask, uint16_t rainBlockedMask,
+                     uint8_t nbZones);
     void ledOff();
     void ledSet(bool r, bool g, bool b);
     void ledSetBrightness(uint8_t r, uint8_t g, uint8_t b);
