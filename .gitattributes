@@ -1,0 +1,26 @@
+# Fins de ligne des ressources Web publiees
+#
+# Les fichiers de data/ sont publies tels quels, et le manifeste de mise a
+# jour (tools/generate_web_manifest.py) fige un SHA-256 par fichier. Le
+# module refuse tout fichier dont le hash ne tombe pas juste : le contenu
+# publie doit donc etre reproductible a l'octet pres.
+#
+# Or core.autocrlf est a true sur le poste de developpement : Git stocke ces
+# fichiers en LF mais les restitue en CRLF sur Windows. Le manifeste genere
+# depuis une copie de travail Windows portait donc des hashs CRLF, la ou une
+# generation sur Linux - une CI, par exemple - en aurait produit d'autres
+# pour le meme commit. Le manifeste n'etait pas reproductible d'une machine
+# a l'autre.
+#
+# Constate le 30 aout 2026 lors de la premiere publication reelle sur
+# alwaysdata : 4 fichiers sur 10 servis avec un hash different de celui
+# annonce. Le symptome aurait ete tres deroutant - un module refusant des
+# fichiers pourtant corrects.
+#
+# eol=lf force la copie de travail en LF, sur toutes les plateformes : le
+# contenu sur disque est alors identique a celui du depot, quel que soit
+# l'endroit ou le manifeste est genere.
+data/** text eol=lf
+
+# Meme raison pour les ressources de secours embarquees en LittleFS.
+littlefs/** text eol=lf
