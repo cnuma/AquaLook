@@ -40,28 +40,53 @@ function utc_now(): string
 
 // ── Modules et jetons ───────────────────────────────────────────────────────
 
+/** Empreinte d'un jeton. Seul ce resultat est stocke -- voir la note sur
+ * module_token dans schema.sql pour le choix de SHA-256. */
+function token_hash(string $token): string
+{
+    return hash('sha256', $token);
+}
+
 function module_id_for_token(string $token): ?string
 {
-    $stmt = db()->prepare('SELECT module_id FROM module_token WHERE token = ?');
-    $stmt->execute([$token]);
+    $stmt = db()->prepare('SELECT module_id FROM module_token WHERE token_sha256 = ?');
+    $stmt->execute([token_hash($token)]);
     $row = $stmt->fetch();
     return $row ? $row['module_id'] : null;
 }
 
+/**
+ * Enregistre le module et son jeton, de facon ATOMIQUE.
+ *
+ * Les deux INSERT etaient auparavant hors transaction : si le second
+ * echouait -- typiquement parce que le jeton est deja attribue a un autre
+ * module, la contrainte UNIQUE sur token -- la ligne module restait creee,
+ * sans jeton. Un module fantome, impossible a joindre et invisible comme
+ * anomalie. Constate en test le 29 aout 2026.
+ *
+ * Leve une PDOException en cas de conflit ; l'appelant la traduit en 409.
+ */
 function upsert_module_token(string $moduleId, string $token, ?string $label): void
 {
     $pdo = db();
-    $stmt = $pdo->prepare(
-        'INSERT INTO module (module_id, label, created_at) VALUES (?, ?, ?) '
-        . 'ON DUPLICATE KEY UPDATE label = COALESCE(VALUES(label), label)'
-    );
-    $stmt->execute([$moduleId, $label, utc_now()]);
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO module (module_id, label, created_at) VALUES (?, ?, ?) '
+            . 'ON DUPLICATE KEY UPDATE label = COALESCE(VALUES(label), label)'
+        );
+        $stmt->execute([$moduleId, $label, utc_now()]);
 
-    $stmt = $pdo->prepare(
-        'INSERT INTO module_token (module_id, token, created_at) VALUES (?, ?, ?) '
-        . 'ON DUPLICATE KEY UPDATE token = VALUES(token), created_at = VALUES(created_at)'
-    );
-    $stmt->execute([$moduleId, $token, utc_now()]);
+        $stmt = $pdo->prepare(
+            'INSERT INTO module_token (module_id, token_sha256, created_at) VALUES (?, ?, ?) '
+            . 'ON DUPLICATE KEY UPDATE token_sha256 = VALUES(token_sha256), created_at = VALUES(created_at)'
+        );
+        $stmt->execute([$moduleId, token_hash($token), utc_now()]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 function touch_module(string $moduleId, ?string $firmware): void
@@ -116,7 +141,10 @@ function next_pending_command(string $moduleId): ?array
     $stmt = db()->prepare(
         "SELECT correlation_id, command FROM command "
         . "WHERE module_id = ? AND state = 'pending' "
-        . "ORDER BY issued_at ASC LIMIT 1"
+        // Ordre par la sequence et non par l'horodatage : voir la note sur
+        // command.seq dans schema.sql. Deux commandes emises dans la meme
+        // seconde s'ordonnaient auparavant au hasard.
+        . "ORDER BY seq ASC LIMIT 1"
     );
     $stmt->execute([$moduleId]);
     $row = $stmt->fetch();

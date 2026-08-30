@@ -23,6 +23,9 @@ const MAX_PAYLOAD_BYTES = 64 * 1024;
 // voir SYSTEM_ARCHITECTURE.md Sec.9 invariants #1, #2, #3.
 const VALID_MSG_TYPES = ['status', 'state', 'event', 'diag', 'config'];
 const MODULE_ID_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/';
+// Plancher d'entropie d'un jeton fourni. 32 caracteres, soit au moins
+// 128 bits s'il est hexadecimal -- hors de portee de la force brute.
+const MIN_TOKEN_LENGTH = 32;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -108,7 +111,17 @@ try {
         }
         check_payload_size($payload);
 
+        // Valide AVANT d'atteindre la base : un objet ou un tableau ici
+        // provoquait une TypeError sur insert_message(), donc une reponse 500
+        // pour une requete simplement malformee. Un refus explicite en 400
+        // est la seule reponse correcte (SYSTEM_ARCHITECTURE.md Sec.7).
         $correlationId = $body['correlationId'] ?? null;
+        if ($correlationId !== null && !is_string($correlationId)) {
+            send_json(400, ['detail' => 'correlationId doit etre une chaine']);
+        }
+        if (is_string($correlationId) && strlen($correlationId) > 64) {
+            send_json(400, ['detail' => 'correlationId trop long (64 max)']);
+        }
         insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
         $firmware = in_array($msgType, ['status', 'state'], true) ? ($payload['firmware'] ?? null) : null;
         touch_module($moduleId, $firmware);
@@ -134,6 +147,13 @@ try {
         if ($result !== null && !is_array($result)) {
             send_json(400, ['detail' => 'result doit etre un objet si present']);
         }
+        // Meme plafond que les remontees. Il manquait ici : un module
+        // compromis ou fautif pouvait stocker un resultat de taille
+        // arbitraire (200 Ko acceptes en test le 29 aout 2026), alors que
+        // /v1/report etait plafonne a 64 Kio.
+        if ($result !== null) {
+            check_payload_size($result);
+        }
 
         $finalState = settle_command($moduleId, $correlationId, $state, $result);
         if ($finalState === null) {
@@ -157,7 +177,28 @@ try {
             send_json(400, ['detail' => 'moduleId invalide']);
         }
         $token = $body['token'] ?? bin2hex(random_bytes(32));
-        upsert_module_token($moduleId, $token, $body['label'] ?? null);
+        // Le hachage protege la base, pas un jeton faible : une empreinte de
+        // "1234" se retrouve par simple dictionnaire. On impose donc un
+        // plancher d'entropie a tout jeton fourni par l'administrateur. Celui
+        // genere ici en fait 64 (32 octets aleatoires en hexadecimal).
+        if (strlen($token) < MIN_TOKEN_LENGTH) {
+            send_json(400, ['detail' => 'jeton trop court, ' . MIN_TOKEN_LENGTH . ' caracteres minimum']);
+        }
+        if (strlen($token) > 128) {
+            send_json(400, ['detail' => 'jeton trop long (128 max)']);
+        }
+        try {
+            upsert_module_token($moduleId, $token, $body['label'] ?? null);
+        } catch (PDOException $e) {
+            // 23000 = violation de contrainte : le jeton appartient deja a un
+            // autre module (UNIQUE sur module_token.token). C'est une erreur
+            // de l'appelant, pas une panne du serveur - repondre 500 la
+            // rendait indiscernable d'un incident.
+            if ($e->getCode() === '23000') {
+                send_json(409, ['detail' => 'jeton deja attribue a un autre module']);
+            }
+            throw $e;
+        }
         // Montre le jeton une seule fois, en clair -- a noter cote
         // administrateur, jamais relisible depuis le serveur ensuite.
         send_json(200, ['moduleId' => $moduleId, 'token' => $token]);
