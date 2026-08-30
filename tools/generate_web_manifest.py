@@ -42,8 +42,14 @@ def file_entry(path: Path, name: str, url: str) -> dict[str, object]:
     size = path.stat().st_size
     if size <= 0:
         raise ValueError(f"Web asset is empty: {path}")
-    if not url.startswith("https://github.com/"):
-        raise ValueError(f"Web asset URL must be HTTPS GitHub: {url}")
+    # HTTPS obligatoire, quel que soit l'hebergeur. La contrainte etait
+    # auparavant "https://github.com/", ce qui melait deux exigences : le
+    # chiffrement, qui est le vrai invariant de securite, et l'identite de
+    # l'hebergeur, qui n'en est pas un. Publier ailleurs est desormais un
+    # besoin reel - un module installe sur site doit pouvoir changer de
+    # source sans etre reflashe.
+    if not url.startswith("https://"):
+        raise ValueError(f"Web asset URL must be HTTPS: {url}")
     return {
         "name": name,
         "url": url,
@@ -58,6 +64,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--repository", default="cnuma/AquaLook")
     parser.add_argument("--channel", default="stable")
+    # Base d'URL des fichiers publies. Par defaut la release GitHub, donc le
+    # flux de publication existant est inchange.
+    #
+    # La rendre reglable permet de publier ailleurs - un hebergement propre,
+    # par exemple - ce que le firmware sait desormais consommer depuis que
+    # l'URL du manifeste y est configurable (ConfigManager::setWebAssetsUrl).
+    # Les deux vont de pair : une source configurable cote module ne sert a
+    # rien si le generateur ne sait produire que des URL GitHub.
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Base URL des fichiers (defaut : la release GitHub). "
+             "HTTPS obligatoire, comme cote module.",
+    )
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -88,7 +108,16 @@ def main() -> int:
     if len(names) != len(set(names)):
         raise ValueError("Duplicate file names in data/ - release assets must be unique")
 
-    base = f"https://github.com/{args.repository}/releases/download/{args.tag}"
+    if args.base_url:
+        base = args.base_url.rstrip("/")
+        # Meme exigence que le module : le manifeste porte les SHA-256 qui
+        # authentifient les fichiers. Servi ou reference en clair, il peut
+        # etre remplace par un autre, avec ses propres hashes - la
+        # verification validerait alors l'attaque au lieu de l'empecher.
+        if not base.startswith("https://"):
+            raise ValueError(f"--base-url doit etre en https:// (recu {base!r})")
+    else:
+        base = f"https://github.com/{args.repository}/releases/download/{args.tag}"
 
     manifest = {
         "schema": SCHEMA,

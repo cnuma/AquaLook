@@ -35,13 +35,34 @@ bool parseHttpsUrl(const String& url, HttpTarget& target) {
     return target.host.length() > 0 && target.path.length() > 0;
 }
 
-// Meme liste que OtaDownloadTest::allowedGithubHost : les assets de release
-// sont servis en redirigeant github.com vers l'un de ces hotes.
-bool allowedGithubHost(const String& host) {
-    return host == "github.com" ||
-           host == "api.github.com" ||
-           host == "objects.githubusercontent.com" ||
-           host == "release-assets.githubusercontent.com";
+// Hotes vers lesquels une requete - ou une redirection - est autorisee.
+//
+// La liste GitHub reste : les assets de release y sont servis en redirigeant
+// github.com vers l'un de ces hotes, et c'est toujours la source par defaut.
+//
+// S'y ajoute l'hote de la source CONFIGUREE. Sans cela, rendre l'URL du
+// manifeste reglable ne servait a rien : le telechargement etait refuse en
+// "unauthorized-url" avant meme d'ouvrir la connexion, quelle que soit
+// l'URL enregistree. Defaut introduit le 30 aout 2026 en rendant la source
+// configurable, et constate le jour meme a la premiere publication reelle -
+// la liste blanche avait ete oubliee.
+//
+// Le filtre est conserve, et non supprime : il borne les redirections. Sans
+// lui, un serveur pourrait renvoyer le module vers un hote arbitraire. C'est
+// bien la source choisie par l'utilisateur qui est autorisee, pas n'importe
+// laquelle.
+bool allowedHost(const String& host) {
+    if (host == "github.com" ||
+        host == "api.github.com" ||
+        host == "objects.githubusercontent.com" ||
+        host == "release-assets.githubusercontent.com") {
+        return true;
+    }
+    HttpTarget configured;
+    if (parseHttpsUrl(String(WebAssetsUpdater::manifestUrl()), configured)) {
+        return host == configured.host;
+    }
+    return false;
 }
 
 int parseHttpCode(const String& statusLine) {
@@ -74,7 +95,7 @@ WebAssetVerifyResult downloadAndVerify(
 ) {
     WebAssetVerifyResult result;
     HttpTarget target;
-    if (!parseHttpsUrl(url, target) || !allowedGithubHost(target.host)) {
+    if (!parseHttpsUrl(url, target) || !allowedHost(target.host)) {
         copyText(result.detail, sizeof(result.detail), "unauthorized-url");
         return result;
     }
@@ -263,6 +284,29 @@ WebAssetVerifyResult downloadAndVerify(
 }
 }
 
+namespace {
+// Copie locale de la source effective. Vide tant que la configuration n'a
+// rien pousse, auquel cas manifestUrl() rend le defaut : le comportement
+// d'un module jamais configure est donc exactement celui d'avant.
+//
+// C'est une COPIE et non un pointeur vers le tampon de ConfigManager : les
+// 160 octets sont le prix du decouplage, ce module n'ayant ainsi aucune
+// dependance vers la configuration, ni aucune hypothese sur sa duree de vie.
+// Meme taille que WEBASSETS_URL_MAX, la validation etant faite en amont.
+char s_manifestUrl[160] = "";
+}  // namespace
+
+void WebAssetsUpdater::setManifestUrl(const char* url) {
+    if (url == nullptr) return;
+    if (strncmp(url, "https://", 8) != 0) return;      // refus silencieux, journalise cote ConfigManager
+    if (strlen(url) >= sizeof(s_manifestUrl)) return;
+    strlcpy(s_manifestUrl, url, sizeof(s_manifestUrl));
+}
+
+const char* WebAssetsUpdater::manifestUrl() {
+    return (s_manifestUrl[0] != '\0') ? s_manifestUrl : DEFAULT_MANIFEST_URL;
+}
+
 WebAssetVerifyResult WebAssetsUpdater::verifyOnly(
     const char* url,
     uint32_t expectedSize,
@@ -357,7 +401,7 @@ WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* s
 
     // downloadToSink exige taille et empreinte attendues. Pour le manifeste on
     // ne les a pas : on passe par une recuperation directe, bornee en taille.
-    WebAssetVerifyResult dl = fetchUnverified(MANIFEST_URL, MANIFEST_MAX_BYTES, collect);
+    WebAssetVerifyResult dl = fetchUnverified(manifestUrl(), MANIFEST_MAX_BYTES, collect);
 
     if (overflow) {
         copyText(result.detail, sizeof(result.detail), "manifest-too-large");
@@ -428,7 +472,7 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         return true;
     };
 
-    const WebAssetVerifyResult dl = fetchUnverified(MANIFEST_URL, MANIFEST_MAX_BYTES, collect);
+    const WebAssetVerifyResult dl = fetchUnverified(manifestUrl(), MANIFEST_MAX_BYTES, collect);
     if (overflow || !dl.success) {
         copyText(out.detail, sizeof(out.detail),
                  overflow ? "manifeste-trop-gros" : dl.detail);

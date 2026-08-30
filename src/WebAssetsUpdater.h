@@ -50,8 +50,23 @@ public:
     // elle-meme la derniere release publiee — pas besoin d'interroger l'API ni
     // de connaitre le numero de version a l'avance. Meme mecanisme que l'OTA
     // firmware (OtaBuildIdentity::MANIFEST_PATH).
-    static constexpr const char* MANIFEST_URL =
+    // Source par defaut. Reste la release GitHub publiee : un module qui n'a
+    // jamais rien configure se comporte exactement comme avant.
+    static constexpr const char* DEFAULT_MANIFEST_URL =
         "https://github.com/cnuma/AquaLook/releases/latest/download/aqualook-web-manifest.json";
+
+    // Source effective, poussee par ConfigManager au chargement de la
+    // configuration. Le sens de la dependance est volontaire : la
+    // configuration est l'autorite et alimente ce module, qui n'a ainsi
+    // aucun lien vers elle.
+    //
+    // setManifestUrl() n'accepte que du https:// - le manifeste porte les
+    // SHA-256 qui authentifient chaque fichier, donc un manifeste servi en
+    // clair permettrait d'en substituer un autre, avec ses propres hashes.
+    // La verification par hash validerait alors l'attaque au lieu de
+    // l'empecher. Une URL refusee laisse la precedente en place.
+    static void        setManifestUrl(const char* url);
+    static const char* manifestUrl();
 
     // Taille maximale acceptee pour le manifeste. Le generateur impose deja
     // 8 Ko (tools/generate_web_manifest.py) ; cette borne protege le module

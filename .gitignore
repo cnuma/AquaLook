@@ -36,3 +36,10 @@ credentials.h
 logs/
 # Dumps NVS de secours : contiennent identifiants WiFi et cles API en clair.
 backups/
+
+# Dossiers de publication assembles a la demande (ressources Web pretes a
+# televerser). Reconstructibles a tout moment par
+# tools/generate_web_manifest.py : ce sont des copies de data/, pas des
+# sources, et les versionner ferait diverger deux exemplaires des memes
+# fichiers.
+dist/
