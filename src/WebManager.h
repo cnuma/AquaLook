@@ -533,6 +533,8 @@ private:
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleZoneIdentify(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSetWebAssetsUrl(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneNotifications(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleStartCaptive(AsyncWebServerRequest* req);

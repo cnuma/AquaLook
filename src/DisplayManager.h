@@ -79,6 +79,14 @@ public:
     static constexpr uint16_t SCREEN_W = AquaLook::Panel::WIDTH;
     static constexpr uint16_t SCREEN_H = AquaLook::Panel::HEIGHT;
 
+    /// Fait clignoter en blanc la LED de la zone sur le ruban WS2812, pour
+    /// l'identifier physiquement au moment du raccordement. S'arrête seule
+    /// au bout de durationMs. zone >= MAX_ZONES annule l'identification.
+    /// Sans effet visible sur la carte historique, qui n'a pas de ruban.
+    void identifyZone(uint8_t zone, uint32_t durationMs) {
+        _screenMgr.identifyZone(zone, durationMs);
+    }
+
     // ── Splash screen (boot) ──────────────────
     /// Appelé AVANT begin() — initialise juste le TFT + LittleFS
     void initTft();
@@ -533,6 +541,17 @@ private:
     // S'appuie sur rainBlocksDay(), le prédicat partagé avec les trois
     // rendus de planning, pour qu'écran et ruban ne puissent pas diverger.
     uint16_t rainBlockedMaskToday();
+
+#if AQUALOOK_BOARD_S3
+    // Résultat mémorisé du précédent appel : la fonction recopie le planning
+    // complet de chaque zone, trop cher pour chaque tour de boucle, alors que
+    // l'état décrit ne bouge qu'au rythme des prévisions météo.
+    //
+    // Déclarés sous garde : la carte historique n'appelle jamais ce calcul,
+    // elle n'a pas à en porter les octets.
+    uint16_t _rainMaskCache = 0U;
+    uint32_t _rainMaskAtMs  = 0U;
+#endif
     const char* adminPageName(AdminPage p);
     float       zonePct(uint8_t zone);  // fraction durée écoulée [0..1]
     void        applyDisplayConfig();   // lit ConfigManager::display() → Theme:: + membres runtime

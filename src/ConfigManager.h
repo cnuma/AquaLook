@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include "config.h"
 #include "ScheduleManager.h"   // ZoneSchedule, TimeSlot
+#include "WebAssetsUpdater.h"   // DEFAULT_MANIFEST_URL (repli du getter)
 
 // ── Chemins fichiers ───────────────────────────────────────────
 #define CFG_PATH      "/config.json"   // ancien format LittleFS, lecture migration uniquement
@@ -28,7 +29,18 @@
 // docs/architecture/CLOUD_REMOTE_CONFIG.md). Cle NVS distincte du bloc
 // principal, pour la meme raison que windAlert ci-dessus.
 #define CFG_NVS_REVISION_KEY "cfgRev"
+// URL du manifeste des ressources Web. Cle NVS distincte du bloc principal,
+// pour la meme raison que windAlert ci-dessus : agrandir PersistedConfig
+// invaliderait toute la configuration enregistree.
+//
+// Configurable parce qu'un module installe sur site n'est plus accessible
+// que par le WiFi : figer la source dans le firmware imposerait de le
+// reflasher - donc de le demonter - pour changer de canal de mise a jour.
+#define CFG_NVS_WEBASSETS_URL_KEY "waUrl"
 #define CFG_NVS_SCHEMA    2
+
+// Longueur maximale de cette URL, terminateur compris.
+static constexpr size_t WEBASSETS_URL_MAX = 160;
 
 static constexpr uint8_t ZONE_NOTIFY_START = 1U << 0;
 static constexpr uint8_t ZONE_NOTIFY_STOP  = 1U << 1;
@@ -172,7 +184,7 @@ struct CfgDisplay {
     char cText2[8]     = "#c0d0c8";  // Theme::TEXT2
     char cMuted[8]     = "#789c80";  // Theme::MUTED
     // Etat actif
-    char cActiveBg[8]  = "#382020";  // Theme::ACTIVE_BG
+    char cActiveBg[8]  = "#10283c";  // Theme::ACTIVE_BG - bleu "zone active"
     // Accents de zone (identite couleur par zone)
     char cZone0[8]     = "#00fc00";  // vert  (Zone 1)
     char cZone1[8]     = "#0090f8";  // bleu  (Zone 2)
@@ -209,7 +221,7 @@ struct CfgDisplay {
         strlcpy(cBg,       "#101818", 8); strlcpy(cSurface,  "#182420", 8);
         strlcpy(cSurface2, "#283028", 8); strlcpy(cBorder,   "#384c40", 8);
         strlcpy(cText,     "#f8fcf8", 8); strlcpy(cText2,    "#c0d0c8", 8);
-        strlcpy(cMuted,    "#789c80", 8); strlcpy(cActiveBg, "#382020", 8);
+        strlcpy(cMuted,    "#789c80", 8); strlcpy(cActiveBg, "#10283c", 8);
         strlcpy(cZone0,    "#00fc00", 8); strlcpy(cZone1,    "#0090f8", 8);
         strlcpy(cZone2,    "#f8a400", 8); strlcpy(cZone3,    "#780078", 8);
     }
@@ -297,12 +309,27 @@ public:
     // au-dela, toute la cellule du jour passe en rouge.
     const CfgWindAlert& windAlert() const { return _windAlert; }
 
+    // URL du manifeste des ressources Web. Toujours en https:// - voir
+    // setWebAssetsUrl() pour la raison.
+    //
+    // Repli explicite sur le defaut quand rien n'est charge : les chemins de
+    // migration et de valeurs par defaut de begin() ne passent pas par
+    // loadWebAssetsUrl(), et un getter qui rendrait une chaine vide ferait
+    // afficher "aucune source" alors que le module en utilise bien une.
+    const char* webAssetsUrl() const {
+        return (_webAssetsUrl[0] != '\0') ? _webAssetsUrl
+                                          : WebAssetsUpdater::DEFAULT_MANIFEST_URL;
+    }
+    // Refuse toute URL qui n'est pas en https://, et rend false dans ce cas.
+    bool setWebAssetsUrl(const char* url);
+
     // Version courante de la configuration. Toute ecriture locale
     // l'incremente : c'est ce qui permet a une commande distante de savoir
     // si elle s'appuie encore sur une vue a jour.
     uint32_t configRevision() const { return _configRevision; }
     void setWindAlert(const CfgWindAlert& w);
     void loadWindAlert();
+    void loadWebAssetsUrl();
     void bumpRevision();
     void persistRevision();
     void setWeatherVisualsEnabled(bool enabled);
@@ -344,6 +371,7 @@ private:
     CfgSystem _system;
     CfgDisplay _display;
     CfgWindAlert _windAlert;
+    char         _webAssetsUrl[WEBASSETS_URL_MAX] = "";
     uint32_t _configRevision = 0;
     bool     _revisionBumped = false;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones

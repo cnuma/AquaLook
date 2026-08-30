@@ -1,4 +1,5 @@
 #include "ConfigManager.h"
+#include "WebAssetsUpdater.h"
 #include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
@@ -242,8 +243,25 @@ bool ConfigManager::loadNvs() {
     _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
     _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
+
+    // Couleur "zone active" : bleu depuis le 30 aout 2026, pour que le
+    // ruban WS2812, le LCD et l'interface Web decrivent une zone en cours
+    // d'arrosage de la meme facon. L'ancien #382020 etait un brun rougeatre
+    // sans rapport avec les deux autres surfaces.
+    //
+    // Migration CONDITIONNELLE : on ne remplace la valeur que si elle vaut
+    // encore l'ancien defaut, c'est-a-dire si l'utilisateur ne l'a jamais
+    // choisie lui-meme. Une couleur reellement personnalisee est conservee -
+    // ecraser un reglage explicite serait une regression, pas une migration.
+    if (strcmp(_display.cActiveBg, "#382020") == 0) {
+        strlcpy(_display.cActiveBg, "#10283c", sizeof(_display.cActiveBg));
+        EventLog::log(LOG_INFO,
+                      "Config: couleur zone active passee au bleu (defaut historique)");
+    }
+
     _loaded = true;
     loadWindAlert();
+    loadWebAssetsUrl();
     {
         Preferences prefs;
         if (prefs.begin(CFG_NVS_NAMESPACE, true)) {
@@ -813,6 +831,85 @@ void ConfigManager::setWindAlert(const CfgWindAlert& w) {
     persistRevision();
     _revisionBumped = false;
     EventBus::displayDirty = true;   // le bandeau meteo relira au prochain rendu
+}
+
+// URL du manifeste des ressources Web. Cle NVS distincte du blob principal
+// (voir la note sur CFG_NVS_WEBASSETS_URL_KEY dans ConfigManager.h).
+// Absence de la cle = URL par defaut, donc sans effet sur une installation
+// qui n'a jamais configure ce reglage.
+void ConfigManager::loadWebAssetsUrl() {
+    strlcpy(_webAssetsUrl, WebAssetsUpdater::DEFAULT_MANIFEST_URL,
+            sizeof(_webAssetsUrl));
+
+    Preferences prefs;
+    if (!prefs.begin(CFG_NVS_NAMESPACE, true)) return;
+    char buf[WEBASSETS_URL_MAX] = "";
+    const size_t read = prefs.getBytes(CFG_NVS_WEBASSETS_URL_KEY, buf, sizeof(buf));
+    prefs.end();
+
+    // Relecture defensive : une valeur enregistree par une version anterieure,
+    // ou corrompue, ne doit pas pouvoir degrader le canal en clair. On
+    // repasse donc par la meme validation que l'ecriture.
+    if (read > 0 && read <= sizeof(buf)) {
+        buf[sizeof(buf) - 1] = '\0';
+        if (strncmp(buf, "https://", 8) == 0) {
+            strlcpy(_webAssetsUrl, buf, sizeof(_webAssetsUrl));
+        } else {
+            EventLog::log(LOG_WARN,
+                          "WebAssets: URL enregistree non HTTPS, defaut retabli");
+        }
+    }
+
+    // La configuration est l'autorite : elle pousse la source vers
+    // WebAssetsUpdater, qui n'a ainsi aucune dependance vers elle.
+    //
+    // Cet appel manquait, et le defaut etait retors : le setter le faisait
+    // deja, donc changer la source fonctionnait dans la session courante et
+    // l'URL etait bien relue au demarrage suivant. Mais rien ne la
+    // retransmettait a WebAssetsUpdater, dont la copie restait vide - et
+    // manifestUrl() retombait sur GitHub. Or le telechargement a lieu en
+    // mode maintenance, apres redemarrage : la source configuree etait donc
+    // ignoree exactement la ou elle sert. Constate le 30 aout 2026 sur la
+    // premiere publication reelle, le module ayant deploye la release
+    // GitHub 5.9.7 au lieu du 5.9.8 publie sur l'hebergement.
+    EventLog::log(LOG_INFO, "WebAssets: source = %s", _webAssetsUrl);
+    WebAssetsUpdater::setManifestUrl(_webAssetsUrl);
+}
+
+bool ConfigManager::setWebAssetsUrl(const char* url) {
+    if (url == nullptr) return false;
+
+    // HTTPS obligatoire, et ce n'est pas une precaution de principe.
+    //
+    // Le manifeste porte les SHA-256 qui authentifient chaque fichier. Servi
+    // en clair, n'importe qui sur le trajet peut en substituer un autre, avec
+    // ses propres hashes et ses propres fichiers : la verification par hash
+    // ne protege alors plus de rien, elle valide l'attaque. C'est la
+    // confiance dans le manifeste qui fait tenir toute la chaine, et seul le
+    // TLS l'etablit.
+    if (strncmp(url, "https://", 8) != 0) {
+        EventLog::log(LOG_ERROR, "WebAssets: URL refusee, HTTPS obligatoire");
+        return false;
+    }
+    if (strlen(url) >= sizeof(_webAssetsUrl)) {
+        EventLog::log(LOG_ERROR, "WebAssets: URL trop longue");
+        return false;
+    }
+
+    strlcpy(_webAssetsUrl, url, sizeof(_webAssetsUrl));
+
+    Preferences prefs;
+    if (prefs.begin(CFG_NVS_NAMESPACE, false)) {
+        prefs.putBytes(CFG_NVS_WEBASSETS_URL_KEY, _webAssetsUrl,
+                       strlen(_webAssetsUrl) + 1);
+        prefs.end();
+    }
+    WebAssetsUpdater::setManifestUrl(_webAssetsUrl);
+    bumpRevision();
+    persistRevision();
+    _revisionBumped = false;
+    EventLog::log(LOG_INFO, "WebAssets: source de mise a jour modifiee");
+    return true;
 }
 
 void ConfigManager::setDisplay(const CfgDisplay& d) {

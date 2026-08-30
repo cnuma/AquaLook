@@ -374,6 +374,8 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
     POST_JSON("/api/zoneName",      handleSetZoneName);
+    POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
+    POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
     POST_JSON("/api/zoneNotifications", handleSetZoneNotifications);
     POST_JSON("/api/display",       handleSetDisplay);
     POST_JSON("/api/logConfig",     handleSetLogConfig);
@@ -454,6 +456,11 @@ void WebManager::setupRoutes() {
         }
         EventLog::log(LOG_WARN,
                       "WebAssets: mise a jour demandee, redemarrage en mode maintenance");
+        // Bandeau LCD et voyant passent au violet des maintenant : l'operation
+        // est engagee, et l'utilisateur doit savoir qu'il ne faut plus
+        // solliciter le module. Le drapeau disparait avec le redemarrage.
+        EventBus::updateInProgress = true;
+        EventBus::displayDirty = true;   // redessiner le bandeau tout de suite
         _restartPending = true;
         _restartAtMs = millis() + 750U;
         JsonDocument out;
@@ -1394,6 +1401,51 @@ void WebManager::handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc
     sendOk(req);
 }
 
+// Source des mises a jour des ressources Web.
+//
+// Configurable parce qu'un module installe sur site n'est plus joignable que
+// par le WiFi : figer la source dans le firmware imposerait de le reflasher,
+// donc de le demonter, pour changer de canal.
+//
+// HTTPS impose - voir ConfigManager::setWebAssetsUrl() pour le raisonnement :
+// le manifeste porte les SHA-256 qui authentifient les fichiers, donc servi
+// en clair il permettrait d'en substituer un autre et la verification par
+// hash validerait l'attaque au lieu de l'empecher.
+void WebManager::handleSetWebAssetsUrl(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_config) { sendError(req, "config indisponible"); return; }
+    const char* url = doc["url"] | "";
+    if (strlen(url) == 0) { sendError(req, "url requise"); return; }
+    if (!_config->setWebAssetsUrl(url)) {
+        sendError(req, "url refusee : https:// obligatoire, 159 caracteres max");
+        return;
+    }
+    sendOk(req);
+}
+
+// Identification physique d'une zone : fait clignoter sa LED en blanc sur
+// le ruban WS2812, pour ne pas se tromper au branchement. Ne touche NI aux
+// relais NI a la configuration - c'est un simple retour visuel temporaire,
+// sans effet de bord sur l'arrosage.
+void WebManager::handleZoneIdentify(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_display) { sendError(req, "affichage indisponible"); return; }
+
+    const uint8_t zone = doc["zone"] | 255U;
+    // Duree bornee : une identification oubliee masquerait l'etat reel de la
+    // zone. 3 a 120 s, 20 s par defaut - le temps de reperer une LED.
+    uint16_t seconds = doc["seconds"] | 20U;
+    if (seconds < 3U)   seconds = 3U;
+    if (seconds > 120U) seconds = 120U;
+
+    // zone == 255 est le code d'annulation, volontairement accepte : il faut
+    // pouvoir eteindre l'identification sans attendre son echeance.
+    if (zone != 255U && _config && zone >= _config->nbZones()) {
+        sendError(req, "zone invalide");
+        return;
+    }
+    _display->identifyZone(zone, (uint32_t)seconds * 1000UL);
+    sendOk(req);
+}
+
 void WebManager::handleSetZoneNotifications(AsyncWebServerRequest* req,
                                              JsonDocument& doc) {
     if (!_config) { sendError(req, "config indisponible"); return; }
@@ -1443,6 +1495,10 @@ void WebManager::handleGetDisplay(AsyncWebServerRequest* req) {
     doc["planGap"]    = d.planGap;
     doc["windGustAlertKmh"] = _config->windAlert().gustKmh;
     doc["windSevereKmh"]    = _config->windAlert().severeKmh;
+    // Source des mises a jour Web, pour que l'interface montre d'ou le
+    // module se met a jour - une information a verifier avant de laisser
+    // un module partir sur site.
+    doc["webAssetsUrl"]     = _config->webAssetsUrl();
     doc["g2Gpad"]     = d.g2Gpad;
     doc["g4Gpad"]     = d.g4Gpad;
     // Options météo LCD

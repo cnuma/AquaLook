@@ -43,6 +43,18 @@ struct EventBus {
     /// WiFiManager le consomme et bascule en mode AP + DNS redirect.
     static bool captiveRequested;
 
+    // ── Mise a jour en cours ──────────────────────────────────
+    /// Positionne des qu'une mise a jour est demandee (ressources Web ou
+    /// firmware), jusqu'au redemarrage qui l'execute.
+    ///
+    /// Contrairement aux autres, ce drapeau n'est PAS consomme : il decrit
+    /// un etat qui dure, pas un evenement. Il sert a prevenir l'utilisateur
+    /// qu'une operation est engagee et qu'il ne faut pas solliciter le
+    /// module - bandeau LCD et voyant passent au violet, la meme teinte que
+    /// celle deja utilisee partout pour "mise a jour" (Theme::PURPLE,
+    /// --purple #6633cc cote Web).
+    static bool updateInProgress;
+
     // ── Helpers ───────────────────────────────────────────────
     /// Remet tous les flags à false — appelé uniquement en test unitaire.
     static void reset() {
@@ -50,6 +62,7 @@ struct EventBus {
         configDirty      = false;
         wifiDirty        = false;
         captiveRequested = false;
+        updateInProgress = false;
     }
 };
 

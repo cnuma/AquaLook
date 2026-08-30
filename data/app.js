@@ -151,6 +151,8 @@ function renderZonesGrid() {
                 onclick="event.stopPropagation(); toggleManual(${i}, ${!active})">
           ${active ? 'Arreter' : 'Arroser ' + manDur + ' min'}
         </button>
+        <button class="btn-identify" title="Fait clignoter en blanc la LED de cette zone, pour la reperer au branchement"
+                onclick="event.stopPropagation(); identifyZone(${i})">&#128161;</button>
       </div>
       <div class="zone-card-meta">
         <span class="zone-meta-item">&#128197; ${modeStr}</span>
@@ -160,6 +162,26 @@ function renderZonesGrid() {
     </div>`;
   }).join('');
 }
+// Identification physique d'une zone : sa LED clignote en blanc sur le
+// ruban, le temps de reperer a quel bornier elle correspond. Le blanc est
+// la seule couleur qu'aucun etat n'utilise (bleu = arrosage, orange =
+// pluie, vert/ambre/violet/rouge = etats du module).
+//
+// N'agit ni sur les relais ni sur la configuration : rien n'est arrose, et
+// le clignotement s'arrete tout seul cote module.
+function identifyZone(i) {
+  fetch('/api/zoneIdentify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zone: i, seconds: 20 })
+  }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (typeof toast === 'function') toast('Zone ' + (i + 1) + ' : LED blanche pendant 20 s');
+  }).catch(function (e) {
+    if (typeof toast === 'function') toast('Identification impossible : ' + e.message);
+  });
+}
+
 function renderZonesTable() {
   const el     = document.getElementById('zones-container');
   const manDur = status.manualDurationMin || 10;
@@ -1109,10 +1131,12 @@ function applyWebZoneColors(cfg) {
     '.zone-color-blue   { border-left-color: ' + z1 + ' !important; }',
     '.zone-color-amber  { border-left-color: ' + z2 + ' !important; }',
     '.zone-color-purple { border-left-color: ' + z3 + ' !important; }',
-    '.zone-color-green.zone-card-active  { background: ' + z0 + '18 !important; }',
-    '.zone-color-blue.zone-card-active   { background: ' + z1 + '18 !important; }',
-    '.zone-color-amber.zone-card-active  { background: ' + z2 + '18 !important; }',
-    '.zone-color-purple.zone-card-active { background: ' + z3 + '18 !important; }',
+    // Le fond d'une zone ACTIVE n'est plus teinte par la couleur de la
+    // zone : depuis le 30 aout 2026 le bleu est la couleur d'etat commune
+    // au ruban WS2812, au LCD et a cette page. L'identite de la zone reste
+    // portee par le lisere de gauche, regle juste au-dessus. Ces quatre
+    // regles ecrasaient le bleu de style-base.css, d'ou leur retrait.
+
     // .mini-slot n'est plus teinte par zone : voir --slot-bg/--slot-text
     // (style-base.css), une couleur fixe pour rester lisible quel que
     // soit le fond de zone choisi par l'utilisateur.

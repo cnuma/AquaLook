@@ -1,4 +1,5 @@
 #include "ScreenManager.h"
+#include "EventBus.h"
 #include "FaultManager.h"
 #include "MaintenanceResult.h"
 #include "StatusLed.h"
@@ -99,15 +100,31 @@ void ScreenManager::update(bool anyRelayActive, bool wifiSearching,
 
     // La LED reste le seul retour visuel en veille ecran (backlight eteint) :
     // recherche WiFi visible meme ecran off, pas seulement en usage normal.
-    if (_sleeping) {
+    // Ecran allume, le voyant d'etat reste eteint - c'est un indicateur de
+    // veille - SAUF si un arrosage est en cours : cette information-la doit
+    // rester visible en permanence.
+    //
+    // On repasse par updateLed() plutot que de recopier le clignotement ici :
+    // sa branche "arrosage en cours" est prioritaire et sort immediatement,
+    // donc l'appel donne exactement le bleu voulu, sans dupliquer ni le
+    // rythme ni la couleur.
+    if (_sleeping || anyRelayActive || EventBus::updateInProgress) {
         updateLed(anyRelayActive, wifiSearching);
-        renderZones(activeZoneMask, rainBlockedMask, nbZones);
     } else {
         ledOff();
-        // Ecran allume : l'utilisateur a les cartes de zone sous les yeux,
-        // le ruban n'apporte rien et resterait allume pour rien.
-        AquaLook::StatusLed::clearZones();
     }
+
+    // Les LED de zone sont pilotees EN PERMANENCE, ecran allume comme
+    // eteint - contrairement au voyant d'etat ci-dessus, qui reste un
+    // indicateur de veille.
+    //
+    // Les eteindre ecran allume paraissait economique, mais rendait
+    // l'information invisible au moment ou elle sert le plus : declencher
+    // un arrosage force REVEILLE l'ecran (voir wakeUp() plus haut, sur
+    // front montant de anyRelayActive). La zone concernee ne passait donc
+    // au bleu qu'apres les minutes de screenTimeoutMin, une fois l'ecran
+    // retombe en veille. Corrige le 30 aout 2026 sur constat utilisateur.
+    renderZones(activeZoneMask, rainBlockedMask, nbZones);
 
     renderLed();
 }
@@ -167,6 +184,18 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     // resolveColor() (rouge clignotant, applique ensuite par renderLed()) :
     // le rouge doit rester reserve exclusivement a une erreur/panne
     // detectee, jamais reutilise ici pour un etat operationnel normal.
+    // Mise a jour ENGAGEE : violet fixe, au-dessus de tout sauf la panne.
+    //
+    // Fixe et non clignotant, volontairement : un clignotement signale un
+    // etat qui evolue, alors qu'ici il s'agit de dire "ne touche a rien tant
+    // que c'est allume". La couleur pleine se distingue immediatement des
+    // trois clignotements existants (arrosage, WiFi, mise a jour DISPONIBLE
+    // - cette derniere clignote en violet, mais lentement et brievement).
+    if (EventBus::updateInProgress) {
+        ledSetBrightness(102, 51, 204);
+        return;
+    }
+
     if (relayActive) {
         if (now - _ledTimer >= 500UL) {
             _ledTimer = now;
@@ -336,6 +365,25 @@ void ScreenManager::renderLed() {
     AquaLook::StatusLed::commit();
 }
 
+void ScreenManager::identifyZone(uint8_t zone, uint32_t durationMs) {
+#if !AQUALOOK_BOARD_S3
+    // Aucun ruban sur la carte historique : rien a identifier. La route Web
+    // repond quand meme, mais sans pretendre par un log qu'une LED clignote
+    // quelque part.
+    (void)zone; (void)durationMs;
+#else
+    if (zone >= MAX_ZONES) {          // annulation explicite
+        _identifyZone  = 255;
+        _identifyUntil = 0;
+        return;
+    }
+    _identifyZone  = zone;
+    _identifyUntil = millis() + durationMs;
+    Serial.printf("[Screen] Identification zone %u pendant %lu ms\n",
+                  (unsigned)(zone + 1U), (unsigned long)durationMs);
+#endif
+}
+
 void ScreenManager::renderZones(uint16_t activeZoneMask, uint16_t rainBlockedMask,
                                 uint8_t nbZones) {
 #if !AQUALOOK_BOARD_S3
@@ -355,8 +403,30 @@ void ScreenManager::renderZones(uint16_t activeZoneMask, uint16_t rainBlockedMas
     const float wave  = 0.5f * (1.0f - cosf(phase * 2.0f * (float)PI));
     const uint16_t level = (uint16_t)(40.0f + wave * 215.0f);
 
+    // Identification en cours ? Elle passe DEVANT tous les etats : pendant
+    // le raccordement, l'utilisateur cherche une LED precise, pas une
+    // information d'arrosage. Elle expire d'elle-meme.
+    const uint32_t nowMs = millis();
+    if (_identifyZone != 255U && (int32_t)(nowMs - _identifyUntil) >= 0) {
+        _identifyZone = 255U;         // echue
+    }
+    const bool identifying = (_identifyZone != 255U);
+    // Clignotement rapide : bien plus nerveux que la respiration de 2 s d'une
+    // zone en arrosage, pour rester reconnaissable au premier coup d'oeil.
+    const bool identifyOn = ((nowMs % 400UL) < 200UL);
+
     for (uint8_t z = 0; z < nbZones; z++) {
         const uint16_t bit = (uint16_t)(1U << z);
+
+        // L'identification ne prend QUE la zone designee. Les autres gardent
+        // leur etat reel : eteindre tout le ruban pendant le raccordement
+        // masquerait un arrosage en cours, alors que c'est precisement une
+        // information a ne jamais perdre de vue.
+        if (identifying && z == _identifyZone) {
+            const uint8_t v = identifyOn ? 255U : 0U;
+            AquaLook::StatusLed::setZone(z, v, v, v);
+            continue;
+        }
 
         // La LED porte un ETAT, pas une identite : la position designe
         // deja la zone, la couleur est donc libre de dire autre chose.

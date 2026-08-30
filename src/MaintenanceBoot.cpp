@@ -11,6 +11,7 @@
 
 #include "CloudSync.h"
 #include "ConfigManager.h"
+#include "StatusLed.h"
 #include "EventLog.h"
 #include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
@@ -536,6 +537,20 @@ void handleInstallUpdate() {
 }
 
 bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
+    // Voyant violet fixe pendant toute la maintenance.
+    //
+    // C'est la phase la plus longue d'une mise a jour (une trentaine de
+    // secondes) et la plus opaque : setup() est intercepte, donc ni ecran ni
+    // interface Web ne tournent. Sans ce voyant, le module parait simplement
+    // eteint. Le ruban WS2812 est sur son propre GPIO et ne depend d'aucun
+    // de ces sous-systemes : il reste pilotable ici.
+    //
+    // Sans effet sur la carte historique, dont le voyant embarque est pilote
+    // par les memes appels mais dont les broches ne sont pas attachees dans
+    // ce mode minimal.
+    AquaLook::StatusLed::begin();
+    AquaLook::StatusLed::setStatus(102, 51, 204);   // Theme::PURPLE
+    AquaLook::StatusLed::commit();
     const MaintenanceRequest request = MaintenanceRequestStore::load();
     if (request == MaintenanceRequest::NONE) return false;
 

@@ -26,7 +26,18 @@ namespace Theme {
     uint16_t MUTED    = 0x7CF0;  // #789c80 — labels
 
     // ── Etat actif ────────────────────────────────────────────
-    uint16_t ACTIVE_BG = 0x3904; // #382020 — fond carte zone active
+    // Fond de carte d'une zone en cours d'arrosage.
+    //
+    // Bleu sombre depuis le 30 aout 2026 : le bleu devient la couleur unique
+    // de « zone active » sur les trois surfaces — ruban WS2812, LCD et
+    // interface Web. Auparavant #382020, un brun rougeatre qui n'avait de
+    // rapport ni avec le voyant ni avec le Web, et qui frolait le rouge
+    // reserve aux pannes.
+    //
+    // Surchargeable par l'utilisateur (CfgDisplay::cActiveBg) : un module
+    // deja configure conserve sa valeur enregistree, ce defaut ne vaut que
+    // pour une configuration neuve ou reinitialisee.
+    uint16_t ACTIVE_BG = 0x1147; // #10283c — fond carte zone active
 
     // ── Accents zone ──────────────────────────────────────────
     // Ordre : vert / bleu / amber / violet

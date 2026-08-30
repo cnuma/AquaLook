@@ -151,13 +151,15 @@ header {
   transition: border-color .25s, background .25s;
 }
 .zone-row:last-child { margin-bottom: 0; }
-.zone-row.active { border-color: var(--green); background: var(--green-dim); }
+.zone-row.active { border-color: var(--blue); background: var(--blue-dim, #eff7ff); }
 .zone-name { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .zone-badge {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   padding: 2px 7px; border-radius: 3px; letter-spacing: .05em;
 }
-.zone-badge.on  { background: var(--green); color: #fff; }
+/* La pastille d'une zone active respire : meme signal visuel que la LED
+   de la zone sur le ruban, pour que les deux se lisent pareil. */
+.zone-badge.on  { background: var(--blue); color: #fff; animation: zone-breathe 2s ease-in-out infinite; }
 .zone-badge.off { background: var(--border); color: var(--muted); }
 .zone-reason { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
 
@@ -179,7 +181,18 @@ header {
   white-space: nowrap; transition: all .2s;
 }
 .btn-run:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
-.btn-run.active { background: var(--green); color: #fff; border-color: var(--green); }
+.btn-run.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+/* Bouton d'identification physique d'une zone : fait clignoter sa LED en
+   blanc sur le ruban, pour ne pas se tromper au branchement. Neutre
+   volontairement — il ne declenche aucun arrosage, il ne doit donc pas
+   ressembler au bouton d'action a cote. */
+.btn-identify {
+  font-size: 13px; line-height: 1;
+  padding: 6px 9px; border-radius: 5px; border: 1px solid var(--border2);
+  background: var(--bg2); color: var(--text2); cursor: pointer;
+  transition: all .2s;
+}
+.btn-identify:hover { border-color: var(--text); background: #fff; }
 .btn-save {
   font-family: var(--mono); font-size: 11px; font-weight: 600;
   padding: 5px 10px; border-radius: 5px;
@@ -484,15 +497,16 @@ header {
   transition: border-color .2s, background .2s, box-shadow .2s;
 }
 .zone-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-.zone-card-active { box-shadow: 0 0 0 2px var(--green); }
+.zone-card-active { box-shadow: 0 0 0 2px var(--blue); }
 .zone-color-green  { border-left: 4px solid var(--green); }
 .zone-color-blue   { border-left: 4px solid var(--blue); }
 .zone-color-amber  { border-left: 4px solid var(--amber); }
 .zone-color-purple { border-left: 4px solid var(--purple); }
-.zone-color-green.zone-card-active  { background: #f0fff4; }
-.zone-color-blue.zone-card-active   { background: #f0f8ff; }
-.zone-color-amber.zone-card-active  { background: #fffbf0; }
-.zone-color-purple.zone-card-active { background: #faf0ff; }
+/* Zone en cours d'arrosage : fond bleu quelle que soit la couleur de la
+   zone. Le bleu est la couleur d'ETAT commune au ruban WS2812, au LCD et
+   a cette interface ; l'identite de la zone reste portee par le lisere
+   de gauche (.zone-color-*), qui, lui, ne change pas. */
+.zone-card-active { background: #eff7ff; }
 
 .zone-card-header {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -504,7 +518,9 @@ header {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   padding: 2px 7px; border-radius: 3px; letter-spacing: .05em;
 }
-.zone-badge.on  { background: var(--green); color: #fff; }
+/* La pastille d'une zone active respire : meme signal visuel que la LED
+   de la zone sur le ruban, pour que les deux se lisent pareil. */
+.zone-badge.on  { background: var(--blue); color: #fff; animation: zone-breathe 2s ease-in-out infinite; }
 .zone-badge.off { background: var(--border); color: var(--muted); }
 .zone-reason { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
@@ -544,10 +560,10 @@ header {
 }
 .zones-table tbody tr:last-child { border-bottom: none; }
 .zones-table tbody tr:hover { background: var(--bg2); }
-.zones-table tbody tr.zone-active-green  { background: #f0fff4; }
-.zones-table tbody tr.zone-active-blue   { background: #f0f8ff; }
-.zones-table tbody tr.zone-active-amber  { background: #fffbf0; }
-.zones-table tbody tr.zone-active-purple { background: #faf0ff; }
+/* Vue tableau : meme regle que les cartes. Une ligne active est bleue,
+   quelle que soit la couleur de la zone — les quatre classes restent
+   distinctes cote JS, mais rendent la meme chose. */
+.zones-table tbody tr[class*="zone-active-"] { background: #eff7ff; }
 
 .zt-cell {
   padding: 9px 10px;
@@ -673,4 +689,18 @@ header {
 
 .zones-table tbody tr.zone-interval td {
   background-color: transparent;
+}
+
+/* Respiration d'une zone active — meme rythme de 2 s que la LED de zone
+   du ruban WS2812 (ScreenManager::renderZones), pour que l'ecran, le
+   ruban et cette page decrivent le meme etat de la meme facon. */
+@keyframes zone-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .45; }
+}
+
+/* Respecte le reglage systeme de reduction des animations : la couleur
+   suffit alors a porter l'information, la respiration n'est qu'un renfort. */
+@media (prefers-reduced-motion: reduce) {
+  .zone-badge.on { animation: none; }
 }

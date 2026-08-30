@@ -29,6 +29,16 @@ public:
                 uint16_t rainBlockedMask = 0U);
     void wakeUp();
 
+    // Fait clignoter en BLANC la LED d'une zone, pour l'identifier
+    // physiquement pendant le raccordement. Le blanc est la seule couleur
+    // qu'aucun etat n'utilise : bleu = arrosage, orange = pluie, vert /
+    // ambre / violet / rouge = etats du module. Aucune confusion possible.
+    //
+    // S'arrete tout seul au bout de durationMs : une identification oubliee
+    // ne doit pas masquer indefiniment l'etat reel de la zone.
+    // zone >= MAX_ZONES annule l'identification en cours.
+    void identifyZone(uint8_t zone, uint32_t durationMs);
+
     bool isAsleep() const { return _sleeping; }
 
 private:
@@ -39,6 +49,16 @@ private:
     uint32_t _ledTimer = 0;
     uint8_t _ledPhase = 0;
     bool _relayWasActive = false;
+
+#if AQUALOOK_BOARD_S3
+    // Identification physique d'une zone (voir identifyZone).
+    // 255 = aucune identification en cours.
+    //
+    // Sous garde : la carte historique n'a pas de ruban, elle ne peut rien
+    // identifier et n'a donc pas a porter ces octets.
+    uint8_t  _identifyZone  = 255;
+    uint32_t _identifyUntil = 0;
+#endif
 
     uint8_t _normalLedRed = 0;
     uint8_t _normalLedGreen = 0;

@@ -1,5 +1,6 @@
 #include "DisplayManager.h"
 #include "EventBus.h"
+#include "BootLoopGuard.h"
 #include "EventLog.h"
 #include "esp_log.h"
 #include <WiFi.h>
@@ -548,14 +549,25 @@ void DisplayManager::update() {
             }
         }
     }
-    // Masque de blocage pluie : calculé uniquement là où il sert, c'est-à-dire
-    // sur la carte S3 (ruban WS2812) et en veille écran (seul moment où le
-    // ruban est piloté). rainBlockedMaskToday() lit le planning complet de
-    // chaque zone : le laisser tourner sur la carte historique, dont le
-    // voyant unique ne peut rien en faire, serait payer à chaque tour de
-    // boucle pour un résultat jeté — le même travers que renderZones().
+    // Masque de blocage pluie, uniquement là où il sert : la carte S3 et son
+    // ruban WS2812. Sur la carte historique, dont le voyant unique ne peut
+    // rien en faire, le calcul est neutralisé à la compilation — le laisser
+    // tourner serait payer pour un résultat jeté, comme renderZones().
+    //
+    // Rafraîchi périodiquement et non à chaque tour de boucle :
+    // rainBlockedMaskToday() recopie le planning complet de chaque zone, et
+    // l'état qu'il décrit ne bouge qu'au rythme des prévisions météo (une
+    // fois par heure) ou d'une modification de configuration. Un retard de
+    // quelques secondes est sans conséquence — contrairement au masque
+    // d'arrosage en cours juste au-dessus, lui recalculé à chaque passage
+    // pour que le déclenchement soit visible immédiatement.
 #if AQUALOOK_BOARD_S3
-    const uint16_t rainMask = _screenMgr.isAsleep() ? rainBlockedMaskToday() : 0U;
+    constexpr uint32_t RAIN_MASK_REFRESH_MS = 10000UL;
+    if (_rainMaskAtMs == 0U || (now - _rainMaskAtMs) >= RAIN_MASK_REFRESH_MS) {
+        _rainMaskAtMs   = now;
+        _rainMaskCache  = rainBlockedMaskToday();
+    }
+    const uint16_t rainMask = _rainMaskCache;
 #else
     const uint16_t rainMask = 0U;
 #endif
@@ -709,21 +721,53 @@ const char* DisplayManager::adminPageName(AdminPage p) {
 //  Composants UI communs
 // ═══════════════════════════════════════════════════════════════
 void DisplayManager::drawHeader(const char* title, bool backBtn) {
-    _tft.fillRect(0, 0, SCREEN_W, 28, Theme::SURFACE);
+    // Couleur du bandeau : elle porte l'etat global du module.
+    //
+    //   ambre   mode degrade - le module a redemarre plusieurs fois de suite
+    //           et s'est mis en securite. Meteo, verification des mises a
+    //           jour et notifications sont suspendues, et il faut une action
+    //           de l'utilisateur. Etat DURABLE, donc prioritaire sur le
+    //           violet : une mise a jour ne peut de toute facon pas etre en
+    //           cours puisqu'elles sont justement suspendues.
+    //   violet  mise a jour engagee - operation en cours, ne pas solliciter
+    //           le module. Meme teinte que le voyant et que la pastille Web.
+    //   gris    fonctionnement nominal.
+    //
+    // Le rouge n'est pas utilise ici : il reste reserve a une panne active
+    // signalee par FaultManager, pour qu'il garde son sens au premier coup
+    // d'oeil.
+    uint16_t headerBg = Theme::SURFACE;
+    if (BootLoopGuard::isDegraded())      headerBg = Theme::AMBER;
+    else if (EventBus::updateInProgress)  headerBg = Theme::PURPLE;
+    _tft.fillRect(0, 0, SCREEN_W, 28, headerBg);
     _tft.drawFastHLine(0, 27, SCREEN_W, Theme::BORDER);
     _tft.setFreeFont(nullptr);
     _tft.setTextSize(1);
 
+    // Le fond passe a setTextColor doit etre la couleur REELLE du bandeau,
+    // et non Theme::SURFACE en dur : sinon chaque texte peint son propre
+    // rectangle gris et decoupe le bandeau colore. Meme defaut que celui
+    // corrige le 29 aout 2026 sur les cellules meteo.
     if (backBtn) {
-        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        _tft.setTextColor(Theme::MUTED, headerBg);
         _tft.drawString("<", 8, 10);
     }
 
-    _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
+    _tft.setTextColor(Theme::TEXT, headerBg);
     _tft.setTextDatum(MC_DATUM);
     _tft.setFreeFont(THEME_FONT_TITLE);
     _tft.drawString(title, SCREEN_W / 2, 14);
     _tft.setFreeFont(nullptr);
+
+    // Marqueur a droite : la couleur seule ne dit pas POURQUOI. Deux mots
+    // suffisent a orienter vers l'interface Web, qui porte l'explication
+    // complete et le bouton de reactivation.
+    if (headerBg != Theme::SURFACE) {
+        _tft.setTextColor(Theme::BG, headerBg);   // sombre sur fond vif
+        _tft.setTextDatum(MR_DATUM);
+        _tft.drawString(BootLoopGuard::isDegraded() ? "DEGRADE" : "MAJ...",
+                        SCREEN_W - 8, 14);
+    }
     _tft.setTextDatum(TL_DATUM);
 }
 
