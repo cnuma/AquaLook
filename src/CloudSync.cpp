@@ -246,6 +246,25 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
 //  CloudSync — echange reseau
 // ═══════════════════════════════════════════════════════════════
 
+// Adresse d'un reseau prive (RFC 1918) ou bouclage ?
+//
+// Sert a distinguer un serveur d'etabli d'un serveur joignable depuis
+// Internet. La reconnaissance est volontairement litterale, sur la forme
+// pointee : un nom d'hote n'est PAS considere comme prive, meme s'il resout
+// vers une adresse privee. Une resolution DNS peut changer sous nos pieds,
+// et on ne va pas fonder une decision de securite dessus.
+static bool isPrivateAddress(const char* host) {
+    if (!host || !host[0]) return false;
+    unsigned a = 0U, b = 0U, c = 0U, d = 0U;
+    if (sscanf(host, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) return false;
+    if (a > 255U || b > 255U || c > 255U || d > 255U) return false;
+    if (a == 127U) return true;                      // 127.0.0.0/8
+    if (a == 10U) return true;                       // 10.0.0.0/8
+    if (a == 192U && b == 168U) return true;         // 192.168.0.0/16
+    if (a == 172U && b >= 16U && b <= 31U) return true;  // 172.16.0.0/12
+    return false;
+}
+
 CloudSyncConfig CloudSync::loadConfig() {
     CloudSyncConfig cfg;
     Preferences prefs;
@@ -262,6 +281,20 @@ CloudSyncConfig CloudSync::loadConfig() {
     cfg.intervalMinutes = static_cast<uint16_t>(prefs.getUShort(KEY_INTERVAL, 15U));
     prefs.end();
     if (cfg.intervalMinutes == 0U || cfg.intervalMinutes > 1440U) cfg.intervalMinutes = 15U;
+
+    // Relecture defensive, meme regle qu'a l'ecriture : une configuration
+    // enregistree AVANT ce garde - ou modifiee hors de set() - ne doit pas
+    // pouvoir faire circuler le jeton en clair vers Internet. On desactive la
+    // synchronisation plutot que de basculer silencieusement en HTTPS : le
+    // serveur n'ecoute peut-etre pas en TLS, et echouer bruyamment vaut mieux
+    // que paraitre fonctionner.
+    if (cfg.enabled && !cfg.useHttps && !isPrivateAddress(cfg.host)) {
+        EventLog::log(LOG_ERROR,
+                      "CloudSync: desactive - configuration HTTP en clair vers %s, "
+                      "HTTPS obligatoire hors reseau local",
+                      cfg.host);
+        cfg.enabled = false;
+    }
     return cfg;
 }
 
@@ -505,6 +538,30 @@ bool CloudSyncScheduler::set(bool enabled, const char* host, uint16_t port, bool
                               const char* moduleId, const char* token, uint16_t intervalMinutes) {
     if (intervalMinutes == 0U || intervalMinutes > 1440U) return false;
     if (enabled && (!host || host[0] == '\0')) return false;
+
+    // HTTPS impose des que le serveur n'est pas sur le reseau local.
+    //
+    // Le jeton porteur est la SEULE preuve d'identite du module. En clair, il
+    // est capturable par quiconque ecoute la ligne, et rejouable ensuite pour
+    // se faire passer pour lui. Hacher les jetons cote serveur protege la
+    // base de donnees, pas la ligne : c'est le transport qui decide.
+    //
+    // L'exception au reseau prive est deliberee et bornee : elle laisse
+    // travailler avec un serveur d'etabli en HTTP, sans jamais autoriser le
+    // clair vers Internet - le seul cas ou l'ecoute est realiste. Elle est
+    // journalisee a chaque reglage, pour qu'elle ne s'oublie pas en service.
+    if (enabled && !useHttps) {
+        if (!isPrivateAddress(host)) {
+            EventLog::log(LOG_ERROR,
+                          "CloudSync: HTTP refuse vers %s - HTTPS obligatoire hors reseau local",
+                          host);
+            return false;
+        }
+        EventLog::log(LOG_WARN,
+                      "CloudSync: HTTP en clair tolere vers %s (reseau local) - "
+                      "le jeton circule en clair, a ne pas conserver en service",
+                      host);
+    }
 
     _cfg.enabled = enabled;
     copyText(_cfg.host, sizeof(_cfg.host), host);
