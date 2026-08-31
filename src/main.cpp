@@ -6,6 +6,7 @@
 #include "EventLog.h"
 #include "HeapMetrics.h"
 #include "FaultManager.h"
+#include "MaintenanceResult.h"   // datation differee du dernier resultat
 #include "OtaBootGuard.h"
 #include "WiFiManager.h"
 #include "NTPManager.h"
@@ -684,6 +685,17 @@ void loop() {
         startedUs = RuntimeProfiler::start();
         weatherMgr.update(true);
         RuntimeProfiler::stop(RuntimeProfiler::Component::WEATHER, startedUs);
+    }
+
+    // Date le resultat de maintenance des que l'heure est connue. Le mode
+    // maintenance, ou ce resultat est ecrit, n'a pas d'horloge fiable : sans
+    // ce rattrapage l'interface affiche "date inconnue" pour une operation
+    // faite trente secondes plus tot. Une seule fois par demarrage, et la
+    // fonction ne reecrit rien si la date est deja posee.
+    static bool s_resultDateStamped = false;
+    if (!s_resultDateStamped && ntpMgr.isSynced()) {
+        s_resultDateStamped = true;
+        MaintenanceResultStore::stampDateIfMissing();
     }
 
     if (ntpMgr.isSynced()) {

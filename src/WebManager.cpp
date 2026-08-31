@@ -490,6 +490,28 @@ void WebManager::setupRoutes() {
     _server.on("/api/debug/deploy-commit", HTTP_POST, [this](AsyncWebServerRequest* req) {
         if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
         if (!_deployStagingOpen) { sendError(req, "aucun transit ouvert", 409); return; }
+
+        // Marquer l'origine AVANT la bascule, comme le fait la mise a jour
+        // reseau : le marqueur bascule ainsi avec les fichiers qu'il decrit.
+        //
+        // Sans lui, un depot direct laissait intact le marqueur ecrit par la
+        // derniere mise a jour reseau : le module servait des pages 5.9.15 en
+        // annoncant 5.9.12. L'interface affichait donc une version fausse avec
+        // aplomb -- constate le 31 aout 2026. Un depot direct ne porte aucun
+        // numero de version (il vient d'un poste, pas d'une publication), et le
+        // dire est plus honnete que de laisser croire a l'ancien.
+        {
+            static const char VJSON[] =
+                "{\"version\":\"depot direct\",\"source\":\"deploy\",\"fileCount\":0}";
+            String vpath = String(StorageManager::ASSETS_STAGING) + "/assets-version.json";
+            FsFile vf;
+            if (_storage->openWrite(vpath.c_str(), vf)) {
+                _storage->writeChunk(vf, reinterpret_cast<const uint8_t*>(VJSON),
+                                     sizeof(VJSON) - 1U);
+                _storage->closeFile(vf);
+            }
+        }
+
         const bool ok = _storage->commitAssetStaging();
         _deployStagingOpen = false;
         if (!ok) { sendError(req, "bascule echouee, ancienne version conservee", 500); return; }

@@ -139,13 +139,29 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
             : (explicitNotificationAck ? false : previousNotificationPending);
         merged.manifestSize = previous.manifestSize;
         merged.firmwareSize = previous.firmwareSize;
-        copyText(merged.installedVersion, sizeof(merged.installedVersion), previous.installedVersion);
         copyText(merged.availableVersion, sizeof(merged.availableVersion), previous.availableVersion);
         copyText(merged.channel, sizeof(merged.channel), previous.channel);
-        copyText(merged.target, sizeof(merged.target), previous.target);
-        copyText(merged.environment, sizeof(merged.environment), previous.environment);
-        copyText(merged.board, sizeof(merged.board), previous.board);
         copyText(merged.firmwareUrl, sizeof(merged.firmwareUrl), previous.firmwareUrl);
+
+        // installedVersion / target / environment / board decrivent le
+        // PROGRAMME QUI TOURNE, pas le catalogue interroge. Ils sont donc
+        // toujours connus, meme quand la verification echoue -- les remplacer
+        // par l'historique les effacait des qu'un echec survenait sans
+        // antecedent, et l'interface affichait "installee : inconnue" pour une
+        // version que le module connait par construction. Constate le 31 aout
+        // 2026, apres la remise a zero du bloc par le passage au schema 3 :
+        // l'aide invitait a lire la "Cible attendue" d'un champ vide.
+        //
+        // On garde donc la valeur fraiche, et on ne retombe sur l'ancienne que
+        // si elle manque.
+        if (result.installedVersion[0] == '\0')
+            copyText(merged.installedVersion, sizeof(merged.installedVersion), previous.installedVersion);
+        if (result.target[0] == '\0')
+            copyText(merged.target, sizeof(merged.target), previous.target);
+        if (result.environment[0] == '\0')
+            copyText(merged.environment, sizeof(merged.environment), previous.environment);
+        if (result.board[0] == '\0')
+            copyText(merged.board, sizeof(merged.board), previous.board);
         copyText(merged.sha256, sizeof(merged.sha256), previous.sha256);
         // Meme principe que ci-dessus, pour le canal ressources Web : un
         // WEB_ASSETS_UPDATE reussi consomme la mise a jour en attente ; toute
@@ -200,6 +216,53 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
     blob->crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
                              offsetof(PersistedMaintenanceResult, crc32));
 
+    const size_t written = preferences.putBytes(NVS_KEY, blob, sizeof(*blob));
+    preferences.end();
+    free(blob);
+    return written == sizeof(PersistedMaintenanceResult);
+}
+
+bool MaintenanceResultStore::stampDateIfMissing() {
+    // Le mode maintenance n'a pas d'horloge fiable : NTP n'y tourne pas, et
+    // l'heure systeme ne survit pas au redemarrage qui y fait entrer. Un
+    // resultat ecrit la-bas repart donc systematiquement avec recordedEpoch a
+    // zero -- constate le 31 aout 2026, la page affichait "date inconnue" pour
+    // une verification faite trente secondes plus tot.
+    //
+    // On le date donc au premier passage en mode normal ou l'heure est connue,
+    // soit quelques dizaines de secondes apres l'operation. La date est donc
+    // approchee par exces, jamais inventee : si l'horloge n'est toujours pas
+    // reglee, on ne pose rien et l'interface continue de dire qu'elle
+    // l'ignore.
+    const time_t now = time(nullptr);
+    if (now <= static_cast<time_t>(1577836800)) return false;
+
+    Preferences preferences;
+    if (!preferences.begin(NVS_NAMESPACE, false)) return false;
+
+    PersistedMaintenanceResult* blob =
+        static_cast<PersistedMaintenanceResult*>(malloc(sizeof(PersistedMaintenanceResult)));
+    if (blob == nullptr) { preferences.end(); return false; }
+
+    const size_t read = preferences.getBytes(NVS_KEY, blob, sizeof(*blob));
+    const bool usable = read == sizeof(*blob) &&
+                        blob->magic == NVS_MAGIC &&
+                        blob->schema == NVS_SCHEMA &&
+                        blob->payloadSize == sizeof(*blob) &&
+                        crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
+                                   offsetof(PersistedMaintenanceResult, crc32)) == blob->crc32;
+    // Rien a dater : pas de bloc, bloc illisible, ou date deja posee. Le cas
+    // "deja posee" est le plus frequent - cette fonction est appelee a chaque
+    // demarrage, et ne doit ecrire qu'une seule fois par operation.
+    if (!usable || !blob->data.valid || blob->data.recordedEpoch != 0U) {
+        free(blob);
+        preferences.end();
+        return false;
+    }
+
+    blob->data.recordedEpoch = static_cast<uint32_t>(now);
+    blob->crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
+                             offsetof(PersistedMaintenanceResult, crc32));
     const size_t written = preferences.putBytes(NVS_KEY, blob, sizeof(*blob));
     preferences.end();
     free(blob);

@@ -45,5 +45,10 @@ class MaintenanceResultStore {
 public:
     static MaintenanceResult load();
     static bool save(const MaintenanceResult& result);
+    // Date le dernier resultat s'il ne l'est pas encore et que l'horloge est
+    // reglee. A appeler depuis le mode normal, apres synchronisation NTP : le
+    // mode maintenance, ou les resultats sont ecrits, n'a pas d'heure fiable.
+    // N'ecrit qu'une fois par operation, et rien si l'heure est inconnue.
+    static bool stampDateIfMissing();
     static bool clear();
 };
