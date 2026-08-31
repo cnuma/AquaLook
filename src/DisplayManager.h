@@ -79,6 +79,13 @@ public:
     static constexpr uint16_t SCREEN_W = AquaLook::Panel::WIDTH;
     static constexpr uint16_t SCREEN_H = AquaLook::Panel::HEIGHT;
 
+    /// Remplit l'ecran de violet avec un message, et rallume le
+    /// retroeclairage. Appelee juste avant le redemarrage en maintenance :
+    /// la dalle n'ayant pas de broche de reset, cette image survit au
+    /// redemarrage de l'ESP32 et reste affichee pendant toute la mise a
+    /// jour, ou plus aucun code d'affichage ne tourne.
+    void showUpdateScreen(const char* title, const char* message);
+
     /// Fait clignoter en blanc la LED de la zone sur le ruban WS2812, pour
     /// l'identifier physiquement au moment du raccordement. S'arrête seule
     /// au bout de durationMs. zone >= MAX_ZONES annule l'identification.

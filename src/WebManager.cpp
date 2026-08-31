@@ -461,6 +461,13 @@ void WebManager::setupRoutes() {
         // solliciter le module. Le drapeau disparait avec le redemarrage.
         EventBus::updateInProgress = true;
         EventBus::displayDirty = true;   // redessiner le bandeau tout de suite
+        // Ecran violet plein, affiche AVANT le redemarrage : c'est le seul
+        // moment ou l'affichage fonctionne encore. L'image reste ensuite a
+        // l'ecran pendant toute la maintenance - voir showUpdateScreen().
+        if (_display) {
+            _display->showUpdateScreen("MISE A JOUR",
+                                       "Ressources Web en cours d'installation");
+        }
         _restartPending = true;
         _restartAtMs = millis() + 750U;
         JsonDocument out;
@@ -1296,7 +1303,11 @@ void WebManager::handleSetCloudSync(AsyncWebServerRequest* req, JsonDocument& do
     const uint16_t interval = doc["intervalMinutes"] | current.intervalMinutes;
 
     if (!_cloudSync->set(enabled, host, port, useHttps, moduleId, token, interval)) {
-        sendError(req, "hote requis si active, ou intervalle (1-1440 min) hors bornes");
+        // Trois causes possibles, et le message doit les couvrir toutes :
+        // l'ajout du refus HTTPS a rendu l'ancien libelle trompeur, il
+        // parlait d'hote et d'intervalle pour une erreur de transport.
+        sendError(req, "hote requis si active, intervalle hors bornes (1-1440 min), "
+                       "ou HTTP refuse vers un hote hors reseau local (HTTPS obligatoire)");
         return;
     }
     sendOk(req);

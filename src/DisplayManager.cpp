@@ -503,6 +503,47 @@ void DisplayManager::createSprites() {
 //    - EventBus::displayDirty → immédiat
 //    - Nominal → 5s
 // ═══════════════════════════════════════════════════════════════
+// Ecran de mise a jour : violet plein, message centre, retroeclairage
+// rallume.
+//
+// Appelee juste avant le redemarrage en mode maintenance. C'est le seul
+// moment ou l'on peut encore dessiner : pendant la maintenance, setup()
+// est intercepte et aucun code d'affichage ne tourne.
+//
+// L'image survit pourtant a tout le redemarrage, parce que la dalle
+// NV3041A n'a pas de broche de reset cablee sur cette carte (voir la
+// section [jc4827w543c_i] de platformio.ini) : son controleur garde sa
+// memoire d'image tant qu'il est alimente. MaintenanceBoot se contente
+// donc de rallumer le retroeclairage pour la rendre visible.
+//
+// L'ecran est reveille de force : une mise a jour peut etre declenchee
+// depuis la page Web alors que l'ecran dort, et c'est precisement le cas
+// ou l'utilisateur, passant devant le module, doit comprendre qu'il ne
+// faut pas y toucher.
+void DisplayManager::showUpdateScreen(const char* title, const char* message) {
+    _screenMgr.wakeUp();
+
+    _tft.fillScreen(Theme::PURPLE);
+    _tft.setFreeFont(nullptr);
+    _tft.setTextSize(1);
+    _tft.setTextDatum(MC_DATUM);
+
+    // Texte clair sur fond violet, et fond de texte EGAL au fond de
+    // l'ecran : passer Theme::BG ici peindrait un rectangle sombre autour
+    // de chaque ligne - le defaut deja rencontre sur les cellules meteo et
+    // sur le bandeau.
+    _tft.setTextColor(Theme::TEXT, Theme::PURPLE);
+    _tft.setFreeFont(THEME_FONT_TITLE);
+    _tft.drawString(title, SCREEN_W / 2, SCREEN_H / 2 - 16);
+
+    _tft.setFreeFont(nullptr);
+    _tft.drawString(message, SCREEN_W / 2, SCREEN_H / 2 + 12);
+    _tft.drawString("Ne pas eteindre le module",
+                    SCREEN_W / 2, SCREEN_H / 2 + 30);
+
+    _tft.setTextDatum(TL_DATUM);
+}
+
 uint16_t DisplayManager::rainBlockedMaskToday() {
     if (!_schedule) return 0U;
 

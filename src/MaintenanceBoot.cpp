@@ -551,6 +551,21 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     AquaLook::StatusLed::begin();
     AquaLook::StatusLed::setStatus(102, 51, 204);   // Theme::PURPLE
     AquaLook::StatusLed::commit();
+
+#if AQUALOOK_BOARD_S3
+    // Retroeclairage rallume, sans toucher au bus de la dalle.
+    //
+    // L'ecran violet a ete dessine avant le redemarrage (showUpdateScreen).
+    // La dalle NV3041A n'ayant pas de broche de reset cablee ici, son
+    // controleur a garde cette image ; seul le retroeclairage s'est eteint,
+    // GPIO1 retombant a son etat par defaut au demarrage. Le rallumer suffit
+    // donc a montrer l'ecran pendant toute la maintenance, sans reinitialiser
+    // le QSPI ni allouer le moindre tampon - ce que ce mode minimal, dedie a
+    // liberer de la memoire pour TLS, ne peut pas se permettre.
+    ledcSetup(AQ_S3_LCD_BL_CHANNEL, 5000, 12);
+    ledcAttachPin(AQ_S3_LCD_BL, AQ_S3_LCD_BL_CHANNEL);
+    ledcWrite(AQ_S3_LCD_BL_CHANNEL, 4095);
+#endif
     const MaintenanceRequest request = MaintenanceRequestStore::load();
     if (request == MaintenanceRequest::NONE) return false;
 
