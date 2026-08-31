@@ -47,7 +47,10 @@
   </div>
   <div class="header-spacer"></div>
   <span id="wifi-badge">—</span>
-  <a id="update-badge" href="/ota" style="display:none" title="Mise a jour disponible">⬆</a>
+  <!-- Le mot compte autant que la pastille : une fleche seule se devine, et
+       ce badge est souvent la premiere chose qui signale une mise a jour. -->
+  <a id="update-badge" href="/ota" style="display:none"
+     title="Une mise à jour est disponible — ouvrir la page de gestion">⬆ MAJ</a>
   <button id="btn-menu" onclick="openDrawer()" title="Configuration">
     <span></span><span></span><span></span>
   </button>
@@ -169,6 +172,17 @@
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
+      <!-- Etat des deux canaux, rempli par refreshUpdateState(). Presente ICI
+           parce que c'est la premiere chose qu'on vient y chercher : "ai-je
+           quelque chose a installer ?" Le reglage de la verification
+           automatique vient apres — c'est un parametre, pas une reponse. -->
+      <div id="upd-state" class="upd-state">Lecture de l’état…</div>
+      <a class="btn-cfg upd-open" href="/ota">Ouvrir la gestion des mises à jour</a>
+      <div class="cfg-hint">Les trois façons de mettre à jour AquaLook — le
+        programme du module, les pages Web, et le dépôt direct depuis un
+        ordinateur — sont regroupées sur cette page, dans l’ordre où elles
+        doivent être exécutées.</div>
+      <hr class="upd-sep">
       <div class="cfg-field">
         <label><input type="checkbox" id="cfg-upd-enabled"> Vérifier automatiquement les mises à jour</label>
       </div>

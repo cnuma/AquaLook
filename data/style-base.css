@@ -816,3 +816,35 @@ header {
 .cfg-zone-link:hover { border-color: var(--blue); }
 .cfg-zone-link .zone-dot { flex: 0 0 auto; }
 .cfg-zone-link-name { flex: 1 1 auto; font-size: 12px; font-weight: 600; }
+
+/* ── Etat des mises a jour (Parametres > Mises a jour) ───────────────
+   Deux canaux, deux lignes : le programme du module et les pages Web ont
+   des versions independantes, et les presenter ensemble laissait croire a
+   un numero unique. La pastille porte l'etat, pas la couleur seule — un
+   ecran mal calibre ou un daltonien doivent lire la meme chose. */
+.upd-state { margin-bottom: 10px; }
+.upd-chan {
+  border: 1px solid var(--border2); border-radius: 8px;
+  padding: 9px 11px; margin-bottom: 8px; background: var(--bg);
+}
+.upd-chan-head { display: flex; align-items: center; gap: 8px; }
+.upd-chan-name { font-weight: 600; flex: 1; }
+.upd-chan-vers {
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline;
+}
+.upd-chan-vers b { color: var(--text); font-weight: 600; }
+.upd-arrow { color: var(--muted); }
+.upd-chip {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border2); color: var(--muted); white-space: nowrap;
+}
+.upd-chip.ok      { color: var(--green);  border-color: var(--green-mid); }
+.upd-chip.avail   { color: var(--purple); border-color: var(--purple); font-weight: 600; }
+.upd-chip.unknown { color: var(--muted); }
+.upd-open {
+  display: block; text-align: center; text-decoration: none;
+  background: var(--purple); color: #fff; border: none;
+}
+.upd-open:hover { filter: brightness(.9); }
+.upd-sep { border: none; border-top: 1px solid var(--border2); margin: 16px 0 12px; }

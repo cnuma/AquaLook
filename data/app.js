@@ -760,6 +760,7 @@ function openCfgPage(groupId) {
   if (!g) return;
   if (g.sections.indexOf('sec-zones') >= 0) buildCfgZoneList();
   if (g.sections.indexOf('sec-cloud') >= 0) populateCloudSync();
+  if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
 
   const drawer = document.getElementById('drawer');
   drawer.classList.add('cfg-detail');
@@ -849,6 +850,64 @@ function saveCloudSync() {
       fetchAdminStatus();
     })
     .catch(e => toast('Enregistrement impossible : ' + e.message, true));
+}
+
+// ── Etat des mises a jour ────────────────────────────────────────────
+//
+// Deux canaux independants, deux versions distinctes : le programme du
+// module (firmware) et les pages Web. Les confondre est la premiere
+// source de confusion sur ce sujet — d'ou deux lignes separees, jamais
+// un "AquaLook 5.9.x" unique qui ne voudrait rien dire.
+//
+// La disponibilite vient du dernier resultat de verification conserve
+// par le module. Tant qu'aucune verification n'a tourne, on dit
+// "jamais verifie" plutot que "a jour" : ne rien savoir n'est pas une
+// bonne nouvelle, et l'afficher comme telle serait mentir.
+async function refreshUpdateState() {
+  const el = document.getElementById('upd-state');
+  if (!el) return;
+
+  const line = (titre, installe, dispo, etat, cls) =>
+    `<div class="upd-chan">
+       <div class="upd-chan-head"><span class="upd-chan-name">${titre}</span>
+         <span class="upd-chip ${cls}">${etat}</span></div>
+       <div class="upd-chan-vers">
+         <span>installé <b>${escapeHtml(installe || '?')}</b></span>
+         ${dispo ? `<span class="upd-arrow">→</span><span>disponible <b>${escapeHtml(dispo)}</b></span>` : ''}
+       </div>
+     </div>`;
+
+  let res = null, web = null;
+  try { res = await (await fetch('/api/maintenance/last-result', {cache:'no-store'})).json(); } catch (e) {}
+  try { web = await (await fetch('/assets-version.json', {cache:'no-store'})).json(); } catch (e) {}
+
+  const checked = res && res.valid && res.command === 'check_version';
+
+  // Firmware
+  let fw;
+  if (!checked) {
+    fw = line('Programme du module', res && res.installedVersion, null, 'jamais vérifié', 'unknown');
+  } else if (res.updateAvailable) {
+    fw = line('Programme du module', res.installedVersion, res.availableVersion, 'à installer', 'avail');
+  } else {
+    fw = line('Programme du module', res.installedVersion, null, 'à jour', 'ok');
+  }
+
+  // Pages Web : la version installee vient du fichier depose sur la carte
+  // SD, pas du resultat de verification — c'est la seule source qui dise
+  // ce qui est REELLEMENT servi en ce moment.
+  const webInst = web ? (web.version || web.gitSha) : null;
+  let wa;
+  if (!checked) {
+    wa = line('Pages Web', webInst, null, 'jamais vérifié', 'unknown');
+  } else if (res.webAssetsUpdateAvailable) {
+    wa = line('Pages Web', webInst || res.webAssetsInstalledVersion,
+              res.webAssetsAvailableVersion, 'à installer', 'avail');
+  } else {
+    wa = line('Pages Web', webInst || res.webAssetsInstalledVersion, null, 'à jour', 'ok');
+  }
+
+  el.innerHTML = fw + wa;
 }
 
 function buildCfgZoneList() {
