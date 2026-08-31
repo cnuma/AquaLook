@@ -873,41 +873,6 @@ function buildCfgZoneList() {
   }).join('');
 }
 
-function openCfgPage(id) {
-  const sec = document.getElementById(id);
-  if (!sec) return;
-  if (id === 'sec-zones') buildCfgZoneList();
-  document.getElementById('drawer').classList.add('cfg-detail');
-  document.querySelectorAll('#drawer .cfg-section').forEach(s => {
-    s.classList.toggle('cfg-current', s === sec);
-    // Corps toujours deplie sur sa propre page : le pliage n'avait de sens
-    // que lorsque les neuf sections partageaient le meme ecran.
-    s.classList.toggle('open', s === sec);
-  });
-  const titleEl = sec.querySelector('.cfg-section-title');
-  document.getElementById('cfg-title').innerHTML =
-    titleEl ? titleEl.innerHTML : 'Paramètres';
-  document.getElementById('drawer').scrollTop = 0;
-}
-
-function backToCfgMenu() {
-  const drawer = document.getElementById('drawer');
-  drawer.classList.remove('cfg-detail');
-  document.querySelectorAll('#drawer .cfg-section').forEach(s => {
-    s.classList.remove('cfg-current', 'open');
-  });
-  document.getElementById('cfg-title').textContent = 'Paramètres';
-  drawer.scrollTop = 0;
-}
-
-// Conservee : d'anciens appels inline pointent encore dessus, et un clic
-// sur l'en-tete d'une rubrique ouverte ne doit pas la replier - elle est
-// seule a l'ecran, la replier ne montrerait plus rien.
-function toggleSection(id) {
-  const drawer = document.getElementById('drawer');
-  if (drawer && drawer.classList.contains('cfg-detail')) return;
-  document.getElementById(id).classList.toggle('open');
-}
 function populateDrawer() {
   if (!adminStatus) return;
   const s = adminStatus;
