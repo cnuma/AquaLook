@@ -6,6 +6,9 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L]
 
 # Le .env et le schema ne doivent jamais etre servis directement.
-<FilesMatch "^(\.env|schema\.sql)$">
+# router.php n'existe que pour le serveur de developpement integre : le laisser
+# accessible offrirait un second chemin d'entree vers index.php, non couvert par
+# les reecritures ci-dessus.
+<FilesMatch "^(\.env|schema\.sql|router\.php)$">
     Require all denied
 </FilesMatch>

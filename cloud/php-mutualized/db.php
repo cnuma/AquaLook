@@ -120,6 +120,59 @@ function insert_message(string $moduleId, string $protoVersion, string $msgType,
     ]);
 }
 
+/**
+ * Derniers messages d'un module, du plus recent au plus ancien.
+ *
+ * Sert la console d'administration. L'index (module_id, ts DESC) de
+ * schema.sql couvre exactement cette lecture : pas de tri en memoire, meme
+ * quand l'historique d'un module grossit.
+ *
+ * Le plafond est applique ici et non laisse a l'appelant : une console qui
+ * demanderait tout l'historique ferait tomber un hebergement mutualise, ou
+ * la memoire PHP par requete est bornee.
+ */
+function list_messages(string $moduleId, int $limit, ?string $msgType = null): array
+{
+    $limit = max(1, min($limit, 200));
+    $sql = 'SELECT id, ts, msg_type, correlation_id, payload FROM module_message '
+         . 'WHERE module_id = ?';
+    $args = [$moduleId];
+    if ($msgType !== null) {
+        $sql .= ' AND msg_type = ?';
+        $args[] = $msgType;
+    }
+    $sql .= ' ORDER BY ts DESC, id DESC LIMIT ' . $limit;
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($args);
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $rows[] = [
+            'id' => (int)$row['id'],
+            'ts' => $row['ts'],
+            'type' => $row['msg_type'],
+            'correlationId' => $row['correlation_id'],
+            'payload' => json_decode($row['payload'], true),
+        ];
+    }
+    return $rows;
+}
+
+/**
+ * Dernier instantane de configuration remonte par un module.
+ *
+ * La console en a besoin pour renseigner baseRevision : le firmware refuse
+ * toute commande config.apply dont la baseRevision ne correspond pas a sa
+ * revision courante (verrouillage optimiste, CloudSync.cpp). Faire saisir ce
+ * nombre a la main serait une invitation a l'erreur - et le refus qui suit
+ * est silencieux du point de vue de l'administrateur.
+ */
+function latest_config(string $moduleId): ?array
+{
+    $rows = list_messages($moduleId, 1, 'config');
+    return $rows ? $rows[0] : null;
+}
+
 // ── Commandes ────────────────────────────────────────────────────────────────
 
 function create_command(string $moduleId, array $command, ?string $issuedBy): string
@@ -155,6 +208,74 @@ function next_pending_command(string $moduleId): ?array
         'correlationId' => $row['correlation_id'],
         'command' => json_decode($row['command'], true),
     ];
+}
+
+/**
+ * Historique des commandes d'un module, de la plus recente a la plus ancienne.
+ *
+ * Ordonne par seq et non par issued_at, pour la meme raison que
+ * next_pending_command() : deux commandes emises dans la meme seconde
+ * s'ordonnaient au hasard. La console doit montrer la file exactement dans
+ * l'ordre ou le module la consommera, sinon elle ment sur ce qui va se passer.
+ */
+function list_commands(string $moduleId, int $limit): array
+{
+    $limit = max(1, min($limit, 200));
+    $stmt = db()->prepare(
+        'SELECT seq, correlation_id, issued_at, issued_by, command, state, settled_at, result '
+        . 'FROM command WHERE module_id = ? ORDER BY seq DESC LIMIT ' . $limit
+    );
+    $stmt->execute([$moduleId]);
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $rows[] = [
+            'seq' => (int)$row['seq'],
+            'correlationId' => $row['correlation_id'],
+            'issuedAt' => $row['issued_at'],
+            'issuedBy' => $row['issued_by'],
+            'command' => json_decode($row['command'], true),
+            'state' => $row['state'],
+            'settledAt' => $row['settled_at'],
+            'result' => $row['result'] !== null ? json_decode($row['result'], true) : null,
+        ];
+    }
+    return $rows;
+}
+
+/**
+ * Annule une commande encore en attente. Retourne l'etat obtenu, ou null si
+ * l'identifiant est inconnu.
+ *
+ * Ne touche jamais une commande deja reglee : le module l'a alors deja
+ * appliquee, et reecrire son etat effacerait la trace de ce qui s'est
+ * reellement passe. Une commande partie ne se rattrape pas cote serveur.
+ */
+function cancel_command(string $correlationId): ?string
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT state FROM command WHERE correlation_id = ? FOR UPDATE');
+        $stmt->execute([$correlationId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            $pdo->commit();
+            return null;
+        }
+        if ($row['state'] !== 'pending') {
+            $pdo->commit();
+            return $row['state'];
+        }
+        $stmt = $pdo->prepare(
+            "UPDATE command SET state = 'expired', settled_at = ? WHERE correlation_id = ?"
+        );
+        $stmt->execute([utc_now(), $correlationId]);
+        $pdo->commit();
+        return 'expired';
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 /**

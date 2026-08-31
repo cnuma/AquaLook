@@ -164,9 +164,76 @@ try {
 
     // ── Routes admin (jeton admin) ──────────────────────────────────────────
 
+    // La console d'administration est un fichier statique servi par Apache
+    // (.htaccess ne reecrit que ce qui n'existe pas sur disque). Cette route
+    // n'existe que pour que /admin, tape a la main, aboutisse quand meme.
+    if ($method === 'GET' && $path === '/admin') {
+        header('Content-Type: text/html; charset=utf-8');
+        header('Location: /admin.html', true, 302);
+        exit;
+    }
+
     if ($method === 'GET' && $path === '/admin/modules') {
         require_admin();
         send_json(200, list_modules());
+    }
+
+    if ($method === 'GET' && $path === '/admin/messages') {
+        require_admin();
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        $type = $_GET['type'] ?? null;
+        if ($type !== null && !in_array($type, VALID_MSG_TYPES, true)) {
+            send_json(400, ['detail' => 'type invalide']);
+        }
+        send_json(200, list_messages($moduleId, (int)($_GET['limit'] ?? 50), $type));
+    }
+
+    if ($method === 'GET' && $path === '/admin/commands') {
+        require_admin();
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        send_json(200, list_commands($moduleId, (int)($_GET['limit'] ?? 50)));
+    }
+
+    // Revision de configuration courante, telle que le module l'a remontee.
+    // La console s'en sert pour renseigner baseRevision sans saisie manuelle
+    // (voir latest_config() dans db.php).
+    if ($method === 'GET' && $path === '/admin/config') {
+        require_admin();
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        $latest = latest_config($moduleId);
+        if ($latest === null) {
+            send_json(404, ['detail' => 'aucun instantane de configuration recu de ce module']);
+        }
+        send_json(200, $latest);
+    }
+
+    if ($method === 'POST' && $path === '/admin/command/cancel') {
+        require_admin();
+        $body = read_json_body();
+        $correlationId = $body['correlationId'] ?? '';
+        if (!is_string($correlationId) || $correlationId === '' || strlen($correlationId) > 64) {
+            send_json(400, ['detail' => 'correlationId requis']);
+        }
+        $state = cancel_command($correlationId);
+        if ($state === null) {
+            send_json(404, ['detail' => 'correlationId inconnu']);
+        }
+        // 409 si la commande etait deja reglee : l'annulation n'a rien fait,
+        // et le dire evite de laisser croire qu'on a rattrape une commande
+        // que le module a deja appliquee.
+        if ($state !== 'expired') {
+            send_json(409, ['detail' => 'commande deja reglee', 'state' => $state]);
+        }
+        send_json(200, ['ok' => true, 'state' => $state]);
     }
 
     if ($method === 'POST' && $path === '/admin/module-token') {

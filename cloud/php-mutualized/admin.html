@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AquaLook — console d'administration</title>
+<style>
+:root {
+  --bg: #0e1720; --bg2: #16232f; --bg3: #1e3040;
+  --line: #27394a; --text: #e7f1f8; --muted: #8ba6ba;
+  --blue: #29b6f6; --green: #4caf50; --amber: #ffb300; --red: #ef5350;
+  --mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 18px; background: var(--bg2); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5;
+}
+h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+h1 span { color: var(--blue); }
+.spacer { flex: 1; }
+input, select, textarea, button {
+  font: inherit; color: var(--text); background: var(--bg3);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+}
+textarea { font-family: var(--mono); font-size: 12px; width: 100%; resize: vertical; }
+button { cursor: pointer; background: var(--bg3); }
+button:hover:not(:disabled) { border-color: var(--blue); }
+button.primary { background: var(--blue); color: #06131c; border-color: var(--blue); font-weight: 600; }
+button.danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+main { display: grid; grid-template-columns: 280px 1fr; gap: 0; min-height: calc(100vh - 53px); }
+@media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+#modules { border-right: 1px solid var(--line); background: var(--bg2); padding: 10px; }
+#detail { padding: 18px; min-width: 0; }
+.mod {
+  display: block; width: 100%; text-align: left; margin-bottom: 6px;
+  background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 9px 11px;
+}
+.mod:hover { background: var(--bg3); }
+.mod.sel { background: var(--bg3); border-color: var(--blue); }
+.mod-id { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.mod-meta { color: var(--muted); font-size: 11.5px; font-family: var(--mono); margin-top: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.dot.ok { background: var(--green); } .dot.warn { background: var(--amber); } .dot.ko { background: var(--red); }
+.card { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row + .row { margin-top: 10px; }
+label { color: var(--muted); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+.mono { font-family: var(--mono); font-size: 11.5px; }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-family: var(--mono); border: 1px solid var(--line); }
+.tag.pending { color: var(--amber); border-color: var(--amber); }
+.tag.accepted { color: var(--green); border-color: var(--green); }
+.tag.refused, .tag.failed { color: var(--red); border-color: var(--red); }
+.tag.expired { color: var(--muted); }
+details > summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
+pre { margin: 6px 0 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; overflow-x: auto; font-size: 11.5px; font-family: var(--mono); }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.tabs button.on { border-color: var(--blue); color: var(--blue); }
+.empty { color: var(--muted); font-style: italic; padding: 8px; }
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 18px; opacity: 0; transition: .2s; pointer-events: none; max-width: 90vw; z-index: 20;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.err { border-color: var(--red); color: var(--red); }
+.hint { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+.token-out { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--amber); background: var(--bg); padding: 10px; border-radius: 6px; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aqua<span>Look</span> — administration</h1>
+  <div class="spacer"></div>
+  <input type="password" id="tok" placeholder="jeton administrateur" style="width:250px" autocomplete="off">
+  <button class="primary" id="btn-login">Connexion</button>
+  <button id="btn-logout" hidden>Déconnexion</button>
+</header>
+
+<main>
+  <nav id="modules"><div class="empty">Saisir le jeton pour commencer.</div></nav>
+  <section id="detail"><div class="empty">Aucun module sélectionné.</div></section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── Etat ────────────────────────────────────────────────────────────────────
+//
+// Le jeton vit en sessionStorage, pas en localStorage : il disparait a la
+// fermeture de l'onglet. Ce service est expose sur l'Internet public, et un
+// jeton administrateur qui survit indefiniment dans un navigateur partage est
+// exactement le genre de rallonge dont on se passe.
+let TOKEN = sessionStorage.getItem('aq_admin_token') || '';
+let MODULES = [];
+let CURRENT = null;
+let TAB = 'messages';
+
+const $ = id => document.getElementById(id);
+
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = ''; }, isErr ? 6000 : 3000);
+}
+
+async function api(path, options) {
+  const opt = Object.assign({ headers: {} }, options || {});
+  opt.headers['Authorization'] = 'Bearer ' + TOKEN;
+  if (opt.body) opt.headers['Content-Type'] = 'application/json';
+  const r = await fetch(path, opt);
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+  if (!r.ok) {
+    const detail = (data && data.detail) ? data.detail : ('HTTP ' + r.status);
+    throw new Error(detail);
+  }
+  return data;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Les horodatages arrivent en UTC (utc_now() cote serveur), sans suffixe de
+// fuseau. Sans le 'Z' explicite, le navigateur les lirait en heure locale et
+// afficherait un ecart silencieux — deux heures en ete, en France.
+function parseUtc(s) {
+  if (!s) return null;
+  const d = new Date(s.replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function ago(s) {
+  const d = parseUtc(s);
+  if (!d) return 'jamais';
+  const sec = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (sec < 90) return 'il y a ' + Math.round(sec) + ' s';
+  if (sec < 5400) return 'il y a ' + Math.round(sec / 60) + ' min';
+  if (sec < 172800) return 'il y a ' + Math.round(sec / 3600) + ' h';
+  return 'il y a ' + Math.round(sec / 86400) + ' j';
+}
+
+function stamp(s) {
+  const d = parseUtc(s);
+  return d ? d.toLocaleString('fr-FR') : '--';
+}
+
+// Fraicheur : le module se synchronise a intervalle reglable (15 min par
+// defaut). Un silence de plus de deux intervalles n'est plus du retard,
+// c'est une absence.
+function freshness(lastSeen) {
+  const d = parseUtc(lastSeen);
+  if (!d) return 'ko';
+  const min = (Date.now() - d.getTime()) / 60000;
+  if (min < 20) return 'ok';
+  if (min < 60) return 'warn';
+  return 'ko';
+}
+
+// ── Connexion ───────────────────────────────────────────────────────────────
+
+async function login() {
+  const v = $('tok').value.trim();
+  if (!v) { toast('Jeton vide', true); return; }
+  TOKEN = v;
+  try {
+    await loadModules();
+    sessionStorage.setItem('aq_admin_token', TOKEN);
+    $('tok').value = '';
+    $('tok').hidden = true;
+    $('btn-login').hidden = true;
+    $('btn-logout').hidden = false;
+    toast('Connecté');
+  } catch (e) {
+    TOKEN = '';
+    toast('Connexion refusée : ' + e.message, true);
+  }
+}
+
+function logout() {
+  TOKEN = '';
+  CURRENT = null;
+  sessionStorage.removeItem('aq_admin_token');
+  $('tok').hidden = false;
+  $('btn-login').hidden = false;
+  $('btn-logout').hidden = true;
+  $('modules').innerHTML = '<div class="empty">Saisir le jeton pour commencer.</div>';
+  $('detail').innerHTML = '<div class="empty">Aucun module sélectionné.</div>';
+}
+
+// ── Liste des modules ───────────────────────────────────────────────────────
+
+async function loadModules() {
+  MODULES = await api('/admin/modules');
+  renderModules();
+}
+
+function renderModules() {
+  const el = $('modules');
+  const head = '<div class="row" style="margin-bottom:10px">'
+    + '<button id="btn-refresh">Actualiser</button>'
+    + '<button id="btn-new">Nouveau module</button></div>';
+  if (!MODULES.length) {
+    el.innerHTML = head + '<div class="empty">Aucun module enregistré. '
+      + 'Utiliser « Nouveau module » pour en déclarer un et obtenir son jeton.</div>';
+  } else {
+    el.innerHTML = head + MODULES.map(m => {
+      const f = freshness(m.last_seen);
+      return '<button class="mod' + (CURRENT === m.module_id ? ' sel' : '') + '" data-id="' + esc(m.module_id) + '">'
+        + '<span class="mod-id"><span class="dot ' + f + '"></span>' + esc(m.module_id) + '</span>'
+        + '<span class="mod-meta">' + esc(m.firmware || 'firmware ?') + ' &middot; ' + ago(m.last_seen) + '</span>'
+        + '</button>';
+    }).join('');
+  }
+  $('btn-refresh').onclick = () => loadModules().then(() => { if (CURRENT) selectModule(CURRENT); });
+  $('btn-new').onclick = newModule;
+  el.querySelectorAll('.mod').forEach(b => { b.onclick = () => selectModule(b.dataset.id); });
+}
+
+async function newModule() {
+  const id = prompt('Identifiant du nouveau module (lettres, chiffres, - et _) :');
+  if (!id) return;
+  await issueToken(id, null);
+  await loadModules();
+  selectModule(id);
+}
+
+// ── Detail d'un module ──────────────────────────────────────────────────────
+
+async function selectModule(id) {
+  CURRENT = id;
+  renderModules();
+  const m = MODULES.find(x => x.module_id === id) || { module_id: id };
+  const f = freshness(m.last_seen);
+
+  $('detail').innerHTML =
+    '<div class="card">'
+    + '<h2>Module</h2>'
+    + '<div class="row"><span class="dot ' + f + '"></span>'
+    + '<strong style="font-size:16px">' + esc(m.module_id) + '</strong>'
+    + '<span class="mono" style="color:var(--muted)">' + esc(m.firmware || 'firmware inconnu') + '</span></div>'
+    + '<div class="row"><label>Dernier contact</label><span class="mono">'
+    + stamp(m.last_seen) + ' &nbsp;(' + ago(m.last_seen) + ')</span></div>'
+    + '<div class="row"><button id="btn-token">Régénérer le jeton du module</button></div>'
+    + '<div id="token-out"></div>'
+    + '</div>'
+    + '<div class="tabs">'
+    + '<button data-tab="messages">Remontées</button>'
+    + '<button data-tab="commands">Commandes</button>'
+    + '<button data-tab="compose">Envoyer une commande</button>'
+    + '</div><div id="tabbody"></div>';
+
+  $('btn-token').onclick = async () => {
+    if (!confirm('Régénérer le jeton de « ' + id + ' » ?\n\n'
+      + "L'ancien cesse immédiatement de fonctionner. Le module ne pourra plus se "
+      + 'synchroniser tant que le nouveau jeton ne lui aura pas été saisi.')) return;
+    await issueToken(id, null);
+  };
+  $('detail').querySelectorAll('.tabs button').forEach(b => {
+    b.onclick = () => { TAB = b.dataset.tab; renderTab(); };
+  });
+  renderTab();
+}
+
+function renderTab() {
+  $('detail').querySelectorAll('.tabs button').forEach(b => {
+    b.className = (b.dataset.tab === TAB) ? 'on' : '';
+  });
+  if (TAB === 'messages') return renderMessages();
+  if (TAB === 'commands') return renderCommands();
+  return renderCompose();
+}
+
+async function renderMessages() {
+  const body = $('tabbody');
+  body.innerHTML = '<div class="card"><div class="empty">Chargement…</div></div>';
+  try {
+    const rows = await api('/admin/messages?moduleId=' + encodeURIComponent(CURRENT) + '&limit=50');
+    if (!rows.length) {
+      body.innerHTML = '<div class="card"><div class="empty">Aucune remontée reçue de ce module.</div></div>';
+      return;
+    }
+    body.innerHTML = '<div class="card"><h2>50 dernières remontées</h2><table>'
+      + '<tr><th style="width:150px">Horodatage</th><th style="width:80px">Type</th><th>Charge utile</th></tr>'
+      + rows.map(r =>
+        '<tr><td class="mono">' + stamp(r.ts) + '</td>'
+        + '<td><span class="tag">' + esc(r.type) + '</span></td>'
+        + '<td><details><summary>' + esc(summarize(r.payload)) + '</summary>'
+        + '<pre>' + esc(JSON.stringify(r.payload, null, 2)) + '</pre></details></td></tr>'
+      ).join('') + '</table></div>';
+  } catch (e) { body.innerHTML = '<div class="card"><div class="empty">' + esc(e.message) + '</div></div>'; }
+}
+
+function summarize(p) {
+  if (!p || typeof p !== 'object') return String(p);
+  const keys = Object.keys(p);
+  const head = keys.slice(0, 4).map(k => {
+    const v = p[k];
+    const s = (v && typeof v === 'object') ? (Array.isArray(v) ? '[' + v.length + ']' : '{…}') : String(v);
+    return k + '=' + s;
+  }).join('  ');
+  return head + (keys.length > 4 ? '  … +' + (keys.length - 4) : '');
+}
+
+async function renderCommands() {
+  const body = $('tabbody');
+  body.innerHTML = '<div class="card"><div class="empty">Chargement…</div></div>';
+  try {
+    const rows = await api('/admin/commands?moduleId=' + encodeURIComponent(CURRENT) + '&limit=50');
+    if (!rows.length) {
+      body.innerHTML = '<div class="card"><div class="empty">Aucune commande émise vers ce module.</div></div>';
+      return;
+    }
+    body.innerHTML = '<div class="card"><h2>Commandes</h2><table>'
+      + '<tr><th style="width:150px">Émise</th><th style="width:90px">État</th><th>Commande / résultat</th><th style="width:90px"></th></tr>'
+      + rows.map(r =>
+        '<tr><td class="mono">' + stamp(r.issuedAt) + '</td>'
+        + '<td><span class="tag ' + esc(r.state) + '">' + esc(r.state) + '</span></td>'
+        + '<td><details><summary>' + esc(r.command && r.command.type ? r.command.type : 'commande') + '</summary>'
+        + '<pre>' + esc(JSON.stringify(r.command, null, 2)) + '</pre>'
+        + (r.result ? '<pre>résultat : ' + esc(JSON.stringify(r.result, null, 2)) + '</pre>' : '')
+        + '</details></td>'
+        + '<td>' + (r.state === 'pending'
+          ? '<button class="danger" data-cancel="' + esc(r.correlationId) + '">Annuler</button>' : '')
+        + '</td></tr>'
+      ).join('') + '</table>'
+      + '<div class="hint">Une commande déjà réglée ne peut pas être annulée : le module l\'a appliquée, '
+      + 'et réécrire son état effacerait la trace de ce qui s\'est passé.</div></div>';
+    body.querySelectorAll('[data-cancel]').forEach(b => {
+      b.onclick = async () => {
+        try {
+          await api('/admin/command/cancel', {
+            method: 'POST', body: JSON.stringify({ correlationId: b.dataset.cancel })
+          });
+          toast('Commande annulée');
+          renderCommands();
+        } catch (e) { toast('Annulation impossible : ' + e.message, true); }
+      };
+    });
+  } catch (e) { body.innerHTML = '<div class="card"><div class="empty">' + esc(e.message) + '</div></div>'; }
+}
+
+// ── Composition d'une commande ──────────────────────────────────────────────
+
+const TEMPLATES = {
+  'Réglages système': {
+    type: 'config.apply',
+    system: { screenTimeoutMin: 2, maxWateringMin: 60, ledMode: 1 }
+  },
+  'Alerte vent': {
+    type: 'config.apply',
+    windAlert: { gustKmh: 45, severeKmh: 70 }
+  },
+  'Zone — nom, mode, seuil de pluie': {
+    type: 'config.apply',
+    zones: [{ i: 0, name: 'Potager', mode: 1, intervalDays: 2, rain: { threshMm: 3.0, hours: 24 } }]
+  },
+  'Zone — créneaux en jours fixes': {
+    type: 'config.apply',
+    zones: [{ i: 0, daySlots: [{ day: 0, slot: 0, h: 6, m: 30, dur: 15, on: true }] }]
+  },
+  'Zone — créneaux en mode intervalle': {
+    type: 'config.apply',
+    zones: [{ i: 0, intervalSlots: [{ slot: 0, h: 6, m: 30, dur: 15, on: true }] }]
+  }
+};
+
+async function renderCompose() {
+  const body = $('tabbody');
+  body.innerHTML = '<div class="card"><h2>Envoyer une commande</h2>'
+    + '<div class="row"><label>Modèle</label><select id="tpl">'
+    + Object.keys(TEMPLATES).map(k => '<option>' + esc(k) + '</option>').join('')
+    + '</select>'
+    + '<label>baseRevision</label><input id="baserev" class="mono" style="width:110px" placeholder="?">'
+    + '<button id="btn-rev">Relire depuis le module</button></div>'
+    + '<div class="hint" id="rev-hint">La révision doit correspondre exactement à celle du module. '
+    + "S'il a été modifié localement depuis, il refuse la commande — c'est voulu : le réglage local fait autorité.</div>"
+    + '<div class="row" style="margin-top:12px"><textarea id="cmd" rows="16"></textarea></div>'
+    + '<div class="row"><button class="primary" id="btn-send">Envoyer</button>'
+    + '<span class="hint" style="margin:0">La commande est mise en file. '
+    + 'Le module la récupère à sa prochaine synchronisation.</span></div></div>';
+
+  const fill = () => {
+    const t = JSON.parse(JSON.stringify(TEMPLATES[$('tpl').value]));
+    const rev = $('baserev').value.trim();
+    if (rev !== '') t.baseRevision = parseInt(rev, 10);
+    $('cmd').value = JSON.stringify(t, null, 2);
+  };
+  $('tpl').onchange = fill;
+  $('btn-rev').onclick = loadRevision;
+  $('btn-send').onclick = sendCommand;
+  await loadRevision(true);
+  fill();
+}
+
+async function loadRevision(quiet) {
+  try {
+    const cfg = await api('/admin/config?moduleId=' + encodeURIComponent(CURRENT));
+    // Clé "revision" : celle que buildConfigPayload() émet côté firmware
+    // (CloudSync.cpp). C'est exactement la valeur que le module compare à
+    // baseRevision avant d'appliquer quoi que ce soit.
+    const rev = cfg && cfg.payload ? cfg.payload.revision : null;
+    if (rev == null) throw new Error('révision absente du dernier instantané');
+    $('baserev').value = rev;
+    $('rev-hint').textContent = 'Révision ' + rev + ', relevée le ' + stamp(cfg.ts) + '.';
+    if (!quiet) toast('Révision relue : ' + rev);
+  } catch (e) {
+    $('rev-hint').textContent = 'Révision indisponible (' + e.message
+      + '). Le module doit d\'abord remonter un instantané de configuration.';
+    if (!quiet) toast('Révision indisponible : ' + e.message, true);
+  }
+}
+
+async function sendCommand() {
+  let cmd;
+  try { cmd = JSON.parse($('cmd').value); }
+  catch (e) { toast('JSON invalide : ' + e.message, true); return; }
+  if (cmd.baseRevision === undefined || cmd.baseRevision === null || isNaN(cmd.baseRevision)) {
+    toast('baseRevision manquante — le module refuserait la commande', true);
+    return;
+  }
+  try {
+    const r = await api('/admin/command', {
+      method: 'POST',
+      body: JSON.stringify({ moduleId: CURRENT, command: cmd, issuedBy: 'console' })
+    });
+    toast('Commande en file : ' + r.correlationId);
+    TAB = 'commands';
+    renderTab();
+  } catch (e) { toast('Envoi refusé : ' + e.message, true); }
+}
+
+// ── Jeton d'un module ───────────────────────────────────────────────────────
+
+async function issueToken(moduleId, label) {
+  try {
+    const r = await api('/admin/module-token', {
+      method: 'POST', body: JSON.stringify({ moduleId: moduleId, label: label })
+    });
+    const out = $('token-out');
+    if (out) {
+      // Affiche en clair une seule fois : le serveur n'en garde que
+      // l'empreinte, il ne pourra jamais le redonner.
+      out.innerHTML = '<div class="token-out">' + esc(r.token) + '</div>'
+        + '<div class="hint">À reporter dans Paramètres &rsaquo; Serveur sur le module. '
+        + 'Ce jeton ne sera plus jamais affiché : le serveur n\'en conserve que l\'empreinte.</div>';
+    } else {
+      prompt('Jeton du module « ' + moduleId +' » — à noter maintenant, il ne sera plus affiché :', r.token);
+    }
+    toast('Jeton généré');
+  } catch (e) { toast('Génération refusée : ' + e.message, true); throw e; }
+}
+
+// ── Demarrage ───────────────────────────────────────────────────────────────
+
+$('btn-login').onclick = login;
+$('btn-logout').onclick = logout;
+$('tok').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+if (TOKEN) {
+  $('tok').hidden = true;
+  $('btn-login').hidden = true;
+  $('btn-logout').hidden = false;
+  loadModules().catch(e => { toast('Session expirée : ' + e.message, true); logout(); });
+}
+</script>
+</body>
+</html>
