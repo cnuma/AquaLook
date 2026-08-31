@@ -1,5 +1,5 @@
 param(
-    [string]$OutputPath = "src/OtaTlsTrust.h"
+    [string]$OutputPath = "src/OtaTlsTrust.cpp"
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,23 +92,32 @@ try {
     }
 
     $combinedPem = ($pemBlocks -join "")
+    # Genere le .cpp, PAS le .h : le paquet doit avoir une definition unique.
+    # Il vivait dans l'en-tete en "static constexpr", ce qui en produisait une
+    # copie par unite de compilation -- cinq inclusions, 25 408 octets de flash
+    # perdus. Le .h est desormais ecrit a la main et ne bouge plus.
     $header = @"
-#pragma once
-
-#include <WiFiClientSecure.h>
+#include "OtaTlsTrust.h"
 
 // Fichier genere par tools/generate_ota_tls_trust.ps1.
 // Sources officielles (DigiCert, Sectigo/USERTrust, ISRG/Let's Encrypt) et
 // empreintes SHA-256 controlees avant generation.
-namespace OtaTlsTrust {
-// static (et non inline) : le standard C++ actif pour ce projet ne supporte
-// pas les variables inline (C++17). constexpr implique deja une liaison
-// interne par unite de compilation, sans duplication ni erreur d'edition
-// de liens.
-static constexpr char ROOT_CA_PEM[] = R"AQLCERT(
+//
+// Le paquet est PRIVE a cette unite de compilation : aucun appelant n'en a
+// besoin directement, tous passent par configure(). Cela evite a la fois la
+// duplication et une declaration publique inutile.
+//
+// Il reste en flash et n'ira jamais sur la carte SD : c'est l'ancre de
+// confiance qui authentifie le serveur AVANT tout telechargement. La deplacer
+// sur un support amovible permettrait a quiconque echange la carte d'imposer
+// sa propre autorite.
+namespace {
+const char ROOT_CA_PEM[] = R"AQLCERT(
 $combinedPem)AQLCERT";
+}
 
-inline void configure(WiFiClientSecure& client) {
+namespace OtaTlsTrust {
+void configure(WiFiClientSecure& client) {
     client.setCACert(ROOT_CA_PEM);
 }
 }
@@ -125,7 +134,7 @@ inline void configure(WiFiClientSecure& client) {
         [System.Text.UTF8Encoding]::new($false)
     )
 
-    Write-Host "Header genere: $outputFile"
+    Write-Host "Source generee: $outputFile"
 }
 finally {
     Remove-Item -Recurse -Force $tempRoot -ErrorAction SilentlyContinue
