@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -28,6 +29,25 @@ import sys
 SCHEMA = "aqualook-web-manifest-v1"
 VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 MAX_MANIFEST_SIZE = 8192
+
+# Declarations de fonctions au premier niveau : ancrees colonne 0, donc les
+# fonctions imbriquees (indentees) sont ignorees - seules celles qui vivent
+# dans l'espace global peuvent s'ecraser entre elles.
+JS_FUNCTION = re.compile(
+    r"^(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(",
+    re.MULTILINE,
+)
+JS_ASSIGNED = re.compile(
+    r"^(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+    r"(?:async\s+)?(?:function\b|\([^()]*\)\s*=>)",
+    re.MULTILINE,
+)
+HTML_SCRIPT_SRC = re.compile(
+    r"""<script[^>]*\ssrc=["']([^"']+)["']""", re.IGNORECASE
+)
+HTML_SCRIPT_INLINE = re.compile(
+    r"<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", re.IGNORECASE | re.DOTALL
+)
 
 
 def sha256(path: Path) -> str:
@@ -56,6 +76,80 @@ def file_entry(path: Path, name: str, url: str) -> dict[str, object]:
         "size": size,
         "sha256": sha256(path),
     }
+
+
+def top_level_names(code: str) -> list[str]:
+    return JS_FUNCTION.findall(code) + JS_ASSIGNED.findall(code)
+
+
+def check_no_shadowed_functions(files: list[Path]) -> None:
+    """Refuse de publier si une fonction est declaree deux fois.
+
+    Incident du 31 aout 2026 : le regroupement des reglages en rubriques
+    avait laisse en place l'ancien niveau 2 du menu Parametres.
+    openCfgPage, backToCfgMenu et toggleSection existaient en double dans
+    app.js, et JavaScript retient la DERNIERE declaration - la perimee.
+    Le menu s'ouvrait, aucune rubrique ne s'ouvrait ensuite.
+
+    Rien ne signale ce defaut : pas d'erreur, pas d'exception, juste un
+    bouton inerte. Il ne se voit qu'a l'usage, donc apres publication.
+    D'ou ce controle ici, au seul passage obligatoire avant diffusion.
+    """
+    by_name = {p.name: p for p in files}
+
+    def read(path: Path) -> str:
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    # Une page HTML forme une portee : ses scripts en ligne et les fichiers
+    # qu'elle charge partagent le meme espace global, donc s'y ecrasent.
+    # Deux pages distinctes peuvent en revanche reutiliser un nom sans
+    # conflit - les regrouper produirait de fausses alertes.
+    scopes: dict[str, list[tuple[str, str]]] = {}
+    for path in files:
+        if path.suffix.lower() not in (".html", ".htm"):
+            continue
+        text = read(path)
+        units = [
+            (path.name + " (script en ligne)", block)
+            for block in HTML_SCRIPT_INLINE.findall(text)
+        ]
+        for src in HTML_SCRIPT_SRC.findall(text):
+            dep = by_name.get(src.split("?", 1)[0].rsplit("/", 1)[-1])
+            if dep is not None:
+                units.append((dep.name, read(dep)))
+        if units:
+            scopes[path.name] = units
+
+    # Un .js que plus aucune page ne charge est verifie seul : un doublon
+    # interne y est deja un defaut, et le fichier reste publie.
+    loaded = {origin for units in scopes.values() for origin, _ in units}
+    for path in files:
+        if path.suffix.lower() == ".js" and path.name not in loaded:
+            scopes[path.name] = [(path.name, read(path))]
+
+    problems: list[str] = []
+    for scope, units in sorted(scopes.items()):
+        seen: dict[str, list[str]] = {}
+        for origin, code in units:
+            for name in top_level_names(code):
+                seen.setdefault(name, []).append(origin)
+        for name, origins in sorted(seen.items()):
+            if len(origins) < 2:
+                continue
+            where = ", ".join(
+                f"{origin} x{count}" if count > 1 else origin
+                for origin, count in Counter(origins).items()
+            )
+            problems.append(
+                f"{scope} : {name}() declaree {len(origins)} fois ({where})"
+            )
+
+    if problems:
+        raise ValueError(
+            "Fonction(s) declaree(s) plusieurs fois dans une meme portee - "
+            "la derniere ecrase les precedentes, sans erreur ni avertissement :"
+            + "".join("\n  - " + p for p in problems)
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,6 +201,10 @@ def main() -> int:
     names = [p.name for p in source_files]
     if len(names) != len(set(names)):
         raise ValueError("Duplicate file names in data/ - release assets must be unique")
+
+    # Avant de calculer la moindre empreinte : un doublon de declaration
+    # produirait un manifeste parfaitement valide pour un code casse.
+    check_no_shadowed_functions(source_files)
 
     if args.base_url:
         base = args.base_url.rstrip("/")
