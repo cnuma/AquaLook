@@ -68,6 +68,12 @@ public:
     static void update();
     static NotificationConfig config();
     static NotificationStatus status();
+    // Raccourci vers les deux champs homonymes de NotificationStatus, sans
+    // construire la structure complete (~100 octets et une copie de chaine).
+    // Destine aux indicateurs redessines souvent -- le bandeau LCD est
+    // repeint a chaque rafraichissement d'ecran, status() y serait paye
+    // plusieurs fois par seconde pour deux booleens.
+    static bool updateAvailable();
     static bool saveConfig(bool enabled,
                            const char* server,
                            const char* topic,

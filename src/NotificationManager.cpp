@@ -251,6 +251,16 @@ NotificationConfig NotificationManager::config() {
     return result;
 }
 
+bool NotificationManager::updateAvailable() {
+    begin();
+    // Les deux canaux sont volontairement fondus en un seul booleen : pour
+    // un indicateur visuel, "il y a quelque chose a installer" est la seule
+    // information utile. Le detail de QUOI se lit dans l'interface Web, qui
+    // a la place de l'expliquer.
+    return g_updateResult.valid &&
+           (g_updateResult.updateAvailable || g_updateResult.webAssetsUpdateAvailable);
+}
+
 NotificationStatus NotificationManager::status() {
     begin();
     NotificationStatus value;

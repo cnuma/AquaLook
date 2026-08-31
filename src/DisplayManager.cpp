@@ -1,6 +1,7 @@
 #include "DisplayManager.h"
 #include "EventBus.h"
 #include "BootLoopGuard.h"
+#include "NotificationManager.h"   // marqueur "MAJ DISPO" du bandeau
 #include "EventLog.h"
 #include "esp_log.h"
 #include <WiFi.h>
@@ -777,9 +778,18 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
     // Le rouge n'est pas utilise ici : il reste reserve a une panne active
     // signalee par FaultManager, pour qu'il garde son sens au premier coup
     // d'oeil.
+    //
+    //   Mise a jour DISPONIBLE : le bandeau reste gris, seul le marqueur de
+    //   droite passe en violet. Deliberement pas de bandeau plein : une mise
+    //   a jour disponible peut le rester des jours, et un bandeau violet
+    //   permanent dirait "ne touche a rien" en permanence — exactement le
+    //   contraire du message. Le violet plein reste reserve a l'operation en
+    //   cours, qui, elle, dure quelques minutes.
     uint16_t headerBg = Theme::SURFACE;
     if (BootLoopGuard::isDegraded())      headerBg = Theme::AMBER;
     else if (EventBus::updateInProgress)  headerBg = Theme::PURPLE;
+    const bool updateReady =
+        (headerBg == Theme::SURFACE) && NotificationManager::updateAvailable();
     _tft.fillRect(0, 0, SCREEN_W, 28, headerBg);
     _tft.drawFastHLine(0, 27, SCREEN_W, Theme::BORDER);
     _tft.setFreeFont(nullptr);
@@ -808,6 +818,13 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
         _tft.setTextDatum(MR_DATUM);
         _tft.drawString(BootLoopGuard::isDegraded() ? "DEGRADE" : "MAJ...",
                         SCREEN_W - 8, 14);
+    } else if (updateReady) {
+        // Violet sur le gris du bandeau : meme teinte que le clignotement du
+        // voyant et que la pastille de l'interface Web, pour que les trois
+        // surfaces disent la meme chose avec la meme couleur.
+        _tft.setTextColor(Theme::PURPLE, headerBg);
+        _tft.setTextDatum(MR_DATUM);
+        _tft.drawString("MAJ DISPO", SCREEN_W - 8, 14);
     }
     _tft.setTextDatum(TL_DATUM);
 }
