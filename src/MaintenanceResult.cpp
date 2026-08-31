@@ -1,18 +1,25 @@
 #include "MaintenanceResult.h"
 
 #include <Preferences.h>
+#include <ctime>
 #include <cstring>
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_maint_res";
 constexpr char NVS_KEY[] = "blob";
 constexpr uint32_t NVS_MAGIC = 0x53455252UL; // "RRES" lu petit-boutiste
+// Schema 3 (31 aout 2026) : ajout de recordedEpoch, la date reelle de
+// l enregistrement. Meme mecanique de migration que ci-dessous : le blob
+// schema 2 differe en taille, il est rejete et l on repart d un resultat
+// vide. On perd le dernier resultat une fois, au premier demarrage sur ce
+// firmware -- sans consequence, une nouvelle verification le reconstruit.
+//
 // Schema 2 (18 aout 2026) : ajout des champs webAssets* (canal ressources Web
 // dans la verification periodique). Un blob schema 1 differe en taille, donc
 // loadRaw() le rejette et repart d'un MaintenanceResult{} par defaut -- migration
 // deja geree par le controle payloadSize/CRC existant, aucun code de migration
 // explicite necessaire pour ce blob transitoire.
-constexpr uint16_t NVS_SCHEMA = 2U;
+constexpr uint16_t NVS_SCHEMA = 3U;
 
 // Bloc unique, a l'image de PersistedConfig dans ConfigManager : une seule
 // ecriture NVS au lieu d'une quinzaine de cles separees. Chaque cle NVS a un
@@ -107,6 +114,19 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         strcmp(previous.availableVersion, result.availableVersion) == 0;
 
     MaintenanceResult merged = result;
+
+    // Horodatage pose ICI et non sur les dix sites d'appel de save() : un seul
+    // endroit, donc aucun risque qu'un chemin d'echec oublie de dater son
+    // resultat -- et c'est precisement un echec qu'on cherche a dater.
+    //
+    // Seuil a 2020 : une horloge non reglee demarre en 1970, et afficher
+    // "echec du 1er janvier 1970" serait pire que ne rien afficher. Zero
+    // signifie explicitement "date inconnue", l'interface le dit ainsi.
+    {
+        const time_t now = time(nullptr);
+        merged.recordedEpoch =
+            (now > static_cast<time_t>(1577836800)) ? static_cast<uint32_t>(now) : 0U;
+    }
 
     if (!successfulVersionCheck) {
         // Un INSTALL_UPDATE reussi consomme la mise a jour en attente : la

@@ -1,0 +1,138 @@
+{
+  "schema": "aqualook-ota-help-v1",
+  "_note": "Explications des echecs de mise a jour, servies depuis la carte SD et non depuis la flash du module. Deux raisons : la flash est comptee (la carte de production en occupe deja 75 %), et surtout ces textes sont ce qu'on voudra corriger le plus souvent — les enrichir devient une mise a jour des pages Web, sans reflasher. La page /ota reste fonctionnelle sans ce fichier : elle affiche alors le code technique brut.",
+
+  "errors": {
+    "target-missing": {
+      "quoi": "Le serveur a bien repondu, mais son catalogue ne contient aucune version pour cette carte.",
+      "faire": "Ce n'est pas une panne du module : la publication ne couvre pas ce materiel. Verifiez que le catalogue OTA declare bien la cible indiquee dans le detail technique ci-dessous, et republiez-le si elle manque. Les pages Web, elles, se mettent a jour independamment et restent disponibles."
+    },
+    "invalid-schema": {
+      "quoi": "Le fichier recu n'est pas un catalogue AquaLook.",
+      "faire": "L'adresse interrogee renvoie autre chose que le catalogue attendu — le plus souvent une page d'erreur ou une redirection. Verifiez l'adresse de la source dans Parametres, puis relancez."
+    },
+    "invalid-json": {
+      "quoi": "Le fichier recu est illisible.",
+      "faire": "Le catalogue est tronque ou mal forme. Republiez-le, puis relancez la verification."
+    },
+    "manifest-parse-failed": {
+      "quoi": "Le catalogue recu est illisible.",
+      "faire": "Republiez-le, puis relancez la verification."
+    },
+    "manifest-empty": {
+      "quoi": "Le catalogue est vide.",
+      "faire": "Aucune version n'y est publiee. Rien a corriger cote module : il faut publier une version."
+    },
+    "invalid-version": {
+      "quoi": "Le numero de version publie est invalide.",
+      "faire": "Corrigez le catalogue a la source : la version doit s'ecrire sous la forme 1.2.3."
+    },
+    "invalid-channel": {
+      "quoi": "Le canal de publication declare est invalide.",
+      "faire": "Corrigez le catalogue a la source."
+    },
+    "dns-failed": {
+      "quoi": "Le nom du serveur n'a pas pu etre resolu.",
+      "faire": "Le module a le reseau mais pas de resolution de noms. Verifiez la box ou le serveur DNS, puis relancez. Le bouton Tester la connexion, dans Diagnostics, confirme ce point."
+    },
+    "tcp-failed": {
+      "quoi": "La connexion au serveur n'a pas pu etre etablie.",
+      "faire": "Le serveur ne repond pas, ou l'acces a Internet est coupe. Reessayez plus tard. Le bouton Tester la connexion, dans Diagnostics, isole ce point sans rien telecharger."
+    },
+    "tls-connect-failed": {
+      "quoi": "La liaison chiffree avec le serveur a echoue.",
+      "faire": "Certificat refuse, ou serveur injoignable en HTTPS. Le bouton Tester la connexion, dans Diagnostics, precise l'etape qui bloque."
+    },
+    "firmware-tls-failed": {
+      "quoi": "La liaison chiffree a echoue pendant le telechargement.",
+      "faire": "Relancez l'operation. Si cela persiste, testez la connexion depuis Diagnostics."
+    },
+    "board-mismatch": {
+      "quoi": "La version publiee vise une autre carte que celle-ci.",
+      "faire": "Le catalogue annonce un materiel different. Verifiez la cible publiee avant de reessayer — le module refuse volontairement d'installer un programme prevu pour une autre carte."
+    },
+    "environment-mismatch": {
+      "quoi": "La version publiee vise un autre environnement de compilation.",
+      "faire": "Verifiez l'environnement declare dans le catalogue."
+    },
+    "sha256-mismatch": {
+      "quoi": "Le fichier telecharge ne correspond pas a son empreinte.",
+      "faire": "Telechargement corrompu, ou fichier remplace apres publication. Relancez une fois. Si l'ecart persiste, le fichier publie et son empreinte ne concordent pas : republiez les deux ensemble."
+    },
+    "firmware-sha256-mismatch": {
+      "quoi": "Le programme telecharge ne correspond pas a son empreinte.",
+      "faire": "Relancez une fois. Si l'ecart persiste, republiez le programme et son catalogue ensemble. Le module refuse d'installer un fichier dont il ne peut pas prouver l'origine."
+    },
+    "firmware-size-mismatch": {
+      "quoi": "La taille du programme telecharge ne correspond pas a celle annoncee.",
+      "faire": "Republiez le fichier et son catalogue ensemble."
+    },
+    "content-length-missing": {
+      "quoi": "Le serveur n'annonce pas la taille du fichier.",
+      "faire": "Le module refuse de telecharger sans taille annoncee, pour ne pas remplir sa partition a l'aveugle. Verifiez la configuration du serveur."
+    },
+    "content-length-mismatch": {
+      "quoi": "Le serveur a envoye moins d'octets qu'annonce.",
+      "faire": "Telechargement interrompu. Relancez ; si cela se repete, la connexion est instable ou le serveur coupe les transferts longs."
+    },
+    "web-assets-missing": {
+      "quoi": "Le catalogue ne declare rien pour les pages Web.",
+      "faire": "Publiez un manifeste de ressources Web, ou corrigez l'adresse de la source dans Parametres."
+    },
+    "unauthorized-url": {
+      "quoi": "L'adresse de la source n'est pas autorisee.",
+      "faire": "Le module n'accepte que des adresses en HTTPS, et uniquement celles de la source configuree. Corrigez l'adresse dans Parametres, puis relancez."
+    },
+    "ota-begin-failed": {
+      "quoi": "La partition de reserve n'a pas pu etre ouverte.",
+      "faire": "Redemarrez le module, puis reessayez."
+    },
+    "ota-write-failed": {
+      "quoi": "L'ecriture dans la partition de reserve a echoue.",
+      "faire": "Redemarrez le module, puis reessayez. Si l'echec se repete, la flash est peut-etre usee a cet endroit."
+    },
+    "ota-end-failed": {
+      "quoi": "La cloture de l'ecriture a echoue.",
+      "faire": "Rien n'a ete active : le module tourne toujours sur son programme actuel. Relancez l'etape 2."
+    },
+    "redirect-invalid": {
+      "quoi": "Le serveur renvoie vers une adresse que le module refuse.",
+      "faire": "Une redirection pointe hors des adresses autorisees, ou n'est pas en HTTPS. Publiez le fichier a une adresse directe."
+    },
+    "redirect-limit-or-location-missing": {
+      "quoi": "Trop de redirections, ou redirection incomplete.",
+      "faire": "Publiez le fichier a une adresse directe, sans chaine de redirections."
+    },
+    "task-start-failed": {
+      "quoi": "Le module n'a pas pu demarrer la tache de mise a jour.",
+      "faire": "Memoire insuffisante au moment de l'operation. Redemarrez le module, puis reessayez."
+    },
+    "stage-verification-required": {
+      "quoi": "L'installation a ete refusee : rien n'a ete prepare et verifie.",
+      "faire": "Lancez l'etape 2, puis l'etape 3."
+    },
+    "validated-manifest-required": {
+      "quoi": "L'operation exige un catalogue deja verifie.",
+      "faire": "Lancez d'abord l'etape 1."
+    }
+  },
+
+  "http": {
+    "404": {
+      "quoi": "L'adresse du catalogue ne pointe sur rien (erreur 404).",
+      "faire": "Le fichier n'existe pas a l'adresse interrogee. Verifiez l'adresse de la source dans Parametres, et que la publication a bien ete faite."
+    },
+    "403": {
+      "quoi": "Le serveur a refuse la demande (erreur 403).",
+      "faire": "Verifiez que le fichier publie est accessible publiquement, sans authentification."
+    },
+    "401": {
+      "quoi": "Le serveur exige une authentification (erreur 401).",
+      "faire": "Le module ne sait pas s'authentifier aupres de la source. Publiez le fichier en acces libre."
+    },
+    "5xx": {
+      "quoi": "Le serveur a repondu par une erreur interne.",
+      "faire": "Le probleme est du cote du serveur. Reessayez plus tard."
+    }
+  }
+}
