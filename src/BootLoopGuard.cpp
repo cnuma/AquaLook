@@ -93,6 +93,16 @@ void BootLoopGuard::update() {
 
     _cleared = true;
     persistCount(0U);
+    // Remise a zero AUSSI en memoire, et pas seulement en NVS.
+    //
+    // Sans cette ligne, suspectBootCount() continuait de rendre la valeur
+    // lue au demarrage alors que le compteur persistant valait deja zero.
+    // L'API publiait donc un "3/4 avant mode degrade" dementi par l'etat
+    // reel, ce qui conduit a repousser un redemarrage parfaitement sur -
+    // constate le 31 aout 2026, uptime 263 s et compteur toujours affiche
+    // a 3. Le drapeau _cleared empeche ce bloc de repasser, la correction
+    // ne change donc rien au comportement du garde lui-meme.
+    _suspectCount = 0U;
     EventLog::log(LOG_INFO,
                   "Garde anti-boucle: %lu s de fonctionnement stable, compteur "
                   "de demarrages remis a zero",
