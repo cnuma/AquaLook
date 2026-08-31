@@ -4,8 +4,8 @@
 
   "errors": {
     "target-missing": {
-      "quoi": "Le serveur a bien repondu, mais son catalogue ne contient aucune version pour cette carte.",
-      "faire": "Ce n'est pas une panne du module : la publication ne couvre pas ce materiel. Verifiez que le catalogue OTA declare bien la cible indiquee dans le detail technique ci-dessous, et republiez-le si elle manque. Les pages Web, elles, se mettent a jour independamment et restent disponibles."
+      "quoi": "Le catalogue a bien ete lu, mais il ne declare rien pour la cible de cette carte.",
+      "faire": "Ouvrez le detail technique ci-dessous et lisez « Cible attendue ». Si elle vaut « unsupported », c'est normal et il n'y a rien a corriger : aucune version n'est publiee pour ce materiel, et le module le dit honnetement plutot que d'installer un programme prevu pour une autre carte. C'est le cas du portage ESP32-S3. Si elle vaut « legacy » ou « v4 », alors la publication est reellement incomplete et le catalogue doit etre republie avec cette cible. Dans les deux cas, les pages Web se mettent a jour independamment et restent disponibles."
     },
     "invalid-schema": {
       "quoi": "Le fichier recu n'est pas un catalogue AquaLook.",
