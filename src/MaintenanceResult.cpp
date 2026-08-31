@@ -163,18 +163,42 @@ bool MaintenanceResultStore::save(const MaintenanceResult& result) {
         if (result.board[0] == '\0')
             copyText(merged.board, sizeof(merged.board), previous.board);
         copyText(merged.sha256, sizeof(merged.sha256), previous.sha256);
-        // Meme principe que ci-dessus, pour le canal ressources Web : un
-        // WEB_ASSETS_UPDATE reussi consomme la mise a jour en attente ; toute
-        // autre commande (y compris un CHECK_VERSION en echec, cf. commentaire
-        // de save()) preserve le dernier resultat connu du canal Web.
-        merged.webAssetsUpdateAvailable =
-            successfulWebAssetsDeploy ? false : previous.webAssetsUpdateAvailable;
-        merged.webAssetsNotificationPending =
-            successfulWebAssetsDeploy ? false : previous.webAssetsNotificationPending;
-        copyText(merged.webAssetsInstalledVersion, sizeof(merged.webAssetsInstalledVersion),
-                 previous.webAssetsInstalledVersion);
-        copyText(merged.webAssetsAvailableVersion, sizeof(merged.webAssetsAvailableVersion),
-                 successfulWebAssetsDeploy ? "" : previous.webAssetsAvailableVersion);
+        // Canal ressources Web : un WEB_ASSETS_UPDATE reussi consomme la mise a
+        // jour en attente ; toute autre commande preserve le dernier resultat
+        // connu du canal Web.
+        //
+        // MAIS seulement si ce CHECK_VERSION n'a rien rapporte du canal Web.
+        //
+        // Les deux canaux sont independants par conception : CHECK_VERSION
+        // interroge le firmware PUIS les ressources Web, et l'echec du premier
+        // n'empeche pas le second (MaintenanceBoot.cpp). Ecraser
+        // inconditionnellement effacait pourtant le resultat frais du canal Web
+        // des que le canal firmware echouait -- ce qui est l'etat PERMANENT
+        // d'une carte dont la cible OTA vaut "unsupported". Le canal Web ne
+        // pouvait alors plus jamais signaler une mise a jour, sur cette carte
+        // comme sur toute autre apres un simple echec reseau du canal firmware.
+        // Constate le 1er septembre 2026 : trois champs webAssets* vides apres
+        // une verification ou le canal Web avait pourtant repondu.
+        //
+        // La version disponible non vide est le temoin fiable que le canal Web
+        // a bien tourne : checkForUpdate() ne la renseigne qu'apres avoir lu et
+        // valide le manifeste.
+        const bool webChannelReported = result.webAssetsAvailableVersion[0] != '\0';
+        if (!webChannelReported) {
+            merged.webAssetsUpdateAvailable =
+                successfulWebAssetsDeploy ? false : previous.webAssetsUpdateAvailable;
+            merged.webAssetsNotificationPending =
+                successfulWebAssetsDeploy ? false : previous.webAssetsNotificationPending;
+            copyText(merged.webAssetsInstalledVersion, sizeof(merged.webAssetsInstalledVersion),
+                     previous.webAssetsInstalledVersion);
+            copyText(merged.webAssetsAvailableVersion, sizeof(merged.webAssetsAvailableVersion),
+                     successfulWebAssetsDeploy ? "" : previous.webAssetsAvailableVersion);
+        } else if (successfulWebAssetsDeploy) {
+            // Un deploiement reussi consomme la mise a jour, meme si le canal
+            // vient aussi de se prononcer.
+            merged.webAssetsUpdateAvailable = false;
+            merged.webAssetsNotificationPending = false;
+        }
         if (!isDownloadTest && !isStageTest) {
             merged.downloadedSize = previous.downloadedSize;
             merged.downloadDurationMs = previous.downloadDurationMs;
