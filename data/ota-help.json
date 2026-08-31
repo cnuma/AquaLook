@@ -1,11 +1,18 @@
 {
   "schema": "aqualook-ota-help-v1",
   "_note": "Explications des echecs de mise a jour, servies depuis la carte SD et non depuis la flash du module. Deux raisons : la flash est comptee (la carte de production en occupe deja 75 %), et surtout ces textes sont ce qu'on voudra corriger le plus souvent — les enrichir devient une mise a jour des pages Web, sans reflasher. La page /ota reste fonctionnelle sans ce fichier : elle affiche alors le code technique brut.",
-
   "errors": {
     "target-missing": {
-      "quoi": "Le catalogue a bien ete lu, mais il ne declare rien pour la cible de cette carte.",
-      "faire": "Ouvrez le detail technique ci-dessous et lisez « Cible attendue ». Si elle vaut « unsupported », c'est normal et il n'y a rien a corriger : aucune version n'est publiee pour ce materiel, et le module le dit honnetement plutot que d'installer un programme prevu pour une autre carte. C'est le cas du portage ESP32-S3. Si elle vaut « legacy » ou « v4 », alors la publication est reellement incomplete et le catalogue doit etre republie avec cette cible. Dans les deux cas, les pages Web se mettent a jour independamment et restent disponibles."
+      "quoi": "Le catalogue de mises a jour ne propose rien pour cette carte.",
+      "faire": "La publication est incomplete : le catalogue doit etre republie en y declarant la cible « {cible} ». Rien a faire sur le module. Les pages Web se mettent a jour de leur cote, sans dependre de ce catalogue.",
+      "cas": {
+        "unsupported": {
+          "niveau": "info",
+          "titre": "Cette carte n'a pas de canal de mise a jour du programme",
+          "quoi": "Aucune version n'est publiee pour ce materiel.",
+          "faire": "Rien a corriger, rien a surveiller. Le module refuse d'installer un programme prevu pour une autre carte, et prefere le dire plutot que de le tenter. Les pages Web, elles, se mettent a jour normalement."
+        }
+      }
     },
     "invalid-schema": {
       "quoi": "Le fichier recu n'est pas un catalogue AquaLook.",
@@ -72,8 +79,8 @@
       "faire": "Le module refuse de telecharger sans taille annoncee, pour ne pas remplir sa partition a l'aveugle. Verifiez la configuration du serveur."
     },
     "content-length-mismatch": {
-      "quoi": "Le serveur a envoye moins d'octets qu'annonce.",
-      "faire": "Telechargement interrompu. Relancez ; si cela se repete, la connexion est instable ou le serveur coupe les transferts longs."
+      "quoi": "Un fichier publie ne fait pas la taille annoncee par le catalogue.",
+      "faire": "Le catalogue et les fichiers ne correspondent plus : l'un des deux a ete modifie sans l'autre. Regenerez le catalogue a partir des fichiers reellement en ligne, puis republiez-le seul. Rien n'a ete installe : les pages actuelles sont intactes."
     },
     "web-assets-missing": {
       "quoi": "Le catalogue ne declare rien pour les pages Web.",
@@ -114,9 +121,32 @@
     "validated-manifest-required": {
       "quoi": "L'operation exige un catalogue deja verifie.",
       "faire": "Lancez d'abord l'etape 1."
+    },
+    "size-mismatch": {
+      "quoi": "Un fichier publie ne fait pas la taille annoncee par le catalogue.",
+      "faire": "Meme cause qu'un ecart de taille annoncee : regenerez le catalogue a partir des fichiers en ligne, puis republiez-le. Rien n'a ete installe."
+    },
+    "manifest-too-large": {
+      "quoi": "Le catalogue depasse la taille que le module accepte de lire.",
+      "faire": "Le module borne volontairement cette lecture pour ne pas saturer sa memoire. Reduisez le nombre de fichiers publies, ou allegez le catalogue."
+    },
+    "manifest-schema-unknown": {
+      "quoi": "Le fichier recu n'est pas un catalogue de ressources Web AquaLook.",
+      "faire": "L'adresse configuree renvoie autre chose que le catalogue attendu. Verifiez-la dans Parametres > Mises a jour."
+    },
+    "manifest-incomplete": {
+      "quoi": "Le catalogue ne declare ni version ni fichier.",
+      "faire": "Regenerez-le : il a ete publie vide ou tronque."
+    },
+    "version-non-ecrite": {
+      "quoi": "Le marqueur de version n'a pas pu etre ecrit sur la carte SD.",
+      "faire": "La carte est pleine, protegee en ecriture, ou defaillante. Rien n'a ete bascule : les pages actuelles sont intactes."
+    },
+    "bascule-echouee": {
+      "quoi": "Les nouveaux fichiers ont ete telecharges et verifies, mais leur mise en service a echoue.",
+      "faire": "Relancez la mise a jour des pages Web. Si l'echec se repete, la carte SD est en cause."
     }
   },
-
   "http": {
     "404": {
       "quoi": "L'adresse du catalogue ne pointe sur rien (erreur 404).",

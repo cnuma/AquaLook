@@ -265,7 +265,7 @@ public:
         _server.on("/ota", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 static const char PAGE[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mises a jour</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}.card{box-sizing:border-box;width:94%;max-width:680px;padding:20px;margin:16px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 14px;font-size:22px}h2{margin:24px 0 8px;font-size:16px;color:#bed0dc}p{line-height:1.5;color:#bed0dc;margin:6px 0}.sub{color:#91aabd;font-size:13px;margin:0 0 12px}.verdict{border-radius:10px;padding:16px;border:1px solid #385064;background:#101820}.verdict.av{border-color:#7e57c2;background:#1b1430}.verdict.ko{border-color:#d59b35;background:#2a2114}.verdict.ok{border-color:#41956b;background:#10241a}.verdict.un{border-color:#526d80}#alert:empty{display:none}#alert{margin-top:10px;border:1px solid #d59b35;background:#2a2114;border-radius:10px;padding:14px}#alert .vt{font-size:15px;color:#ffd88b}.vt{font-size:18px;font-weight:700;margin:0 0 8px}.verdict.av .vt{color:#b388ff}.verdict.ko .vt{color:#ffd88b}.verdict.ok .vt{color:#6fcf97}.vw{margin:10px 0 0;padding:10px 12px;background:#0a1219;border-radius:6px;font-size:13.5px;color:#d7e9f3}.vw b{color:#fff}.when{color:#91aabd;font-size:12.5px;margin-top:6px}.chan{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 13px;border:1px solid #385064;border-radius:8px;margin-top:8px;background:#101820}.cn{flex:1 1 150px;font-weight:700}.cv{font-family:monospace;font-size:12.5px;color:#d7e9f3}.cv i{font-style:normal;color:#91aabd}.chip{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid #526d80;color:#91aabd;white-space:nowrap}.chip.up{color:#6fcf97;border-color:#41956b}.chip.av{color:#b388ff;border-color:#7e57c2;font-weight:700}.chip.ko{color:#ffd88b;border-color:#d59b35}.step{border:1px solid #385064;border-radius:9px;padding:13px;margin-bottom:9px;background:#101820}.step.on{border-color:#4fc3f7}.step.off{opacity:.6}.sh{display:flex;align-items:center;gap:10px;margin-bottom:5px}.num{flex:none;width:23px;height:23px;border-radius:50%;background:#385064;color:#eef;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}.step.on .num{background:#4fc3f7;color:#06141b}.st{font-weight:700;font-size:15px}.why{margin:8px 0 0;padding:8px 10px;border-left:3px solid #d59b35;background:#2a2114;color:#ffd88b;font-size:13px;border-radius:0 6px 6px 0}button{box-sizing:border-box;display:block;width:100%;margin-top:10px;padding:11px;border:0;border-radius:7px;font-size:15px;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}button.pu{background:#7e57c2;color:#fff}button.sec{background:#526d80;color:#eef;font-weight:400;font-size:14px}button:disabled{opacity:.42;cursor:not-allowed}a.back{display:block;margin-top:16px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-align:center;text-decoration:none}details{margin-top:9px;border:1px solid #385064;border-radius:8px;padding:10px 12px;background:#101820}summary{cursor:pointer;color:#91aabd;font-size:14px}.row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}.lb{color:#91aabd}.vl{text-align:right;overflow-wrap:anywhere}.v-ok{color:#6fcf97;font-weight:700}.v-ko{color:#ff8a8a;font-weight:700}#act{min-height:20px;margin-top:10px;font-weight:700;color:#4fc3f7}.wait{display:none;margin-top:10px;padding:12px;border:1px solid #385064;border-radius:8px;background:#101820}.wait.on{display:block}.wl{display:flex;align-items:center;gap:11px}.sp{width:21px;height:21px;border:3px solid #385064;border-top-color:#4fc3f7;border-radius:50%;animation:s .9s linear infinite}.el{margin-top:7px;color:#91aabd;font-size:13px}.pg{height:6px;margin-top:9px;overflow:hidden;border-radius:4px;background:#263b4b}.pg span{display:block;width:35%;height:100%;background:#4fc3f7;animation:t 1.5s ease-in-out infinite}@keyframes s{to{transform:rotate(360deg)}}@keyframes t{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}</style></head><body><main class="card"><h1>Mises a jour</h1><div id="verdict" class="verdict un"><p class="vt">Lecture de l'etat...</p></div><div id="alert"></div><div id="chans"></div><div id="act"></div><div id="wait" class="wait"><div class="wl"><span class="sp"></span><span id="wt">Operation en cours...</span></div><div id="el" class="el">Temps ecoule : 0 s</div><div class="pg"><span></span></div></div><h2>Programme du module</h2><p class="sub">Trois etapes, dans cet ordre. Chacune s'active quand la precedente a reussi. Aucune n'est possible pendant un arrosage.</p><div id="s1" class="step on"><div class="sh"><span class="num">1</span><span class="st">Verifier ce qui est disponible</span></div><p>Le module redemarre environ 30 secondes en mode maintenance, interroge les deux sources, puis revient tout seul. <b>Rien n'est installe a cette etape.</b></p><button id="b-check" onclick="go('check')">Verifier maintenant</button></div><div id="s2" class="step"><div class="sh"><span class="num">2</span><span class="st">Preparer le nouveau programme</span></div><p>Telecharge le programme, verifie son empreinte SHA-256, puis l'ecrit dans la partition de reserve. Le module continue de tourner sur l'ancien : <b>rien n'est active a cette etape.</b></p><div id="w2" class="why"></div><button id="b-stage" onclick="go('stage')">Preparer</button></div><div id="s3" class="step"><div class="sh"><span class="num">3</span><span class="st">Installer et redemarrer</span></div><p>Bascule sur le programme prepare et redemarre dessus. Si le module ne redemarre pas correctement plusieurs fois de suite, <b>l'ancien programme est restaure automatiquement.</b></p><div id="w3" class="why"></div><button id="b-install" onclick="go('install')">Installer</button></div><h2>Pages Web</h2><p class="sub">Les pages, styles et scripts servis depuis la carte SD. Ils sont <b>independants du programme du module</b> : cette mise a jour ne touche pas au firmware, et une seule etape suffit.</p><div class="step on"><p>Le module redemarre en mode maintenance, telecharge chaque fichier, verifie son empreinte, puis bascule. <b>Si quoi que ce soit echoue, les pages actuelles sont conservees.</b></p><div id="wweb" class="why"></div><button id="b-web" class="pu" onclick="goWeb()">Mettre a jour les pages Web</button></div><h2>Details</h2><details id="dlast"><summary>Detail technique de la derniere operation</summary><div id="last"></div></details><details><summary>Diagnostics et depot direct depuis un ordinateur</summary><p>Ces deux outils ne mettent rien a jour. Ils servent a comprendre pourquoi une etape echoue.</p><button class="sec" onclick="go('probe')">Tester uniquement la connexion a la source</button><button class="sec" onclick="go('download')">Telecharger et verifier l'empreinte, sans rien ecrire</button><p><b>Depot direct.</b> Troisieme voie, pour le depannage : quand la mise a jour reseau des pages echoue, un ordinateur du meme reseau peut deposer les fichiers directement, sans redemarrage, via <span class="cv">/api/debug/deploy-begin</span>, <span class="cv">/api/debug/deploy-file?name=&lt;nom&gt;</span> puis <span class="cv">/api/debug/deploy-commit</span>. Le depot est transactionnel : les fichiers transitent par un repertoire separe et ne remplacent les pages en service qu'a la derniere etape.</p></details><a class="back" href="/index.html">Retour a AquaLook</a></main><script>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Mises a jour</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}.card{box-sizing:border-box;width:94%;max-width:680px;padding:20px;margin:16px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 14px;font-size:22px}h2{margin:24px 0 8px;font-size:16px;color:#bed0dc}p{line-height:1.5;color:#bed0dc;margin:6px 0}.sub{color:#91aabd;font-size:13px;margin:0 0 12px}.verdict{border-radius:10px;padding:16px;border:1px solid #385064;background:#101820}.verdict.av{border-color:#7e57c2;background:#1b1430}.verdict.ko{border-color:#d59b35;background:#2a2114}.verdict.ok{border-color:#41956b;background:#10241a}.verdict.un{border-color:#526d80}#alert:empty{display:none}#alert{margin-top:10px;border:1px solid #d59b35;background:#2a2114;border-radius:10px;padding:14px}#alert .vt{font-size:15px;color:#ffd88b}#alert.info{border-color:#385064;background:#101820}#alert.info .vt{color:#bed0dc}.vt{font-size:18px;font-weight:700;margin:0 0 8px}.verdict.av .vt{color:#b388ff}.verdict.ko .vt{color:#ffd88b}.verdict.ok .vt{color:#6fcf97}.vw{margin:10px 0 0;padding:10px 12px;background:#0a1219;border-radius:6px;font-size:13.5px;color:#d7e9f3}.vw b{color:#fff}.when{color:#91aabd;font-size:12.5px;margin-top:6px}.chan{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 13px;border:1px solid #385064;border-radius:8px;margin-top:8px;background:#101820}.cn{flex:1 1 150px;font-weight:700}.cv{font-family:monospace;font-size:12.5px;color:#d7e9f3}.cv i{font-style:normal;color:#91aabd}.chip{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid #526d80;color:#91aabd;white-space:nowrap}.chip.up{color:#6fcf97;border-color:#41956b}.chip.av{color:#b388ff;border-color:#7e57c2;font-weight:700}.chip.ko{color:#ffd88b;border-color:#d59b35}.step{border:1px solid #385064;border-radius:9px;padding:13px;margin-bottom:9px;background:#101820}.step.on{border-color:#4fc3f7}.step.off{opacity:.6}.sh{display:flex;align-items:center;gap:10px;margin-bottom:5px}.num{flex:none;width:23px;height:23px;border-radius:50%;background:#385064;color:#eef;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}.step.on .num{background:#4fc3f7;color:#06141b}.st{font-weight:700;font-size:15px}.why{margin:8px 0 0;padding:8px 10px;border-left:3px solid #d59b35;background:#2a2114;color:#ffd88b;font-size:13px;border-radius:0 6px 6px 0}button{box-sizing:border-box;display:block;width:100%;margin-top:10px;padding:11px;border:0;border-radius:7px;font-size:15px;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}button.pu{background:#7e57c2;color:#fff}button.sec{background:#526d80;color:#eef;font-weight:400;font-size:14px}button:disabled{opacity:.42;cursor:not-allowed}a.back{display:block;margin-top:16px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-align:center;text-decoration:none}details{margin-top:9px;border:1px solid #385064;border-radius:8px;padding:10px 12px;background:#101820}summary{cursor:pointer;color:#91aabd;font-size:14px}.row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}.lb{color:#91aabd}.vl{text-align:right;overflow-wrap:anywhere}.v-ok{color:#6fcf97;font-weight:700}.v-ko{color:#ff8a8a;font-weight:700}#act{min-height:20px;margin-top:10px;font-weight:700;color:#4fc3f7}.wait{display:none;margin-top:10px;padding:12px;border:1px solid #385064;border-radius:8px;background:#101820}.wait.on{display:block}.wl{display:flex;align-items:center;gap:11px}.sp{width:21px;height:21px;border:3px solid #385064;border-top-color:#4fc3f7;border-radius:50%;animation:s .9s linear infinite}.el{margin-top:7px;color:#91aabd;font-size:13px}.pg{height:6px;margin-top:9px;overflow:hidden;border-radius:4px;background:#263b4b}.pg span{display:block;width:35%;height:100%;background:#4fc3f7;animation:t 1.5s ease-in-out infinite}@keyframes s{to{transform:rotate(360deg)}}@keyframes t{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}</style></head><body><main class="card"><h1>Mises a jour</h1><div id="verdict" class="verdict un"><p class="vt">Lecture de l'etat...</p></div><div id="alert"></div><div id="chans"></div><div id="act"></div><div id="wait" class="wait"><div class="wl"><span class="sp"></span><span id="wt">Operation en cours...</span></div><div id="el" class="el">Temps ecoule : 0 s</div><div class="pg"><span></span></div></div><h2>Programme du module</h2><p class="sub">Trois etapes, dans cet ordre. Chacune s'active quand la precedente a reussi. Aucune n'est possible pendant un arrosage.</p><div id="s1" class="step on"><div class="sh"><span class="num">1</span><span class="st">Verifier ce qui est disponible</span></div><p>Le module redemarre environ 30 secondes en mode maintenance, interroge les deux sources, puis revient tout seul. <b>Rien n'est installe a cette etape.</b></p><button id="b-check" onclick="go('check')">Verifier maintenant</button></div><div id="s2" class="step"><div class="sh"><span class="num">2</span><span class="st">Preparer le nouveau programme</span></div><p>Telecharge le programme, verifie son empreinte SHA-256, puis l'ecrit dans la partition de reserve. Le module continue de tourner sur l'ancien : <b>rien n'est active a cette etape.</b></p><div id="w2" class="why"></div><button id="b-stage" onclick="go('stage')">Preparer</button></div><div id="s3" class="step"><div class="sh"><span class="num">3</span><span class="st">Installer et redemarrer</span></div><p>Bascule sur le programme prepare et redemarre dessus. Si le module ne redemarre pas correctement plusieurs fois de suite, <b>l'ancien programme est restaure automatiquement.</b></p><div id="w3" class="why"></div><button id="b-install" onclick="go('install')">Installer</button></div><h2>Pages Web</h2><p class="sub">Les pages, styles et scripts servis depuis la carte SD. Ils sont <b>independants du programme du module</b> : cette mise a jour ne touche pas au firmware, et une seule etape suffit.</p><div class="step on"><p>Le module redemarre en mode maintenance, telecharge chaque fichier, verifie son empreinte, puis bascule. <b>Si quoi que ce soit echoue, les pages actuelles sont conservees.</b></p><div id="wweb" class="why"></div><button id="b-web" class="pu" onclick="goWeb()">Mettre a jour les pages Web</button></div><h2>Details</h2><details id="dlast"><summary>Detail technique de la derniere operation</summary><div id="last"></div></details><details><summary>Diagnostics et depot direct depuis un ordinateur</summary><p>Ces deux outils ne mettent rien a jour. Ils servent a comprendre pourquoi une etape echoue.</p><button class="sec" onclick="go('probe')">Tester uniquement la connexion a la source</button><button class="sec" onclick="go('download')">Telecharger et verifier l'empreinte, sans rien ecrire</button><p><b>Depot direct.</b> Troisieme voie, pour le depannage : quand la mise a jour reseau des pages echoue, un ordinateur du meme reseau peut deposer les fichiers directement, sans redemarrage, via <span class="cv">/api/debug/deploy-begin</span>, <span class="cv">/api/debug/deploy-file?name=&lt;nom&gt;</span> puis <span class="cv">/api/debug/deploy-commit</span>. Le depot est transactionnel : les fichiers transitent par un repertoire separe et ne remplacent les pages en service qu'a la derniere etape.</p></details><a class="back" href="/index.html">Retour a AquaLook</a></main><script>
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let LAST=null,WEB=null,timer=null,poll=null,BUSY=false;
@@ -277,16 +277,58 @@ let LAST=null,WEB=null,timer=null,poll=null,BUSY=false;
 // utilisable et affiche le code technique brut : aucune fonction ne depend
 // de lui, seulement le confort de lecture.
 let HELP=null;
+// Le module accole parfois du contexte au code :
+//   "content-length-mismatch version=5.9.15 fichiers=6/11"
+// Le code est le premier mot, le reste est du contexte affichable. La
+// recherche par egalite stricte echouait donc sur tout code enrichi, et
+// renvoyait "pas encore documente" pour une entree pourtant presente.
+function splitDetail(d){
+  const s = String(d || '').trim();
+  const i = s.indexOf(' ');
+  return i < 0 ? { code: s, contexte: '' }
+               : { code: s.slice(0, i), contexte: s.slice(i + 1) };
+}
+
+// Remplace les reperes du fichier d&rsquo;aide par les valeurs reelles.
+// split/join et non une expression reguliere : les accolades y demandent
+// un echappement, et un antislash perdu casserait la page en silence.
+function subst(s, j){
+  return String(s || '')
+    .split('{cible}').join(j.target || 'inconnue')
+    .split('{version}').join(j.installedVersion || 'inconnue');
+}
+
 function explain(j){
-  const d=(j.detail||'').trim();
-  const e=HELP&&HELP.errors&&HELP.errors[d];
-  if(e)return [e.quoi,e.faire];
-  const h=j.httpLine||'',hp=HELP&&HELP.http;
-  if(hp){const m=h.match(/ (\d{3})/);
-    if(m){const k=hp[m[1]]||(m[1][0]==='5'?hp['5xx']:null);if(k)return [k.quoi,k.faire]}}
-  return [d?('Le module signale : '+d):"Le module n'a pas precise la cause.",
-    HELP?"Ce cas n'est pas encore documente. Le detail technique est replie plus bas ; le bouton Tester la connexion, dans Diagnostics, permet d'isoler un probleme de reseau."
-        :"Les explications detaillees n'ont pas pu etre lues sur la carte SD. Le detail technique est replie plus bas."]}
+  const d = splitDetail(j.detail);
+  let e = HELP && HELP.errors && HELP.errors[d.code];
+  // Variante selon la cible du build, quand le fichier d&rsquo;aide en
+  // propose une. C&rsquo;est a la page de trancher : elle connait la
+  // cible, et faire choisir le lecteur entre deux paragraphes revenait a
+  // lui refiler le travail.
+  if(e && e.cas && j.target && e.cas[j.target]) e = e.cas[j.target];
+  if(e) return { titre: e.titre || null, niveau: e.niveau || 'alerte',
+                 quoi: subst(e.quoi, j), faire: subst(e.faire, j), contexte: d.contexte };
+
+  const hp = HELP && HELP.http;
+  if(hp){
+    const m = String(j.httpLine || '').match(/ ([0-9][0-9][0-9])/);
+    if(m){
+      const k = hp[m[1]] || (m[1].charAt(0) === '5' ? hp['5xx'] : null);
+      if(k) return { titre: null, niveau: 'alerte',
+                     quoi: subst(k.quoi, j), faire: subst(k.faire, j), contexte: d.contexte };
+    }
+  }
+
+  // Repli. Il doit encore dire une cause ET une action : un ecran qui
+  // laisse deviner ce qui s&rsquo;est passe ne sert a rien.
+  return { titre: null, niveau: 'alerte', contexte: d.contexte,
+    quoi: d.code
+      ? ('Le module a interrompu l&rsquo;operation en signalant : ' + d.code)
+      : 'Le module a interrompu l&rsquo;operation sans en preciser la cause.',
+    faire: HELP
+      ? 'Rien n&rsquo;a ete installe : ce qui fonctionnait avant continue de fonctionner. Ce code n&rsquo;est pas encore traduit en clair ; le detail technique replie plus bas donne la reponse du serveur et l&rsquo;etat exact de l&rsquo;operation. Le bouton Tester la connexion, dans Diagnostics, dit en une fois si le probleme vient du reseau.'
+      : 'Rien n&rsquo;a ete installe : ce qui fonctionnait avant continue de fonctionner. Les explications detaillees n&rsquo;ont pas pu etre lues sur la carte SD ; le detail technique replie plus bas reste disponible.' };
+}
 function whenTxt(j){
   if(!j.recordedEpoch)return "Date inconnue : l'horloge du module n'etait pas reglee au moment de l'operation.";
   const d=new Date(j.recordedEpoch*1000);
@@ -315,13 +357,33 @@ function render(){
   // explication complete et son bouton. Sans cela il ne restait de
   // l&rsquo;echec qu&rsquo;une pastille "non verifiable", sans un mot --
   // exactement ce qu&rsquo;on reprochait a la premiere version de cette page.
+  // Le titre nomme l&rsquo;operation qui a echoue. Il annoncait
+  // "la verification du programme" quoi qu&rsquo;il arrive, y compris
+  // pour une mise a jour des pages Web -- ce qui envoyait chercher la
+  // cause du mauvais cote.
+  const TITRES = {
+    check_version:        'La verification des mises a jour n&rsquo;a pas abouti',
+    web_assets_update:    'La mise a jour des pages Web n&rsquo;a pas abouti',
+    stage_update_test:    'La preparation du nouveau programme n&rsquo;a pas abouti',
+    download_update_test: 'Le test de telechargement n&rsquo;a pas abouti',
+    install_update:       'L&rsquo;installation du programme n&rsquo;a pas abouti',
+    probe_github:         'Le test de connexion n&rsquo;a pas abouti'
+  };
   const relancer = '<button onclick="go(&#39;check&#39;)">Relancer la verification</button>';
   const failBox = function(){
     const e = explain(j);
-    return '<p class="vt">La verification du programme n&rsquo;a pas abouti</p>'
-         + '<p>' + esc(e[0]) + '</p>'
+    // Un etat normal ne se presente pas comme une panne. "niveau": "info"
+    // rend le bloc neutre et retire le bouton de relance : relancer ne
+    // changerait rien, et le proposer laisserait croire le contraire.
+    const info = e.niveau === 'info';
+    alertBox.className = info ? 'info' : '';
+    const titre = e.titre || TITRES[j.command] || 'L&rsquo;operation n&rsquo;a pas abouti';
+    return '<p class="vt">' + titre + '</p>'
+         + '<p>' + esc(e.quoi) + '</p>'
+         + (e.contexte ? '<p class="when">Precision du module : ' + esc(e.contexte) + '</p>' : '')
          + '<p class="when">' + esc(whenTxt(j)) + '</p>'
-         + '<div class="vw"><b>Que faire :</b> ' + esc(e[1]) + '</div>';
+         + '<div class="vw"><b>Que faire :</b> ' + esc(e.faire) + '</div>'
+         + (info ? '' : relancer);
   };
   const alertBox = document.getElementById('alert');
   alertBox.innerHTML = '';
@@ -339,10 +401,10 @@ function render(){
       + '<p>' + quoi + ' peuvent etre mis a jour. '
       + (fwAv ? 'Pour le programme, suivez les etapes 1 a 3 ci-dessous.' : 'Un seul bouton suffit, plus bas.') + '</p>'
       + '<p class="when">' + esc(whenTxt(j)) + '</p>';
-    if(failed) alertBox.innerHTML = failBox() + relancer;
+    if(failed) alertBox.innerHTML = failBox();
   } else if(failed){
     v.className = 'verdict ko';
-    v.innerHTML = failBox() + relancer;
+    v.innerHTML = failBox();
   } else {
     v.className='verdict ok';
     v.innerHTML='<p class="vt">&#10003; Tout est a jour</p><p>Ni le programme du module ni les pages Web n\'ont de version plus recente disponible.</p>'+
