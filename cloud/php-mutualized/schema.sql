@@ -1,3 +1,21 @@
+-- Structure de la base AquaLook -- a importer tel quel dans phpMyAdmin.
+--
+-- Mode d emploi (AlwaysData) :
+--   1. Creer la base depuis le panneau : Bases de donnees > MySQL > Ajouter.
+--   2. Ouvrir phpMyAdmin et SELECTIONNER cette base dans la colonne de gauche.
+--   3. Onglet SQL, coller ce fichier, executer.
+--
+-- Ce fichier ne contient volontairement ni CREATE DATABASE ni USE : la base
+-- est creee par le panneau de l hebergeur, et phpMyAdmin importe dans celle
+-- qui est selectionnee. Les inclure ferait echouer l import sur un compte
+-- mutualise, ou l on n a pas le droit de creer une base en SQL.
+--
+-- ATTENTION : ce fichier n est PAS une migration. Il ne contient que des
+-- CREATE TABLE IF NOT EXISTS. Sur une base vierge il fait le travail ; sur
+-- une base existante il ne modifie RIEN, en silence. Le piege s est deja
+-- referme le 31 aout 2026 : une table module_token gardait son ancienne
+-- colonne token en clair alors que le code attendait token_sha256, et le
+-- serveur repondait 500 sans que rien ne signale la cause.
 -- Schema AquaLook pour hebergement mutualise (MySQL/MariaDB).
 --
 -- Meme forme logique que cloud/db/init/01-schema.sql (PostgreSQL/TimescaleDB,
@@ -12,7 +30,7 @@ CREATE TABLE IF NOT EXISTS module (
     firmware   VARCHAR(64) NULL,
     last_seen  DATETIME(3) NULL,
     created_at DATETIME(3) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Le jeton n'est PAS stocke. Seule son empreinte l'est : quelqu'un qui
 -- lirait cette table - sauvegarde egaree, injection, acces prestataire -
@@ -31,7 +49,7 @@ CREATE TABLE IF NOT EXISTS module_token (
     created_at DATETIME(3) NOT NULL,
     CONSTRAINT fk_module_token_module FOREIGN KEY (module_id)
         REFERENCES module(module_id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Charge utile en JSON (type natif MySQL 5.7+/MariaDB 10.2+) : les contrats
 -- evoluent, versionnes, sans migration destructive sur l'historique ancien.
@@ -44,7 +62,7 @@ CREATE TABLE IF NOT EXISTS module_message (
     correlation_id VARCHAR(64) NULL,
     payload        JSON NOT NULL,
     INDEX idx_module_message_module_ts (module_id, ts DESC)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tracabilite exigee par SYSTEM_ARCHITECTURE.md Sec.7 : emetteur, resultat,
 -- identifiant de correlation (protection contre le rejeu, voir db.php).
@@ -68,4 +86,4 @@ CREATE TABLE IF NOT EXISTS command (
     settled_at     DATETIME(3) NULL,
     result         JSON NULL,
     INDEX idx_command_module_state (module_id, state, seq)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

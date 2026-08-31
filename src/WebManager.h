@@ -438,7 +438,12 @@ function render(){
   // est le resultat du canal firmware. Une version disponible renseignee
   // prouve que checkForUpdate() est alle au bout : il ne la remplit
   // qu&rsquo;apres avoir lu et valide le catalogue.
-  const webRepondu = !!(j && j.webAssetsAvailableVersion);
+  // Deux preuves valent : une version disponible renseignee (une
+  // verification est allee au bout), ou un deploiement reussi -- le
+  // firmware efface la version disponible en le consommant, alors que
+  // c'est justement le moment ou le canal a le plus travaille.
+  const webRepondu = !!(j && (j.webAssetsAvailableVersion ||
+        (j.command === 'web_assets_update' && j.success)));
   if(webAv) h += chan('Pages Web', wi || (j && j.webAssetsInstalledVersion), j.webAssetsAvailableVersion, 'a installer', 'av', '');
   else if(webRepondu) h += chan('Pages Web', wi, null, 'a jour', 'up', '');
   else h += chan('Pages Web', wi, null, 'jamais verifiees', '', 'sur le module');
