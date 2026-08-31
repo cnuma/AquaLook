@@ -403,8 +403,13 @@ function render(){
       + '<p class="when">' + esc(whenTxt(j)) + '</p>';
     if(failed) alertBox.innerHTML = failBox();
   } else if(failed){
-    v.className = 'verdict ko';
-    v.innerHTML = failBox();
+    // Le niveau vient du fichier d&rsquo;aide : un etat normal ne prend
+    // pas les couleurs d&rsquo;une panne, meme quand c&rsquo;est le
+    // verdict lui-meme qui le porte.
+    const html = failBox();
+    v.className = (alertBox.className === 'info') ? 'verdict un' : 'verdict ko';
+    alertBox.className = '';
+    v.innerHTML = html;
   } else {
     v.className='verdict ok';
     v.innerHTML='<p class="vt">&#10003; Tout est a jour</p><p>Ni le programme du module ni les pages Web n\'ont de version plus recente disponible.</p>'+
@@ -417,13 +422,26 @@ function render(){
     esc(inst||'inconnue')+(av?' &nbsp; <i>disponible :</i> '+esc(av):'')+(note?' &nbsp; <i>'+esc(note)+'</i>':'')+
     '</span><span class="chip '+cls+'">'+esc(txt)+'</span></div>';
   let h='';
-  if(!checked&&!(j&&j.valid))h+=chan('Programme du module',j&&j.installedVersion,null,'jamais verifie','','');
-  else if(failed&&!fwAv)h+=chan('Programme du module',j.installedVersion,null,'non verifiable','ko','');
-  else if(fwAv)h+=chan('Programme du module',j.installedVersion,j.availableVersion,'a installer','av','');
-  else h+=chan('Programme du module',j.installedVersion,null,'a jour','up','');
-  if(webAv)h+=chan('Pages Web',wi||(j&&j.webAssetsInstalledVersion),j.webAssetsAvailableVersion,'a installer','av','');
-  else if(j&&j.valid&&j.success)h+=chan('Pages Web',wi,null,'a jour','up','');
-  else h+=chan('Pages Web',wi,null,'non verifiees','','sur le module');
+  // Le programme se juge sur SA propre verification. La ligne affichait
+  // "a jour" des que la derniere operation avait reussi, y compris quand
+  // c'etait une mise a jour des pages Web -- qui ne dit rien du programme.
+  // Le module ne gardant qu'un seul resultat pour deux canaux, la seule
+  // reponse honnete hors verification est de ne pas se prononcer.
+  const fwVerifie = !!(j && j.valid && j.command === 'check_version');
+  if(!j || !j.valid) h += chan('Programme du module', j && j.installedVersion, null, 'jamais verifie', '', '');
+  else if(fwAv) h += chan('Programme du module', j.installedVersion, j.availableVersion, 'a installer', 'av', '');
+  else if(!fwVerifie) h += chan('Programme du module', j.installedVersion, null, 'non verifie', '', '');
+  else if(failed) h += chan('Programme du module', j.installedVersion, null,
+        j.target === 'unsupported' ? 'aucune version publiee' : 'non verifiable', 'ko', '');
+  else h += chan('Programme du module', j.installedVersion, null, 'a jour', 'up', '');
+  // Le canal Web se juge sur SA propre reponse, jamais sur j.success qui
+  // est le resultat du canal firmware. Une version disponible renseignee
+  // prouve que checkForUpdate() est alle au bout : il ne la remplit
+  // qu&rsquo;apres avoir lu et valide le catalogue.
+  const webRepondu = !!(j && j.webAssetsAvailableVersion);
+  if(webAv) h += chan('Pages Web', wi || (j && j.webAssetsInstalledVersion), j.webAssetsAvailableVersion, 'a installer', 'av', '');
+  else if(webRepondu) h += chan('Pages Web', wi, null, 'a jour', 'up', '');
+  else h += chan('Pages Web', wi, null, 'jamais verifiees', '', 'sur le module');
   document.getElementById('chans').innerHTML=h;
 
   // ── Etapes verrouillees, avec la raison du verrouillage.

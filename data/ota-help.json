@@ -3,14 +3,14 @@
   "_note": "Explications des echecs de mise a jour, servies depuis la carte SD et non depuis la flash du module. Deux raisons : la flash est comptee (la carte de production en occupe deja 75 %), et surtout ces textes sont ce qu'on voudra corriger le plus souvent — les enrichir devient une mise a jour des pages Web, sans reflasher. La page /ota reste fonctionnelle sans ce fichier : elle affiche alors le code technique brut.",
   "errors": {
     "target-missing": {
-      "quoi": "Le catalogue de mises a jour ne propose rien pour cette carte.",
-      "faire": "La publication est incomplete : le catalogue doit etre republie en y declarant la cible « {cible} ». Rien a faire sur le module. Les pages Web se mettent a jour de leur cote, sans dependre de ce catalogue.",
+      "quoi": "Le catalogue de mises a jour ne propose aucune version pour cette carte.",
+      "faire": "La publication est incomplete : le catalogue doit etre republie en y incluant ce type de carte (identifiant technique : {cible}). Rien a corriger sur le module. Les pages Web se mettent a jour de leur cote, sans dependre de ce catalogue.",
       "cas": {
         "unsupported": {
           "niveau": "info",
-          "titre": "Cette carte n'a pas de canal de mise a jour du programme",
-          "quoi": "Aucune version n'est publiee pour ce materiel.",
-          "faire": "Rien a corriger, rien a surveiller. Le module refuse d'installer un programme prevu pour une autre carte, et prefere le dire plutot que de le tenter. Les pages Web, elles, se mettent a jour normalement."
+          "titre": "Aucune mise a jour du programme pour ce materiel",
+          "quoi": "Le module fonctionne en {version}. Aucune version n'est publiee pour ce type de carte, il n'y a donc rien a installer.",
+          "faire": "Rien a faire, et rien ne s'est mal passe. Le module a joint le serveur, lu son catalogue, et n'y a trouve aucune version destinee a cette carte. Les pages Web, elles, se mettent a jour normalement."
         }
       }
     },
