@@ -122,10 +122,21 @@ function renderZones() {
   if (_zonesView === 'dense') renderZonesTable();
   else                        renderZonesGrid();
 }
+// Tuiles de zone : l'etat des lieux de l'installation d'un coup d'oeil.
+//
+// Elles ne CONFIGURENT rien. Seules deux actions y figurent, parce que ce
+// sont des actions et non des reglages : la marche forcee agit maintenant,
+// l'identification aussi. Tout ce qui definit un comportement futur vit
+// dans Parametres, et les creneaux dans le planning juste en dessous - ou
+// ils s'editent en cliquant une case.
+//
+// Le mode et le seuil de pluie sont rappeles ici bien qu'ils se reglent
+// ailleurs : ils dependent des plantes de chaque zone, et c'est
+// precisement l'information qu'on veut voir sans naviguer.
 function renderZonesGrid() {
   const el     = document.getElementById('zones-container');
   const manDur = status.manualDurationMin || 10;
-  el.style.display = 'block';
+  el.className = 'zone-tiles';
   el.style.cssText = '';
   el.innerHTML = status.zones.map((z, i) => {
     const name   = z.name || `Zone ${i+1}`;
@@ -138,26 +149,24 @@ function renderZonesGrid() {
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
     const reason   = z.reason || z.lastReason || 'En attente';
     return `
-    <div class="zone-card zone-color-${color} ${active ? 'zone-card-active' : ''} ${z.mode === 1 ? 'zone-interval' : ''}"
-         onclick="openZoneConfigModal(${i})" title="Configurer ${name}">
-      <div class="zone-card-header">
-        <div class="zone-name">
-          <span class="zone-dot zone-dot-${color}"></span>
-          ${name}
-          <span class="zone-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
-        </div>
-        <div class="zone-reason">${reason}</div>
+    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''}">
+      <div class="zt-head">
+        <span class="zone-dot zone-dot-${color}"></span>
+        <span class="zt-name" title="${name}">${name}</span>
+        <span class="zone-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
+      </div>
+      <div class="zt-facts">
+        <span class="zt-fact" title="Mode de programmation">&#128197; ${modeStr}</span>
+        <span class="zt-fact" title="Arrosage suspendu au-dela de ce cumul de pluie">&#9748; &ge;${threshMm}mm / ${hours}h</span>
+      </div>
+      <div class="zt-reason" title="${reason}">${reason}</div>
+      <div class="zt-actions">
         <button class="btn-run ${active ? 'active' : ''}"
-                onclick="event.stopPropagation(); toggleManual(${i}, ${!active})">
+                onclick="toggleManual(${i}, ${!active})">
           ${active ? 'Arreter' : 'Arroser ' + manDur + ' min'}
         </button>
         <button class="btn-identify" title="Fait clignoter en blanc la LED de cette zone, pour la reperer au branchement"
-                onclick="event.stopPropagation(); identifyZone(${i})">&#128161;</button>
-      </div>
-      <div class="zone-card-meta">
-        <span class="zone-meta-item">&#128197; ${modeStr}</span>
-        <span class="zone-meta-item">&#9748; &ge;${threshMm}mm / ${hours}h</span>
-        <span class="zone-meta-edit">&#9998; Configurer</span>
+                onclick="identifyZone(${i})">&#128161;</button>
       </div>
     </div>`;
   }).join('');
@@ -664,6 +673,11 @@ async function toggleManual(zone, state) {
 function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
+  // Toujours rouvrir sur la liste des rubriques, jamais sur la derniere
+  // consultee : on ne se souvient pas d'ou l'on etait, et retomber au milieu
+  // d'un ecran de reglages est desorientant.
+  buildCfgMenu();
+  backToCfgMenu();
   fetchAdminStatus();
   fetchDisplayConfig();  // pre-remplit la section Affichage LCD a chaque ouverture
   fetchNotificationConfig();  // pre-remplit la section Notifications ntfy
@@ -672,7 +686,226 @@ function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-overlay').classList.remove('open');
 }
+// ── Parametres a deux niveaux ────────────────────────────────────
+//
+// Niveau 1 : la liste des rubriques. Niveau 2 : une rubrique, seule a
+// l'ecran. Auparavant les neuf sections etaient empilees et depliables,
+// ce qui obligeait a chercher un reglage en parcourant toute la page.
+//
+// Le regroupement se fait ICI et non dans index.html : une rubrique
+// designe une ou plusieurs sections existantes, qui ne bougent pas. On
+// range l'interface sans deplacer un seul formulaire - donc sans risquer
+// d'en casser un.
+//
+// Sept rubriques plutot que neuf : "Infobulles meteo" et "Meteo" traitent
+// du meme sujet, "WiFi" et "NTP" relevent tous deux du reseau. Les avoir
+// separees etait un reliquat de l'empilement, ou l'ordre tenait lieu de
+// classement.
+const CFG_GROUPS = [
+  { id: 'g-zones',   icon: '&#128167;', label: 'Zones',
+    sections: ['sec-zones'] },
+  { id: 'g-meteo',   icon: '&#127780;', label: 'Météo',
+    sections: ['sec-owm', 'sec-weather-tooltips'] },
+  { id: 'g-reseau',  icon: '&#128225;', label: 'Réseau',
+    sections: ['sec-wifi', 'sec-ntp'] },
+  { id: 'g-ecran',   icon: '&#128421;', label: 'Affichage',
+    sections: ['sec-display'] },
+  { id: 'g-notif',   icon: '&#128276;', label: 'Notifications',
+    sections: ['sec-notifications'] },
+  { id: 'g-serveur', icon: '&#9729;',   label: 'Serveur',
+    sections: ['sec-cloud'] },
+  { id: 'g-maj',     icon: '&#11014;',  label: 'Mises à jour',
+    sections: ['sec-upd'] },
+  { id: 'g-systeme', icon: '&#9881;',   label: 'Système',
+    sections: ['sec-system'] },
+];
+
+// Sections presentes dans le DOM mais rattachees a aucune rubrique. Elles
+// resteraient inaccessibles sans cette recuperation : une section ajoutee
+// a index.html sans etre declaree ci-dessus doit rester joignable, pas
+// disparaitre en silence.
+function cfgOrphanSections() {
+  const claimed = new Set(CFG_GROUPS.flatMap(g => g.sections));
+  return Array.from(document.querySelectorAll('#drawer .cfg-section'))
+              .map(s => s.id)
+              .filter(id => id && !claimed.has(id));
+}
+
+function buildCfgMenu() {
+  const menu = document.getElementById('cfg-menu');
+  if (!menu) return;
+
+  const groups = CFG_GROUPS.filter(g =>
+    g.sections.some(id => document.getElementById(id)));
+
+  const orphans = cfgOrphanSections().map(id => {
+    const sec = document.getElementById(id);
+    const t = sec.querySelector('.cfg-section-title');
+    return { id: 'g-' + id, icon: '', label: t ? t.textContent.trim() : id,
+             sections: [id] };
+  });
+
+  menu.innerHTML = groups.concat(orphans).map(g => `
+    <button class="cfg-menu-item" onclick="openCfgPage('${g.id}')">
+      <span class="cfg-menu-label"><span class="sec-icon">${g.icon}</span>${g.label}</span>
+      <span class="cfg-menu-chevron">&#8250;</span>
+    </button>`).join('');
+  _cfgGroupIndex = {};
+  groups.concat(orphans).forEach(g => { _cfgGroupIndex[g.id] = g; });
+}
+let _cfgGroupIndex = {};
+
+function openCfgPage(groupId) {
+  const g = _cfgGroupIndex[groupId];
+  if (!g) return;
+  if (g.sections.indexOf('sec-zones') >= 0) buildCfgZoneList();
+  if (g.sections.indexOf('sec-cloud') >= 0) populateCloudSync();
+
+  const drawer = document.getElementById('drawer');
+  drawer.classList.add('cfg-detail');
+  // Une rubrique qui rassemble PLUSIEURS sections garde leurs en-tetes :
+  // ils servent alors de sous-titres et separent les sujets. Seule dans sa
+  // rubrique, une section verrait son en-tete repeter le titre du bandeau.
+  drawer.classList.toggle('cfg-multi', g.sections.length > 1);
+
+  document.querySelectorAll('#drawer .cfg-section').forEach(sec => {
+    const inGroup = g.sections.indexOf(sec.id) >= 0;
+    sec.classList.toggle('cfg-current', inGroup);
+    // Corps toujours deplie sur sa propre page : le pliage n'avait de sens
+    // que lorsque les neuf sections partageaient le meme ecran.
+    sec.classList.toggle('open', inGroup);
+  });
+
+  document.getElementById('cfg-title').innerHTML = g.label;
+  drawer.scrollTop = 0;
+}
+
+function backToCfgMenu() {
+  const drawer = document.getElementById('drawer');
+  drawer.classList.remove('cfg-detail', 'cfg-multi');
+  document.querySelectorAll('#drawer .cfg-section').forEach(s => {
+    s.classList.remove('cfg-current', 'open');
+  });
+  document.getElementById('cfg-title').textContent = 'Paramètres';
+  drawer.scrollTop = 0;
+}
+
+// Conservee : d'anciens appels inline pointent encore dessus, et un clic
+// sur l'en-tete d'une rubrique ouverte ne doit pas la replier - elle est
+// seule a l'ecran, la replier ne montrerait plus rien.
 function toggleSection(id) {
+  const drawer = document.getElementById('drawer');
+  if (drawer && drawer.classList.contains('cfg-detail')) return;
+  document.getElementById(id).classList.toggle('open');
+}
+
+// Synchronisation serveur : remplissage du formulaire depuis adminStatus.
+//
+// Le jeton n'est jamais renvoye en clair par le module - seul un masque
+// l'est. Le champ reste donc vide, et un envoi sans jeton laisse celui
+// enregistre intact (la route applique la valeur courante par defaut).
+function populateCloudSync() {
+  if (!adminStatus || !adminStatus.cloudSync) return;
+  const c = adminStatus.cloudSync;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  chk('cs-enabled', c.enabled);
+  set('cs-host', c.host || '');
+  set('cs-port', c.port || 443);
+  set('cs-interval', c.intervalMinutes || 15);
+  chk('cs-https', c.useHttps);
+  set('cs-module-id', c.moduleId || '');
+  const masked = document.getElementById('cs-token-masked');
+  if (masked) masked.textContent = c.tokenMasked || '(aucun)';
+}
+
+function saveCloudSync() {
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const on  = id => !!(document.getElementById(id) || {}).checked;
+
+  const body = {
+    enabled: on('cs-enabled'),
+    host: val('cs-host').trim(),
+    port: parseInt(val('cs-port'), 10) || 443,
+    useHttps: on('cs-https'),
+    moduleId: val('cs-module-id').trim(),
+    intervalMinutes: parseInt(val('cs-interval'), 10) || 15
+  };
+  // Jeton envoye UNIQUEMENT s'il a ete saisi : le champ est vide par
+  // defaut, et transmettre cette chaine vide effacerait le jeton
+  // enregistre.
+  const tok = val('cs-token').trim();
+  if (tok) body.token = tok;
+
+  fetch('/api/cloudSync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => r.json().then(j => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok) throw new Error(j.error || 'refus du module');
+      toast('Serveur enregistré');
+      document.getElementById('cs-token').value = '';
+      fetchAdminStatus();
+    })
+    .catch(e => toast('Enregistrement impossible : ' + e.message, true));
+}
+
+function buildCfgZoneList() {
+  const el = document.getElementById('cfg-zone-list');
+  if (!el) return;
+  const zones = (status && status.zones) ? status.zones : [];
+  if (!zones.length) {
+    el.innerHTML = '<small style="color:var(--muted)">Zones non chargées</small>';
+    return;
+  }
+  el.innerHTML = zones.map((z, i) => {
+    const name = z.name || `Zone ${i + 1}`;
+    const mode = z.mode === 1
+      ? `Intervalle / ${z.intervalDays || z.interval || 2}j`
+      : 'Jours fixes';
+    return `<button class="cfg-zone-link" onclick="openZoneConfigModal(${i})">
+              <span class="zone-dot zone-dot-${ZONE_COLORS[i]}"></span>
+              <span class="cfg-zone-link-name">${name}</span>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${mode}</span>
+              <span class="cfg-menu-chevron">&#8250;</span>
+            </button>`;
+  }).join('');
+}
+
+function openCfgPage(id) {
+  const sec = document.getElementById(id);
+  if (!sec) return;
+  if (id === 'sec-zones') buildCfgZoneList();
+  document.getElementById('drawer').classList.add('cfg-detail');
+  document.querySelectorAll('#drawer .cfg-section').forEach(s => {
+    s.classList.toggle('cfg-current', s === sec);
+    // Corps toujours deplie sur sa propre page : le pliage n'avait de sens
+    // que lorsque les neuf sections partageaient le meme ecran.
+    s.classList.toggle('open', s === sec);
+  });
+  const titleEl = sec.querySelector('.cfg-section-title');
+  document.getElementById('cfg-title').innerHTML =
+    titleEl ? titleEl.innerHTML : 'Paramètres';
+  document.getElementById('drawer').scrollTop = 0;
+}
+
+function backToCfgMenu() {
+  const drawer = document.getElementById('drawer');
+  drawer.classList.remove('cfg-detail');
+  document.querySelectorAll('#drawer .cfg-section').forEach(s => {
+    s.classList.remove('cfg-current', 'open');
+  });
+  document.getElementById('cfg-title').textContent = 'Paramètres';
+  drawer.scrollTop = 0;
+}
+
+// Conservee : d'anciens appels inline pointent encore dessus, et un clic
+// sur l'en-tete d'une rubrique ouverte ne doit pas la replier - elle est
+// seule a l'ecran, la replier ne montrerait plus rien.
+function toggleSection(id) {
+  const drawer = document.getElementById('drawer');
+  if (drawer && drawer.classList.contains('cfg-detail')) return;
   document.getElementById(id).classList.toggle('open');
 }
 function populateDrawer() {

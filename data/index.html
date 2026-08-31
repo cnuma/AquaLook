@@ -94,8 +94,14 @@
 <div id="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="drawer">
   <div class="drawer-header">
-    <span class="drawer-title">Paramètres</span>
+    <button class="drawer-back" id="cfg-back" onclick="backToCfgMenu()"
+            title="Retour aux paramètres">&#8249;</button>
+    <span class="drawer-title" id="cfg-title">Paramètres</span>
     <button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+  <!-- Niveau 1 : liste des rubriques. Construite en JS a partir des sections
+       presentes plus bas, pour qu'ajouter une rubrique n'impose pas de la
+       declarer a deux endroits. Voir buildCfgMenu(). -->
+  <nav id="cfg-menu"></nav>
   <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Admin : verrouillé</button>
   <div id="link-urls" style="margin:0 12px 8px">
     <a href="/urls.html" target="_blank"
@@ -231,6 +237,14 @@
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
+      <!-- Reglages propres a chaque zone : nom, mode, intervalle, seuil de
+           pluie, notifications. Les creneaux n'y sont pas - ils s'editent
+           dans le planning de la page d'accueil, ou ils relevent de
+           l'exploitation et non du parametrage. Rempli par
+           buildCfgZoneList(). -->
+      <div class="cfg-subsection-title" style="margin-top:10px">Réglages par zone</div>
+      <div class="cfg-zone-list" id="cfg-zone-list"></div>
+
       <div class="cfg-subsection-title" style="margin-top:10px">Couleur des zones</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Zone 1</label>
@@ -286,6 +300,42 @@
           Activer
         </button>
       </div>
+    </div>
+  </div>
+  <!-- Synchronisation avec le serveur de configuration a distance.
+       N'avait jusqu'ici AUCUNE interface : le seul moyen de la regler etait
+       POST /api/cloudSync en ligne de commande, ce qui la rendait
+       introuvable. Ajoutee le 31 aout 2026 sur constat utilisateur. -->
+  <div class="cfg-section" id="sec-cloud">
+    <div class="cfg-section-header" onclick="toggleSection('sec-cloud')">
+      <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Serveur</span>
+      <span class="cfg-chevron">&#9654;</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="cs-enabled" style="width:auto;margin:0">
+        <label for="cs-enabled" style="margin:0;cursor:pointer">Synchronisation activée</label>
+      </div>
+      <div class="cfg-field"><label>Hôte (adresse IP ou nom de domaine)</label>
+        <input type="text" id="cs-host" placeholder="aqualook.alwaysdata.net"></div>
+      <div class="cfg-field-row">
+        <div class="cfg-field"><label>Port</label>
+          <input type="number" id="cs-port" min="1" max="65535"></div>
+        <div class="cfg-field"><label>Intervalle (min)</label>
+          <input type="number" id="cs-interval" min="1" max="1440"></div>
+      </div>
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="cs-https" style="width:auto;margin:0">
+        <label for="cs-https" style="margin:0;cursor:pointer">HTTPS</label>
+      </div>
+      <div class="cfg-hint">Obligatoire dès que le serveur n'est pas sur le réseau local : le jeton est la seule preuve d'identité du module, et il circulerait en clair. Le HTTP n'est toléré que vers une adresse privée (192.168.x, 10.x, 172.16-31.x), pour un serveur d'établi.</div>
+      <div class="cfg-field"><label>Identifiant du module</label>
+        <input type="text" id="cs-module-id" placeholder="aq-0001"></div>
+      <div class="cfg-field"><label>Jeton</label>
+        <input type="password" id="cs-token" placeholder="inchangé si laissé vide">
+        <div class="cfg-hint">Jeton actuel : <span id="cs-token-masked" style="font-family:var(--mono)">—</span>. Le serveur n'en garde qu'une empreinte : s'il est perdu, il faut en générer un nouveau.</div>
+      </div>
+      <button class="btn-cfg" onclick="saveCloudSync()">Enregistrer</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-system">

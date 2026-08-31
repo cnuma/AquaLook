@@ -704,3 +704,115 @@ header {
 @media (prefers-reduced-motion: reduce) {
   .zone-badge.on { animation: none; }
 }
+
+/* ── Tuiles de zone ────────────────────────────────────────────────
+   Etat des lieux de l'installation d'un coup d'oeil : les zones sont
+   cote a cote, pas empilees. auto-fit + minmax laisse la grille
+   decider du nombre de colonnes selon la largeur ET le nombre de
+   zones - 2 zones s'etalent, 8 se serrent, sans regle par palier.  */
+.zone-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+.zone-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+}
+/* Le lisere de gauche porte l'identite de la zone ; la couleur d'ETAT
+   (bleu = arrosage) est portee par l'anneau et le fond, comme sur le
+   ruban et le LCD. */
+.zone-tile.zone-color-green  { border-left: 4px solid var(--green); }
+.zone-tile.zone-color-blue   { border-left: 4px solid var(--blue); }
+.zone-tile.zone-color-amber  { border-left: 4px solid var(--amber); }
+.zone-tile.zone-color-purple { border-left: 4px solid var(--purple); }
+
+.zt-head { display: flex; align-items: center; gap: 8px; }
+.zt-name {
+  font-weight: 700; font-size: 13px;
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zt-facts { display: flex; flex-direction: column; gap: 2px; }
+.zt-fact {
+  font-family: var(--mono); font-size: 10px; color: var(--text2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zt-reason {
+  font-size: 11px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Les actions restent en bas, alignees quelle que soit la hauteur du
+   contenu au-dessus : des tuiles voisines n'ont pas forcement le meme
+   nombre de lignes. */
+.zt-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 4px; }
+.zt-actions .btn-run { flex: 1 1 auto; }
+
+/* ── Parametres a deux niveaux ─────────────────────────────────────
+   Niveau 1 : la liste des rubriques (#cfg-menu). Niveau 2 : une seule
+   rubrique a l'ecran, marquee .cfg-current. La bascule tient a une
+   classe posee sur le tiroir, ce qui evite de manipuler le style de
+   chaque section une par une.                                        */
+#cfg-menu { display: block; }
+#drawer.cfg-detail #cfg-menu { display: none; }
+
+/* Hors mode detail, les sections sont masquees : la liste les remplace. */
+#drawer .cfg-section { display: none; }
+#drawer.cfg-detail .cfg-section.cfg-current { display: block; }
+
+/* Rubrique a UNE section : son en-tete repeterait le titre du bandeau, on
+   le retire. Rubrique a PLUSIEURS sections (.cfg-multi) : les en-tetes
+   sont conserves, ils separent les sujets et servent de sous-titres.   */
+#drawer.cfg-detail:not(.cfg-multi) .cfg-current .cfg-section-header { display: none; }
+#drawer.cfg-detail:not(.cfg-multi) .cfg-current .cfg-section-body { padding-top: 14px; }
+/* Regroupees, les sections ne se replient plus : le chevron n'aurait plus
+   de sens puisque le corps est toujours ouvert. */
+#drawer.cfg-multi .cfg-current .cfg-section-header { cursor: default; }
+#drawer.cfg-multi .cfg-current .cfg-chevron { display: none; }
+#drawer.cfg-multi .cfg-current .cfg-section-header:hover { background: none; }
+
+.cfg-menu-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; gap: 10px;
+  padding: 14px 20px;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  cursor: pointer; text-align: left; transition: background .15s;
+}
+.cfg-menu-item:hover { background: var(--bg2); }
+.cfg-menu-label {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text2);
+  display: flex; align-items: center; gap: 10px;
+}
+.cfg-menu-chevron { color: var(--muted); font-size: 16px; line-height: 1; }
+
+/* Fleche de retour : presente uniquement au niveau 2, pour qu'il n'y ait
+   jamais de retour sans destination. */
+.drawer-back {
+  background: none; border: none; cursor: pointer;
+  color: var(--text2); font-size: 22px; line-height: 1;
+  padding: 0 10px 0 0; display: none;
+}
+#drawer.cfg-detail .drawer-back { display: inline-block; }
+.drawer-back:hover { color: var(--text); }
+
+/* Acces aux reglages d'une zone depuis la rubrique Zones : les creneaux
+   restent dans le planning, c'est de l'exploitation ; le nom, le mode et
+   le seuil de pluie sont du parametrage et vivent ici. */
+.cfg-zone-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.cfg-zone-link {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 6px;
+  border: 1px solid var(--border2); background: var(--bg2);
+  cursor: pointer; text-align: left; transition: border-color .15s;
+}
+.cfg-zone-link:hover { border-color: var(--blue); }
+.cfg-zone-link .zone-dot { flex: 0 0 auto; }
+.cfg-zone-link-name { flex: 1 1 auto; font-size: 12px; font-weight: 600; }
