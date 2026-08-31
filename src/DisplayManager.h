@@ -413,21 +413,36 @@ private:
     static constexpr uint16_t G2_PLAN_LABEL_W = 12;
     // G2_GPAD : était constexpr, maintenant membre runtime _g2Gpad
 
+    // Barre d'onglets ancree EN BAS de la dalle, et zone de contenu deduite
+    // de ce qui reste. Les valeurs etaient ecrites en dur pour un ecran de
+    // 240 px (218 + 22 = 240) : sur la dalle de 272 px de la carte S3, la
+    // barre s'arretait 32 px avant le bas et le contenu perdait autant.
+    // Sur la carte historique le calcul redonne exactement les memes
+    // nombres - 240-22 = 218, 218-20 = 198 - donc aucun changement.
     static constexpr uint16_t G4_HDR_H     = 20;
     static constexpr uint16_t G4_CONTENT_Y = 20;
-    static constexpr uint16_t G4_CONTENT_H = 198;
-    static constexpr uint16_t G4_TAB_Y     = 218;
     static constexpr uint16_t G4_TAB_H     = 22;
+    static constexpr uint16_t G4_TAB_Y     = SCREEN_H - G4_TAB_H;
+    static constexpr uint16_t G4_CONTENT_H = G4_TAB_Y - G4_CONTENT_Y;
     static constexpr uint16_t G4_GW        = 78;
     static constexpr uint16_t G4_GH        = 48;
     // G4_GPAD : était constexpr, maintenant membre runtime _g4Gpad
     static constexpr uint16_t G4_PLAN_HDR_H  = 28;
     static constexpr uint16_t G4_PLAN_ZONE_H = 21;
 
+    // Meme correction que pour GRID4 ci-dessus : la barre de navigation est
+    // ancree en bas de la dalle plutot qu'a un y ecrit en dur.
+    //
+    // 28 + 172 = 200 et 200 + 40 = 240 : tout etait cale sur la hauteur de
+    // l'ancien ecran. Sur la carte S3 (272 px) les boutons de navigation
+    // flottaient donc 32 px au-dessus du bas, et la page admin affichait
+    // 172 px de contenu la ou 204 sont disponibles - d'ou le journal qui
+    // paraissait encore plus limite qu'il ne l'est.
+    // Sur la carte historique : 240-40 = 200, 200-28 = 172, inchange.
     static constexpr uint16_t ADM_CONTENT_Y = 28;
-    static constexpr uint16_t ADM_CONTENT_H = 172;
-    static constexpr uint16_t ADM_NAV_Y     = 200;
     static constexpr uint16_t ADM_NAV_H     = 40;
+    static constexpr uint16_t ADM_NAV_Y     = SCREEN_H - ADM_NAV_H;
+    static constexpr uint16_t ADM_CONTENT_H = ADM_NAV_Y - ADM_CONTENT_Y;
 
     // ── Timing et layout runtime ────────────────────────────────
     // Valeurs par défaut — surchargées par CfgDisplay dans begin()
