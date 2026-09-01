@@ -14,6 +14,23 @@
 
 declare(strict_types=1);
 
+// Jamais d'erreur PHP dans la reponse HTTP.
+//
+// Pose ICI, avant le premier require, et non dans .htaccess : php_flag n'y
+// fonctionne qu'avec mod_php, et provoque une erreur 500 sur tout le site
+// quand l'hebergeur utilise PHP-FPM -- ce qui est le cas courant. Une ligne
+// censee masquer un message d'erreur ne doit pas pouvoir eteindre le service.
+//
+// Avant le require, parce qu'une erreur fatale a l'inclusion se produit AVANT
+// que le try/catch plus bas puisse l'intercepter. Constate le 1er septembre
+// 2026 : un env.php manquant faisait repondre /health par une trace revelant
+// le chemin absolu du serveur.
+//
+// Les erreurs restent journalisees cote hebergeur, ou elles ont leur place.
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+
 require_once __DIR__ . '/db.php';
 
 const PROTO_VERSION = 'v1';

@@ -9,6 +9,27 @@ RewriteRule ^ index.php [L]
 # router.php n'existe que pour le serveur de developpement integre : le laisser
 # accessible offrirait un second chemin d'entree vers index.php, non couvert par
 # les reecritures ci-dessus.
-<FilesMatch "^(\.env|schema\.sql|router\.php)$">
+# Les .md sont de la documentation de developpement, sans interet public.
+<FilesMatch "^(\.env.*|schema\.sql|router\.php|.*\.md)$">
     Require all denied
 </FilesMatch>
+
+# Pas de listing de repertoire : /web/ ne doit pas enumerer les versions
+# publiees, meme si elles ne sont pas secretes.
+Options -Indexes
+
+# Masquage des erreurs PHP : elles revelent le chemin absolu du serveur.
+#
+# Volontairement encadre par <IfModule> : php_flag n'est reconnu que par
+# mod_php, et provoque une erreur 500 sur TOUT le site sous PHP-FPM. La garde
+# rend ces lignes inoffensives la ou elles ne s'appliquent pas.
+#
+# Ce n'est qu'une ceinture : la vraie protection est dans index.php, qui pose
+# display_errors avant son premier require et fonctionne quel que soit
+# l'hebergeur.
+<IfModule mod_php.c>
+    php_flag display_errors off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag display_errors off
+</IfModule>
