@@ -18,11 +18,11 @@ function db(): PDO
     if ($pdo !== null) {
         return $pdo;
     }
-    $host = getenv('DB_HOST') ?: '127.0.0.1';
-    $port = getenv('DB_PORT') ?: '3306';
-    $name = getenv('DB_NAME') ?: 'aqualook';
-    $user = getenv('DB_USER') ?: '';
-    $pass = getenv('DB_PASSWORD') ?: '';
+    $host = env_value('DB_HOST') ?: '127.0.0.1';
+    $port = env_value('DB_PORT') ?: '3306';
+    $name = env_value('DB_NAME') ?: 'aqualook';
+    $user = env_value('DB_USER') ?: '';
+    $pass = env_value('DB_PASSWORD') ?: '';
 
     $dsn = "mysql:host=$host;port=$port;dbname=$name;charset=utf8mb4";
     $pdo = new PDO($dsn, $user, $pass, [

@@ -76,7 +76,7 @@ function require_module(): string
 
 function require_admin(): void
 {
-    $adminToken = getenv('ADMIN_TOKEN') ?: '';
+    $adminToken = env_value('ADMIN_TOKEN');
     if ($adminToken === '') {
         send_json(503, ['detail' => 'ADMIN_TOKEN non configure cote serveur']);
     }
@@ -116,13 +116,13 @@ try {
         // quand c'est justement le jeton admin qui manque. Un appelant
         // anonyme n'apprend ici que "ce serveur n'est pas fini d'installer",
         // ce que le 503 lui disait deja.
-        $defini = static fn(string $cle): bool => is_string(getenv($cle)) && getenv($cle) !== '';
+        $defini = static fn(string $cle): bool => env_value($cle) !== '';
         send_json(200, [
             'ok' => true,
             'config' => [
                 'db'         => $defini('DB_HOST') && $defini('DB_NAME') && $defini('DB_USER'),
                 'dbPassword' => $defini('DB_PASSWORD'),
-                'adminToken' => strlen((string)getenv('ADMIN_TOKEN')) >= MIN_TOKEN_LENGTH,
+                'adminToken' => strlen(env_value('ADMIN_TOKEN')) >= MIN_TOKEN_LENGTH,
             ],
         ]);
     }
