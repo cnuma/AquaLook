@@ -95,6 +95,46 @@ function read_json_body(): array
     return $data;
 }
 
+/**
+ * Etat de la base, en un mot, sans rien divulguer.
+ *
+ * Une installation incomplete se manifestait par un 500 "erreur interne"
+ * identique pour toutes les causes : base inexistante, mot de passe faux,
+ * schema non importe. Impossible de savoir laquelle sans acces aux journaux
+ * de l'hebergeur. Le meme principe vaut ici que pour l'ecran de mise a jour
+ * du module : ne jamais laisser interpreter la cause d'un echec.
+ *
+ * Ce qui est rendu est une CATEGORIE, jamais un identifiant, un hote ou un
+ * message du moteur. Un appelant anonyme apprend que ce serveur n'est pas
+ * fini d'installer -- ce que le 500 lui disait deja.
+ */
+function database_status(): string
+{
+    try {
+        // LIMIT 0 : verifie que la table existe sans lire une seule ligne.
+        db()->query('SELECT 1 FROM module_token LIMIT 0');
+        return 'ok';
+    } catch (PDOException $e) {
+        $sqlstate = (string)$e->getCode();
+        $message  = $e->getMessage();
+        if ($sqlstate === '42S02' || str_contains($message, '1146')) {
+            return 'schema-absent';
+        }
+        if (str_contains($message, '1049')) {
+            return 'base-inconnue';
+        }
+        if (str_contains($message, '1045')) {
+            return 'identifiants-refuses';
+        }
+        if ($sqlstate === '2002' || str_contains($message, '2002')) {
+            return 'serveur-injoignable';
+        }
+        return 'erreur-' . preg_replace('/[^A-Za-z0-9]/', '', $sqlstate);
+    } catch (Throwable $e) {
+        return 'indisponible';
+    }
+}
+
 function check_payload_size(array $payload): void
 {
     if (strlen(json_encode($payload, JSON_UNESCAPED_UNICODE)) > MAX_PAYLOAD_BYTES) {
@@ -124,6 +164,7 @@ try {
                 'dbPassword' => $defini('DB_PASSWORD'),
                 'adminToken' => strlen(env_value('ADMIN_TOKEN')) >= MIN_TOKEN_LENGTH,
             ],
+            'database' => database_status(),
         ]);
     }
 
