@@ -29,6 +29,12 @@ function db(): PDO
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
+        // Sans plafond, une base injoignable fait attendre la requete jusqu'a
+        // max_execution_time -- souvent 30 s -- puis tomber en erreur fatale,
+        // hors de portee du try/catch qui aurait su expliquer la panne. Cinq
+        // secondes suffisent largement sur un reseau d'hebergeur, et un echec
+        // rapide vaut mieux qu'une attente qui finit en 500 muet.
+        PDO::ATTR_TIMEOUT => 5,
     ]);
     return $pdo;
 }
