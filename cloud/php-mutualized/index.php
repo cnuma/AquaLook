@@ -196,7 +196,24 @@ try {
             send_json(400, ['detail' => 'correlationId trop long (64 max)']);
         }
         insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
-        $firmware = in_array($msgType, ['status', 'state'], true) ? ($payload['firmware'] ?? null) : null;
+
+        // La version est prise dans TOUT message qui en porte une, et non dans
+        // les seuls types status/state comme auparavant.
+        //
+        // Le firmware l'emet en realite dans un message "diag" -- avec
+        // l'uptime, la memoire et la cause du dernier redemarrage, ce qui est
+        // sa place logique (CloudSync.cpp). Le champ arrivait donc, et etait
+        // jete : la console affichait "firmware ?" pour un module qui venait de
+        // se declarer. Constate le 1er septembre 2026, a la premiere
+        // synchronisation reelle.
+        //
+        // Restreindre par type n'apportait aucune securite : le module est deja
+        // authentifie par son jeton, et rien ne l'empeche d'annoncer la version
+        // qu'il veut dans un status. Seule la forme est verifiee ici.
+        $firmware = $payload['firmware'] ?? null;
+        if (!is_string($firmware) || $firmware === '' || strlen($firmware) > 64) {
+            $firmware = null;
+        }
         touch_module($moduleId, $firmware);
         send_json(200, ['ok' => true]);
     }
