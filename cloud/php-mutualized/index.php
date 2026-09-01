@@ -109,7 +109,22 @@ $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/', '/') ?: '
 
 try {
     if ($method === 'GET' && $path === '/health') {
-        send_json(200, ['ok' => true]);
+        // Des BOOLEENS, jamais une valeur ni un chemin.
+        //
+        // Diagnostiquer une installation incomplete demandait jusqu'ici
+        // d'appeler une route admin et d'interpreter un 503 -- impossible
+        // quand c'est justement le jeton admin qui manque. Un appelant
+        // anonyme n'apprend ici que "ce serveur n'est pas fini d'installer",
+        // ce que le 503 lui disait deja.
+        $defini = static fn(string $cle): bool => is_string(getenv($cle)) && getenv($cle) !== '';
+        send_json(200, [
+            'ok' => true,
+            'config' => [
+                'db'         => $defini('DB_HOST') && $defini('DB_NAME') && $defini('DB_USER'),
+                'dbPassword' => $defini('DB_PASSWORD'),
+                'adminToken' => strlen((string)getenv('ADMIN_TOKEN')) >= MIN_TOKEN_LENGTH,
+            ],
+        ]);
     }
 
     // ── Routes module (jeton porteur par module) ────────────────────────────
