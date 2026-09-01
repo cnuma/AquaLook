@@ -146,6 +146,12 @@ Deux blocages rencontrés en le mettant en place, réglés sans élévation :
   Port `3307` plutôt que le `3306` par défaut, pour ne pas entrer en conflit avec
   une éventuelle installation existante — ajuster `.env` en conséquence.
 
+  > ⚠️ **Ce 3307 ne vaut que sur le poste de développement.** En production,
+  > MySQL écoute sur **3306**. Un `.env` local recopié tel quel sur
+  > l'hébergeur produit un `SQLSTATE[HY000] [2002] Connection refused` qui
+  > ressemble à une panne réseau et n'en est pas. Arrivé le 1er septembre
+  > 2026.
+
 - **`pdo_mysql` désactivé par défaut** dans le PHP installé via `winget` : copier
   `php.ini-development` en `php.ini` dans le dossier d'installation PHP, puis
   décommenter `extension_dir = "ext"`, `extension=pdo_mysql` et `extension=mysqli`.
