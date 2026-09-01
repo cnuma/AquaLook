@@ -52,6 +52,18 @@ function load_env(string $path): void
         if ($key === '') {
             continue;
         }
+        // Retirer les guillemets encadrants. Ecrire DB_HOST="serveur.exemple"
+        // est une habitude repandue -- c'est la syntaxe du shell -- et sans ce
+        // nettoyage le nom d'hote contient les guillemets, ne se resout pas, et
+        // la connexion echoue en "2002 Connection refused" sans que rien
+        // n'indique pourquoi. Le message ne montre jamais la valeur lue.
+        $len = strlen($value);
+        if ($len >= 2) {
+            $premier = $value[0];
+            if (($premier === '"' || $premier === "'") && $value[$len - 1] === $premier) {
+                $value = substr($value, 1, -1);
+            }
+        }
         // Une variable d'environnement VIDE ne doit pas masquer une valeur
         // reelle du fichier.
         //
