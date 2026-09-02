@@ -32,6 +32,7 @@ ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/auth.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -197,6 +198,13 @@ try {
         }
         insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
 
+        // Instantane de configuration, range a part de l'historique : il doit
+        // survivre a l'elagage des messages, sans quoi un module hors ligne
+        // depuis longtemps n'aurait plus de configuration a afficher.
+        if ($msgType === 'config') {
+            store_module_config($moduleId, $payload);
+        }
+
         // La version est prise dans TOUT message qui en porte une, et non dans
         // les seuls types status/state comme auparavant.
         //
@@ -250,6 +258,123 @@ try {
             send_json(404, ['detail' => 'correlationId inconnu pour ce module']);
         }
         send_json(200, ['ok' => true, 'state' => $finalState]);
+    }
+
+    // ── Espace utilisateur (session par cookie) ─────────────────────────────
+    //
+    // Trois publics, trois mecanismes : un module parle de lui-meme avec son
+    // jeton, un utilisateur voit ses modules avec sa session, l'administrateur
+    // voit tout avec le sien. Chaque route ci-dessous verifie la PROPRIETE du
+    // module avant de lire ou d'ecrire : sans cela, changer l'identifiant dans
+    // la requete donnerait acces au jardin du voisin.
+
+    if ($method === 'POST' && $path === '/app/login') {
+        $body = read_json_body();
+        $email = strtolower(trim((string)($body['email'] ?? '')));
+        $password = (string)($body['password'] ?? '');
+        $ip = client_ip();
+
+        if ($email === '' || $password === '') {
+            send_json(400, ['detail' => 'identifiant et mot de passe requis']);
+        }
+
+        [$parEmail, $parIp] = recent_failures($email, $ip);
+        if ($parEmail >= RATE_MAX_EMAIL || $parIp >= RATE_MAX_IP) {
+            // 429 et non 401 : c'est une information utile et non secrete, et
+            // la taire ferait croire a un mot de passe faux alors que la
+            // prochaine tentative sera refusee quoi qu'il arrive.
+            send_json(429, [
+                'detail' => 'trop de tentatives, reessayez dans ' . RATE_WINDOW_MIN . ' minutes',
+            ]);
+        }
+
+        $userId = verify_credentials($email, $password);
+        record_attempt($email, $ip, $userId !== null);
+        if ($userId === null) {
+            // Message unique : distinguer "compte inconnu" de "mot de passe
+            // faux" permettrait d'enumerer les comptes existants.
+            send_json(401, ['detail' => 'identifiant ou mot de passe incorrect']);
+        }
+
+        set_session_cookie(open_session($userId));
+        send_json(200, ['ok' => true]);
+    }
+
+    if ($method === 'POST' && $path === '/app/logout') {
+        close_session();
+        set_session_cookie(null);
+        send_json(200, ['ok' => true]);
+    }
+
+    if ($method === 'GET' && $path === '/app/me') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        send_json(200, $user);
+    }
+
+    if ($method === 'GET' && $path === '/app/modules') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        send_json(200, user_modules($user['userId']));
+    }
+
+    if ($method === 'GET' && $path === '/app/module') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            // 404 et non 403 : un module qui ne vous appartient pas ne doit
+            // pas se distinguer d'un module qui n'existe pas.
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        send_json(200, [
+            'config'   => module_config($moduleId),
+            'derniers' => list_messages($moduleId, 20),
+            'commandes' => list_commands($moduleId, 10),
+        ]);
+    }
+
+    if ($method === 'POST' && $path === '/app/module/schedule') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+
+        $zones = $body['zones'] ?? null;
+        if (!is_array($zones) || $zones === []) {
+            send_json(400, ['detail' => 'zones requises']);
+        }
+
+        // baseRevision vient du serveur, jamais du client : c'est la revision
+        // que le module a REELLEMENT remontee. Laisser le navigateur la
+        // fournir permettrait d'ecraser une modification faite entre-temps sur
+        // l'ecran du module, ce que le verrouillage optimiste existe justement
+        // pour empecher.
+        $courante = module_config($moduleId);
+        if ($courante === null) {
+            send_json(409, [
+                'detail' => 'configuration du module inconnue du serveur : attendez sa prochaine synchronisation',
+            ]);
+        }
+
+        $commande = ['type' => 'config.apply', 'baseRevision' => $courante['revision'], 'zones' => $zones];
+        check_payload_size($commande);
+        $correlationId = create_command($moduleId, $commande, 'espace:' . $user['email']);
+        send_json(200, [
+            'correlationId' => $correlationId,
+            'baseRevision'  => $courante['revision'],
+        ]);
     }
 
     // ── Routes admin (jeton admin) ──────────────────────────────────────────
