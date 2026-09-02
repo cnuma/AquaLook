@@ -279,10 +279,20 @@ function pending_config_command(string $moduleId): ?array
 }
 
 /**
- * Fusionne deux listes de zones, la plus recente l'emportant PAR ZONE.
+ * Fusionne deux listes de zones, la plus recente l'emportant PAR CRENEAU.
  *
- * Une simple substitution perdrait le reglage d'une autre zone faite juste
- * avant : regler le potager puis le massif ne doit pas effacer le potager.
+ * La granularite compte, et une premiere version l'avait ratee : fusionner
+ * par ZONE faisait perdre les reglages precedents de la meme zone sur
+ * d'AUTRES jours. Regler jeudi, puis vendredi, puis samedi sur une meme zone
+ * ne laissait que samedi -- constate en usage reel le 3 septembre 2026.
+ *
+ * L'identite d'un creneau est le triplet (zone, jour, rang) en mode jours
+ * fixes, et (zone, rang) en mode intervalle. C'est a ce niveau que le plus
+ * recent doit l'emporter, pas au-dessus.
+ *
+ * Les champs simples d'une zone -- nom, mode, intervalle, seuil de pluie --
+ * restent remplaces en bloc par les plus recents : ce sont des valeurs
+ * uniques, pas des collections.
  */
 function merge_zones(array $anciennes, array $nouvelles): array
 {
@@ -293,12 +303,52 @@ function merge_zones(array $anciennes, array $nouvelles): array
         }
     }
     foreach ($nouvelles as $z) {
-        if (is_array($z) && isset($z['i'])) {
-            $parIndex[(int)$z['i']] = $z;
+        if (!is_array($z) || !isset($z['i'])) {
+            continue;
         }
+        $i = (int)$z['i'];
+        $parIndex[$i] = isset($parIndex[$i]) ? merge_zone($parIndex[$i], $z) : $z;
     }
     ksort($parIndex);
     return array_values($parIndex);
+}
+
+function merge_zone(array $ancienne, array $nouvelle): array
+{
+    $out = $ancienne;
+    foreach ($nouvelle as $cle => $valeur) {
+        if ($cle === 'daySlots' || $cle === 'intervalSlots') {
+            continue;   // traites a part, par creneau
+        }
+        $out[$cle] = $valeur;
+    }
+    $jours = merge_slots($ancienne['daySlots'] ?? [], $nouvelle['daySlots'] ?? [], true);
+    $inter = merge_slots($ancienne['intervalSlots'] ?? [], $nouvelle['intervalSlots'] ?? [], false);
+
+    // Ne pas emettre de tableau vide : le module l'ignorerait, mais une
+    // commande qui annonce des creneaux sans en avoir se lit mal.
+    if ($jours) { $out['daySlots'] = $jours; } else { unset($out['daySlots']); }
+    if ($inter) { $out['intervalSlots'] = $inter; } else { unset($out['intervalSlots']); }
+    return $out;
+}
+
+/** Fusionne des creneaux par leur identite reelle : (jour, rang) ou (rang). */
+function merge_slots(array $anciens, array $nouveaux, bool $avecJour): array
+{
+    $parCle = [];
+    foreach ([$anciens, $nouveaux] as $liste) {
+        foreach ($liste as $s) {
+            if (!is_array($s) || !isset($s['slot'])) {
+                continue;
+            }
+            $cle = $avecJour
+                ? (((int)($s['day'] ?? 0)) . ':' . (int)$s['slot'])
+                : (string)(int)$s['slot'];
+            $parCle[$cle] = $s;
+        }
+    }
+    ksort($parCle, SORT_NATURAL);
+    return array_values($parCle);
 }
 
 function module_config(string $moduleId): ?array

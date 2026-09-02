@@ -460,14 +460,26 @@ function resumeCommande(c){
     if (z.rain && z.rain.thresholdMm != null) {
       bouts.push('pluie ' + z.rain.thresholdMm + ' mm / ' + (z.rain.forecastHours || 0) + ' h');
     }
-    const sl = z.intervalSlots || z.daySlots || [];
-    const actifs = sl.filter(s => s.on);
-    if (sl.length) {
-      const jour = (z.daySlots && z.daySlots.length) ? (JOURS[z.daySlots[0].day] + ' : ') : '';
-      bouts.push(jour + (actifs.length
-        ? actifs.map(s => String(s.h).padStart(2,'0') + 'h' + String(s.m).padStart(2,'0')
-                          + ' (' + s.dur + ' min)').join(', ')
-        : 'aucun créneau actif'));
+    const heure = s => String(s.h).padStart(2,'0') + 'h' + String(s.m).padStart(2,'0')
+                     + ' (' + s.dur + ' min)';
+    if (Array.isArray(z.intervalSlots) && z.intervalSlots.length) {
+      const actifs = z.intervalSlots.filter(s => s.on);
+      bouts.push(actifs.length ? actifs.map(heure).join(', ') : 'aucun créneau actif');
+    }
+    if (Array.isArray(z.daySlots) && z.daySlots.length) {
+      // Grouper PAR JOUR : depuis que la fusion se fait au niveau du creneau,
+      // une commande peut couvrir plusieurs jours. N'afficher que celui du
+      // premier creneau aurait etiquete l'ensemble avec un seul jour.
+      const parJour = {};
+      z.daySlots.forEach(s => {
+        const d = s.day || 0;
+        if (!parJour[d]) parJour[d] = [];
+        if (s.on) parJour[d].push(heure(s));
+      });
+      Object.keys(parJour).sort((a,b) => a - b).forEach(d => {
+        bouts.push(JOURS[d] + ' : ' + (parJour[d].length ? parJour[d].join(', ')
+                                                         : 'aucun créneau actif'));
+      });
     }
     return '<b>Zone ' + ((z.i != null ? z.i : 0) + 1) + '</b> &mdash; ' + bouts.join(' &middot; ');
   }).join('<br>');
