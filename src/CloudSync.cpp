@@ -90,6 +90,65 @@ bool readLineYielding(Client& client, String& outLine, uint32_t timeoutMs) {
 // reelle etait en amont, dans les readStringUntil() de la ligne de statut
 // et des en-tetes : voir readLineYielding() ci-dessus. Toute lecture passe
 // desormais par des boucles a delay(1) explicite.
+// Decode un corps decoupe en morceaux (RFC 9112 §7.1).
+//
+// Apache emploie ce decoupage des que la reponse est produite dynamiquement,
+// ce qui est le cas de toutes celles de cette API. Le corps arrive alors sous
+// la forme :
+//
+//     1d3<CRLF> {"correlationId":...}<CRLF> 0<CRLF><CRLF>
+//
+// Sans decodage, deserializeJson() bute sur la taille hexadecimale de tete et
+// echoue. Le module concluait alors "aucune commande en attente" -- en
+// silence, puisque l'echec d'analyse n'etait pas distingue d'une absence de
+// commande. Constate le 2 septembre 2026 : la premiere commande reellement
+// emise depuis l'espace utilisateur n'est jamais arrivee, alors que le module
+// lisait bien ses 477 octets.
+//
+// Le defaut ne pouvait pas se voir plus tot : les reponses de /v1/report sont
+// ignorees, et /v1/pending-command n'avait jamais rien eu a rendre.
+//
+// Rend false et laisse le corps intact si le decoupage est illisible : un
+// JSON invalide est un symptome plus lisible qu'un corps vide.
+bool dechunkBody(String& body) {
+    String out;
+    out.reserve(body.length());
+
+    int i = 0;
+    const int n = static_cast<int>(body.length());
+    while (i < n) {
+        const int eol = body.indexOf('\n', i);
+        if (eol < 0) return false;
+
+        String sizeLine = body.substring(i, eol);
+        sizeLine.trim();
+        // Extensions eventuelles apres un point-virgule : "1d3;info=x".
+        const int semi = sizeLine.indexOf(';');
+        if (semi >= 0) sizeLine = sizeLine.substring(0, semi);
+        if (sizeLine.length() == 0) return false;
+
+        // Validation explicite : strtol rendrait 0 sur une chaine non
+        // hexadecimale, ce qui se confondrait avec le morceau final.
+        for (unsigned k = 0U; k < sizeLine.length(); ++k) {
+            if (!isxdigit(static_cast<unsigned char>(sizeLine[k]))) return false;
+        }
+        const long taille = strtol(sizeLine.c_str(), nullptr, 16);
+        if (taille < 0) return false;
+
+        i = eol + 1;
+        if (taille == 0) {          // morceau final : fin du corps
+            body = out;
+            return true;
+        }
+        if (i + static_cast<int>(taille) > n) return false;
+        out += body.substring(i, i + static_cast<int>(taille));
+        i += static_cast<int>(taille) + 2;   // saute le CRLF de fin de morceau
+    }
+    // Corps tronque avant le morceau final : ce qui a ete decode reste utile.
+    body = out;
+    return out.length() > 0U;
+}
+
 bool httpExchange(Client& client, const char* method, const char* host,
                   const char* path, const char* bearerToken,
                   const String& body, int& outStatus, String& outBody) {
@@ -140,16 +199,28 @@ bool httpExchange(Client& client, const char* method, const char* host,
     outStatus = firstSpace >= 0 ? statusLine.substring(firstSpace + 1, firstSpace + 4).toInt() : 0;
     EventLog::log(LOG_INFO, "CloudSync: statut http=%d", outStatus);
 
-    // Sauter les en-tetes jusqu'a la ligne vide. Borne en nombre de lignes en
-    // plus du delai, pour ne jamais dependre du seul comportement du pair.
+    // Parcourir les en-tetes jusqu'a la ligne vide. Borne en nombre de lignes
+    // en plus du delai, pour ne jamais dependre du seul comportement du pair.
+    //
+    // On y guette le decoupage en morceaux : Apache l'emploie des que la
+    // reponse est produite dynamiquement, ce qui est le cas de toutes celles
+    // de cette API. Les sauter sans les lire revenait a ignorer cette
+    // information -- voir dechunkBody() pour ce que cela coutait.
     uint8_t headerCount = 0U;
+    bool chunked = false;
     while (headerCount < 40U) {
         String header;
         if (!readLineYielding(client, header, RESPONSE_TIMEOUT_MS)) break;
         if (header.length() == 0) break;
+        String lower = header;
+        lower.toLowerCase();
+        if (lower.startsWith("transfer-encoding:") && lower.indexOf("chunked") >= 0) {
+            chunked = true;
+        }
         ++headerCount;
     }
-    EventLog::log(LOG_INFO, "CloudSync: en-tetes lus (%u)", headerCount);
+    EventLog::log(LOG_INFO, "CloudSync: en-tetes lus (%u)%s", headerCount,
+                  chunked ? ", corps decoupe en morceaux" : "");
 
     // Lecture du corps octet par octet, bornee, avec un delay(1)
     // inconditionnel a chaque tour -- voir la note en tete de fonction.
@@ -170,6 +241,13 @@ bool httpExchange(Client& client, const char* method, const char* host,
     }
     EventLog::log(LOG_INFO, "CloudSync: corps lu (%u octets)",
                   static_cast<unsigned>(outBody.length()));
+
+    if (chunked && !dechunkBody(outBody)) {
+        // Corps annonce decoupe mais indechiffrable : le dire, et laisser le
+        // brut a l'appelant. Une analyse JSON qui echoue ensuite est un
+        // symptome bien plus lisible qu'un corps vide.
+        EventLog::log(LOG_ERROR, "CloudSync: decoupage en morceaux illisible");
+    }
     return true;
 }
 

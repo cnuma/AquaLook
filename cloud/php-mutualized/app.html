@@ -461,9 +461,12 @@ function etatLisible(s){
   return {pending:'en attente', accepted:'appliquée', refused:'refusée',
           failed:'échouée', expired:'annulée'}[s] || s;
 }
+// Texte BRUT : il passe ensuite par esc(), qui echapperait une entite HTML en
+// affichant "s&rsquo;est" a l'ecran. Le double echappement etait visible dans
+// le tableau des modifications envoyees.
 function detailLisible(c){
   if (c.result && c.result.detail) return c.result.detail;
-  if (c.state === 'pending') return 'le module ne s&rsquo;est pas encore synchronisé';
+  if (c.state === 'pending') return 'le module ne s' + String.fromCharCode(39) + 'est pas encore synchronisé';
   return '';
 }
 
