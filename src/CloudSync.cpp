@@ -872,15 +872,32 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
                     applied++;
                 }
             }
+            // Seuil de pluie : les deux orthographes sont acceptees.
+            //
+            // buildConfigPayload() REMONTE "thresholdMm" et "forecastHours",
+            // alors que ce bloc n'attendait que "threshMm" et "hours". Une
+            // interface qui relit la configuration du module et la renvoie
+            // telle quelle perdait donc silencieusement les seuils de pluie :
+            // les clefs ne correspondaient pas, le bloc etait ignore, et
+            // applied ne bougeait pas -- l'accuse annoncait un succes partiel
+            // sans dire ce qui avait ete laisse de cote.
+            //
+            // Les noms remontes font foi ; les courts restent acceptes pour ne
+            // pas casser les commandes deja ecrites a la main.
             JsonVariantConst rain = z["rain"];
-            if (rain.is<JsonObjectConst>() &&
-                rain["threshMm"].is<float>() && rain["hours"].is<uint8_t>()) {
-                const float thresh = rain["threshMm"].as<float>();
-                const uint8_t hours = rain["hours"].as<uint8_t>();
-                if (thresh >= 0.0f && thresh <= 100.0f && hours <= MAX_FORECAST_HOURS) {
-                    _configTarget->setZoneRain(idx, thresh, hours);
-                    if (_scheduleTarget) _scheduleTarget->setRainConfig(idx, thresh, hours);
-                    applied++;
+            if (rain.is<JsonObjectConst>()) {
+                JsonVariantConst vThresh = rain["thresholdMm"].isNull()
+                                         ? rain["threshMm"] : rain["thresholdMm"];
+                JsonVariantConst vHours  = rain["forecastHours"].isNull()
+                                         ? rain["hours"] : rain["forecastHours"];
+                if (vThresh.is<float>() && vHours.is<uint8_t>()) {
+                    const float thresh = vThresh.as<float>();
+                    const uint8_t hours = vHours.as<uint8_t>();
+                    if (thresh >= 0.0f && thresh <= 100.0f && hours <= MAX_FORECAST_HOURS) {
+                        _configTarget->setZoneRain(idx, thresh, hours);
+                        if (_scheduleTarget) _scheduleTarget->setRainConfig(idx, thresh, hours);
+                        applied++;
+                    }
                 }
             }
 
