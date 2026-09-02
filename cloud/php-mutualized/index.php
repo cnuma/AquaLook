@@ -268,6 +268,13 @@ try {
     // module avant de lire ou d'ecrire : sans cela, changer l'identifiant dans
     // la requete donnerait acces au jardin du voisin.
 
+    // Comme /admin : la page est un fichier statique servi par Apache, cette
+    // route n'existe que pour que /app, tape a la main, aboutisse.
+    if ($method === 'GET' && $path === '/app') {
+        header('Location: /app.html', true, 302);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/app/login') {
         $body = read_json_body();
         $email = strtolower(trim((string)($body['email'] ?? '')));

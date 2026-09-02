@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AquaLook — mes arrosages</title>
+<style>
+:root{
+  --bg:#f4f8f4; --surface:#fff; --line:#cfe0d2; --line2:#e6efe7;
+  --text:#16311d; --muted:#5d7a63; --green:#1a7a34; --green-dim:#e4f2e7;
+  --blue:#0b6ea8; --amber:#a86b0b; --amber-dim:#fdf3e0; --red:#b3261e;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+     font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;
+       background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+h1{font-size:17px;margin:0;font-weight:600}
+h1 span{color:var(--green)}
+.spacer{flex:1}
+main{max-width:920px;margin:0 auto;padding:20px}
+input,select,button{font:inherit;color:var(--text);background:var(--surface);
+                    border:1px solid var(--line);border-radius:7px;padding:8px 11px}
+input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--green)}
+button{cursor:pointer}
+button:hover:not(:disabled){border-color:var(--green)}
+button.primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:600}
+button.primary:hover:not(:disabled){filter:brightness(.92)}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+      padding:18px;margin-bottom:16px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+         margin:0 0 14px;font-weight:600}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.row+.row{margin-top:12px}
+label{color:var(--muted);font-size:13px}
+.mod{display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;
+     border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.mod:hover{border-color:var(--green);background:var(--green-dim)}
+.mod-t{font-weight:600;display:flex;align-items:center;gap:9px;font-size:16px}
+.mod-s{color:var(--muted);font-family:var(--mono);font-size:12px;margin-top:3px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+.dot.ok{background:var(--green)}.dot.warn{background:var(--amber)}.dot.ko{background:var(--red)}
+.zone{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.zone-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 15px;
+        background:var(--green-dim);cursor:pointer}
+.zone-n{font-weight:600;flex:1 1 140px}
+.zone-r{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.zone-b{padding:15px;display:none;border-top:1px solid var(--line2)}
+.zone.open .zone-b{display:block}
+.days{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}
+.days button{padding:5px 11px;font-size:13px}
+.days button.on{background:var(--green);color:#fff;border-color:var(--green)}
+.slot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;
+      border-bottom:1px solid var(--line2)}
+.slot:last-child{border-bottom:none}
+.slot-n{width:20px;color:var(--muted);font-family:var(--mono);font-size:12px}
+.slot input[type=time]{width:110px}
+.slot input[type=number]{width:78px}
+.slot.off{opacity:.5}
+.hint{color:var(--muted);font-size:13px;margin-top:10px}
+.note{padding:11px 13px;border-radius:8px;font-size:13.5px;margin-top:12px}
+.note.info{background:var(--green-dim);border:1px solid var(--line)}
+.note.warn{background:var(--amber-dim);border:1px solid #e8cf9a;color:var(--amber)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+   letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;
+     font-family:var(--mono);border:1px solid var(--line);color:var(--muted)}
+.tag.pending{color:var(--amber);border-color:var(--amber)}
+.tag.accepted{color:var(--green);border-color:var(--green)}
+.tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
+#login{max-width:380px;margin:60px auto}
+#login input{width:100%;margin-top:6px}
+#login .row{display:block}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+       background:var(--text);color:#fff;border-radius:8px;padding:11px 18px;opacity:0;
+       transition:.2s;pointer-events:none;max-width:90vw;z-index:20;font-size:14px}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--red)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aqua<span>Look</span> — mes arrosages</h1>
+  <div class="spacer"></div>
+  <span id="who" class="hint"></span>
+  <button id="btn-back" hidden>Mes modules</button>
+  <button id="btn-logout" class="ghost" hidden>Déconnexion</button>
+</header>
+
+<main>
+  <section id="login" class="card">
+    <h2>Connexion</h2>
+    <div class="row"><label for="email">Adresse électronique</label>
+      <input type="email" id="email" autocomplete="username"></div>
+    <div class="row"><label for="pass">Mot de passe</label>
+      <input type="password" id="pass" autocomplete="current-password"></div>
+    <div class="row"><button class="primary" id="btn-login" style="width:100%">Se connecter</button></div>
+  </section>
+
+  <section id="liste" hidden></section>
+  <section id="detail" hidden></section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// L'identite vit dans un cookie HttpOnly pose par le serveur : ce script ne
+// peut ni le lire ni le voler, et une faille d'injection dans cette page ne
+// donnerait donc pas la session. Toutes les requetes portent credentials
+// same-origin pour que le navigateur le joigne.
+let MOD = null;      // module ouvert
+let CFG = null;      // sa configuration remontee
+let JOUR = 0;        // jour affiche dans l'editeur
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+// Plafond de duree impose par le module lui-meme. Il refuse SILENCIEUSEMENT
+// tout creneau qui le depasse : la commande part, l'accuse annonce un succes
+// partiel, et le creneau n'est simplement pas ecrit. On borne donc la saisie
+// a la valeur reelle plutot que de laisser proposer l'impossible.
+function dureeMax(){
+  const s = CFG && CFG.payload && CFG.payload.system;
+  const v = s && Number(s.maxWateringMin);
+  return (v && v > 0) ? v : 60;
+}
+const MAX_SLOTS = 5;
+
+function toast(m, err){
+  const t = $('toast');
+  t.textContent = m;
+  t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = ''; }, err ? 6000 : 3200);
+}
+
+async function api(path, options){
+  const opt = Object.assign({credentials:'same-origin', headers:{}}, options || {});
+  if (opt.body) opt.headers['Content-Type'] = 'application/json';
+  const r = await fetch(path, opt);
+  const txt = await r.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch(e){ data = null; }
+  if (!r.ok) {
+    const e = new Error((data && data.detail) ? data.detail : ('HTTP ' + r.status));
+    e.status = r.status;
+    throw e;
+  }
+  return data;
+}
+
+// Les horodatages arrivent en UTC sans suffixe de fuseau. Sans le Z explicite,
+// le navigateur les lirait en heure locale et afficherait un ecart silencieux.
+function parseUtc(s){
+  if (!s) return null;
+  const d = new Date(String(s).replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? null : d;
+}
+function depuis(s){
+  const d = parseUtc(s);
+  if (!d) return 'jamais';
+  const sec = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (sec < 90) return 'il y a ' + Math.round(sec) + ' s';
+  if (sec < 5400) return 'il y a ' + Math.round(sec/60) + ' min';
+  if (sec < 172800) return 'il y a ' + Math.round(sec/3600) + ' h';
+  return 'il y a ' + Math.round(sec/86400) + ' j';
+}
+// Un module se synchronise a intervalle regulier. Au-dela de deux intervalles
+// de silence il ne s'agit plus d'un retard mais d'une absence.
+function fraicheur(last){
+  const d = parseUtc(last);
+  if (!d) return 'ko';
+  const min = (Date.now() - d.getTime()) / 60000;
+  return min < 20 ? 'ok' : (min < 60 ? 'warn' : 'ko');
+}
+
+// ── Connexion ──────────────────────────────────────────────────────────────
+
+async function connecter(){
+  const email = $('email').value.trim();
+  const pass = $('pass').value;
+  if (!email || !pass) { toast('Adresse et mot de passe requis', true); return; }
+  $('btn-login').disabled = true;
+  try {
+    await api('/app/login', {method:'POST', body: JSON.stringify({email:email, password:pass})});
+    $('pass').value = '';
+    await demarrer();
+  } catch(e){
+    toast(e.message, true);
+  } finally {
+    $('btn-login').disabled = false;
+  }
+}
+
+async function deconnecter(){
+  try { await api('/app/logout', {method:'POST'}); } catch(e){}
+  MOD = null; CFG = null;
+  $('liste').hidden = true; $('detail').hidden = true;
+  $('login').hidden = false;
+  $('btn-logout').hidden = true; $('btn-back').hidden = true;
+  $('who').textContent = '';
+}
+
+async function demarrer(){
+  const moi = await api('/app/me');
+  $('who').textContent = moi.label || moi.email;
+  $('login').hidden = true;
+  $('btn-logout').hidden = false;
+  await voirListe();
+}
+
+// ── Liste des modules ──────────────────────────────────────────────────────
+
+async function voirListe(){
+  MOD = null; CFG = null;
+  $('detail').hidden = true;
+  $('btn-back').hidden = true;
+  const el = $('liste');
+  el.hidden = false;
+  const mods = await api('/app/modules');
+  if (!mods.length) {
+    el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
+      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p>'
+      + '<p class="hint">Un module apparaît ici une fois déclaré et rattaché par '
+      + 'l&rsquo;administrateur. Il se signale ensuite tout seul, à chaque synchronisation.</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
+      '<button class="mod" data-id="' + esc(m.module_id) + '">'
+    + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
+    + esc(m.label || m.module_id) + '</span>'
+    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue') + ' &middot; vu '
+    + depuis(m.last_seen)
+    + (m.revision ? ' &middot; configuration n&deg;' + esc(m.revision) : ' &middot; configuration jamais reçue')
+    + '</span></button>').join('') + '</div>';
+  el.querySelectorAll('.mod').forEach(b => { b.onclick = () => ouvrir(b.dataset.id); });
+}
+
+// ── Detail d'un module ─────────────────────────────────────────────────────
+
+async function ouvrir(id){
+  MOD = id;
+  $('liste').hidden = true;
+  $('btn-back').hidden = false;
+  const d = await api('/app/module?moduleId=' + encodeURIComponent(id));
+  CFG = d.config;
+  const el = $('detail');
+  el.hidden = false;
+
+  if (!CFG || !CFG.payload) {
+    el.innerHTML = '<div class="card"><h2>' + esc(id) + '</h2>'
+      + '<div class="note warn">Ce module n&rsquo;a pas encore transmis sa configuration. '
+      + 'Elle arrive à sa prochaine synchronisation ; il n&rsquo;y a rien à faire d&rsquo;ici là.</div></div>';
+    return;
+  }
+
+  const p = CFG.payload;
+  const zones = Array.isArray(p.zones) ? p.zones : [];
+  el.innerHTML =
+      '<div class="card"><h2>' + esc(id) + '</h2>'
+    + '<div class="row"><label>Configuration lue sur le module</label>'
+    + '<span class="zone-r">n&deg;' + esc(CFG.revision) + ' &middot; ' + esc(depuis(CFG.updatedAt)) + '</span></div>'
+    + '<div class="hint">Les réglages ci-dessous sont ceux que le module a lui-même remontés. '
+    + 'Une modification part en attente et s&rsquo;applique à sa prochaine synchronisation, '
+    + 'pas immédiatement.</div></div>'
+    + '<div class="card"><h2>Zones</h2><div id="zones"></div></div>'
+    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>';
+
+  $('zones').innerHTML = zones.map((z,i) => vueZone(z,i)).join('');
+  zones.forEach((z,i) => brancherZone(i));
+  rendreCommandes(d.commandes || []);
+}
+
+function vueZone(z, i){
+  const mode = Number(z.mode) === 1 ? 1 : 0;
+  return '<div class="zone" id="z' + i + '">'
+    + '<div class="zone-h" data-t="' + i + '">'
+    + '<span class="zone-n">' + esc(z.name || ('Zone ' + (i+1))) + '</span>'
+    + '<span class="zone-r">' + (mode === 1
+        ? 'intervalle / ' + esc(z.intervalDays || 1) + ' j'
+        : 'jours fixes') + '</span>'
+    + '</div><div class="zone-b" id="b' + i + '"></div></div>';
+}
+
+function brancherZone(i){
+  document.querySelector('[data-t="' + i + '"]').onclick = () => {
+    const z = $('z' + i);
+    const ouvert = z.classList.contains('open');
+    if (!ouvert) { z.classList.add('open'); JOUR = 0; rendreCorps(i); }
+    else z.classList.remove('open');
+  };
+}
+
+function rendreCorps(i){
+  const z = CFG.payload.zones[i];
+  const mode = Number(z.mode) === 1 ? 1 : 0;
+  const rain = z.rain || {};
+  let h = '<div class="row">'
+    + '<label>Nom</label><input id="n' + i + '" value="' + esc(z.name || '') + '" maxlength="24">'
+    + '<label>Déclenchement</label>'
+    + '<select id="m' + i + '">'
+    + '<option value="0"' + (mode === 0 ? ' selected' : '') + '>Jours fixes</option>'
+    + '<option value="1"' + (mode === 1 ? ' selected' : '') + '>Tous les N jours</option>'
+    + '</select>'
+    + '<span id="di' + i + '"' + (mode === 1 ? '' : ' hidden') + '>'
+    + '<label>tous les</label> <input type="number" id="d' + i + '" min="1" max="30" '
+    + 'value="' + esc(z.intervalDays || 2) + '" style="width:70px"> <label>jours</label></span>'
+    + '</div>'
+    + '<div class="row"><label>Ne pas arroser s&rsquo;il est tombé plus de</label>'
+    + '<input type="number" id="rt' + i + '" min="0" max="100" step="0.5" style="width:80px" '
+    + 'value="' + esc(rain.thresholdMm != null ? rain.thresholdMm : 0) + '"> <label>mm sur</label>'
+    + '<input type="number" id="rh' + i + '" min="0" max="48" style="width:70px" '
+    + 'value="' + esc(rain.forecastHours != null ? rain.forecastHours : 24) + '"> <label>heures</label></div>';
+
+  if (mode === 0) {
+    h += '<div class="days">' + JOURS.map((j,d) =>
+        '<button data-j="' + d + '"' + (d === JOUR ? ' class="on"' : '') + '>' + j + '</button>').join('') + '</div>';
+    h += '<div id="sl' + i + '"></div>';
+  } else {
+    h += '<div class="hint" style="margin-top:14px">Horaires appliqués les jours d&rsquo;arrosage.</div>';
+    h += '<div id="sl' + i + '"></div>';
+  }
+  h += '<div class="row" style="margin-top:14px">'
+    + '<button class="primary" id="s' + i + '">Envoyer au module</button>'
+    + '<span class="hint" style="margin:0">Le module applique à sa prochaine synchronisation.</span></div>';
+
+  $('b' + i).innerHTML = h;
+  rendreCreneaux(i);
+  $('m' + i).onchange = () => { rendreCorps(i); };
+  $('s' + i).onclick = () => envoyer(i);
+  const bs = $('b' + i).querySelectorAll('[data-j]');
+  bs.forEach(b => { b.onclick = () => { JOUR = Number(b.dataset.j); rendreCorps(i); }; });
+}
+
+// Les creneaux arrivent en tableaux [heure, minute, duree, actif]. L'editeur
+// les presente en champs lisibles et les renvoie sous la forme d'objets, qui
+// est celle que le module attend en commande -- les deux formes different, et
+// c'est ici que la traduction se fait, en un seul endroit.
+function creneauxDe(z, mode){
+  if (mode === 1) return Array.isArray(z.interval) ? z.interval : [];
+  const jours = Array.isArray(z.days) ? z.days : [];
+  return Array.isArray(jours[JOUR]) ? jours[JOUR] : [];
+}
+
+function rendreCreneaux(i){
+  const z = CFG.payload.zones[i];
+  const mode = Number($('m' + i).value);
+  const src = creneauxDe(z, mode);
+  let h = '';
+  for (let s = 0; s < MAX_SLOTS; s++) {
+    const c = Array.isArray(src[s]) ? src[s] : [6, 0, 0, 0];
+    const actif = Number(c[3]) === 1;
+    const hh = String(Number(c[0]) || 0).padStart(2, '0');
+    const mm = String(Number(c[1]) || 0).padStart(2, '0');
+    h += '<div class="slot' + (actif ? '' : ' off') + '" id="sr' + i + '_' + s + '">'
+      + '<span class="slot-n">' + (s+1) + '</span>'
+      + '<input type="checkbox" id="a' + i + '_' + s + '"' + (actif ? ' checked' : '') + '>'
+      + '<input type="time" id="t' + i + '_' + s + '" value="' + hh + ':' + mm + '">'
+      + '<label>pendant</label>'
+      + '<input type="number" id="u' + i + '_' + s + '" min="1" max="' + dureeMax() + '" '
+      + 'value="' + (Number(c[2]) || 10) + '"> <label>min</label></div>';
+  }
+  h += '<p class="hint">Durée maximale autorisée par ce module : ' + dureeMax()
+     + ' minutes. Un créneau plus long serait ignoré sans avertissement.</p>';
+  $('sl' + i).innerHTML = h;
+  for (let s = 0; s < MAX_SLOTS; s++) {
+    $('a' + i + '_' + s).onchange = e => {
+      $('sr' + i + '_' + s).className = 'slot' + (e.target.checked ? '' : ' off');
+    };
+  }
+}
+
+// ── Envoi ──────────────────────────────────────────────────────────────────
+
+async function envoyer(i){
+  const mode = Number($('m' + i).value);
+  const zone = {
+    i: i,
+    name: $('n' + i).value.trim(),
+    mode: mode,
+    rain: {
+      thresholdMm: Number($('rt' + i).value),
+      forecastHours: Number($('rh' + i).value)
+    }
+  };
+  if (mode === 1) zone.intervalDays = Number($('d' + i).value);
+
+  const slots = [];
+  for (let s = 0; s < MAX_SLOTS; s++) {
+    const t = ($('t' + i + '_' + s).value || '00:00').split(':');
+    const dur = Number($('u' + i + '_' + s).value);
+    // Le module refuse une duree nulle : un creneau desactive garde donc une
+    // duree valide, c'est l'indicateur "on" qui le neutralise.
+    slots.push({
+      slot: s,
+      h: Number(t[0]) || 0,
+      m: Number(t[1]) || 0,
+      dur: dur > 0 ? dur : 10,
+      on: $('a' + i + '_' + s).checked
+    });
+  }
+  if (mode === 1) zone.intervalSlots = slots;
+  else zone.daySlots = slots.map(sl => Object.assign({day: JOUR}, sl));
+
+  const plafond = dureeMax();
+  const trop = slots.filter(s => s.on && s.dur > plafond);
+  if (trop.length) {
+    // Refuser ICI et non laisser partir : le module ecarterait ces creneaux
+    // sans rien dire, et le reglage semblerait enregistre.
+    toast('Durée trop longue (' + trop[0].dur + ' min). Ce module n' + String.fromCharCode(39)
+        + 'accepte pas plus de ' + plafond + ' minutes par créneau.', true);
+    return;
+  }
+
+  $('s' + i).disabled = true;
+  try {
+    const r = await api('/app/module/schedule', {
+      method: 'POST',
+      body: JSON.stringify({moduleId: MOD, zones: [zone]})
+    });
+    toast('Envoyé. Le module appliquera à sa prochaine synchronisation.');
+    const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
+    rendreCommandes(d.commandes || []);
+  } catch(e){
+    toast('Refusé : ' + e.message, true);
+  } finally {
+    $('s' + i).disabled = false;
+  }
+}
+
+function rendreCommandes(cmds){
+  const el = $('cmds');
+  if (!el) return;
+  if (!cmds.length) {
+    el.innerHTML = '<p class="hint" style="margin:0">Aucune modification envoyée pour le moment.</p>';
+    return;
+  }
+  el.innerHTML = '<table><tr><th>Envoyée</th><th>État</th><th>Détail</th></tr>'
+    + cmds.map(c => {
+        const d = parseUtc(c.issuedAt);
+        return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + '</td>'
+          + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c.state)) + '</span></td>'
+          + '<td>' + esc(detailLisible(c)) + '</td></tr>';
+      }).join('') + '</table>'
+    + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore synchronisé. '
+    + 'Il n&rsquo;y a rien à faire : il prendra la modification tout seul.</p>';
+}
+
+function etatLisible(s){
+  return {pending:'en attente', accepted:'appliquée', refused:'refusée',
+          failed:'échouée', expired:'annulée'}[s] || s;
+}
+function detailLisible(c){
+  if (c.result && c.result.detail) return c.result.detail;
+  if (c.state === 'pending') return 'le module ne s&rsquo;est pas encore synchronisé';
+  return '';
+}
+
+// ── Demarrage ──────────────────────────────────────────────────────────────
+
+$('btn-login').onclick = connecter;
+$('btn-logout').onclick = deconnecter;
+$('btn-back').onclick = voirListe;
+$('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
+$('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
+
+// Une session peut deja etre ouverte : on tente, et on retombe sur le
+// formulaire si elle a expire. Aucun message d'erreur dans ce cas -- arriver
+// sur une page de connexion n'est pas un incident.
+demarrer().catch(() => { $('login').hidden = false; });
+</script>
+</body>
+</html>
