@@ -217,6 +217,7 @@ function renderModules() {
   const el = $('modules');
   const head = '<div class="row" style="margin-bottom:10px">'
     + '<button id="btn-refresh">Actualiser</button>'
+    + '<button id="btn-users">Comptes</button>'
     + '<button id="btn-new">Nouveau module</button></div>';
   if (!MODULES.length) {
     el.innerHTML = head + '<div class="empty">Aucun module enregistré. '
@@ -232,9 +233,74 @@ function renderModules() {
   }
   $('btn-refresh').onclick = () => loadModules().then(() => { if (CURRENT) selectModule(CURRENT); });
   $('btn-new').onclick = newModule;
+  $('btn-users').onclick = voirComptes;
   el.querySelectorAll('.mod').forEach(b => { b.onclick = () => selectModule(b.dataset.id); });
 }
 
+// ── Comptes utilisateurs ────────────────────────────────────────────────
+//
+// Creer un compte ici plutot qu'en SQL colle a la main : le mot de passe n'a
+// alors jamais d'existence en clair ailleurs que dans ce formulaire, et
+// personne n'a besoin de savoir manipuler password_hash(). Un INSERT ecrit a
+// la main finit tot ou tard avec un mot de passe stocke tel quel.
+async function voirComptes() {
+  CURRENT = null;
+  renderModules();
+  const d = document.getElementById('detail');
+  let users = [];
+  try { users = await api('/admin/users'); } catch (e) { toast(e.message, true); return; }
+
+  const lignes = users.length
+    ? users.map(u => '<tr><td>' + esc(u.email) + '</td><td>' + esc(u.label || '') + '</td>'
+        + '<td class="mono">' + esc(u.modules) + '</td>'
+        + '<td class="mono">' + (u.last_login ? esc(stamp(u.last_login)) : 'jamais') + '</td>'
+        + '<td class="mono">n&deg;' + esc(u.user_id) + '</td></tr>').join('')
+    : '<tr><td colspan="5" class="empty">Aucun compte.</td></tr>';
+
+  d.innerHTML = '<div class="card"><h2>Comptes</h2><table>'
+    + '<tr><th>Adresse</th><th>Nom</th><th>Modules</th><th>Derniere connexion</th><th>Id</th></tr>'
+    + lignes + '</table></div>'
+    + '<div class="card"><h2>Nouveau compte</h2>'
+    + '<div class="row"><label>Adresse</label><input id="u-mail" type="email" style="flex:1" autocomplete="off"></div>'
+    + '<div class="row"><label>Nom affiche</label><input id="u-nom" style="flex:1" autocomplete="off"></div>'
+    + '<div class="row"><label>Mot de passe</label><input id="u-mdp" type="password" style="flex:1" autocomplete="new-password"></div>'
+    + '<button class="primary" id="u-creer">Creer le compte</button>'
+    + '<div class="hint">Dix caracteres au minimum. Le mot de passe part vers le serveur en HTTPS, '
+    + 'y est hache immediatement, et n&rsquo;est jamais relisible ensuite.</div></div>'
+    + '<div class="card"><h2>Rattacher un module</h2>'
+    + '<div class="row"><label>Module</label><select id="o-mod" style="flex:1">'
+    + MODULES.map(m => '<option>' + esc(m.module_id) + '</option>').join('') + '</select></div>'
+    + '<div class="row"><label>Compte</label><select id="o-user" style="flex:1">'
+    + '<option value="">(aucun — detacher)</option>'
+    + users.map(u => '<option value="' + esc(u.user_id) + '">' + esc(u.email) + '</option>').join('')
+    + '</select></div>'
+    + '<button class="primary" id="o-lier">Rattacher</button>'
+    + '<div class="hint">Un module doit appartenir a un compte pour apparaitre dans l&rsquo;espace '
+    + 'utilisateur. Le detacher ne l&rsquo;efface pas : il reste visible ici.</div></div>';
+
+  document.getElementById('u-creer').onclick = async () => {
+    const email = document.getElementById('u-mail').value.trim();
+    const label = document.getElementById('u-nom').value.trim();
+    const mdp = document.getElementById('u-mdp').value;
+    try {
+      const r = await api('/admin/user', { method: 'POST',
+        body: JSON.stringify({ email: email, password: mdp, label: label }) });
+      document.getElementById('u-mdp').value = '';
+      toast('Compte cree (n°' + r.userId + ')');
+      voirComptes();
+    } catch (e) { toast('Refuse : ' + e.message, true); }
+  };
+  document.getElementById('o-lier').onclick = async () => {
+    const mod = document.getElementById('o-mod').value;
+    const uv = document.getElementById('o-user').value;
+    try {
+      await api('/admin/module/owner', { method: 'POST',
+        body: JSON.stringify({ moduleId: mod, userId: uv === '' ? null : parseInt(uv, 10) }) });
+      toast(uv === '' ? 'Module detache' : 'Module rattache');
+      voirComptes();
+    } catch (e) { toast('Refuse : ' + e.message, true); }
+  };
+}
 async function newModule() {
   const id = prompt('Identifiant du nouveau module (lettres, chiffres, - et _) :');
   if (!id) return;

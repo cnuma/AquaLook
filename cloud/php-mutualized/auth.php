@@ -162,6 +162,50 @@ function set_session_cookie(?string $token): void
     ]);
 }
 
+// ── Administration des comptes ─────────────────────────────────────────────
+//
+// Passer par l'API plutot que par du SQL colle a la main : le mot de passe
+// n'a alors jamais d'existence en clair ailleurs que dans le formulaire, et
+// personne n'a besoin de savoir manipuler password_hash(). Un INSERT ecrit a
+// la main finit tot ou tard avec un mot de passe stocke tel quel.
+
+const MIN_PASSWORD_LENGTH = 10;
+
+/** Cree un compte. Leve une PDOException 23000 si l'adresse existe deja. */
+function create_user(string $email, string $password, ?string $label): int
+{
+    $stmt = db()->prepare(
+        'INSERT INTO app_user (email, password_hash, label, created_at) VALUES (?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $email,
+        // PASSWORD_DEFAULT et non un algorithme fige : PHP le fera evoluer, et
+        // verify_credentials() rehache a la connexion quand le defaut change.
+        password_hash($password, PASSWORD_DEFAULT),
+        $label,
+        utc_now(),
+    ]);
+    return (int)db()->lastInsertId();
+}
+
+/** Comptes existants. Ne rend JAMAIS les empreintes de mots de passe. */
+function list_users(): array
+{
+    return db()->query(
+        'SELECT u.user_id, u.email, u.label, u.created_at, u.last_login, '
+        . '(SELECT COUNT(*) FROM module m WHERE m.owner_user_id = u.user_id) AS modules '
+        . 'FROM app_user u ORDER BY u.email'
+    )->fetchAll();
+}
+
+/** Rattache un module a un compte, ou l'en detache si userId vaut null. */
+function set_module_owner(string $moduleId, ?int $userId): bool
+{
+    $stmt = db()->prepare('UPDATE module SET owner_user_id = ? WHERE module_id = ?');
+    $stmt->execute([$userId, $moduleId]);
+    return $stmt->rowCount() > 0;
+}
+
 // ── Modules d'un compte ────────────────────────────────────────────────────
 
 function user_modules(int $userId): array

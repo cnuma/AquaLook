@@ -400,6 +400,70 @@ try {
         send_json(200, list_modules());
     }
 
+    if ($method === 'GET' && $path === '/admin/users') {
+        require_admin();
+        send_json(200, list_users());
+    }
+
+    if ($method === 'POST' && $path === '/admin/user') {
+        require_admin();
+        $body = read_json_body();
+        $email = strtolower(trim((string)($body['email'] ?? '')));
+        $password = (string)($body['password'] ?? '');
+        $label = $body['label'] ?? null;
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
+            send_json(400, ['detail' => 'adresse electronique invalide']);
+        }
+        if (strlen($password) < MIN_PASSWORD_LENGTH) {
+            send_json(400, [
+                'detail' => 'mot de passe trop court, ' . MIN_PASSWORD_LENGTH . ' caracteres minimum',
+            ]);
+        }
+        if ($label !== null && (!is_string($label) || strlen($label) > 120)) {
+            send_json(400, ['detail' => 'libelle invalide']);
+        }
+        try {
+            $userId = create_user($email, $password, $label !== null && $label !== '' ? $label : null);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                send_json(409, ['detail' => 'un compte existe deja pour cette adresse']);
+            }
+            throw $e;
+        }
+        // Le mot de passe n'est pas renvoye : il vient de l'appelant, qui le
+        // connait deja, et le rendre l'ecrirait dans des journaux.
+        send_json(200, ['userId' => $userId, 'email' => $email]);
+    }
+
+    if ($method === 'POST' && $path === '/admin/module/owner') {
+        require_admin();
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId)) {
+            send_json(400, ['detail' => 'moduleId invalide']);
+        }
+        $userId = $body['userId'] ?? null;
+        if ($userId !== null && !is_int($userId)) {
+            send_json(400, ['detail' => 'userId doit etre un entier, ou null pour detacher']);
+        }
+        try {
+            $touche = set_module_owner($moduleId, $userId);
+        } catch (PDOException $e) {
+            // 1452 : le compte vise n'existe pas. La contrainte fait son
+            // travail ; on traduit son refus en message lisible plutot que de
+            // laisser remonter un 500.
+            if ($e->getCode() === '23000') {
+                send_json(409, ['detail' => 'compte inconnu : creez-le avant de rattacher un module']);
+            }
+            throw $e;
+        }
+        if (!$touche) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        send_json(200, ['ok' => true, 'moduleId' => $moduleId, 'userId' => $userId]);
+    }
+
     if ($method === 'GET' && $path === '/admin/messages') {
         require_admin();
         $moduleId = $_GET['moduleId'] ?? '';
