@@ -375,12 +375,36 @@ try {
             ]);
         }
 
+        // Fusionner avec la commande encore en attente plutot que d'en empiler
+        // une seconde.
+        //
+        // Chaque commande appliquee incremente la revision du module. Deux
+        // reglages faits coup sur coup partaient donc avec la MEME
+        // baseRevision, et le second se faisait refuser par le verrouillage
+        // optimiste des que le premier avait ete applique. L'utilisateur qui
+        // enchainait quatre reglages en voyait un seul survivre.
+        //
+        // Le verrouillage a raison de refuser une commande batie sur un etat
+        // perime ; le tort etait de fabriquer cet etat perime nous-memes. Une
+        // seule commande reste donc en vol, et la derniere intention l'emporte
+        // -- par zone, pour ne pas effacer le reglage d'une autre zone fait
+        // juste avant.
+        $enAttente = pending_config_command($moduleId);
+        $fusion = false;
+        if ($enAttente !== null) {
+            $zones = merge_zones($enAttente['command']['zones'] ?? [], $zones);
+            cancel_command($enAttente['correlationId']);
+            $fusion = true;
+        }
+
         $commande = ['type' => 'config.apply', 'baseRevision' => $courante['revision'], 'zones' => $zones];
         check_payload_size($commande);
         $correlationId = create_command($moduleId, $commande, 'espace:' . $user['email']);
         send_json(200, [
             'correlationId' => $correlationId,
             'baseRevision'  => $courante['revision'],
+            'fusion'        => $fusion,
+            'zones'         => count($zones),
         ]);
     }
 

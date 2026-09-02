@@ -429,7 +429,9 @@ async function envoyer(i){
       method: 'POST',
       body: JSON.stringify({moduleId: MOD, zones: [zone]})
     });
-    toast('Envoyé. Le module appliquera à sa prochaine synchronisation.');
+    toast(r && r.fusion
+      ? 'Envoyé, groupé avec la modification déjà en attente.'
+      : 'Envoyé. Le module appliquera à sa prochaine synchronisation.');
     const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
     rendreCommandes(d.commandes || []);
   } catch(e){
@@ -464,8 +466,22 @@ function etatLisible(s){
 // Texte BRUT : il passe ensuite par esc(), qui echapperait une entite HTML en
 // affichant "s&rsquo;est" a l'ecran. Le double echappement etait visible dans
 // le tableau des modifications envoyees.
+// Les details rendus par le module sont des codes techniques. Celui du
+// verrouillage optimiste -- "config-modifiee-localement (attendu=22
+// courant=25)" -- ne dit ni ce qui s'est passe, ni quoi faire.
 function detailLisible(c){
-  if (c.result && c.result.detail) return c.result.detail;
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (d.indexOf('config-modifiee-localement') === 0) {
+    return 'les réglages du module ont changé entre-temps. Rechargez la page '
+         + 'pour voir l' + String.fromCharCode(39) + 'état réel, puis refaites la modification.';
+  }
+  if (d.indexOf('type-non-supporte') === 0) {
+    return 'ce module ne sait pas traiter ce type de commande.';
+  }
+  if (d === 'baseRevision-absente') {
+    return 'la commande a été émise sans référence de version.';
+  }
+  if (d) return d;
   if (c.state === 'pending') return 'le module ne s' + String.fromCharCode(39) + 'est pas encore synchronisé';
   return '';
 }

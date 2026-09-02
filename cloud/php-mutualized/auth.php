@@ -248,6 +248,59 @@ function store_module_config(string $moduleId, array $payload): void
     $stmt->execute([$moduleId, $revision, json_encode($payload, JSON_UNESCAPED_UNICODE), utc_now()]);
 }
 
+/**
+ * Commande config.apply encore en attente pour ce module, s'il y en a une.
+ *
+ * Sert a FUSIONNER plusieurs reglages faits coup sur coup plutot qu'a les
+ * empiler. Chaque commande appliquee incremente la revision du module ; celles
+ * deja en file portent alors l'ancienne et se font refuser une a une par le
+ * verrouillage optimiste. L'utilisateur qui enchaine quatre reglages en voyait
+ * un seul survivre -- constate le 3 septembre 2026.
+ *
+ * Le verrouillage a raison de refuser une commande batie sur un etat perime.
+ * Le tort etait de fabriquer cet etat perime nous-memes.
+ */
+function pending_config_command(string $moduleId): ?array
+{
+    $stmt = db()->prepare(
+        "SELECT correlation_id, command FROM command "
+        . "WHERE module_id = ? AND state = 'pending' ORDER BY seq DESC LIMIT 1"
+    );
+    $stmt->execute([$moduleId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+    $cmd = json_decode($row['command'], true);
+    if (!is_array($cmd) || ($cmd['type'] ?? '') !== 'config.apply') {
+        return null;
+    }
+    return ['correlationId' => $row['correlation_id'], 'command' => $cmd];
+}
+
+/**
+ * Fusionne deux listes de zones, la plus recente l'emportant PAR ZONE.
+ *
+ * Une simple substitution perdrait le reglage d'une autre zone faite juste
+ * avant : regler le potager puis le massif ne doit pas effacer le potager.
+ */
+function merge_zones(array $anciennes, array $nouvelles): array
+{
+    $parIndex = [];
+    foreach ($anciennes as $z) {
+        if (is_array($z) && isset($z['i'])) {
+            $parIndex[(int)$z['i']] = $z;
+        }
+    }
+    foreach ($nouvelles as $z) {
+        if (is_array($z) && isset($z['i'])) {
+            $parIndex[(int)$z['i']] = $z;
+        }
+    }
+    ksort($parIndex);
+    return array_values($parIndex);
+}
+
 function module_config(string $moduleId): ?array
 {
     $stmt = db()->prepare('SELECT revision, payload, updated_at FROM module_config WHERE module_id = ?');
