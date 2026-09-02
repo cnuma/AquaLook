@@ -256,7 +256,7 @@ function list_commands(string $moduleId, int $limit): array
  * appliquee, et reecrire son etat effacerait la trace de ce qui s'est
  * reellement passe. Une commande partie ne se rattrape pas cote serveur.
  */
-function cancel_command(string $correlationId): ?string
+function cancel_command(string $correlationId, ?string $raison = null): ?string
 {
     $pdo = db();
     $pdo->beginTransaction();
@@ -272,10 +272,19 @@ function cancel_command(string $correlationId): ?string
             $pdo->commit();
             return $row['state'];
         }
+        // La raison est enregistree dans result, au meme endroit que celle
+        // d'un refus par le module. Une commande "annulee" sans explication
+        // ressemble a un incident vue de l'interface, alors que c'est le plus
+        // souvent une fusion avec un reglage plus recent.
         $stmt = $pdo->prepare(
-            "UPDATE command SET state = 'expired', settled_at = ? WHERE correlation_id = ?"
+            "UPDATE command SET state = 'expired', settled_at = ?, result = ? "
+            . "WHERE correlation_id = ?"
         );
-        $stmt->execute([utc_now(), $correlationId]);
+        $stmt->execute([
+            utc_now(),
+            $raison !== null ? json_encode(['detail' => $raison], JSON_UNESCAPED_UNICODE) : null,
+            $correlationId,
+        ]);
         $pdo->commit();
         return 'expired';
     } catch (Throwable $e) {

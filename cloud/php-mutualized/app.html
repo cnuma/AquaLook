@@ -75,6 +75,8 @@ tr:last-child td{border-bottom:none}
 .tag.pending{color:var(--amber);border-color:var(--amber)}
 .tag.accepted{color:var(--green);border-color:var(--green)}
 .tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
+.demande{font-size:12.5px;line-height:1.45}
+.demande b{color:var(--text)}
 #login{max-width:380px;margin:60px auto}
 #login input{width:100%;margin-top:6px}
 #login .row{display:block}
@@ -441,6 +443,36 @@ async function envoyer(i){
   }
 }
 
+// Resume lisible de ce qu'une commande demande.
+//
+// Le tableau ne montrait que l'etat et le motif d'un refus. Devant une
+// modification en attente, l'utilisateur ne pouvait pas savoir CE QU'ELLE
+// contenait -- donc ni verifier qu'elle est bien celle qu'il voulait, ni
+// savoir quoi refaire si elle echoue. Il fallait s'en souvenir.
+function resumeCommande(c){
+  const cmd = c.command;
+  if (!cmd || !Array.isArray(cmd.zones)) return '';
+  return cmd.zones.map(z => {
+    const bouts = [];
+    if (z.name) bouts.push(esc(z.name));
+    if (z.mode === 1) bouts.push('tous les ' + (z.intervalDays || '?') + ' jours');
+    else if (z.mode === 0) bouts.push('jours fixes');
+    if (z.rain && z.rain.thresholdMm != null) {
+      bouts.push('pluie ' + z.rain.thresholdMm + ' mm / ' + (z.rain.forecastHours || 0) + ' h');
+    }
+    const sl = z.intervalSlots || z.daySlots || [];
+    const actifs = sl.filter(s => s.on);
+    if (sl.length) {
+      const jour = (z.daySlots && z.daySlots.length) ? (JOURS[z.daySlots[0].day] + ' : ') : '';
+      bouts.push(jour + (actifs.length
+        ? actifs.map(s => String(s.h).padStart(2,'0') + 'h' + String(s.m).padStart(2,'0')
+                          + ' (' + s.dur + ' min)').join(', ')
+        : 'aucun créneau actif'));
+    }
+    return '<b>Zone ' + ((z.i != null ? z.i : 0) + 1) + '</b> &mdash; ' + bouts.join(' &middot; ');
+  }).join('<br>');
+}
+
 function rendreCommandes(cmds){
   const el = $('cmds');
   if (!el) return;
@@ -448,11 +480,13 @@ function rendreCommandes(cmds){
     el.innerHTML = '<p class="hint" style="margin:0">Aucune modification envoyée pour le moment.</p>';
     return;
   }
-  el.innerHTML = '<table><tr><th>Envoyée</th><th>État</th><th>Détail</th></tr>'
+  el.innerHTML = '<table><tr><th>Envoyée</th><th>État</th><th>Ce qui est demandé</th>'
+    + '<th>Détail</th></tr>'
     + cmds.map(c => {
         const d = parseUtc(c.issuedAt);
         return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + '</td>'
           + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c.state)) + '</span></td>'
+          + '<td class="demande">' + resumeCommande(c) + '</td>'
           + '<td>' + esc(detailLisible(c)) + '</td></tr>';
       }).join('') + '</table>'
     + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore synchronisé. '
@@ -483,6 +517,7 @@ function detailLisible(c){
   }
   if (d) return d;
   if (c.state === 'pending') return 'le module ne s' + String.fromCharCode(39) + 'est pas encore synchronisé';
+  if (c.state === 'expired') return 'remplacée par une modification plus récente';
   return '';
 }
 

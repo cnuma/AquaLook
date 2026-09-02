@@ -393,7 +393,8 @@ try {
         $fusion = false;
         if ($enAttente !== null) {
             $zones = merge_zones($enAttente['command']['zones'] ?? [], $zones);
-            cancel_command($enAttente['correlationId']);
+            cancel_command($enAttente['correlationId'],
+                'regroupee avec une modification plus recente');
             $fusion = true;
         }
 
