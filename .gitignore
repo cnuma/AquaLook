@@ -43,3 +43,6 @@ backups/
 # sources, et les versionner ferait diverger deux exemplaires des memes
 # fichiers.
 dist/
+
+# Images produites par tools/apercu_web (regenerables)
+docs/apercus/
