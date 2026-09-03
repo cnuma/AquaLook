@@ -9,7 +9,7 @@
 :root{
   --bg:#f4f8f4; --surface:#fff; --line:#cfe0d2; --line2:#e6efe7;
   --text:#16311d; --muted:#5d7a63; --green:#1a7a34; --green-dim:#e4f2e7;
-  --blue:#0b6ea8; --amber:#a86b0b; --amber-dim:#fdf3e0; --red:#b3261e;
+  --amber:#a86b0b; --amber-dim:#fdf3e0; --red:#b3261e; --red-dim:#fbeceb;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
 }
 *{box-sizing:border-box}
@@ -20,7 +20,7 @@ header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px
 h1{font-size:17px;margin:0;font-weight:600}
 h1 span{color:var(--green)}
 .spacer{flex:1}
-main{max-width:920px;margin:0 auto;padding:20px}
+main{max-width:1000px;margin:0 auto;padding:20px}
 input,select,button{font:inherit;color:var(--text);background:var(--surface);
                     border:1px solid var(--line);border-radius:7px;padding:8px 11px}
 input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--green)}
@@ -37,6 +37,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .row+.row{margin-top:12px}
 label{color:var(--muted);font-size:13px}
+.hint{color:var(--muted);font-size:13px;margin-top:10px}
 .mod{display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;
      border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .mod:hover{border-color:var(--green);background:var(--green-dim)}
@@ -44,70 +45,75 @@ label{color:var(--muted);font-size:13px}
 .mod-s{color:var(--muted);font-family:var(--mono);font-size:12px;margin-top:3px}
 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
 .dot.ok{background:var(--green)}.dot.warn{background:var(--amber)}.dot.ko{background:var(--red)}
-.zone{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
-.zone-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 15px;
-        background:var(--green-dim);cursor:pointer}
-.zone-n{font-weight:600;flex:1 1 140px}
-.zone-r{font-family:var(--mono);font-size:12px;color:var(--muted)}
-.zone-b{padding:15px;display:none;border-top:1px solid var(--line2)}
-.zone.open .zone-b{display:block}
-.days{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}
-.days button{padding:5px 11px;font-size:13px}
-.days button.on{background:var(--green);color:#fff;border-color:var(--green)}
-.slot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;
-      border-bottom:1px solid var(--line2)}
-.slot:last-child{border-bottom:none}
-.slot-n{width:20px;color:var(--muted);font-family:var(--mono);font-size:12px}
-.slot input[type=time]{width:110px}
-.slot input[type=number]{width:78px}
-.slot.off{opacity:.5}
-.hint{color:var(--muted);font-size:13px;margin-top:10px}
-.note{padding:11px 13px;border-radius:8px;font-size:13.5px;margin-top:12px}
-.note.info{background:var(--green-dim);border:1px solid var(--line)}
+
+/* Planning : seule vue des horaires. */
+.plan{width:100%;border-collapse:separate;border-spacing:5px;font-size:12px}
+.plan th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+         font-weight:600;padding:2px 4px;text-align:center}
+.plan td{padding:0;vertical-align:top}
+.jour{display:block;width:100%;min-width:92px;min-height:64px;text-align:left;
+      background:var(--green-dim);border:1px solid var(--line);border-radius:8px;padding:6px}
+.jour:hover{border-color:var(--green);background:#d8ecdd}
+.jour.vide{background:var(--bg);color:var(--muted);text-align:center;padding-top:22px}
+.znom{background:transparent;border:none;font-weight:600;text-align:left;
+      padding:6px 8px 6px 0;white-space:nowrap;color:var(--text)}
+.znom:hover{color:var(--green);text-decoration:underline}
+.znom small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
+.cr{display:block;border-radius:5px;padding:2px 6px;margin-bottom:3px;
+    font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
+.cr:last-child{margin-bottom:0}
+.cr.att{background:var(--amber);color:#fff}
+.echec{display:block;margin-top:4px;font-size:10.5px;color:var(--red);font-weight:600}
+.legende{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:12px;
+         color:var(--muted);align-items:center}
+.legende .ex{display:inline-block;width:11px;height:11px;border-radius:3px;
+             margin-right:5px;vertical-align:-1px}
+
+/* Fenetre de detail. */
+#voile{position:fixed;inset:0;background:#16311d99;display:none;z-index:30;
+       align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+#voile.on{display:flex}
+#panneau{background:var(--surface);border-radius:14px;width:100%;max-width:560px;
+         padding:20px;box-shadow:0 18px 50px #16311d40}
+#panneau h3{margin:0 0 4px;font-size:18px}
+#panneau .sous{color:var(--muted);font-size:13px;margin:0 0 16px}
+.slot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 8px;
+      border-bottom:1px solid var(--line2);border-radius:7px}
+.slot:last-of-type{border-bottom:none}
+.slot.off{opacity:.55}
+.slot.att{background:var(--amber-dim)}
+.slot.ref{background:var(--red-dim)}
+.slot-n{width:18px;color:var(--muted);font-family:var(--mono);font-size:12px}
+.slot input[type=time]{width:108px}
+.slot input[type=number]{width:76px}
+.badge{font-size:10.5px;border-radius:999px;padding:1px 8px;white-space:nowrap;
+       border:1px solid currentColor}
+.badge.att{color:var(--amber)}
+.badge.ref{color:var(--red)}
+.note{padding:11px 13px;border-radius:8px;font-size:13.5px;margin:12px 0}
 .note.warn{background:var(--amber-dim);border:1px solid #e8cf9a;color:var(--amber)}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
-   letter-spacing:.05em;padding:6px 8px;border-bottom:1px solid var(--line)}
-td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
-tr:last-child td{border-bottom:none}
+.note.ko{background:var(--red-dim);border:1px solid #e9bdb9;color:var(--red)}
+
+table.hist{width:100%;border-collapse:collapse;font-size:13px}
+.hist th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;
+         text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;
+         border-bottom:1px solid var(--line)}
+.hist td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+.hist tr:last-child td{border-bottom:none}
 .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;
      font-family:var(--mono);border:1px solid var(--line);color:var(--muted)}
 .tag.pending{color:var(--amber);border-color:var(--amber)}
 .tag.accepted{color:var(--green);border-color:var(--green)}
 .tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
-.tag.expired{color:var(--muted)}
-.slot.attente{background:#fdf6e6;border-radius:6px}
-.slot .badge{font-size:10.5px;color:var(--amber);border:1px solid #e8cf9a;
-  border-radius:999px;padding:0 7px;white-space:nowrap}
-.days button.attente{border-color:var(--amber);color:var(--amber)}
-.days button.on.attente{background:var(--amber);border-color:var(--amber);color:#fff}
-/* Planning : une colonne par jour, une ligne par zone. */
-.plan{width:100%;border-collapse:separate;border-spacing:4px;font-size:12px}
-.plan th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--muted);font-weight:600;padding:2px 4px;text-align:center}
-.plan td{background:var(--green-dim);border:1px solid var(--line);
-  border-radius:7px;padding:5px;vertical-align:top;min-width:88px}
-.plan td.zn{background:transparent;border:none;font-weight:600;
-  min-width:0;white-space:nowrap;padding-right:8px}
-.plan td.vide{background:var(--bg);color:var(--muted);text-align:center}
-.cr{display:block;border-radius:5px;padding:3px 6px;margin-bottom:3px;
-  font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
-.cr:last-child{margin-bottom:0}
-.cr.att{background:var(--amber);color:#20160a}
-.cr.ref{background:var(--red)}
-.cr .pt{font-weight:700;margin-right:4px}
-.legende{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;
-  color:var(--muted);align-items:center}
-.legende span.ex{display:inline-block;width:11px;height:11px;border-radius:3px;
-  margin-right:5px;vertical-align:-1px}
 .demande{font-size:12.5px;line-height:1.45}
 .demande b{color:var(--text)}
+
 #login{max-width:380px;margin:60px auto}
 #login input{width:100%;margin-top:6px}
 #login .row{display:block}
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
        background:var(--text);color:#fff;border-radius:8px;padding:11px 18px;opacity:0;
-       transition:.2s;pointer-events:none;max-width:90vw;z-index:20;font-size:14px}
+       transition:.2s;pointer-events:none;max-width:90vw;z-index:40;font-size:14px}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.err{background:var(--red)}
 [hidden]{display:none!important}
@@ -137,36 +143,31 @@ tr:last-child td{border-bottom:none}
   <section id="detail" hidden></section>
 </main>
 
+<div id="voile"><div id="panneau"></div></div>
 <div id="toast"></div>
 
 <script>
+// Une SEULE vue des horaires : le planning.
+//
+// L'application presentait auparavant le planning ET un editeur par zone. Les
+// deux lisaient la meme source mais l'affichaient differemment, et pouvaient
+// donc se contredire -- c'est arrive, sur le meme jour de la meme zone. Le
+// planning est desormais l'unique representation ; on y clique pour ouvrir le
+// detail d'un jour.
+//
 // L'identite vit dans un cookie HttpOnly pose par le serveur : ce script ne
-// peut ni le lire ni le voler, et une faille d'injection dans cette page ne
-// donnerait donc pas la session. Toutes les requetes portent credentials
-// same-origin pour que le navigateur le joigne.
+// peut ni le lire ni le voler.
 let MOD = null;      // module ouvert
 let CFG = null;      // sa configuration remontee
-let JOUR = 0;        // jour affiche dans l'editeur
-// Modifications deja envoyees et pas encore appliquees, indexees pour
-// pouvoir les superposer a la configuration du module.
-let ATTENTE = null;
-// Dernier refus, pour marquer les creneaux qui n'ont PAS ete appliques.
-let REFUS = null;
+let ATTENTE = null;  // ce qui est envoye et pas encore applique, PAR ZONE
+let REFUS = null;    // dernier refus, PAR ZONE
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const APO = String.fromCharCode(39);
 
 const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
-// Plafond de duree impose par le module lui-meme. Il refuse SILENCIEUSEMENT
-// tout creneau qui le depasse : la commande part, l'accuse annonce un succes
-// partiel, et le creneau n'est simplement pas ecrit. On borne donc la saisie
-// a la valeur reelle plutot que de laisser proposer l'impossible.
-function dureeMax(){
-  const s = CFG && CFG.payload && CFG.payload.system;
-  const v = s && Number(s.maxWateringMin);
-  return (v && v > 0) ? v : 60;
-}
 const MAX_SLOTS = 5;
 
 function toast(m, err){
@@ -174,7 +175,7 @@ function toast(m, err){
   t.textContent = m;
   t.className = 'show' + (err ? ' err' : '');
   clearTimeout(t._h);
-  t._h = setTimeout(() => { t.className = ''; }, err ? 6000 : 3200);
+  t._h = setTimeout(() => { t.className = ''; }, err ? 6500 : 3200);
 }
 
 async function api(path, options){
@@ -208,14 +209,13 @@ function depuis(s){
   if (sec < 172800) return 'il y a ' + Math.round(sec/3600) + ' h';
   return 'il y a ' + Math.round(sec/86400) + ' j';
 }
-// Un module se synchronise a intervalle regulier. Au-dela de deux intervalles
-// de silence il ne s'agit plus d'un retard mais d'une absence.
 function fraicheur(last){
   const d = parseUtc(last);
   if (!d) return 'ko';
   const min = (Date.now() - d.getTime()) / 60000;
   return min < 20 ? 'ok' : (min < 60 ? 'warn' : 'ko');
 }
+const hhmm = (h, m) => String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 
 // ── Connexion ──────────────────────────────────────────────────────────────
 
@@ -228,16 +228,13 @@ async function connecter(){
     await api('/app/login', {method:'POST', body: JSON.stringify({email:email, password:pass})});
     $('pass').value = '';
     await demarrer();
-  } catch(e){
-    toast(e.message, true);
-  } finally {
-    $('btn-login').disabled = false;
-  }
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-login').disabled = false; }
 }
 
 async function deconnecter(){
   try { await api('/app/logout', {method:'POST'}); } catch(e){}
-  MOD = null; CFG = null;
+  MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('liste').hidden = true; $('detail').hidden = true;
   $('login').hidden = false;
   $('btn-logout').hidden = true; $('btn-back').hidden = true;
@@ -255,7 +252,7 @@ async function demarrer(){
 // ── Liste des modules ──────────────────────────────────────────────────────
 
 async function voirListe(){
-  MOD = null; CFG = null;
+  MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('detail').hidden = true;
   $('btn-back').hidden = true;
   const el = $('liste');
@@ -265,7 +262,7 @@ async function voirListe(){
     el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
       + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p>'
       + '<p class="hint">Un module apparaît ici une fois déclaré et rattaché par '
-      + 'l&rsquo;administrateur. Il se signale ensuite tout seul, à chaque synchronisation.</p></div>';
+      + 'l&rsquo;administrateur.</p></div>';
     return;
   }
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
@@ -274,62 +271,32 @@ async function voirListe(){
     + esc(m.label || m.module_id) + '</span>'
     + '<span class="mod-s">' + esc(m.firmware || 'version inconnue') + ' &middot; vu '
     + depuis(m.last_seen)
-    + (m.revision ? ' &middot; configuration n&deg;' + esc(m.revision) : ' &middot; configuration jamais reçue')
+    + (m.revision ? ' &middot; configuration n&deg;' + esc(m.revision)
+                  : ' &middot; configuration jamais reçue')
     + '</span></button>').join('') + '</div>';
-  el.querySelectorAll('.mod').forEach(b => { b.onclick = () => ouvrir(b.dataset.id); });
+  el.querySelectorAll('.mod').forEach(b => {
+    b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
+  });
 }
 
-// ── Detail d'un module ─────────────────────────────────────────────────────
-
-async function ouvrir(id){
-  MOD = id;
-  $('liste').hidden = true;
-  $('btn-back').hidden = false;
-  const d = await api('/app/module?moduleId=' + encodeURIComponent(id));
-  CFG = d.config;
-  ATTENTE = indexerAttente(d.commandes);
-  REFUS = indexerRefus(d.commandes);
-  const el = $('detail');
-  el.hidden = false;
-
-  if (!CFG || !CFG.payload) {
-    el.innerHTML = '<div class="card"><h2>' + esc(id) + '</h2>'
-      + '<div class="note warn">Ce module n&rsquo;a pas encore transmis sa configuration. '
-      + 'Elle arrive à sa prochaine synchronisation ; il n&rsquo;y a rien à faire d&rsquo;ici là.</div></div>';
-    return;
-  }
-
-  const p = CFG.payload;
-  const zones = Array.isArray(p.zones) ? p.zones : [];
-  el.innerHTML =
-      '<div class="card"><h2>' + esc(id) + '</h2>'
-    + '<div class="row"><label>Configuration lue sur le module</label>'
-    + '<span class="zone-r">n&deg;' + esc(CFG.revision) + ' &middot; ' + esc(depuis(CFG.updatedAt)) + '</span></div>'
-    + '<div class="hint">Les réglages ci-dessous sont ceux que le module a lui-même remontés. '
-    + 'Une modification part en attente et s&rsquo;applique à sa prochaine synchronisation, '
-    + 'pas immédiatement.</div></div>'
-    + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div></div>'
-    + '<div class="card"><h2>Zones</h2><div id="zones"></div></div>'
-    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>';
-
-  rendrePlanning();
-  $('zones').innerHTML = zones.map((z,i) => vueZone(z,i)).join('');
-  zones.forEach((z,i) => brancherZone(i));
-  rendreCommandes(d.commandes || []);
-}
-
-// Indexe la commande en attente par zone, jour et rang, pour retrouver en
-// O(1) ce qui est demande sur un creneau donne.
-function indexerAttente(cmds){
-  const enAttente = (cmds || []).filter(c => c.state === 'pending');
-  if (!enAttente.length) return null;
-  const idx = { zones: {} };
-  enAttente.forEach(c => {
-    const zs = (c.command && c.command.zones) || [];
-    zs.forEach(z => {
-      const i = z.i != null ? z.i : 0;
-      const e = idx.zones[i] || (idx.zones[i] = { champs: {}, jours: {}, inter: {} });
-      ['name', 'mode', 'intervalDays', 'rain'].forEach(k => {
+// ── Index des commandes, PAR ZONE ──────────────────────────────────────────
+//
+// La clef est (zone, jour, rang), jamais (jour, rang) seul. Une premiere
+// version indexait sans la zone : les creneaux refuses d'une zone
+// s'affichaient alors sur TOUTES les lignes du planning, y compris des zones
+// que la commande ne mentionnait pas. Constate le 3 septembre 2026.
+function indexerCommandes(cmds, etat){
+  const choisies = (cmds || []).filter(c => c.state === etat);
+  if (!choisies.length) return null;
+  // Pour un refus, seul le plus recent compte : garder les anciens ferait
+  // trainer des echecs sur des creneaux depuis longtemps corriges.
+  const source = (etat === 'refused') ? [choisies[0]] : choisies;
+  const idx = {};
+  source.forEach(c => {
+    ((c.command && c.command.zones) || []).forEach(z => {
+      const i = (z.i != null) ? z.i : 0;
+      const e = idx[i] || (idx[i] = { champs:{}, jours:{}, inter:{} });
+      ['name','mode','intervalDays','rain'].forEach(k => {
         if (z[k] !== undefined) e.champs[k] = z[k];
       });
       (z.daySlots || []).forEach(s => {
@@ -342,372 +309,328 @@ function indexerAttente(cmds){
   return idx;
 }
 
-// Vrai si ce jour porte au moins un creneau REELLEMENT modifie. Marquer un
-// jour parce qu'une commande le mentionne, sans regarder si elle le change,
-// mettrait un point sur presque tous les jours.
-function jourModifie(i, d){
+const attenteZone = i => (ATTENTE && ATTENTE[i]) ? ATTENTE[i] : null;
+const refusZone   = i => (REFUS && REFUS[i]) ? REFUS[i] : null;
+
+/** Valeur du creneau telle que le MODULE l'applique aujourd'hui. */
+function creneauModule(z, mode, d, r){
+  const src = (mode === 1)
+    ? (Array.isArray(z.interval) ? z.interval : [])
+    : ((Array.isArray(z.days) && Array.isArray(z.days[d])) ? z.days[d] : []);
+  const c = Array.isArray(src[r]) ? src[r] : [6,0,5,0];
+  return { h:Number(c[0])||0, m:Number(c[1])||0, dur:Number(c[2])||5, on:Number(c[3])===1 };
+}
+
+/**
+ * Etat complet d'un creneau : ce qui tourne, ce qui attend, ce qui a echoue.
+ *
+ * Un refus n'a RIEN applique -- le module sort avant d'ecrire des que la
+ * revision ne correspond plus. La valeur en vigueur reste donc celle du
+ * module, et l'echec est signale A COTE plutot que de remplacer l'affichage.
+ * Montrer la valeur refusee comme si elle etait programmee serait un mensonge.
+ */
+function creneau(i, mode, d, r){
+  const z = CFG.payload.zones[i];
+  const base = creneauModule(z, mode, d, r);
   const att = attenteZone(i);
-  if (!att || !att.jours[d]) return false;
-  const z = CFG.payload.zones[i] || {};
-  const jours = Array.isArray(z.days) ? z.days : [];
-  const src = Array.isArray(jours[d]) ? jours[d] : [];
-  return Object.keys(att.jours[d]).some(r => {
-    const s = att.jours[d][r];
-    const c = Array.isArray(src[r]) ? src[r] : [6, 0, 0, 0];
-    return s.h !== (Number(c[0]) || 0) || s.m !== (Number(c[1]) || 0)
-        || s.dur !== (Number(c[2]) || 10) || !!s.on !== (Number(c[3]) === 1);
-  });
-}
+  const ref = refusZone(i);
+  const sAtt = att ? ((mode === 1) ? att.inter[r] : (att.jours[d] || {})[r]) : null;
+  const sRef = ref ? ((mode === 1) ? ref.inter[r] : (ref.jours[d] || {})[r]) : null;
 
-// Creneaux du dernier refus. Seul le PLUS RECENT compte : garder les
-// anciens ferait trainer des croix rouges sur des creneaux depuis longtemps
-// corriges.
-function indexerRefus(cmds){
-  const refus = (cmds || []).filter(c => c.state === 'refused');
-  if (!refus.length) return null;
-  const c = refus[0];
-  const idx = { jours: {}, inter: {} };
-  ((c.command && c.command.zones) || []).forEach(z => {
-    (z.daySlots || []).forEach(s => {
-      const d = s.day || 0;
-      (idx.jours[d] || (idx.jours[d] = {}))[s.slot] = s;
-    });
-    (z.intervalSlots || []).forEach(s => { idx.inter[s.slot] = s; });
-  });
-  return idx;
-}
-
-function attenteZone(i){
-  return (ATTENTE && ATTENTE.zones[i]) ? ATTENTE.zones[i] : null;
-}
-
-// Etat d'un creneau, pour la pastille : applique, en attente, ou refuse.
-// Un refus est porte par la DERNIERE commande refusee qui touchait ce
-// creneau -- sinon un vieil echec resterait affiche indefiniment.
-function etatCreneau(i, jour, rang, mode){
-  const att = attenteZone(i);
-  if (att) {
-    const s = mode === 1 ? att.inter[rang] : (att.jours[jour] || {})[rang];
-    if (s) return { etat: 'att', s: s };
+  let effectif = base;
+  let enAttente = false;
+  if (sAtt) {
+    const identique = sAtt.h === base.h && sAtt.m === base.m
+                   && sAtt.dur === base.dur && !!sAtt.on === base.on;
+    effectif = { h:sAtt.h, m:sAtt.m, dur:sAtt.dur, on:!!sAtt.on };
+    enAttente = !identique;
   }
-  const r = REFUS && (mode === 1 ? REFUS.inter[rang] : (REFUS.jours[jour] || {})[rang]);
-  if (r) return { etat: 'ref', s: r };
-  return null;
+  const refuse = (!sAtt && sRef) ? { h:sRef.h, m:sRef.m, dur:sRef.dur, on:!!sRef.on } : null;
+  return { module:base, effectif:effectif, attente:enAttente, refuse:refuse };
+}
+
+// ── Detail d'un module ─────────────────────────────────────────────────────
+
+async function ouvrir(id){
+  MOD = id;
+  $('liste').hidden = true;
+  $('btn-back').hidden = false;
+  await recharger();
+}
+
+async function recharger(){
+  const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
+  CFG = d.config;
+  ATTENTE = indexerCommandes(d.commandes, 'pending');
+  REFUS   = indexerCommandes(d.commandes, 'refused');
+  const el = $('detail');
+  el.hidden = false;
+
+  if (!CFG || !CFG.payload) {
+    el.innerHTML = '<div class="card"><h2>' + esc(MOD) + '</h2>'
+      + '<div class="note warn">Ce module n&rsquo;a pas encore transmis sa configuration. '
+      + 'Elle arrive à sa prochaine synchronisation ; il n&rsquo;y a rien à faire '
+      + 'd&rsquo;ici là.</div></div>';
+    return;
+  }
+  el.innerHTML =
+      '<div class="card"><h2>' + esc(MOD) + '</h2>'
+    + '<div class="row"><label>Configuration lue sur le module</label>'
+    + '<span class="mod-s" style="margin:0">n&deg;' + esc(CFG.revision) + ' &middot; '
+    + esc(depuis(CFG.updatedAt)) + '</span></div></div>'
+    + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div>'
+    + '<p class="hint">Cliquez un jour pour voir et modifier ses créneaux, ou le nom '
+    + 'd&rsquo;une zone pour ses réglages.</p></div>'
+    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>';
+
+  rendrePlanning();
+  rendreCommandes(d.commandes || []);
 }
 
 function rendrePlanning(){
-  const el = document.getElementById('planning');
-  if (!el || !CFG || !CFG.payload) return;
   const zones = CFG.payload.zones || [];
-
   let h = '<table class="plan"><tr><th></th>'
         + JOURS.map(j => '<th>' + j.slice(0,3) + '</th>').join('') + '</tr>';
 
   zones.forEach((z, i) => {
-    const mode = Number(z.mode) === 1 ? 1 : 0;
-    h += '<tr><td class="zn">' + esc(z.name || ('Zone ' + (i+1)))
-       + (mode === 1 ? '<br><span class="zone-r">/' + esc(z.intervalDays || 1) + 'j</span>' : '')
-       + '</td>';
-    // Mode intervalle : une seule cellule pour la semaine.
-    //
-    // Les jours d'arrosage dependent d'un ancrage que le module ne remonte
-    // pas ; repeter les horaires sur les sept colonnes laisserait croire a un
-    // arrosage quotidien, et n'en omettre aucun serait tout aussi faux. On dit
-    // donc ce qu'on sait -- la cadence et les horaires -- sans inventer les
-    // jours.
+    const mode = (Number(z.mode) === 1) ? 1 : 0;
+    h += '<tr><td><button class="znom" data-z="' + i + '">'
+       + esc(z.name || ('Zone ' + (i+1)))
+       + '<small>' + ((mode === 1) ? 'tous les ' + esc(z.intervalDays || 1) + ' j'
+                                   : 'jours fixes') + '</small></button></td>';
     if (mode === 1) {
-      const lignes = [];
-      for (let r = 0; r < MAX_SLOTS; r++) {
-        const brut = Array.isArray(z.interval) ? z.interval[r] : null;
-        const c = Array.isArray(brut) ? brut : null;
-        const marque = etatCreneau(i, 0, r, 1);
-        let on, hh, mm, dur, cls;
-        if (marque) {
-          on = !!marque.s.on; hh = marque.s.h; mm = marque.s.m; dur = marque.s.dur;
-          cls = ' ' + marque.etat;
-        } else if (c) {
-          on = Number(c[3]) === 1; hh = Number(c[0]); mm = Number(c[1]); dur = Number(c[2]);
-          cls = '';
-        } else { continue; }
-        if (!on) continue;
-        lignes.push('<span class="cr' + cls + '">'
-          + (marque ? '<span class="pt">' + (marque.etat === 'att' ? '&#9679;' : '&#10007;') + '</span>' : '')
-          + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0') + ' ' + dur + "'" + '</span>');
-      }
-      h += lignes.length
-        ? '<td colspan="7">' + lignes.join('')
-          + '<span class="zone-r">appliqués tous les ' + esc(z.intervalDays || 1)
-          + ' jours &mdash; les dates exactes sont décidées par le module</span></td>'
-        : '<td colspan="7" class="vide">&ndash;</td>';
-      h += '</tr>';
+      // Une seule cellule : les jours d'arrosage dependent d'un ancrage que le
+      // module ne remonte pas. Repeter les horaires sur les sept colonnes
+      // laisserait croire a un arrosage quotidien.
+      h += '<td colspan="7">' + celluleJour(i, mode, 0, true) + '</td></tr>';
       return;
     }
-
-    for (let d = 0; d < 7; d++) {
-      const lignes = [];
-      for (let r = 0; r < MAX_SLOTS; r++) {
-        const brut = (Array.isArray(z.days) && Array.isArray(z.days[d])) ? z.days[d][r] : null;
-        const c = Array.isArray(brut) ? brut : null;
-        const marque = etatCreneau(i, d, r, mode);
-        let on, hh, mm, dur, cls;
-        if (marque) {
-          on = !!marque.s.on; hh = marque.s.h; mm = marque.s.m; dur = marque.s.dur;
-          cls = ' ' + marque.etat;
-        } else if (c) {
-          on = Number(c[3]) === 1; hh = Number(c[0]); mm = Number(c[1]); dur = Number(c[2]);
-          cls = '';
-        } else { continue; }
-        if (!on) continue;
-        lignes.push('<span class="cr' + cls + '">'
-          + (marque ? '<span class="pt">' + (marque.etat === 'att' ? '&#9679;' : '&#10007;') + '</span>' : '')
-          + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0')
-          + ' ' + dur + "'" + '</span>');
-      }
-      h += lignes.length ? '<td>' + lignes.join('') + '</td>'
-                         : '<td class="vide">&ndash;</td>';
-    }
+    for (let d = 0; d < 7; d++) h += '<td>' + celluleJour(i, mode, d, false) + '</td>';
     h += '</tr>';
   });
-  h += '</table>'
-    + '<div class="legende">'
-    + '<span><span class="ex" style="background:var(--text)"></span>appliqué sur le module</span>'
-    + '<span><span class="ex" style="background:var(--amber)"></span>&#9679; en attente de synchronisation</span>'
-    + '<span><span class="ex" style="background:var(--red)"></span>&#10007; refusé, non appliqué</span>'
-    + '</div>';
-  el.innerHTML = h;
+
+  h += '</table><div class="legende">'
+     + '<span><span class="ex" style="background:var(--text)"></span>programmé sur le module</span>'
+     + '<span><span class="ex" style="background:var(--amber)"></span>en attente de synchronisation</span>'
+     + '<span style="color:var(--red)">&#10007; tentative refusée, non appliquée</span></div>';
+  $('planning').innerHTML = h;
+
+  $('planning').querySelectorAll('.jour').forEach(b => {
+    b.onclick = () => ouvrirJour(Number(b.dataset.z), Number(b.dataset.d));
+  });
+  $('planning').querySelectorAll('.znom').forEach(b => {
+    b.onclick = () => ouvrirZone(Number(b.dataset.z));
+  });
 }
 
-function vueZone(z, i){
-  const mode = Number(z.mode) === 1 ? 1 : 0;
-  return '<div class="zone" id="z' + i + '">'
-    + '<div class="zone-h" data-t="' + i + '">'
-    + '<span class="zone-n">' + esc(z.name || ('Zone ' + (i+1))) + '</span>'
-    + '<span class="zone-r">' + (mode === 1
-        ? 'intervalle / ' + esc(z.intervalDays || 1) + ' j'
-        : 'jours fixes') + '</span>'
-    + '</div><div class="zone-b" id="b' + i + '"></div></div>';
-}
-
-function brancherZone(i){
-  document.querySelector('[data-t="' + i + '"]').onclick = () => {
-    const z = $('z' + i);
-    const ouvert = z.classList.contains('open');
-    if (!ouvert) { z.classList.add('open'); JOUR = 0; rendreCorps(i); }
-    else z.classList.remove('open');
-  };
-}
-
-function rendreCorps(i){
-  const zBase = CFG.payload.zones[i];
-  const att = attenteZone(i);
-  // La valeur affichee est celle qui SERA vraie une fois le module
-  // synchronise : configuration du module, recouverte par ce qui est deja
-  // demande. Afficher la seule configuration du module faisait repartir
-  // l'utilisateur d'une base qui n'etait plus son intention, et lui faisait
-  // ecraser sa propre demande sans le savoir.
-  const z = att ? Object.assign({}, zBase, att.champs) : zBase;
-  const mode = Number(z.mode) === 1 ? 1 : 0;
-  const rain = z.rain || {};
-  let h = '<div class="row">'
-    + '<label>Nom</label><input id="n' + i + '" value="' + esc(z.name || '') + '" maxlength="24">'
-    + '<label>Déclenchement</label>'
-    + '<select id="m' + i + '">'
-    + '<option value="0"' + (mode === 0 ? ' selected' : '') + '>Jours fixes</option>'
-    + '<option value="1"' + (mode === 1 ? ' selected' : '') + '>Tous les N jours</option>'
-    + '</select>'
-    + '<span id="di' + i + '"' + (mode === 1 ? '' : ' hidden') + '>'
-    + '<label>tous les</label> <input type="number" id="d' + i + '" min="1" max="30" '
-    + 'value="' + esc(z.intervalDays || 2) + '" style="width:70px"> <label>jours</label></span>'
-    + '</div>'
-    + '<div class="row"><label>Ne pas arroser s&rsquo;il est tombé plus de</label>'
-    + '<input type="number" id="rt' + i + '" min="0" max="100" step="0.5" style="width:80px" '
-    + 'value="' + esc(rain.thresholdMm != null ? rain.thresholdMm : 0) + '"> <label>mm sur</label>'
-    + '<input type="number" id="rh' + i + '" min="0" max="48" style="width:70px" '
-    + 'value="' + esc(rain.forecastHours != null ? rain.forecastHours : 24) + '"> <label>heures</label></div>';
-
-  if (att) {
-    h += '<div class="note warn">Des modifications sont déjà envoyées et attendent la '
-       + 'prochaine synchronisation du module. Elles sont <b>surlignées</b> ci-dessous, '
-       + 'et incluses dans ce que vous voyez : continuez simplement à éditer.</div>';
+function celluleJour(i, mode, d, large){
+  const lignes = [];
+  let echecs = 0;
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const c = creneau(i, mode, d, r);
+    if (c.refuse) echecs++;
+    if (!c.effectif.on) continue;
+    lignes.push('<span class="cr' + (c.attente ? ' att' : '') + '">'
+      + hhmm(c.effectif.h, c.effectif.m) + ' ' + c.effectif.dur + APO + '</span>');
   }
-  if (mode === 0) {
-    // Signaler les jours porteurs d'une modification en attente : sans cela,
-    // rien n'indique qu'un autre jour attend d'etre applique.
-    h += '<div class="days">' + JOURS.map((j,d) => {
-      const enAtt = jourModifie(i, d);
-      const cls = [d === JOUR ? 'on' : '', enAtt ? 'attente' : ''].filter(Boolean).join(' ');
-      return '<button data-j="' + d + '"' + (cls ? ' class="' + cls + '"' : '') + '>'
-           + j + (enAtt ? ' &bull;' : '') + '</button>';
-    }).join('') + '</div>';
-    h += '<div id="sl' + i + '"></div>';
-  } else {
-    h += '<div class="hint" style="margin-top:14px">Horaires appliqués les jours d&rsquo;arrosage.</div>';
-    h += '<div id="sl' + i + '"></div>';
-  }
-  h += '<div class="row" style="margin-top:14px">'
-    + '<button class="primary" id="s' + i + '">Envoyer au module</button>'
-    + '<span class="hint" style="margin:0">Le module applique à sa prochaine synchronisation.</span></div>';
-
-  $('b' + i).innerHTML = h;
-  rendreCreneaux(i);
-  $('m' + i).onchange = () => { rendreCorps(i); };
-  $('s' + i).onclick = () => envoyer(i);
-  const bs = $('b' + i).querySelectorAll('[data-j]');
-  bs.forEach(b => { b.onclick = () => { JOUR = Number(b.dataset.j); rendreCorps(i); }; });
+  const corps = lignes.length ? lignes.join('')
+                              : '<span style="color:var(--muted)">&ndash;</span>';
+  const note = echecs
+    ? '<span class="echec">&#10007; ' + echecs + ' tentative'
+      + ((echecs > 1) ? 's refusées' : ' refusée') + '</span>'
+    : '';
+  const suite = large
+    ? '<span class="mod-s" style="margin-top:4px">appliqués les jours d&rsquo;arrosage</span>'
+    : '';
+  return '<button class="jour' + (lignes.length ? '' : ' vide') + '" data-z="' + i
+       + '" data-d="' + d + '">' + corps + note + suite + '</button>';
 }
 
-// Les creneaux arrivent en tableaux [heure, minute, duree, actif]. L'editeur
-// les presente en champs lisibles et les renvoie sous la forme d'objets, qui
-// est celle que le module attend en commande -- les deux formes different, et
-// c'est ici que la traduction se fait, en un seul endroit.
-function creneauxDe(z, mode){
-  if (mode === 1) return Array.isArray(z.interval) ? z.interval : [];
-  const jours = Array.isArray(z.days) ? z.days : [];
-  return Array.isArray(jours[JOUR]) ? jours[JOUR] : [];
-}
+// ── Fenetre de detail ──────────────────────────────────────────────────────
 
-// Creneau tel qu'il SERA : celui du module, remplace par celui en attente s'il
-// y en a un. Rend aussi de quoi le signaler.
-function creneauEffectif(i, mode, rang, brut){
-  const c = Array.isArray(brut) ? brut : [6, 0, 0, 0];
-  const module = { h: Number(c[0]) || 0, m: Number(c[1]) || 0,
-                   dur: Number(c[2]) || 10, on: Number(c[3]) === 1 };
-  const att = attenteZone(i);
-  const s = att ? (mode === 1 ? att.inter[rang] : (att.jours[JOUR] || {})[rang]) : null;
-  if (!s) return Object.assign({ attente: false }, module);
+function fermer(){ $('voile').classList.remove('on'); $('panneau').innerHTML = ''; }
 
-  // Ne signaler que ce qui CHANGE. L'envoi transmet toujours les cinq
-  // creneaux, y compris ceux qu'on n'a pas touches ; les marquer tous vidait
-  // la mention de son sens -- cinq lignes "en attente" dont trois inchangees
-  // et desactivees.
-  const identique = s.h === module.h && s.m === module.m
-                 && s.dur === module.dur && !!s.on === module.on;
-  return { h: s.h, m: s.m, dur: s.dur, on: !!s.on, attente: !identique };
-}
-
-function rendreCreneaux(i){
+function ouvrirJour(i, d){
   const z = CFG.payload.zones[i];
-  const mode = Number($('m' + i).value);
-  const src = creneauxDe(z, mode);
-  let h = '';
-  for (let s = 0; s < MAX_SLOTS; s++) {
-    const c = creneauEffectif(i, mode, s, src[s]);
-    const hh = String(c.h).padStart(2, '0');
-    const mm = String(c.m).padStart(2, '0');
-    h += '<div class="slot' + (c.on ? '' : ' off') + (c.attente ? ' attente' : '')
-      + '" id="sr' + i + '_' + s + '">'
-      + '<span class="slot-n">' + (s+1) + '</span>'
-      + '<input type="checkbox" id="a' + i + '_' + s + '"' + (c.on ? ' checked' : '') + '>'
-      + '<input type="time" id="t' + i + '_' + s + '" value="' + hh + ':' + mm + '">'
+  const mode = (Number(z.mode) === 1) ? 1 : 0;
+  const titre = (mode === 1) ? 'Horaires d&rsquo;arrosage' : JOURS[d];
+
+  let h = '<h3>' + esc(z.name || ('Zone ' + (i+1))) + ' &mdash; ' + titre + '</h3>'
+        + '<p class="sous">' + ((mode === 1)
+            ? 'Appliqués tous les ' + esc(z.intervalDays || 1) + ' jours.'
+            : 'Cinq créneaux possibles. Décochez pour désactiver sans perdre l&rsquo;horaire.')
+        + '</p>';
+
+  let aAttente = false;
+  let aRefus = false;
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const c = creneau(i, mode, d, r);
+    if (c.attente) aAttente = true;
+    if (c.refuse) aRefus = true;
+    const cls = c.attente ? ' att' : (c.refuse ? ' ref' : '');
+    h += '<div class="slot' + (c.effectif.on ? '' : ' off') + cls + '" id="sr' + r + '">'
+      + '<span class="slot-n">' + (r+1) + '</span>'
+      + '<input type="checkbox" id="a' + r + '"' + (c.effectif.on ? ' checked' : '') + '>'
+      + '<input type="time" id="t' + r + '" value="' + hhmm(c.effectif.h, c.effectif.m) + '">'
       + '<label>pendant</label>'
-      + '<input type="number" id="u' + i + '_' + s + '" min="1" max="' + dureeMax() + '" '
-      + 'value="' + c.dur + '"> <label>min</label>'
-      + (c.attente ? '<span class="badge">en attente</span>' : '')
+      + '<input type="number" id="u' + r + '" min="1" max="' + dureeMax() + '" value="'
+      + c.effectif.dur + '"><label>min</label>'
+      + (c.attente ? '<span class="badge att">en attente</span>' : '')
+      + (c.refuse ? '<span class="badge ref">' + hhmm(c.refuse.h, c.refuse.m)
+                    + ' refusé</span>' : '')
       + '</div>';
   }
-  h += '<p class="hint">Durée maximale autorisée par ce module : ' + dureeMax()
-     + ' minutes. Un créneau plus long serait ignoré sans avertissement.</p>';
-  $('sl' + i).innerHTML = h;
-  for (let s = 0; s < MAX_SLOTS; s++) {
-    $('a' + i + '_' + s).onchange = e => {
-      $('sr' + i + '_' + s).className = 'slot' + (e.target.checked ? '' : ' off');
+
+  if (aAttente) {
+    h += '<div class="note warn">Les lignes ambrées sont déjà envoyées et attendent la '
+       + 'prochaine synchronisation. Ce que vous voyez est l&rsquo;état qui sera vrai '
+       + 'une fois appliqué.</div>';
+  }
+  if (aRefus) {
+    h += '<div class="note ko">Une tentative précédente a été refusée : les réglages du '
+       + 'module avaient changé entre-temps, et <b>rien</b> n&rsquo;a été appliqué. '
+       + 'Les valeurs affichées sont celles réellement programmées. Renvoyez pour '
+       + 'réessayer.</div>';
+  }
+  h += '<p class="hint">Durée maximale acceptée par ce module : ' + dureeMax() + ' minutes.</p>'
+     + '<div class="row" style="margin-top:16px">'
+     + '<button class="primary" id="p-ok">Envoyer au module</button>'
+     + '<button id="p-non">Annuler</button></div>';
+
+  $('panneau').innerHTML = h;
+  $('voile').classList.add('on');
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    $('a' + r).onchange = e => {
+      const el = $('sr' + r);
+      const garde = (el.className.indexOf('att') >= 0) ? ' att'
+                  : ((el.className.indexOf('ref') >= 0) ? ' ref' : '');
+      el.className = 'slot' + (e.target.checked ? '' : ' off') + garde;
     };
   }
+  $('p-non').onclick = fermer;
+  $('p-ok').onclick = () => envoyerJour(i, mode, d);
+}
+
+function ouvrirZone(i){
+  const zBase = CFG.payload.zones[i];
+  const att = attenteZone(i);
+  const z = att ? Object.assign({}, zBase, att.champs) : zBase;
+  const mode = (Number(z.mode) === 1) ? 1 : 0;
+  const rain = z.rain || {};
+
+  $('panneau').innerHTML =
+      '<h3>Réglages de la zone</h3>'
+    + '<p class="sous">Les horaires se règlent en cliquant un jour du planning.</p>'
+    + '<div class="row"><label>Nom</label>'
+    + '<input id="z-nom" style="flex:1" maxlength="24" value="' + esc(z.name || '') + '"></div>'
+    + '<div class="row"><label>Déclenchement</label><select id="z-mode">'
+    + '<option value="0"' + ((mode === 0) ? ' selected' : '') + '>Jours fixes</option>'
+    + '<option value="1"' + ((mode === 1) ? ' selected' : '') + '>Tous les N jours</option>'
+    + '</select><span id="z-di"' + ((mode === 1) ? '' : ' hidden') + '>'
+    + '<label>tous les</label> <input type="number" id="z-int" min="1" max="30" '
+    + 'style="width:72px" value="' + esc(z.intervalDays || 2) + '"> <label>jours</label></span></div>'
+    + '<div class="row"><label>Ne pas arroser s&rsquo;il est tombé plus de</label>'
+    + '<input type="number" id="z-mm" min="0" max="100" step="0.5" style="width:80px" value="'
+    + esc((rain.thresholdMm != null) ? rain.thresholdMm : 0) + '"> <label>mm sur</label>'
+    + '<input type="number" id="z-h" min="0" max="48" style="width:72px" value="'
+    + esc((rain.forecastHours != null) ? rain.forecastHours : 24) + '"> <label>heures</label></div>'
+    + '<div class="row" style="margin-top:16px">'
+    + '<button class="primary" id="p-ok">Envoyer au module</button>'
+    + '<button id="p-non">Annuler</button></div>';
+
+  $('voile').classList.add('on');
+  $('z-mode').onchange = e => { $('z-di').hidden = (e.target.value !== '1'); };
+  $('p-non').onclick = fermer;
+  $('p-ok').onclick = () => envoyerZone(i);
+}
+
+// Plafond impose par le module. Il ecarte SILENCIEUSEMENT un creneau plus
+// long : la commande part, l'accuse annonce un succes partiel, et le reglage
+// semble enregistre.
+function dureeMax(){
+  const s = CFG && CFG.payload && CFG.payload.system;
+  const v = s && Number(s.maxWateringMin);
+  return (v && v > 0) ? v : 60;
 }
 
 // ── Envoi ──────────────────────────────────────────────────────────────────
 
-async function envoyer(i){
-  const mode = Number($('m' + i).value);
-  const zone = {
-    i: i,
-    name: $('n' + i).value.trim(),
-    mode: mode,
-    rain: {
-      thresholdMm: Number($('rt' + i).value),
-      forecastHours: Number($('rh' + i).value)
-    }
-  };
-  if (mode === 1) zone.intervalDays = Number($('d' + i).value);
-
-  const slots = [];
-  for (let s = 0; s < MAX_SLOTS; s++) {
-    const t = ($('t' + i + '_' + s).value || '00:00').split(':');
-    const dur = Number($('u' + i + '_' + s).value);
-    // Le module refuse une duree nulle : un creneau desactive garde donc une
-    // duree valide, c'est l'indicateur "on" qui le neutralise.
-    slots.push({
-      slot: s,
-      h: Number(t[0]) || 0,
-      m: Number(t[1]) || 0,
-      dur: dur > 0 ? dur : 10,
-      on: $('a' + i + '_' + s).checked
-    });
-  }
-  if (mode === 1) zone.intervalSlots = slots;
-  else zone.daySlots = slots.map(sl => Object.assign({day: JOUR}, sl));
-
-  const plafond = dureeMax();
-  const trop = slots.filter(s => s.on && s.dur > plafond);
-  if (trop.length) {
-    // Refuser ICI et non laisser partir : le module ecarterait ces creneaux
-    // sans rien dire, et le reglage semblerait enregistre.
-    toast('Durée trop longue (' + trop[0].dur + ' min). Ce module n' + String.fromCharCode(39)
-        + 'accepte pas plus de ' + plafond + ' minutes par créneau.', true);
-    return;
-  }
-
-  $('s' + i).disabled = true;
+async function envoyer(zone, bouton){
+  bouton.disabled = true;
   try {
     const r = await api('/app/module/schedule', {
-      method: 'POST',
-      body: JSON.stringify({moduleId: MOD, zones: [zone]})
+      method: 'POST', body: JSON.stringify({moduleId: MOD, zones: [zone]})
     });
-    toast(r && r.fusion
+    fermer();
+    toast((r && r.fusion)
       ? 'Envoyé, groupé avec la modification déjà en attente.'
       : 'Envoyé. Le module appliquera à sa prochaine synchronisation.');
-    const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
-    ATTENTE = indexerAttente(d.commandes);
-    rendreCommandes(d.commandes || []);
-    // Redessiner la zone : ce qui vient d'etre envoye doit rester visible dans
-    // le formulaire, faute de quoi la prochaine edition repartirait d'une base
-    // qui n'est plus l'intention de l'utilisateur.
-    rendreCorps(i);
-    rendrePlanning();
+    await recharger();
   } catch(e){
     toast('Refusé : ' + e.message, true);
-  } finally {
-    $('s' + i).disabled = false;
+    bouton.disabled = false;
   }
 }
 
-// Resume lisible de ce qu'une commande demande.
-//
-// Le tableau ne montrait que l'etat et le motif d'un refus. Devant une
-// modification en attente, l'utilisateur ne pouvait pas savoir CE QU'ELLE
-// contenait -- donc ni verifier qu'elle est bien celle qu'il voulait, ni
-// savoir quoi refaire si elle echoue. Il fallait s'en souvenir.
+function envoyerJour(i, mode, d){
+  const plafond = dureeMax();
+  const slots = [];
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const t = ($('t' + r).value || '00:00').split(':');
+    const dur = Number($('u' + r).value);
+    // Le module refuse une duree nulle : un creneau desactive garde donc une
+    // duree valide, c'est l'indicateur "on" qui le neutralise.
+    slots.push({ slot:r, h:Number(t[0])||0, m:Number(t[1])||0,
+                 dur:(dur > 0) ? dur : 5, on: $('a' + r).checked });
+  }
+  const trop = slots.filter(s => s.on && s.dur > plafond);
+  if (trop.length) {
+    toast('Durée trop longue (' + trop[0].dur + ' min). Ce module n' + APO
+        + 'accepte pas plus de ' + plafond + ' minutes par créneau.', true);
+    return;
+  }
+  const zone = { i: i };
+  if (mode === 1) zone.intervalSlots = slots;
+  else zone.daySlots = slots.map(s => Object.assign({day: d}, s));
+  envoyer(zone, $('p-ok'));
+}
+
+function envoyerZone(i){
+  const mode = Number($('z-mode').value);
+  const zone = {
+    i: i,
+    name: $('z-nom').value.trim(),
+    mode: mode,
+    rain: { thresholdMm: Number($('z-mm').value), forecastHours: Number($('z-h').value) }
+  };
+  if (mode === 1) zone.intervalDays = Number($('z-int').value);
+  envoyer(zone, $('p-ok'));
+}
+
+// ── Historique ─────────────────────────────────────────────────────────────
+
 function resumeCommande(c){
   const cmd = c.command;
   if (!cmd || !Array.isArray(cmd.zones)) return '';
+  const nom = i => {
+    const z = (CFG && CFG.payload && CFG.payload.zones) ? CFG.payload.zones[i] : null;
+    return (z && z.name) ? z.name : ('Zone ' + (i+1));
+  };
+  const heure = s => hhmm(s.h, s.m) + ' (' + s.dur + ' min)';
   return cmd.zones.map(z => {
+    const i = (z.i != null) ? z.i : 0;
     const bouts = [];
-    if (z.name) bouts.push(esc(z.name));
     if (z.mode === 1) bouts.push('tous les ' + (z.intervalDays || '?') + ' jours');
     else if (z.mode === 0) bouts.push('jours fixes');
     if (z.rain && z.rain.thresholdMm != null) {
       bouts.push('pluie ' + z.rain.thresholdMm + ' mm / ' + (z.rain.forecastHours || 0) + ' h');
     }
-    const heure = s => String(s.h).padStart(2,'0') + 'h' + String(s.m).padStart(2,'0')
-                     + ' (' + s.dur + ' min)';
     if (Array.isArray(z.intervalSlots) && z.intervalSlots.length) {
-      const actifs = z.intervalSlots.filter(s => s.on);
-      bouts.push(actifs.length ? actifs.map(heure).join(', ') : 'aucun créneau actif');
+      const a = z.intervalSlots.filter(s => s.on);
+      bouts.push(a.length ? a.map(heure).join(', ') : 'aucun créneau actif');
     }
     if (Array.isArray(z.daySlots) && z.daySlots.length) {
-      // Grouper PAR JOUR : depuis que la fusion se fait au niveau du creneau,
-      // une commande peut couvrir plusieurs jours. N'afficher que celui du
-      // premier creneau aurait etiquete l'ensemble avec un seul jour.
+      // Grouper par jour : une commande fusionnee peut en couvrir plusieurs.
       const parJour = {};
       z.daySlots.forEach(s => {
         const d = s.day || 0;
@@ -715,12 +638,39 @@ function resumeCommande(c){
         if (s.on) parJour[d].push(heure(s));
       });
       Object.keys(parJour).sort((a,b) => a - b).forEach(d => {
-        bouts.push(JOURS[d] + ' : ' + (parJour[d].length ? parJour[d].join(', ')
-                                                         : 'aucun créneau actif'));
+        bouts.push(JOURS[d] + ' : '
+          + (parJour[d].length ? parJour[d].join(', ') : 'aucun créneau actif'));
       });
     }
-    return '<b>Zone ' + ((z.i != null ? z.i : 0) + 1) + '</b> &mdash; ' + bouts.join(' &middot; ');
+    return '<b>' + esc(nom(i)) + '</b> &mdash; ' + bouts.join(' &middot; ');
   }).join('<br>');
+}
+
+// Le libelle depend aussi de la RAISON : une ligne fusionnee n'a pas echoue,
+// son contenu a ete repris dans un envoi plus recent.
+function etatLisible(c){
+  const s = c.state;
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (s === 'expired') return (d.indexOf('regroupee') >= 0) ? 'fusionnée' : 'annulée';
+  return {pending:'en attente', accepted:'appliquée', refused:'refusée',
+          failed:'échouée'}[s] || s;
+}
+
+function detailLisible(c){
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (d.indexOf('config-modifiee-localement') === 0) {
+    // Preciser que le refus est TOTAL : le module sort avant d'appliquer quoi
+    // que ce soit. Sans cette phrase, on croit que certains reglages sont
+    // passes et on ne sait plus lesquels refaire.
+    return 'aucun de ces réglages n' + APO + 'a été appliqué. Les réglages du module '
+         + 'avaient changé entre-temps ; il refuse en bloc plutôt que d' + APO
+         + 'appliquer à moitié. Renvoyez pour réessayer.';
+  }
+  if (d.indexOf('regroupee') >= 0) return 'reprise dans une modification plus récente';
+  if (d.indexOf('type-non-supporte') === 0) return 'ce module ne sait pas traiter ce type de commande.';
+  if (d) return d;
+  if (c.state === 'pending') return 'le module ne s' + APO + 'est pas encore synchronisé';
+  return '';
 }
 
 function rendreCommandes(cmds){
@@ -730,8 +680,8 @@ function rendreCommandes(cmds){
     el.innerHTML = '<p class="hint" style="margin:0">Aucune modification envoyée pour le moment.</p>';
     return;
   }
-  el.innerHTML = '<table><tr><th>Envoyée</th><th>État</th><th>Ce qui est demandé</th>'
-    + '<th>Détail</th></tr>'
+  el.innerHTML = '<table class="hist"><tr><th>Envoyée</th><th>État</th>'
+    + '<th>Ce qui est demandé</th><th>Détail</th></tr>'
     + cmds.map(c => {
         const d = parseUtc(c.issuedAt);
         return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + '</td>'
@@ -739,62 +689,23 @@ function rendreCommandes(cmds){
           + '<td class="demande">' + resumeCommande(c) + '</td>'
           + '<td>' + esc(detailLisible(c)) + '</td></tr>';
       }).join('') + '</table>'
-    + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore synchronisé. '
-    + 'Il n&rsquo;y a rien à faire : il prendra la modification tout seul.</p>';
-}
-
-// Le libelle depend aussi de la RAISON : "annulee" et "fusionnee" sont deux
-// choses differentes pour qui lit. Une ligne fusionnee n'a pas echoue -- son
-// contenu a ete repris dans un envoi plus recent.
-function etatLisible(c){
-  const s = (typeof c === 'string') ? c : c.state;
-  const d = (typeof c === 'object' && c.result && c.result.detail) ? String(c.result.detail) : '';
-  if (s === 'expired') {
-    return d.indexOf('regroupee') >= 0 ? 'fusionnée' : 'annulée';
-  }
-  return {pending:'en attente', accepted:'appliquée', refused:'refusée',
-          failed:'échouée'}[s] || s;
-}
-// Texte BRUT : il passe ensuite par esc(), qui echapperait une entite HTML en
-// affichant "s&rsquo;est" a l'ecran. Le double echappement etait visible dans
-// le tableau des modifications envoyees.
-// Les details rendus par le module sont des codes techniques. Celui du
-// verrouillage optimiste -- "config-modifiee-localement (attendu=22
-// courant=25)" -- ne dit ni ce qui s'est passe, ni quoi faire.
-function detailLisible(c){
-  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
-  if (d.indexOf('config-modifiee-localement') === 0) {
-    // Preciser que le refus est TOTAL : le module sort avant d'appliquer quoi
-    // que ce soit. Sans cette phrase, on croit que certains reglages sont
-    // passes et on ne sait plus lesquels refaire.
-    return 'aucun de ces réglages n' + String.fromCharCode(39) + 'a été appliqué. '
-         + 'Les réglages du module avaient changé entre-temps ; il refuse en bloc '
-         + 'plutôt que d' + String.fromCharCode(39) + 'appliquer à moitié. '
-         + 'Rechargez la page et refaites la modification.';
-  }
-  if (d.indexOf('type-non-supporte') === 0) {
-    return 'ce module ne sait pas traiter ce type de commande.';
-  }
-  if (d === 'baseRevision-absente') {
-    return 'la commande a été émise sans référence de version.';
-  }
-  if (d) return d;
-  if (c.state === 'pending') return 'le module ne s' + String.fromCharCode(39) + 'est pas encore synchronisé';
-  if (c.state === 'expired') return 'remplacée par une modification plus récente';
-  return '';
+    + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore '
+    + 'synchronisé. Il prendra la modification tout seul.</p>';
 }
 
 // ── Demarrage ──────────────────────────────────────────────────────────────
 
 $('btn-login').onclick = connecter;
 $('btn-logout').onclick = deconnecter;
-$('btn-back').onclick = voirListe;
+$('btn-back').onclick = () => voirListe().catch(e => toast(e.message, true));
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
 $('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
+$('voile').addEventListener('click', e => { if (e.target === $('voile')) fermer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermer(); });
 
 // Une session peut deja etre ouverte : on tente, et on retombe sur le
-// formulaire si elle a expire. Aucun message d'erreur dans ce cas -- arriver
-// sur une page de connexion n'est pas un incident.
+// formulaire si elle a expire. Arriver sur une page de connexion n'est pas un
+// incident, donc aucun message d'erreur.
 demarrer().catch(() => { $('login').hidden = false; });
 </script>
 </body>
