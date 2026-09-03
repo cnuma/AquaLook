@@ -4,15 +4,84 @@
 #include "BootLoopGuard.h"
 #include "EventLog.h"
 #include "HeapMetrics.h"
+#include "OtaTlsTrust.h"
 
 #include <esp_heap_caps.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
 namespace {
 portMUX_TYPE g_weatherMux = portMUX_INITIALIZER_UNLOCKED;
+
+// ═══════════════════════════════════════════════════════════════
+//  Open-Meteo — modeles Meteo-France (AROME/ARPEGE) en JSON
+//
+//  Retenu apres comparaison avec l'API officielle de Meteo-France, qui ne
+//  diffuse AROME et ARPEGE qu'en GRIB2 par paquets de grille complete :
+//  indecodable sur un ESP32, et sans equivalent JSON par point.
+//
+//  Trois differences avec OpenWeatherMap, toutes en notre faveur :
+//    - le serveur agrege deja par jour, ce qui supprime la boucle sur 40 pas
+//      de trois heures et fait tomber la reponse de ~17 Ko a ~1,3 Ko ;
+//    - aucune clef d'API ;
+//    - vent en km/h et pluie en mm, les unites que la structure attend deja,
+//      donc aucune conversion.
+//
+//  En echange, HTTPS obligatoire. Cela ne coute rien en flash : la chaine
+//  d'api.open-meteo.com a ete validee contre les cinq racines deja embarquees
+//  pour l'OTA (ISRG Root X1 suffit).
+// ═══════════════════════════════════════════════════════════════
+
+// Libelle francais d'un code WMO 4677, dans le sous-ensemble qu'Open-Meteo
+// emploie. Court volontairement : l'affichage LCD dispose de 40 caracteres et
+// la vignette de planning de bien moins.
+const char* wmoLabel(int code) {
+    switch (code) {
+        case 0:                     return "ciel degage";
+        case 1:                     return "plutot degage";
+        case 2:                     return "partiellement nuageux";
+        case 3:                     return "couvert";
+        case 45: case 48:           return "brouillard";
+        case 51: case 53: case 55:  return "bruine";
+        case 56: case 57:           return "bruine verglacante";
+        case 61:                    return "pluie faible";
+        case 63:                    return "pluie";
+        case 65:                    return "pluie forte";
+        case 66: case 67:           return "pluie verglacante";
+        case 71:                    return "neige faible";
+        case 73:                    return "neige";
+        case 75:                    return "neige forte";
+        case 77:                    return "grains de neige";
+        case 80:                    return "averses faibles";
+        case 81:                    return "averses";
+        case 82:                    return "averses violentes";
+        case 85: case 86:           return "averses de neige";
+        case 95:                    return "orage";
+        case 96: case 99:           return "orage et grele";
+        default:                    return "";
+    }
+}
+
+// Lit v[i] en flottant, en distinguant l'absence de la valeur nulle : les
+// modeles Meteo-France ne fournissent pas toutes les variables sur toute leur
+// echeance, et un null recopie en 0.0 ferait passer une donnee manquante pour
+// une mesure -- une probabilite de pluie inconnue deviendrait "0 %".
+bool lireFlottant(JsonVariantConst tableau, uint8_t i, float& sortie) {
+    JsonVariantConst v = tableau[i];
+    if (v.isNull() || !v.is<float>()) return false;
+    sortie = v.as<float>();
+    return true;
+}
+
+bool lireEntier(JsonVariantConst tableau, uint8_t i, int32_t& sortie) {
+    JsonVariantConst v = tableau[i];
+    if (v.isNull() || !v.is<int32_t>()) return false;
+    sortie = v.as<int32_t>();
+    return true;
+}
 
 void clearForecast(ForecastDay (&forecast)[5]) {
     for (uint8_t i = 0; i < 5; ++i) {
@@ -64,7 +133,8 @@ void WeatherManager::update(bool wifiConnected) {
     if (BootLoopGuard::isDegraded()) return;
 
     if (EventBus::configDirty && _config) {
-        if (_config->owm().apiKey[0] != '\0') {
+        if (_config->owm().apiKey[0] != '\0' ||
+            _config->weatherProvider() != WEATHER_PROVIDER_OWM) {
             _forceFetch = true;
             _fetched = false;
             _nextFetchAt = 0;
@@ -83,8 +153,14 @@ void WeatherManager::update(bool wifiConnected) {
     const bool due = _forceFetch || deadlineReached(now, _nextFetchAt);
     if (!due) return;
 
+    const uint8_t provider = _config ? _config->weatherProvider()
+                                     : WEATHER_PROVIDER_OWM;
     const char* apiKey = _config ? _config->owm().apiKey : OWM_API_KEY;
-    if (!apiKey || apiKey[0] == '\0') {
+    // La clef n'est exigee que par OpenWeatherMap. Open-Meteo n'en demande
+    // aucune : conditionner le fetch a sa presence eteindrait la meteo sur un
+    // module qui n'a jamais eu de compte OWM -- exactement le cas que ce
+    // fournisseur vient resoudre.
+    if (provider == WEATHER_PROVIDER_OWM && (!apiKey || apiKey[0] == '\0')) {
         if (!_fetched) {
             Serial.println("[Meteo] Pas de clé API — météo désactivée");
             _fetched = true;
@@ -117,6 +193,8 @@ bool WeatherManager::startFetch() {
     const char* city = _config ? _config->owm().city : OWM_CITY;
     const char* country = _config ? _config->owm().country : OWM_COUNTRY;
     const char* units = _config ? _config->owm().units : "metric";
+    const uint8_t provider = _config ? _config->weatherProvider()
+                                     : WEATHER_PROVIDER_OWM;
 
     // Ne pas lancer un telechargement de ~17 Ko quand il n'y a pas la place.
     //
@@ -169,6 +247,7 @@ bool WeatherManager::startFetch() {
     strlcpy(request.units, units ? units : "metric", sizeof(request.units));
     request.lat = _config ? _config->owm().lat : 0.0f;
     request.lon = _config ? _config->owm().lon : 0.0f;
+    request.provider = provider;
     request.rainThresholdMm = _config
         ? _config->zone(0).rain.thresholdMm
         : DEFAULT_RAIN_THRESHOLD;
@@ -241,6 +320,16 @@ void WeatherManager::performFetch() {
 
     FetchResult result;
     clearForecast(result.forecast);
+
+    if (request.provider == WEATHER_PROVIDER_OPEN_METEO) {
+        fetchOpenMeteo(request, result);
+        portENTER_CRITICAL(&g_weatherMux);
+        _pendingResult = result;
+        _resultReady = true;
+        _fetchInProgress = false;
+        portEXIT_CRITICAL(&g_weatherMux);
+        return;
+    }
 
     String url;
     if (request.lat != 0.0f || request.lon != 0.0f) {
@@ -492,6 +581,13 @@ void WeatherManager::applyPendingResult() {
     _resultReady = false;
     portEXIT_CRITICAL(&g_weatherMux);
 
+    // Persister avant de juger du succes : si le geocodage a abouti et que
+    // seule la requete de prevision a echoue, garder les coordonnees evite de
+    // redemander la meme resolution a chaque tentative.
+    if (_config && (result.resolvedLat != 0.0f || result.resolvedLon != 0.0f)) {
+        _config->setResolvedCoordinates(result.resolvedLat, result.resolvedLon);
+    }
+
     const uint32_t now = millis();
     if (!result.success) {
         _nextFetchAt = now + FETCH_RETRY_DELAY_MS;
@@ -556,4 +652,192 @@ String WeatherManager::getStatusStr() const {
     return _rainExpected
         ? "Pluie " + String(_rainMm, 1) + "mm — bloqué"
         : "OK " + String(_rainMm, 1) + "mm";
+}
+
+// Resout un nom de ville en coordonnees, une seule fois.
+//
+// Necessaire parce qu'Open-Meteo ne connait que lat/lon, alors que la
+// configuration historique de ce projet accepte un nom de ville -- c'est meme
+// le reglage du module en service. Sans cette resolution, changer de
+// fournisseur eteindrait simplement la meteo.
+//
+// Le resultat remonte a la boucle principale, seule autorisee a ecrire la
+// configuration : cette fonction s'execute dans la tache de travail, ou tout
+// acces a ConfigManager est interdit.
+bool WeatherManager::resolveCoordinates(FetchRequest& request, FetchResult& result) {
+    if (request.lat != 0.0f || request.lon != 0.0f) return true;
+    if (request.city[0] == '\0') {
+        strlcpy(result.error, "ville ou coordonnees requises", sizeof(result.error));
+        return false;
+    }
+
+    String url = "https://geocoding-api.open-meteo.com/v1/search?name=";
+    url += request.city;
+    url += "&count=1&language=fr&format=json";
+    if (request.country[0]) {
+        url += "&countryCode=";
+        url += request.country;
+    }
+
+    WiFiClientSecure secure;
+    OtaTlsTrust::configure(secure);
+    secure.setTimeout(8);
+
+    HTTPClient http;
+    if (!http.begin(secure, url)) {
+        strlcpy(result.error, "geocodage: connexion impossible", sizeof(result.error));
+        return false;
+    }
+    http.setTimeout(8000);
+    const int code = http.GET();
+    if (code != HTTP_CODE_OK) {
+        snprintf(result.error, sizeof(result.error), "geocodage: HTTP %d", code);
+        http.end();
+        return false;
+    }
+
+    // La reponse porte la liste complete des codes postaux de la commune, soit
+    // plusieurs kilo-octets sans interet ici. Le filtre la ramene a deux nombres.
+    JsonDocument filtre;
+    filtre["results"][0]["latitude"] = true;
+    filtre["results"][0]["longitude"] = true;
+
+    JsonDocument doc;
+    const DeserializationError err = deserializeJson(
+        doc, http.getStream(), DeserializationOption::Filter(filtre));
+    http.end();
+    if (err) {
+        strlcpy(result.error, "geocodage: JSON illisible", sizeof(result.error));
+        return false;
+    }
+
+    JsonVariantConst premier = doc["results"][0];
+    if (premier.isNull()) {
+        snprintf(result.error, sizeof(result.error), "ville inconnue: %.28s", request.city);
+        return false;
+    }
+    const float lat = premier["latitude"]  | 0.0f;
+    const float lon = premier["longitude"] | 0.0f;
+    if (lat == 0.0f && lon == 0.0f) {
+        strlcpy(result.error, "geocodage: coordonnees absentes", sizeof(result.error));
+        return false;
+    }
+
+    request.lat = lat;
+    request.lon = lon;
+    // Signale a la boucle principale qu'il y a quelque chose a persister.
+    result.resolvedLat = lat;
+    result.resolvedLon = lon;
+    EventLog::log(LOG_INFO, "Meteo: %s resolu en %.4f / %.4f", request.city, lat, lon);
+    return true;
+}
+
+bool WeatherManager::fetchOpenMeteo(FetchRequest& request, FetchResult& result) {
+    if (!resolveCoordinates(request, result)) return false;
+
+    String url = "https://api.open-meteo.com/v1/forecast?latitude=";
+    url += String(request.lat, 4);
+    url += "&longitude=";
+    url += String(request.lon, 4);
+    url += "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
+           "apparent_temperature_max,precipitation_sum,precipitation_probability_max,"
+           "wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,"
+           "cloud_cover_mean,relative_humidity_2m_mean,surface_pressure_mean";
+    // La temperature du moment n'existe pas dans un agregat quotidien, et
+    // l'ecran l'affiche. Une centaine d'octets de plus.
+    url += "&current=temperature_2m&forecast_days=5&timezone=auto";
+
+    WiFiClientSecure secure;
+    OtaTlsTrust::configure(secure);
+    secure.setTimeout(8);
+
+    HTTPClient http;
+    if (!http.begin(secure, url)) {
+        strlcpy(result.error, "initialisation HTTPS impossible", sizeof(result.error));
+        return false;
+    }
+    http.setTimeout(8000);
+    result.httpCode = static_cast<int16_t>(http.GET());
+    if (result.httpCode != HTTP_CODE_OK) {
+        snprintf(result.error, sizeof(result.error), "HTTP %d",
+                 static_cast<int>(result.httpCode));
+        http.end();
+        return false;
+    }
+    result.payloadSize = http.getSize();
+
+    JsonDocument doc;
+    const DeserializationError err = deserializeJson(doc, http.getStream());
+    http.end();
+    if (err) {
+        snprintf(result.error, sizeof(result.error), "JSON: %.40s", err.c_str());
+        return false;
+    }
+
+    JsonVariantConst daily = doc["daily"];
+    if (daily.isNull()) {
+        // Open-Meteo motive ses refus dans "reason" : le recopier evite de
+        // faire chercher la cause dans le vide.
+        const char* raison = doc["reason"] | "";
+        snprintf(result.error, sizeof(result.error), "sans previsions%s%.30s",
+                 raison[0] ? ": " : "", raison);
+        return false;
+    }
+
+    uint8_t jours = 0;
+    for (uint8_t i = 0; i < 5; ++i) {
+        float v = 0.0f;
+        int32_t n = 0;
+        ForecastDay& day = result.forecast[i];
+
+        // precipitation_sum absent signifie que ce jour depasse l'echeance du
+        // modele. On s'arrete la plutot que de publier un jour rempli de zeros,
+        // qui se lirait comme une promesse de temps sec.
+        if (!lireFlottant(daily["precipitation_sum"], i, v)) break;
+        day.rainMm = v;
+
+        if (lireFlottant(daily["temperature_2m_max"], i, v))       day.tempMax = v;
+        if (lireFlottant(daily["temperature_2m_min"], i, v))       day.tempMin = v;
+        if (lireFlottant(daily["apparent_temperature_max"], i, v)) day.feelsLikeMax = v;
+        if (lireFlottant(daily["wind_speed_10m_max"], i, v))       day.windMaxKmh = v;
+        if (lireFlottant(daily["wind_gusts_10m_max"], i, v))       day.gustMaxKmh = v;
+
+        if (lireEntier(daily["wind_direction_10m_dominant"], i, n)) day.windDeg = (int16_t)n;
+        if (lireEntier(daily["precipitation_probability_max"], i, n)) {
+            day.rainProbability = (uint8_t)constrain(n, 0, 100);
+        }
+        if (lireEntier(daily["relative_humidity_2m_mean"], i, n)) {
+            day.humidityMax = (uint8_t)constrain(n, 0, 100);
+        }
+        if (lireEntier(daily["cloud_cover_mean"], i, n)) {
+            day.cloudsMax = (uint8_t)constrain(n, 0, 100);
+        }
+        if (lireFlottant(daily["surface_pressure_mean"], i, v)) {
+            day.pressureAvg = (uint16_t)lroundf(v);
+        }
+        if (lireEntier(daily["weather_code"], i, n)) {
+            strlcpy(day.description, wmoLabel((int)n), sizeof(day.description));
+        }
+        // icon reste vide : ni le LCD ni la page web ne le lisent, tous deux
+        // derivent leur pictogramme de la pluie et de la temperature.
+        day.valid = true;
+        jours++;
+    }
+
+    if (jours == 0) {
+        strlcpy(result.error, "aucun jour exploitable", sizeof(result.error));
+        return false;
+    }
+
+    // Meme semantique que la voie OpenWeatherMap : la decision d'arrosage porte
+    // sur la pluie du jour courant, pas sur un cumul multi-jours.
+    result.rainMm = result.forecast[0].rainMm;
+    result.rainExpected = result.rainMm >= request.rainThresholdMm;
+
+    JsonVariantConst courant = doc["current"]["temperature_2m"];
+    result.tempC = courant.isNull() ? result.forecast[0].tempMax : courant.as<float>();
+    result.success = true;
+    EventLog::log(LOG_INFO, "Meteo: Open-Meteo %u jour(s), %ld octets",
+                  (unsigned)jours, (long)result.payloadSize);
+    return true;
 }

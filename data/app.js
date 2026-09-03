@@ -988,6 +988,8 @@ function populateDrawer() {
     }
   }
   if (s.owm) {
+    document.getElementById('cfg-owm-provider').value = String(s.owm.provider ?? 0);
+    toggleOwmProvider();
     document.getElementById('cfg-owm-units').value = s.owm.units || 'metric';
     const hasCity = s.owm.city && s.owm.city.length > 0;
     const mode = hasCity ? 'city' : 'gps';
@@ -1094,6 +1096,20 @@ async function saveCfgUpdateCheck() {
   toast(enabled ? 'Verification automatique enregistree' : 'Verification automatique desactivee');
   fetchAdminStatus();
 }
+// Open-Meteo ne demande aucune clef et ne connait que des coordonnees. Masquer
+// le champ de clef evite de laisser croire qu'il faut un compte ; l'annonce du
+// geocodage evite de laisser croire que le nom de ville ne marche pas.
+function toggleOwmProvider() {
+  const p = document.getElementById('cfg-owm-provider').value;
+  const openMeteo = (p === '1');
+  document.getElementById('owm-key-block').style.display = openMeteo ? 'none' : '';
+  document.getElementById('owm-provider-hint').innerHTML = openMeteo
+    ? 'Modeles Meteo-France (AROME ~1,3 km sur la France), sans cle ni compte. '
+      + 'Une ville est convertie en coordonnees au premier releve.'
+    : 'Necessite une cle OpenWeatherMap. Modele global, resolution plus grossiere '
+      + 'sur la France.';
+}
+
 function toggleOwmMode() {
   const mode = document.getElementById('cfg-owm-mode').value;
   document.getElementById('owm-city-block').style.display = mode==='city' ? '' : 'none';
@@ -1103,7 +1119,8 @@ async function saveCfgOwm() {
   const apiKey  = document.getElementById('cfg-owm-key').value.trim();
   const units   = document.getElementById('cfg-owm-units').value;
   const mode    = document.getElementById('cfg-owm-mode').value;
-  const body    = {units};
+  const provider = parseInt(document.getElementById('cfg-owm-provider').value, 10) || 0;
+  const body    = {units, provider};
   if (apiKey) body.apiKey = apiKey;  // ne pas ecraser si vide
   if (mode === 'gps') {
     body.lat = parseFloat(document.getElementById('cfg-owm-lat').value) || 0;

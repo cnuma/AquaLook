@@ -201,11 +201,19 @@
   </div>
   <div class="cfg-section" id="sec-owm">
     <div class="cfg-section-header" onclick="toggleSection('sec-owm')">
-      <span class="cfg-section-title"><span class="sec-icon">🌤</span>Météo (OWM)</span>
+      <span class="cfg-section-title"><span class="sec-icon">🌤</span>Météo</span>
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
-      <div class="cfg-field"><label>Clé API OpenWeatherMap</label>
+      <div class="cfg-field">
+        <label>Source des prévisions</label>
+        <select id="cfg-owm-provider" onchange="toggleOwmProvider()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="1">Open-Meteo — modèles Météo-France</option>
+          <option value="0">OpenWeatherMap</option>
+        </select>
+        <div class="cfg-hint" id="owm-provider-hint"></div>
+      </div>
+      <div class="cfg-field" id="owm-key-block"><label>Clé API OpenWeatherMap</label>
         <input type="text" id="cfg-owm-key" autocomplete="off" placeholder="Clé API OWM">
       </div>
       <div class="cfg-field">

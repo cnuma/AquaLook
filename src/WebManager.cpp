@@ -740,6 +740,7 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         owm["units"]   = _config->owm().units;
         owm["city"]    = _config->owm().city;
         owm["country"] = _config->owm().country;
+        owm["provider"] = _config->weatherProvider();
         owm["fetched"] = _weather->hasFetched();
     }
 
@@ -1354,6 +1355,12 @@ void WebManager::handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc) {
     const char* city    = doc["city"]    | "";
     const char* country = doc["country"] | "FR";
     _config->setOwm(apiKey, lat, lon, units, city, country);
+    // Absent du corps = inchange. La page des reglages meteo n'est pas la
+    // seule a poster ici, et une valeur par defaut ramenerait silencieusement
+    // le fournisseur a OpenWeatherMap.
+    if (doc["provider"].is<uint8_t>()) {
+        _config->setWeatherProvider(doc["provider"].as<uint8_t>());
+    }
     sendOk(req);
 }
 

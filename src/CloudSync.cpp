@@ -286,6 +286,11 @@ void buildSettingsPayload(const ConfigManager& cm, JsonObject settings) {
     // restauration laisserait croire la meteo fonctionnelle alors qu'il manque
     // la seule chose que la sauvegarde ne pouvait pas rapporter.
     jowm["apiKeySet"] = owm.apiKey[0] != '\0';
+    // Quelle source sert reellement les previsions. Sans cela, une sauvegarde
+    // ne dirait pas pourquoi deux modules au meme endroit n'annoncent pas la
+    // meme pluie.
+    jowm["provider"] = cm.weatherProvider() == WEATHER_PROVIDER_OPEN_METEO
+                       ? "open-meteo" : "openweathermap";
 
     settings["manualDurationMin"] = cm.manual().durationMin;
 

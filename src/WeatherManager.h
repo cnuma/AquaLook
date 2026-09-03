@@ -70,6 +70,7 @@ private:
         float lat = 0.0f;
         float lon = 0.0f;
         float rainThresholdMm = DEFAULT_RAIN_THRESHOLD;
+        uint8_t provider = 0;   // WEATHER_PROVIDER_*
     };
 
     struct FetchResult {
@@ -81,6 +82,11 @@ private:
         int16_t httpCode = 0;
         int32_t payloadSize = -1;
         char error[64] = "";
+        // Coordonnees obtenues en resolvant un nom de ville. Remontees a la
+        // boucle principale pour etre persistees : la tache de travail n'a
+        // pas le droit d'ecrire la configuration.
+        float resolvedLat = 0.0f;
+        float resolvedLon = 0.0f;
     };
 
     ConfigManager* _config = nullptr;
@@ -113,4 +119,6 @@ private:
 
     static void fetchTaskEntry(void* context);
     void performFetch();
+    bool fetchOpenMeteo(FetchRequest& request, FetchResult& result);
+    bool resolveCoordinates(FetchRequest& request, FetchResult& result);
 };
