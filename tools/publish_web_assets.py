@@ -47,18 +47,33 @@ def generer(version):
     cible.mkdir(parents=True)
 
     fichiers = sorted(p for p in DATA.iterdir() if p.is_file())
+    convertis = 0
     for p in fichiers:
-        shutil.copy2(p, cible / p.name)
+        octets = p.read_bytes()
+        # Fins de ligne normalisees en LF dans la copie preparee, pas dans
+        # data/ : un client FTP en mode ASCII retire les CR au transfert, et
+        # le fichier servi ne correspond alors plus a l'empreinte annoncee.
+        # Constate le 3 septembre 2026 sur app.js et index.html, que Python
+        # avait reecrits en CRLF (write_text ouvre en mode texte sous
+        # Windows). Un fichier deja en LF traverse les deux modes intact.
+        if b'\r\n' in octets:
+            octets = octets.replace(b'\r\n', b'\n')
+            convertis += 1
+        (cible / p.name).write_bytes(octets)
+    if convertis:
+        print('%d fichier(s) normalises en LF pour la publication' % convertis)
     print("%d fichier(s) copies dans %s" % (len(fichiers), cible.relative_to(RACINE)))
 
     sortie = DIST / MANIFESTE
-    # Le manifeste est produit APRES la copie, jamais avant : c'est ce qui
-    # garantit que les empreintes decrivent bien les octets deposes.
+    # Le manifeste est produit APRES la copie et A PARTIR DE LA COPIE, jamais
+    # depuis data/. Les deux different des qu'une normalisation a eu lieu, et
+    # ce sont les octets deposes qui seront televerses, donc eux qu'il faut
+    # decrire.
     r = subprocess.run(
         [sys.executable, str(RACINE / "tools" / "generate_web_manifest.py"),
          "--version", version, "--tag", "v" + version,
          "--base-url", "%s/web/v%s" % (SITE, version),
-         "--data-dir", str(DATA), "--output", str(sortie)],
+         "--data-dir", str(cible), "--output", str(sortie)],
         capture_output=True, text=True)
     if r.returncode != 0:
         sys.stderr.write(r.stdout + r.stderr)
