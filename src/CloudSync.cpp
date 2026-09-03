@@ -346,8 +346,8 @@ void buildSettingsPayload(const ConfigManager& cm, JsonObject settings) {
 // Les creneaux sont encodes en tableaux [heure, minute, duree, actif]
 // plutot qu'en objets nommes. A pleine capacite (16 zones x 8 plannings
 // x 5 creneaux = 640 creneaux) la forme nommee depasserait 19 Ko quand la
-// forme tableau tient sous 7 Ko ; avec 2 zones actives on reste vers 1 Ko,
-// auxquels s'ajoute environ 1 Ko de reglages hors arrosage (settings).
+// forme tableau tient sous 7 Ko. Mesure le 3 septembre 2026 sur le module
+// d'essai, 4 zones actives, section settings comprise : 3163 octets.
 // La limite serveur est de 64 Ko (MAX_PAYLOAD_BYTES), donc large, mais le
 // tas du module reste la vraie contrainte : ce corps est conserve en String
 // pendant toute la duree de la synchronisation.
