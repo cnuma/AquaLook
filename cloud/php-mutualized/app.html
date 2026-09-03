@@ -75,6 +75,11 @@ tr:last-child td{border-bottom:none}
 .tag.pending{color:var(--amber);border-color:var(--amber)}
 .tag.accepted{color:var(--green);border-color:var(--green)}
 .tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
+.slot.attente{background:#fdf6e6;border-radius:6px}
+.slot .badge{font-size:10.5px;color:var(--amber);border:1px solid #e8cf9a;
+  border-radius:999px;padding:0 7px;white-space:nowrap}
+.days button.attente{border-color:var(--amber);color:var(--amber)}
+.days button.on.attente{background:var(--amber);border-color:var(--amber);color:#fff}
 .demande{font-size:12.5px;line-height:1.45}
 .demande b{color:var(--text)}
 #login{max-width:380px;margin:60px auto}
@@ -122,6 +127,9 @@ tr:last-child td{border-bottom:none}
 let MOD = null;      // module ouvert
 let CFG = null;      // sa configuration remontee
 let JOUR = 0;        // jour affiche dans l'editeur
+// Modifications deja envoyees et pas encore appliquees, indexees pour
+// pouvoir les superposer a la configuration du module.
+let ATTENTE = null;
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
@@ -257,6 +265,7 @@ async function ouvrir(id){
   $('btn-back').hidden = false;
   const d = await api('/app/module?moduleId=' + encodeURIComponent(id));
   CFG = d.config;
+  ATTENTE = indexerAttente(d.commandes);
   const el = $('detail');
   el.hidden = false;
 
@@ -284,6 +293,34 @@ async function ouvrir(id){
   rendreCommandes(d.commandes || []);
 }
 
+// Indexe la commande en attente par zone, jour et rang, pour retrouver en
+// O(1) ce qui est demande sur un creneau donne.
+function indexerAttente(cmds){
+  const enAttente = (cmds || []).filter(c => c.state === 'pending');
+  if (!enAttente.length) return null;
+  const idx = { zones: {} };
+  enAttente.forEach(c => {
+    const zs = (c.command && c.command.zones) || [];
+    zs.forEach(z => {
+      const i = z.i != null ? z.i : 0;
+      const e = idx.zones[i] || (idx.zones[i] = { champs: {}, jours: {}, inter: {} });
+      ['name', 'mode', 'intervalDays', 'rain'].forEach(k => {
+        if (z[k] !== undefined) e.champs[k] = z[k];
+      });
+      (z.daySlots || []).forEach(s => {
+        const d = s.day || 0;
+        (e.jours[d] || (e.jours[d] = {}))[s.slot] = s;
+      });
+      (z.intervalSlots || []).forEach(s => { e.inter[s.slot] = s; });
+    });
+  });
+  return idx;
+}
+
+function attenteZone(i){
+  return (ATTENTE && ATTENTE.zones[i]) ? ATTENTE.zones[i] : null;
+}
+
 function vueZone(z, i){
   const mode = Number(z.mode) === 1 ? 1 : 0;
   return '<div class="zone" id="z' + i + '">'
@@ -305,7 +342,14 @@ function brancherZone(i){
 }
 
 function rendreCorps(i){
-  const z = CFG.payload.zones[i];
+  const zBase = CFG.payload.zones[i];
+  const att = attenteZone(i);
+  // La valeur affichee est celle qui SERA vraie une fois le module
+  // synchronise : configuration du module, recouverte par ce qui est deja
+  // demande. Afficher la seule configuration du module faisait repartir
+  // l'utilisateur d'une base qui n'etait plus son intention, et lui faisait
+  // ecraser sa propre demande sans le savoir.
+  const z = att ? Object.assign({}, zBase, att.champs) : zBase;
   const mode = Number(z.mode) === 1 ? 1 : 0;
   const rain = z.rain || {};
   let h = '<div class="row">'
@@ -326,12 +370,23 @@ function rendreCorps(i){
     + 'value="' + esc(rain.forecastHours != null ? rain.forecastHours : 24) + '"> <label>heures</label></div>';
 
   if (mode === 0) {
-    h += '<div class="days">' + JOURS.map((j,d) =>
-        '<button data-j="' + d + '"' + (d === JOUR ? ' class="on"' : '') + '>' + j + '</button>').join('') + '</div>';
+    // Signaler les jours porteurs d'une modification en attente : sans cela,
+    // rien n'indique qu'un autre jour attend d'etre applique.
+    h += '<div class="days">' + JOURS.map((j,d) => {
+      const enAtt = !!(att && att.jours[d]);
+      const cls = [d === JOUR ? 'on' : '', enAtt ? 'attente' : ''].filter(Boolean).join(' ');
+      return '<button data-j="' + d + '"' + (cls ? ' class="' + cls + '"' : '') + '>'
+           + j + (enAtt ? ' &bull;' : '') + '</button>';
+    }).join('') + '</div>';
     h += '<div id="sl' + i + '"></div>';
   } else {
     h += '<div class="hint" style="margin-top:14px">Horaires appliqués les jours d&rsquo;arrosage.</div>';
     h += '<div id="sl' + i + '"></div>';
+  }
+  if (att) {
+    h += '<div class="note warn">Des modifications sont déjà envoyées et attendent la '
+       + 'prochaine synchronisation du module. Elles sont <b>surlignées</b> ci-dessous, '
+       + 'et incluses dans ce que vous voyez : continuez simplement à éditer.</div>';
   }
   h += '<div class="row" style="margin-top:14px">'
     + '<button class="primary" id="s' + i + '">Envoyer au module</button>'
@@ -355,23 +410,38 @@ function creneauxDe(z, mode){
   return Array.isArray(jours[JOUR]) ? jours[JOUR] : [];
 }
 
+// Creneau tel qu'il SERA : celui du module, remplace par celui en attente s'il
+// y en a un. Rend aussi de quoi le signaler.
+function creneauEffectif(i, mode, rang, brut){
+  const att = attenteZone(i);
+  const s = att ? (mode === 1 ? att.inter[rang] : (att.jours[JOUR] || {})[rang]) : null;
+  if (s) {
+    return { h: s.h, m: s.m, dur: s.dur, on: !!s.on, attente: true };
+  }
+  const c = Array.isArray(brut) ? brut : [6, 0, 0, 0];
+  return { h: Number(c[0]) || 0, m: Number(c[1]) || 0,
+           dur: Number(c[2]) || 10, on: Number(c[3]) === 1, attente: false };
+}
+
 function rendreCreneaux(i){
   const z = CFG.payload.zones[i];
   const mode = Number($('m' + i).value);
   const src = creneauxDe(z, mode);
   let h = '';
   for (let s = 0; s < MAX_SLOTS; s++) {
-    const c = Array.isArray(src[s]) ? src[s] : [6, 0, 0, 0];
-    const actif = Number(c[3]) === 1;
-    const hh = String(Number(c[0]) || 0).padStart(2, '0');
-    const mm = String(Number(c[1]) || 0).padStart(2, '0');
-    h += '<div class="slot' + (actif ? '' : ' off') + '" id="sr' + i + '_' + s + '">'
+    const c = creneauEffectif(i, mode, s, src[s]);
+    const hh = String(c.h).padStart(2, '0');
+    const mm = String(c.m).padStart(2, '0');
+    h += '<div class="slot' + (c.on ? '' : ' off') + (c.attente ? ' attente' : '')
+      + '" id="sr' + i + '_' + s + '">'
       + '<span class="slot-n">' + (s+1) + '</span>'
-      + '<input type="checkbox" id="a' + i + '_' + s + '"' + (actif ? ' checked' : '') + '>'
+      + '<input type="checkbox" id="a' + i + '_' + s + '"' + (c.on ? ' checked' : '') + '>'
       + '<input type="time" id="t' + i + '_' + s + '" value="' + hh + ':' + mm + '">'
       + '<label>pendant</label>'
       + '<input type="number" id="u' + i + '_' + s + '" min="1" max="' + dureeMax() + '" '
-      + 'value="' + (Number(c[2]) || 10) + '"> <label>min</label></div>';
+      + 'value="' + c.dur + '"> <label>min</label>'
+      + (c.attente ? '<span class="badge">en attente</span>' : '')
+      + '</div>';
   }
   h += '<p class="hint">Durée maximale autorisée par ce module : ' + dureeMax()
      + ' minutes. Un créneau plus long serait ignoré sans avertissement.</p>';
@@ -435,7 +505,12 @@ async function envoyer(i){
       ? 'Envoyé, groupé avec la modification déjà en attente.'
       : 'Envoyé. Le module appliquera à sa prochaine synchronisation.');
     const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
+    ATTENTE = indexerAttente(d.commandes);
     rendreCommandes(d.commandes || []);
+    // Redessiner la zone : ce qui vient d'etre envoye doit rester visible dans
+    // le formulaire, faute de quoi la prochaine edition repartirait d'une base
+    // qui n'est plus l'intention de l'utilisateur.
+    rendreCorps(i);
   } catch(e){
     toast('Refusé : ' + e.message, true);
   } finally {
