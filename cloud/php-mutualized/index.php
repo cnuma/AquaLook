@@ -254,6 +254,13 @@ try {
         }
 
         $finalState = settle_command($moduleId, $correlationId, $state, $result);
+        if ($state === 'accepted') {
+            // L'accuse annonce la nouvelle revision : la prendre tout de suite
+            // plutot que d'attendre le rapport de configuration du cycle
+            // suivant. Sans cela, une commande emise dans cet intervalle
+            // portait une revision perimee et etait refusee en bloc.
+            update_revision_from_ack($moduleId, is_array($result) ? $result : null);
+        }
         if ($finalState === null) {
             send_json(404, ['detail' => 'correlationId inconnu pour ce module']);
         }

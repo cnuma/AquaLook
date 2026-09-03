@@ -75,11 +75,31 @@ tr:last-child td{border-bottom:none}
 .tag.pending{color:var(--amber);border-color:var(--amber)}
 .tag.accepted{color:var(--green);border-color:var(--green)}
 .tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
+.tag.expired{color:var(--muted)}
 .slot.attente{background:#fdf6e6;border-radius:6px}
 .slot .badge{font-size:10.5px;color:var(--amber);border:1px solid #e8cf9a;
   border-radius:999px;padding:0 7px;white-space:nowrap}
 .days button.attente{border-color:var(--amber);color:var(--amber)}
 .days button.on.attente{background:var(--amber);border-color:var(--amber);color:#fff}
+/* Planning : une colonne par jour, une ligne par zone. */
+.plan{width:100%;border-collapse:separate;border-spacing:4px;font-size:12px}
+.plan th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);font-weight:600;padding:2px 4px;text-align:center}
+.plan td{background:var(--green-dim);border:1px solid var(--line);
+  border-radius:7px;padding:5px;vertical-align:top;min-width:88px}
+.plan td.zn{background:transparent;border:none;font-weight:600;
+  min-width:0;white-space:nowrap;padding-right:8px}
+.plan td.vide{background:var(--bg);color:var(--muted);text-align:center}
+.cr{display:block;border-radius:5px;padding:3px 6px;margin-bottom:3px;
+  font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
+.cr:last-child{margin-bottom:0}
+.cr.att{background:var(--amber);color:#20160a}
+.cr.ref{background:var(--red)}
+.cr .pt{font-weight:700;margin-right:4px}
+.legende{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;
+  color:var(--muted);align-items:center}
+.legende span.ex{display:inline-block;width:11px;height:11px;border-radius:3px;
+  margin-right:5px;vertical-align:-1px}
 .demande{font-size:12.5px;line-height:1.45}
 .demande b{color:var(--text)}
 #login{max-width:380px;margin:60px auto}
@@ -130,6 +150,8 @@ let JOUR = 0;        // jour affiche dans l'editeur
 // Modifications deja envoyees et pas encore appliquees, indexees pour
 // pouvoir les superposer a la configuration du module.
 let ATTENTE = null;
+// Dernier refus, pour marquer les creneaux qui n'ont PAS ete appliques.
+let REFUS = null;
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
@@ -266,6 +288,7 @@ async function ouvrir(id){
   const d = await api('/app/module?moduleId=' + encodeURIComponent(id));
   CFG = d.config;
   ATTENTE = indexerAttente(d.commandes);
+  REFUS = indexerRefus(d.commandes);
   const el = $('detail');
   el.hidden = false;
 
@@ -285,9 +308,11 @@ async function ouvrir(id){
     + '<div class="hint">Les réglages ci-dessous sont ceux que le module a lui-même remontés. '
     + 'Une modification part en attente et s&rsquo;applique à sa prochaine synchronisation, '
     + 'pas immédiatement.</div></div>'
+    + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div></div>'
     + '<div class="card"><h2>Zones</h2><div id="zones"></div></div>'
     + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>';
 
+  rendrePlanning();
   $('zones').innerHTML = zones.map((z,i) => vueZone(z,i)).join('');
   zones.forEach((z,i) => brancherZone(i));
   rendreCommandes(d.commandes || []);
@@ -334,8 +359,122 @@ function jourModifie(i, d){
   });
 }
 
+// Creneaux du dernier refus. Seul le PLUS RECENT compte : garder les
+// anciens ferait trainer des croix rouges sur des creneaux depuis longtemps
+// corriges.
+function indexerRefus(cmds){
+  const refus = (cmds || []).filter(c => c.state === 'refused');
+  if (!refus.length) return null;
+  const c = refus[0];
+  const idx = { jours: {}, inter: {} };
+  ((c.command && c.command.zones) || []).forEach(z => {
+    (z.daySlots || []).forEach(s => {
+      const d = s.day || 0;
+      (idx.jours[d] || (idx.jours[d] = {}))[s.slot] = s;
+    });
+    (z.intervalSlots || []).forEach(s => { idx.inter[s.slot] = s; });
+  });
+  return idx;
+}
+
 function attenteZone(i){
   return (ATTENTE && ATTENTE.zones[i]) ? ATTENTE.zones[i] : null;
+}
+
+// Etat d'un creneau, pour la pastille : applique, en attente, ou refuse.
+// Un refus est porte par la DERNIERE commande refusee qui touchait ce
+// creneau -- sinon un vieil echec resterait affiche indefiniment.
+function etatCreneau(i, jour, rang, mode){
+  const att = attenteZone(i);
+  if (att) {
+    const s = mode === 1 ? att.inter[rang] : (att.jours[jour] || {})[rang];
+    if (s) return { etat: 'att', s: s };
+  }
+  const r = REFUS && (mode === 1 ? REFUS.inter[rang] : (REFUS.jours[jour] || {})[rang]);
+  if (r) return { etat: 'ref', s: r };
+  return null;
+}
+
+function rendrePlanning(){
+  const el = document.getElementById('planning');
+  if (!el || !CFG || !CFG.payload) return;
+  const zones = CFG.payload.zones || [];
+
+  let h = '<table class="plan"><tr><th></th>'
+        + JOURS.map(j => '<th>' + j.slice(0,3) + '</th>').join('') + '</tr>';
+
+  zones.forEach((z, i) => {
+    const mode = Number(z.mode) === 1 ? 1 : 0;
+    h += '<tr><td class="zn">' + esc(z.name || ('Zone ' + (i+1)))
+       + (mode === 1 ? '<br><span class="zone-r">/' + esc(z.intervalDays || 1) + 'j</span>' : '')
+       + '</td>';
+    // Mode intervalle : une seule cellule pour la semaine.
+    //
+    // Les jours d'arrosage dependent d'un ancrage que le module ne remonte
+    // pas ; repeter les horaires sur les sept colonnes laisserait croire a un
+    // arrosage quotidien, et n'en omettre aucun serait tout aussi faux. On dit
+    // donc ce qu'on sait -- la cadence et les horaires -- sans inventer les
+    // jours.
+    if (mode === 1) {
+      const lignes = [];
+      for (let r = 0; r < MAX_SLOTS; r++) {
+        const brut = Array.isArray(z.interval) ? z.interval[r] : null;
+        const c = Array.isArray(brut) ? brut : null;
+        const marque = etatCreneau(i, 0, r, 1);
+        let on, hh, mm, dur, cls;
+        if (marque) {
+          on = !!marque.s.on; hh = marque.s.h; mm = marque.s.m; dur = marque.s.dur;
+          cls = ' ' + marque.etat;
+        } else if (c) {
+          on = Number(c[3]) === 1; hh = Number(c[0]); mm = Number(c[1]); dur = Number(c[2]);
+          cls = '';
+        } else { continue; }
+        if (!on) continue;
+        lignes.push('<span class="cr' + cls + '">'
+          + (marque ? '<span class="pt">' + (marque.etat === 'att' ? '&#9679;' : '&#10007;') + '</span>' : '')
+          + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0') + ' ' + dur + "'" + '</span>');
+      }
+      h += lignes.length
+        ? '<td colspan="7">' + lignes.join('')
+          + '<span class="zone-r">appliqués tous les ' + esc(z.intervalDays || 1)
+          + ' jours &mdash; les dates exactes sont décidées par le module</span></td>'
+        : '<td colspan="7" class="vide">&ndash;</td>';
+      h += '</tr>';
+      return;
+    }
+
+    for (let d = 0; d < 7; d++) {
+      const lignes = [];
+      for (let r = 0; r < MAX_SLOTS; r++) {
+        const brut = (Array.isArray(z.days) && Array.isArray(z.days[d])) ? z.days[d][r] : null;
+        const c = Array.isArray(brut) ? brut : null;
+        const marque = etatCreneau(i, d, r, mode);
+        let on, hh, mm, dur, cls;
+        if (marque) {
+          on = !!marque.s.on; hh = marque.s.h; mm = marque.s.m; dur = marque.s.dur;
+          cls = ' ' + marque.etat;
+        } else if (c) {
+          on = Number(c[3]) === 1; hh = Number(c[0]); mm = Number(c[1]); dur = Number(c[2]);
+          cls = '';
+        } else { continue; }
+        if (!on) continue;
+        lignes.push('<span class="cr' + cls + '">'
+          + (marque ? '<span class="pt">' + (marque.etat === 'att' ? '&#9679;' : '&#10007;') + '</span>' : '')
+          + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0')
+          + ' ' + dur + "'" + '</span>');
+      }
+      h += lignes.length ? '<td>' + lignes.join('') + '</td>'
+                         : '<td class="vide">&ndash;</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</table>'
+    + '<div class="legende">'
+    + '<span><span class="ex" style="background:var(--text)"></span>appliqué sur le module</span>'
+    + '<span><span class="ex" style="background:var(--amber)"></span>&#9679; en attente de synchronisation</span>'
+    + '<span><span class="ex" style="background:var(--red)"></span>&#10007; refusé, non appliqué</span>'
+    + '</div>';
+  el.innerHTML = h;
 }
 
 function vueZone(z, i){
@@ -534,6 +673,7 @@ async function envoyer(i){
     // le formulaire, faute de quoi la prochaine edition repartirait d'une base
     // qui n'est plus l'intention de l'utilisateur.
     rendreCorps(i);
+    rendrePlanning();
   } catch(e){
     toast('Refusé : ' + e.message, true);
   } finally {
@@ -595,7 +735,7 @@ function rendreCommandes(cmds){
     + cmds.map(c => {
         const d = parseUtc(c.issuedAt);
         return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + '</td>'
-          + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c.state)) + '</span></td>'
+          + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c)) + '</span></td>'
           + '<td class="demande">' + resumeCommande(c) + '</td>'
           + '<td>' + esc(detailLisible(c)) + '</td></tr>';
       }).join('') + '</table>'
@@ -603,9 +743,17 @@ function rendreCommandes(cmds){
     + 'Il n&rsquo;y a rien à faire : il prendra la modification tout seul.</p>';
 }
 
-function etatLisible(s){
+// Le libelle depend aussi de la RAISON : "annulee" et "fusionnee" sont deux
+// choses differentes pour qui lit. Une ligne fusionnee n'a pas echoue -- son
+// contenu a ete repris dans un envoi plus recent.
+function etatLisible(c){
+  const s = (typeof c === 'string') ? c : c.state;
+  const d = (typeof c === 'object' && c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (s === 'expired') {
+    return d.indexOf('regroupee') >= 0 ? 'fusionnée' : 'annulée';
+  }
   return {pending:'en attente', accepted:'appliquée', refused:'refusée',
-          failed:'échouée', expired:'annulée'}[s] || s;
+          failed:'échouée'}[s] || s;
 }
 // Texte BRUT : il passe ensuite par esc(), qui echapperait une entite HTML en
 // affichant "s&rsquo;est" a l'ecran. Le double echappement etait visible dans
@@ -616,8 +764,13 @@ function etatLisible(s){
 function detailLisible(c){
   const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
   if (d.indexOf('config-modifiee-localement') === 0) {
-    return 'les réglages du module ont changé entre-temps. Rechargez la page '
-         + 'pour voir l' + String.fromCharCode(39) + 'état réel, puis refaites la modification.';
+    // Preciser que le refus est TOTAL : le module sort avant d'appliquer quoi
+    // que ce soit. Sans cette phrase, on croit que certains reglages sont
+    // passes et on ne sait plus lesquels refaire.
+    return 'aucun de ces réglages n' + String.fromCharCode(39) + 'a été appliqué. '
+         + 'Les réglages du module avaient changé entre-temps ; il refuse en bloc '
+         + 'plutôt que d' + String.fromCharCode(39) + 'appliquer à moitié. '
+         + 'Rechargez la page et refaites la modification.';
   }
   if (d.indexOf('type-non-supporte') === 0) {
     return 'ce module ne sait pas traiter ce type de commande.';

@@ -351,6 +351,32 @@ function merge_slots(array $anciens, array $nouveaux, bool $avecJour): array
     return array_values($parCle);
 }
 
+/**
+ * Met a jour la revision connue a partir de l'accuse du module.
+ *
+ * Le module repond "8 champ(s) applique(s), revision=28" quand il accepte une
+ * commande. Le serveur, lui, n'apprenait cette nouvelle revision qu'au rapport
+ * de configuration suivant -- un cycle plus tard. Entre les deux, toute
+ * commande emise portait l'ANCIENNE revision et se faisait refuser en bloc
+ * par le verrouillage optimiste, sans qu'aucun de ses reglages ne soit
+ * applique. Constate le 3 septembre 2026.
+ *
+ * L'information circulait deja ; il suffisait de la lire.
+ */
+function update_revision_from_ack(string $moduleId, ?array $result): void
+{
+    $detail = is_array($result) ? ($result['detail'] ?? '') : '';
+    if (!is_string($detail) || !preg_match('/revision=(\d+)/', $detail, $m)) {
+        return;
+    }
+    $stmt = db()->prepare(
+        'UPDATE module_config SET revision = ? WHERE module_id = ? AND revision < ?'
+    );
+    // revision < ? : ne jamais faire reculer la valeur connue, un accuse
+    // tardif ne doit pas ecraser un rapport plus recent.
+    $stmt->execute([(int)$m[1], $moduleId, (int)$m[1]]);
+}
+
 function module_config(string $moduleId): ?array
 {
     $stmt = db()->prepare('SELECT revision, payload, updated_at FROM module_config WHERE module_id = ?');
