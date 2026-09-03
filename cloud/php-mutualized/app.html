@@ -36,6 +36,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
          margin:0 0 14px;font-weight:600}
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .row+.row{margin-top:12px}
+.paire{display:inline-flex;align-items:center;gap:8px}
 label{color:var(--muted);font-size:13px}
 .hint{color:var(--muted);font-size:13px;margin-top:10px}
 /* Sauvegardes : une ligne cliquable par etat conserve. */
@@ -73,6 +74,7 @@ label{color:var(--muted);font-size:13px}
       padding:6px 8px 6px 0;white-space:nowrap;color:var(--text)}
 .znom:hover{color:var(--green);text-decoration:underline}
 .znom small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
+.jc{display:block}
 .cr{display:block;border-radius:5px;padding:2px 6px;margin-bottom:3px;
     font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
 .cr:last-child{margin-bottom:0}
@@ -131,6 +133,93 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.err{background:var(--red)}
 [hidden]{display:none!important}
+
+/* ── Ecrans etroits ────────────────────────────────────────────────────────
+ *
+ * Le planning est un tableau de 8 colonnes : le nom de zone et les sept
+ * jours. Chaque cellule reserve 92 px pour qu'un horaire y tienne, soit
+ * environ 700 px de large -- le double d'un telephone. La table debordait
+ * donc, et les derniers jours de la semaine etaient hors de l'ecran, sans
+ * rien pour le signaler.
+ *
+ * Plutot qu'un defilement horizontal, le tableau devient une liste : une
+ * zone, puis ses sept jours l'un sous l'autre. Meme balisage, meme code de
+ * rendu, memes zones cliquables -- seule la mise en page change. Le libelle
+ * du jour, porte par data-jl, remplace l'en-tete de colonne qui n'a plus de
+ * sens en liste.
+ */
+@media (max-width: 720px){
+  main{padding:12px}
+  header{padding:10px 14px;gap:8px}
+  .card{padding:14px;border-radius:10px}
+
+  .plan{display:block;border-spacing:0}
+  .plan tbody{display:block}
+  .plan tr{display:block;padding-bottom:12px;margin-bottom:12px;
+           border-bottom:1px solid var(--line2)}
+  .plan tr:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+  .plan tr:first-child{display:none}          /* en-tetes de colonnes */
+  .plan td{display:block}
+  .plan td:first-child{margin-bottom:7px}
+  .znom{padding:0 0 2px;font-size:15px}
+
+  /* Le jour devient une ligne : son nom a gauche, ses creneaux a droite. */
+  .jour{display:flex;align-items:flex-start;gap:10px;min-width:0;min-height:0;
+        margin-bottom:5px;padding:8px 10px}
+  .jour::before{content:attr(data-jl);flex:none;width:34px;padding-top:2px;
+                font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+                color:var(--muted);font-weight:600}
+  .jour[data-jl=""]::before{display:none}
+  /* Un jour sans arrosage garde sa ligne -- il faut pouvoir le toucher pour y
+   * ajouter un creneau -- mais pas son poids : sept jours pleine hauteur par
+   * zone rendaient la page interminable. Le tiret disparait, le libelle du
+   * jour suffit a dire qu'il n'y a rien. */
+  .jour.vide{padding:6px 10px;text-align:left;background:transparent;
+             border-style:dashed}
+  .jour.vide .jc{display:none}
+  .jc{flex:1;min-width:0}
+  /* Plusieurs creneaux dans la meme journee tiennent sur une ligne. */
+  .cr{display:inline-block;margin:0 4px 3px 0}
+
+  .legende{gap:8px 14px;font-size:11.5px}
+
+  /* La fenetre de detail occupe l'ecran : a cette largeur, une fenetre
+   * flottante ne gagne rien et perd de la place utile. */
+  #voile{padding:0;align-items:stretch}
+  #panneau{max-width:none;border-radius:0;padding:16px 14px}
+  #panneau h3{font-size:17px}
+
+  /* Un creneau ne tient pas sur une ligne : on choisit ou il se coupe plutot
+   * que de laisser le navigateur decider. Les mentions d'etat passent seules
+   * en dessous. */
+  .slot{gap:8px 9px;padding:10px 6px}
+  /* Le champ heure ne grandit pas : laisse a lui-meme il occupait toute la
+   * largeur restante et repoussait << pendant >> et la duree hors de l'ecran. */
+  .slot input[type=time]{flex:0 0 auto;width:112px}
+  .slot input[type=number]{flex:0 0 auto;width:72px}
+  .slot label{flex:0 0 auto}
+  .slot .badge{flex-basis:100%;margin-left:28px}
+
+  /* Boutons a la taille du pouce, et jamais deux moities illisibles. */
+  input,select,button{padding:10px 12px}
+  #panneau .row button{flex:1 1 auto}
+  /* Le journal des modifications est un tableau de quatre colonnes dont deux
+   * portent des phrases. Un tableau ne descend pas sous sa largeur minimale :
+   * c'est lui, et non le planning, qui elargissait la page entiere et faisait
+   * deborder jusqu'a l'en-tete. Chaque ligne devient un bloc. */
+  .hist{display:block;font-size:12.5px}
+  .hist tbody{display:block}
+  .hist tr:first-child{display:none}          /* en-tetes de colonnes */
+  .hist tr{display:block;padding:10px 0;border-bottom:1px solid var(--line2)}
+  .hist tr:last-child{border-bottom:none;padding-bottom:0}
+  .hist td{display:block;padding:0;border:none}
+  .hist td:first-child{color:var(--muted);font-size:11.5px}
+  .hist td:nth-child(2){margin:4px 0 6px}
+  .hist td:nth-child(4){margin-top:5px;color:var(--muted);font-size:12px}
+
+  .reg{grid-template-columns:1fr;gap:0 0}
+  .reg dt{margin-top:8px}
+}
 </style>
 </head>
 <body>
@@ -633,8 +722,10 @@ function celluleJour(i, mode, d, large){
   const suite = large
     ? '<span class="mod-s" style="margin-top:4px">appliqués les jours d&rsquo;arrosage</span>'
     : '';
+  const jl = large ? '' : JOURS[d].slice(0, 3);
   return '<button class="jour' + (lignes.length ? '' : ' vide') + '" data-z="' + i
-       + '" data-d="' + d + '">' + corps + note + suite + '</button>';
+       + '" data-d="' + d + '" data-jl="' + jl + '">'
+       + '<span class="jc">' + corps + note + suite + '</span></button>';
 }
 
 // ── Fenetre de detail ──────────────────────────────────────────────────────
@@ -718,13 +809,19 @@ function ouvrirZone(i){
     + '<option value="0"' + ((mode === 0) ? ' selected' : '') + '>Jours fixes</option>'
     + '<option value="1"' + ((mode === 1) ? ' selected' : '') + '>Tous les N jours</option>'
     + '</select><span id="z-di"' + ((mode === 1) ? '' : ' hidden') + '>'
-    + '<label>tous les</label> <input type="number" id="z-int" min="1" max="30" '
-    + 'style="width:72px" value="' + esc(z.intervalDays || 2) + '"> <label>jours</label></span></div>'
+    + '<span class="paire"><label>tous les</label>'
+    + '<input type="number" id="z-int" min="1" max="30" '
+    + 'style="width:72px" value="' + esc(z.intervalDays || 2) + '"><label>jours</label></span></span></div>'
+    // Valeur et unite groupees : livrees en vrac au retour a la ligne, la
+    // phrase se coupait entre << mm sur >> et << 24 heures >> sur telephone.
     + '<div class="row"><label>Ne pas arroser s&rsquo;il est tombé plus de</label>'
-    + '<input type="number" id="z-mm" min="0" max="100" step="0.5" style="width:80px" value="'
-    + esc((rain.thresholdMm != null) ? rain.thresholdMm : 0) + '"> <label>mm sur</label>'
+    + '<span class="paire"><input type="number" id="z-mm" min="0" max="100" step="0.5" '
+    + 'style="width:80px" value="' + esc((rain.thresholdMm != null) ? rain.thresholdMm : 0)
+    + '"><label>mm</label></span>'
+    + '<span class="paire"><label>sur</label>'
     + '<input type="number" id="z-h" min="0" max="48" style="width:72px" value="'
-    + esc((rain.forecastHours != null) ? rain.forecastHours : 24) + '"> <label>heures</label></div>'
+    + esc((rain.forecastHours != null) ? rain.forecastHours : 24) + '">'
+    + '<label>heures</label></span></div>'
     + '<div class="row" style="margin-top:16px">'
     + '<button class="primary" id="p-ok">Envoyer au module</button>'
     + '<button id="p-non">Annuler</button></div>';
