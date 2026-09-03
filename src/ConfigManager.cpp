@@ -31,7 +31,7 @@ struct PersistedConfigV1 {
     uint32_t crc32;
 };
 
-struct PersistedConfig {
+struct PersistedConfigV2 {
     uint32_t magic;
     uint16_t schema;
     uint16_t payloadSize;
@@ -47,12 +47,44 @@ struct PersistedConfig {
     uint32_t crc32;
 };
 
-static_assert(offsetof(PersistedConfig, zoneNotificationMasks) ==
+// Schema 3 : source des previsions meteo.
+//
+// Le champ est ajoute EN QUEUE, jamais au milieu. Toute insertion decalerait
+// les zones et ferait rejeter le bloc existant a la relecture -- c'est-a-dire
+// effacerait le planning d'arrosage de quelqu'un.
+//
+// reserved existe pour que le prochain reglage n'impose pas une migration de
+// plus : le compilateur inserait de toute facon ces trois octets de bourrage
+// avant crc32, autant les nommer et s'en servir.
+struct PersistedConfig {
+    uint32_t magic;
+    uint16_t schema;
+    uint16_t payloadSize;
+    CfgWifi wifi;
+    CfgTouch touch;
+    CfgManual manual;
+    CfgNtp ntp;
+    CfgOwm owm;
+    CfgSystem system;
+    CfgDisplay display;
+    CfgZone zones[MAX_ZONES];
+    uint8_t zoneNotificationMasks[MAX_ZONES];
+    uint8_t weatherProvider;
+    uint8_t reserved[3];
+    uint32_t crc32;
+};
+
+static_assert(offsetof(PersistedConfigV2, zoneNotificationMasks) ==
                   offsetof(PersistedConfigV1, crc32),
               "Le prefixe NVS schema 1 doit rester strictement identique");
-static_assert(sizeof(PersistedConfig) ==
+static_assert(sizeof(PersistedConfigV2) ==
                   sizeof(PersistedConfigV1) + MAX_ZONES,
               "Le schema 2 doit ajouter exactement un uint8_t par zone");
+static_assert(offsetof(PersistedConfig, weatherProvider) ==
+                  offsetof(PersistedConfigV2, crc32),
+              "Le prefixe NVS schema 2 doit rester strictement identique");
+static_assert(sizeof(PersistedConfig) == sizeof(PersistedConfigV2) + 4U,
+              "Le schema 3 doit ajouter exactement quatre octets en queue");
 
 uint8_t normalizeActiveZones(uint8_t zones, uint8_t controller) {
     zones = constrain(zones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
@@ -162,6 +194,65 @@ bool ConfigManager::loadNvs() {
     const size_t read = prefs.getBytes(CFG_NVS_KEY, raw, len);
     prefs.end();
 
+    // ── Migration schema 2 -> 3 ──────────────────────────────────────────
+    //
+    // Le bloc de schema 2 est un prefixe exact du schema 3 : on le relit tel
+    // quel et on choisit la valeur du champ ajoute.
+    //
+    // Choix de la source par defaut a la migration : on NE bascule PAS un
+    // module qui marche. Une installation ayant deja une clef OpenWeatherMap
+    // la garde, son comportement ne change pas d'un flash. Une installation
+    // sans clef n'avait aucune meteo : Open-Meteo lui en donne une sans rien
+    // demander. L'utilisateur reste libre de changer depuis l'interface.
+    if (len == sizeof(PersistedConfigV2)) {
+        PersistedConfigV2* v2 = reinterpret_cast<PersistedConfigV2*>(raw);
+        bool valid = read == len && v2->magic == NVS_MAGIC &&
+                     v2->schema == 2U && v2->payloadSize == len;
+        if (valid) {
+            valid = crc32Bytes(raw, offsetof(PersistedConfigV2, crc32)) == v2->crc32;
+        }
+        if (!valid) {
+            _nvsRejected = true;
+            EventLog::log(LOG_ERROR, "Config: bloc NVS schema 2 invalide");
+            free(raw);
+            return false;
+        }
+        _wifi = v2->wifi;
+        _touch = v2->touch;
+        _manual = v2->manual;
+        _ntp = v2->ntp;
+        _owm = v2->owm;
+        _system = v2->system;
+        _display = v2->display;
+        memcpy(_zones, v2->zones, sizeof(_zones));
+        memcpy(_zoneNotificationMasks, v2->zoneNotificationMasks,
+               sizeof(_zoneNotificationMasks));
+        _weatherProvider = (_owm.apiKey[0] != '\0')
+                           ? WEATHER_PROVIDER_OWM : WEATHER_PROVIDER_OPEN_METEO;
+        free(raw);
+        for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+            _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
+        }
+        _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
+                                  ? _system.relayController : RELAY_CONTROLLER_XL9535;
+        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbRelaisPhysical = _system.nbZones;
+        _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
+        _loaded = true;
+        save();
+        Preferences check;
+        bool migrated = false;
+        if (check.begin(CFG_NVS_NAMESPACE, true)) {
+            migrated = check.getBytesLength(CFG_NVS_KEY) == sizeof(PersistedConfig);
+            check.end();
+        }
+        EventLog::log(migrated ? LOG_INFO : LOG_ERROR,
+                      migrated ? "Config: migration NVS schema 2 -> 3 reussie, meteo=%s"
+                               : "Config: migration NVS schema 2 -> 3 non confirmee, meteo=%s",
+                      _weatherProvider == WEATHER_PROVIDER_OWM ? "owm" : "open-meteo");
+        return true;
+    }
+
     if (len == sizeof(PersistedConfigV1)) {
         PersistedConfigV1* legacy = reinterpret_cast<PersistedConfigV1*>(raw);
         bool valid = read == len && legacy->magic == NVS_MAGIC &&
@@ -233,6 +324,8 @@ bool ConfigManager::loadNvs() {
     memcpy(_zones, blob->zones, sizeof(_zones));
     memcpy(_zoneNotificationMasks, blob->zoneNotificationMasks,
            sizeof(_zoneNotificationMasks));
+    _weatherProvider = (blob->weatherProvider <= WEATHER_PROVIDER_OPEN_METEO)
+                       ? blob->weatherProvider : WEATHER_PROVIDER_OWM;
     for (uint8_t z = 0; z < MAX_ZONES; ++z) {
         _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
     }
@@ -440,6 +533,7 @@ void ConfigManager::defaults() {
     _manual = CfgManual{};
     _ntp    = CfgNtp{};
     _owm    = CfgOwm{};
+    _weatherProvider = WEATHER_PROVIDER_OPEN_METEO;
     _system = CfgSystem{};
     _display = CfgDisplay{};
 
@@ -515,6 +609,8 @@ void ConfigManager::save() {
     memset(blob, 0, sizeof(PersistedConfig));
     blob->magic = NVS_MAGIC;
     blob->schema = CFG_NVS_SCHEMA;
+    blob->weatherProvider = _weatherProvider;
+    memset(blob->reserved, 0, sizeof(blob->reserved));
     blob->payloadSize = sizeof(PersistedConfig);
     blob->wifi = _wifi;
     blob->touch = _touch;
@@ -713,6 +809,25 @@ void ConfigManager::setOwm(const char* apiKey, float lat, float lon,
     strlcpy(_owm.country, country && country[0] ? country : "FR",     sizeof(_owm.country));
     save();
     EventBus::configDirty = true;
+}
+
+void ConfigManager::setWeatherProvider(uint8_t provider) {
+    if (provider > WEATHER_PROVIDER_OPEN_METEO) return;
+    if (provider == _weatherProvider) return;
+    _weatherProvider = provider;
+    save();
+    EventBus::configDirty = true;
+}
+
+void ConfigManager::setResolvedCoordinates(float lat, float lon) {
+    if (lat == 0.0f && lon == 0.0f) return;
+    if (_owm.lat == lat && _owm.lon == lon) return;
+    _owm.lat = lat;
+    _owm.lon = lon;
+    save();
+    // Pas de configDirty : la position n'a pas change, on vient seulement de
+    // l'ecrire en clair. Relancer les managers pour cela declencherait un
+    // second appel meteo immediat, juste apres celui qui a resolu la ville.
 }
 
 void ConfigManager::setSystem(const CfgSystem& cfg) {

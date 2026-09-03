@@ -37,7 +37,7 @@
 // que par le WiFi : figer la source dans le firmware imposerait de le
 // reflasher - donc de le demonter - pour changer de canal de mise a jour.
 #define CFG_NVS_WEBASSETS_URL_KEY "waUrl"
-#define CFG_NVS_SCHEMA    2
+#define CFG_NVS_SCHEMA    3
 
 // Longueur maximale de cette URL, terminateur compris.
 static constexpr size_t WEBASSETS_URL_MAX = 160;
@@ -104,6 +104,15 @@ struct CfgOwm {
         strlcpy(country, "FR",     sizeof(country));
     }
 };
+
+// Source des previsions meteo.
+//
+// OWM interroge api.openweathermap.org en HTTP simple et exige une clef.
+// OPEN_METEO interroge api.open-meteo.com en HTTPS, sans clef, et renvoie des
+// agregats deja calcules par jour -- 1,2 Ko contre 17 Ko, sur des modeles
+// Meteo-France (AROME 1,3 km) au-dessus de la France.
+static constexpr uint8_t WEATHER_PROVIDER_OWM        = 0;
+static constexpr uint8_t WEATHER_PROVIDER_OPEN_METEO = 1;
 
 // Limite fonctionnelle actuelle : affichages et sorties exposés de 1 à 8 zones.
 // MAX_ZONES reste à 16 en interne pour préserver la structure des données.
@@ -251,6 +260,7 @@ public:
     const CfgManual& manual() const { return _manual; }
     const CfgNtp&    ntp()    const { return _ntp;    }
     const CfgOwm&    owm()    const { return _owm;    }
+    uint8_t weatherProvider() const { return _weatherProvider; }
     const CfgSystem& system() const { return _system; }
     const CfgZone&   zone(uint8_t z) const;
     uint8_t zoneNotificationMask(uint8_t z) const {
@@ -284,6 +294,10 @@ public:
     void setNtp(const char* server, int32_t gmtOffset, int32_t dstOffset);
 
     // OWM (nouveau v2)
+    void setWeatherProvider(uint8_t provider);
+    // Ecrit les coordonnees resolues a partir du nom de ville, sans toucher au
+    // reste : Open-Meteo ne connait que lat/lon.
+    void setResolvedCoordinates(float lat, float lon);
     void setOwm(const char* apiKey, float lat, float lon,
                const char* units,
                const char* city = "", const char* country = "FR");
@@ -368,6 +382,7 @@ private:
     CfgManual _manual;
     CfgNtp    _ntp;
     CfgOwm    _owm;
+    uint8_t   _weatherProvider = WEATHER_PROVIDER_OWM;
     CfgSystem _system;
     CfgDisplay _display;
     CfgWindAlert _windAlert;
