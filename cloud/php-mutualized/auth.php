@@ -246,6 +246,164 @@ function store_module_config(string $moduleId, array $payload): void
         . 'updated_at = VALUES(updated_at)'
     );
     $stmt->execute([$moduleId, $revision, json_encode($payload, JSON_UNESCAPED_UNICODE), utc_now()]);
+
+    capture_config_backup($moduleId, $revision, $payload);
+}
+
+/**
+ * Nombre d'etats successifs conserves par module, hors sauvegardes epinglees.
+ *
+ * Vingt changements de configuration couvrent largement une saison d'arrosage,
+ * et la table reste sous quelques centaines de kilo-octets par module.
+ */
+const BACKUP_KEEP = 20;
+
+/**
+ * Enregistre l'etat de la configuration s'il differe du dernier connu.
+ *
+ * Appelee a chaque synchronisation, soit une fois par minute. La quasi-totalite
+ * des appels ne doivent RIEN ecrire : sans cela, decrire un jardin qui n'a pas
+ * bouge couterait 1440 lignes par jour. L'empreinte du payload sert de test.
+ *
+ * Ne leve jamais : une sauvegarde qui echoue ne doit pas faire echouer la
+ * synchronisation du module. Elle est journalisee et l'on continue -- le miroir
+ * module_config, lui, a deja ete ecrit.
+ */
+function capture_config_backup(string $moduleId, int $revision, array $payload): void
+{
+    try {
+        // Serialisation figee (memes options que le miroir) pour que
+        // l'empreinte soit stable d'un appel a l'autre.
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if ($json === false) return;
+        $hash = hash('sha256', $json);
+
+        $stmt = db()->prepare(
+            'SELECT payload_hash FROM module_config_backup WHERE module_id = ? ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([$moduleId]);
+        $dernier = $stmt->fetchColumn();
+        if ($dernier !== false && hash_equals((string)$dernier, $hash)) {
+            return;   // rien n'a bouge
+        }
+
+        $ins = db()->prepare(
+            'INSERT INTO module_config_backup (module_id, revision, payload_hash, payload, captured_at) '
+            . 'VALUES (?, ?, ?, ?, ?)'
+        );
+        $ins->execute([$moduleId, $revision, $hash, $json, utc_now()]);
+
+        prune_config_backups($moduleId);
+    } catch (Throwable $e) {
+        error_log('capture_config_backup: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Ne conserve que les BACKUP_KEEP etats les plus recents, plus les epingles.
+ *
+ * L'epinglage existe precisement pour cela : sans lui, une sauvegarde de
+ * reference disparaitrait apres vingt reglages de creneaux, c'est-a-dire
+ * exactement quand on finit par en avoir besoin.
+ */
+function prune_config_backups(string $moduleId): void
+{
+    // LIMIT/OFFSET ne prend pas de parametre lie de facon fiable selon que
+    // PDO emule ou non les requetes preparees : la borne est un entier
+    // constant du code, jamais une valeur venue de l'exterieur.
+    $offset = BACKUP_KEEP - 1;
+    $stmt = db()->prepare(
+        'SELECT id FROM module_config_backup WHERE module_id = ? AND pinned = 0 '
+        . 'ORDER BY id DESC LIMIT 1 OFFSET ' . (int)$offset
+    );
+    $stmt->execute([$moduleId]);
+    $seuil = $stmt->fetchColumn();
+    if ($seuil === false) return;
+
+    $del = db()->prepare(
+        'DELETE FROM module_config_backup WHERE module_id = ? AND pinned = 0 AND id < ?'
+    );
+    $del->execute([$moduleId, (int)$seuil]);
+}
+
+/**
+ * Liste des sauvegardes d'un module, SANS leur contenu.
+ *
+ * Le payload pese environ 2 Ko ; vingt d'un coup alourdiraient la page pour
+ * rien, alors qu'on n'en ouvre qu'une a la fois.
+ */
+function list_config_backups(string $moduleId): array
+{
+    $stmt = db()->prepare(
+        'SELECT id, revision, captured_at, label, pinned, '
+        . 'JSON_LENGTH(payload, ' . chr(39) . '$.zones' . chr(39) . ') AS zones '
+        . 'FROM module_config_backup WHERE module_id = ? ORDER BY id DESC'
+    );
+    $stmt->execute([$moduleId]);
+    $out = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $out[] = [
+            'id'         => (int)$r['id'],
+            'revision'   => (int)$r['revision'],
+            'capturedAt' => $r['captured_at'],
+            'label'      => $r['label'],
+            'pinned'     => (bool)$r['pinned'],
+            'zones'      => $r['zones'] === null ? null : (int)$r['zones'],
+        ];
+    }
+    return $out;
+}
+
+/** Une sauvegarde complete, contenu compris. */
+function config_backup(string $moduleId, int $id): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT id, revision, captured_at, label, pinned, payload '
+        . 'FROM module_config_backup WHERE module_id = ? AND id = ?'
+    );
+    $stmt->execute([$moduleId, $id]);
+    $r = $stmt->fetch();
+    if ($r === false) return null;
+    return [
+        'id'         => (int)$r['id'],
+        'revision'   => (int)$r['revision'],
+        'capturedAt' => $r['captured_at'],
+        'label'      => $r['label'],
+        'pinned'     => (bool)$r['pinned'],
+        'payload'    => json_decode((string)$r['payload'], true),
+    ];
+}
+
+/** Nomme et/ou epingle une sauvegarde. Rend false si elle n'existe pas. */
+function annotate_config_backup(string $moduleId, int $id, ?string $label, ?bool $pinned): bool
+{
+    $champs = [];
+    $args = [];
+    if ($label !== null) {
+        $champs[] = 'label = ?';
+        $args[] = ($label === '' ? null : mb_substr($label, 0, 80));
+    }
+    if ($pinned !== null) {
+        $champs[] = 'pinned = ?';
+        $args[] = $pinned ? 1 : 0;
+    }
+    if ($champs === []) return false;
+
+    // Existence verifiee a part : rowCount() rend 0 quand la valeur ecrite est
+    // identique a l'ancienne, ce qui ferait passer un renommage sans effet pour
+    // une sauvegarde introuvable.
+    $chk = db()->prepare('SELECT 1 FROM module_config_backup WHERE module_id = ? AND id = ?');
+    $chk->execute([$moduleId, $id]);
+    if ($chk->fetchColumn() === false) return false;
+
+    $args[] = $moduleId;
+    $args[] = $id;
+    $stmt = db()->prepare(
+        'UPDATE module_config_backup SET ' . implode(', ', $champs)
+        . ' WHERE module_id = ? AND id = ?'
+    );
+    $stmt->execute($args);
+    return true;
 }
 
 /**

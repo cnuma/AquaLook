@@ -252,6 +252,93 @@ bool httpExchange(Client& client, const char* method, const char* host,
     return true;
 }
 
+// Le reste des reglages : tout ce qui ne concerne pas l'arrosage mais qu'il
+// faudrait ressaisir a la main sur un module de remplacement.
+//
+// Ce que ce bloc ne contient PAS, deliberement : le mot de passe WiFi, la clef
+// OpenWeatherMap et le jeton ntfy. Un secret recopie dans une base distante
+// devient lisible par quiconque accede a cette base ou a ses sauvegardes, et
+// l'utilisateur ne peut plus savoir ou il se trouve. Les trois se ressaisissent
+// une fois au remplacement -- le WiFi par le portail captif de toute facon
+// obligatoire pour joindre le reseau. Le SSID est absent pour la meme raison :
+// le portail scanne et propose la liste, le stocker ne ferait qu'associer le
+// compte a un reseau physique sans rien faire gagner.
+//
+// Ces reglages sont ranges a part des zones : l'editeur en ligne ne travaille
+// que sur payload.zones et payload.system, il ignore cette section sans avoir
+// a la connaitre.
+void buildSettingsPayload(const ConfigManager& cm, JsonObject settings) {
+    const CfgNtp& ntp = cm.ntp();
+    JsonObject jntp = settings["ntp"].to<JsonObject>();
+    jntp["server"]    = ntp.server;
+    jntp["gmtOffset"] = ntp.gmtOffset;
+    jntp["dstOffset"] = ntp.dstOffset;
+
+    // Sans la clef : la localisation seule ne vaut rien pour un tiers, la clef si.
+    const CfgOwm& owm = cm.owm();
+    JsonObject jowm = settings["owm"].to<JsonObject>();
+    jowm["lat"]     = owm.lat;
+    jowm["lon"]     = owm.lon;
+    jowm["units"]   = owm.units;
+    jowm["city"]    = owm.city;
+    jowm["country"] = owm.country;
+    // Dit si une clef est en place, sans jamais la reveler : sans cela, une
+    // restauration laisserait croire la meteo fonctionnelle alors qu'il manque
+    // la seule chose que la sauvegarde ne pouvait pas rapporter.
+    jowm["apiKeySet"] = owm.apiKey[0] != '\0';
+
+    settings["manualDurationMin"] = cm.manual().durationMin;
+
+    const CfgWindAlert& wind = cm.windAlert();
+    JsonObject jwind = settings["wind"].to<JsonObject>();
+    jwind["gustKmh"]   = wind.gustKmh;
+    jwind["severeKmh"] = wind.severeKmh;
+
+    // Propre a la dalle montee, pas au jardin : conservee parce qu'un module
+    // repare avec le meme ecran repart sans recalibrage.
+    const CfgTouch& touch = cm.touch();
+    JsonObject jtouch = settings["touch"].to<JsonObject>();
+    jtouch["xMin"] = touch.xMin;
+    jtouch["xMax"] = touch.xMax;
+    jtouch["yMin"] = touch.yMin;
+    jtouch["yMax"] = touch.yMax;
+
+    const CfgDisplay& d = cm.display();
+    JsonObject jd = settings["display"].to<JsonObject>();
+    jd["cBg"]       = d.cBg;
+    jd["cSurface"]  = d.cSurface;
+    jd["cSurface2"] = d.cSurface2;
+    jd["cBorder"]   = d.cBorder;
+    jd["cText"]     = d.cText;
+    jd["cText2"]    = d.cText2;
+    jd["cMuted"]    = d.cMuted;
+    jd["cActiveBg"] = d.cActiveBg;
+    jd["cZone0"]    = d.cZone0;
+    jd["cZone1"]    = d.cZone1;
+    jd["cZone2"]    = d.cZone2;
+    jd["cZone3"]    = d.cZone3;
+    jd["rSm"]        = d.rSm;
+    jd["rMd"]        = d.rMd;
+    jd["rLg"]        = d.rLg;
+    jd["accentBarW"] = d.accentBarW;
+    jd["refreshNomMs"] = d.refreshNomMs;
+    jd["refreshActMs"] = d.refreshActMs;
+    jd["planGap"] = d.planGap;
+    jd["g2Gpad"]  = d.g2Gpad;
+    jd["g4Gpad"]  = d.g4Gpad;
+    jd["showWeatherIcon"] = d.showWeatherIcon;
+    jd["showWeatherTemp"] = d.showWeatherTemp;
+    JsonObject jtips = jd["weatherTips"].to<JsonObject>();
+    jtips["condition"] = d.weatherTipCondition;
+    jtips["temp"]      = d.weatherTipTemp;
+    jtips["rain"]      = d.weatherTipRain;
+    jtips["pop"]       = d.weatherTipPop;
+    jtips["humidity"]  = d.weatherTipHumidity;
+    jtips["wind"]      = d.weatherTipWind;
+    jtips["gust"]      = d.weatherTipGust;
+    jtips["clouds"]    = d.weatherTipClouds;
+    jtips["pressure"]  = d.weatherTipPressure;
+}
 // Serialise la configuration effective du module : reglages systeme et
 // creneaux des zones actives uniquement (system().nbZones), jamais les
 // MAX_ZONES emplacements en capacite.
@@ -259,11 +346,13 @@ bool httpExchange(Client& client, const char* method, const char* host,
 // Les creneaux sont encodes en tableaux [heure, minute, duree, actif]
 // plutot qu'en objets nommes. A pleine capacite (16 zones x 8 plannings
 // x 5 creneaux = 640 creneaux) la forme nommee depasserait 19 Ko quand la
-// forme tableau tient sous 7 Ko ; avec 2 zones actives on reste vers 1 Ko.
+// forme tableau tient sous 7 Ko ; avec 2 zones actives on reste vers 1 Ko,
+// auxquels s'ajoute environ 1 Ko de reglages hors arrosage (settings).
 // La limite serveur est de 64 Ko (MAX_PAYLOAD_BYTES), donc large, mais le
-// tas du module reste la vraie contrainte.
+// tas du module reste la vraie contrainte : ce corps est conserve en String
+// pendant toute la duree de la synchronisation.
 void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
-    payload["schema"] = 1;
+    payload["schema"] = 2;
     // Version de la configuration : c'est sur elle que le serveur s'appuie
     // pour proposer une modification, et c'est elle que le module compare a
     // baseRevision avant d'appliquer quoi que ce soit
@@ -317,6 +406,8 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
             entry.add(slot.enabled ? 1 : 0);
         }
     }
+
+    buildSettingsPayload(cm, payload["settings"].to<JsonObject>());
 }
 
 }  // namespace

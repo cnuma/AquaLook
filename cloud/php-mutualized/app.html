@@ -38,6 +38,20 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .row+.row{margin-top:12px}
 label{color:var(--muted);font-size:13px}
 .hint{color:var(--muted);font-size:13px;margin-top:10px}
+/* Sauvegardes : une ligne cliquable par etat conserve. */
+.sv{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 11px;margin-bottom:6px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface);cursor:pointer;font-size:13px}
+.sv:hover{background:var(--green-dim)}
+.sv .nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv .qd{color:var(--muted);font-size:12px;white-space:nowrap}
+.sv .ep{color:var(--amber)}
+.sv.cour{border-color:var(--green)}
+.sv.cour .qd{color:var(--green)}
+/* Reglages sauvegardes, en lecture seule. */
+.reg{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:12px 0 0}
+.reg dt{color:var(--muted)}
+.reg dd{margin:0}
 .mod{display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;
      border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .mod:hover{border-color:var(--green);background:var(--green-dim)}
@@ -396,10 +410,172 @@ async function recharger(){
     + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div>'
     + '<p class="hint">Cliquez un jour pour voir et modifier ses créneaux, ou le nom '
     + 'd&rsquo;une zone pour ses réglages.</p></div>'
-    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>';
+    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>'
+    + '<div class="card"><h2>Sauvegarde de l&rsquo;installation</h2>'
+    + '<div id="sauv"></div>'
+    + '<p class="hint">Chaque état différent de la configuration est conservé ici, '
+    + 'de quoi revenir en arrière ou remonter l&rsquo;installation sur un module '
+    + 'de remplacement.</p></div>';
 
   rendrePlanning();
   rendreCommandes(d.commandes || []);
+  chargerSauvegardes();
+}
+
+// ── Sauvegarde de l'installation ───────────────────────────────────────────
+//
+// Distinct du miroir affiche plus haut, qui ne garde que l'etat courant et
+// l'ecrase a chaque synchronisation : une configuration abimee sur le module y
+// remplacerait la bonne en moins d'une minute. Une sauvegarde suppose de
+// pouvoir remonter le temps.
+
+let SAUV = [];
+
+async function chargerSauvegardes(){
+  const el = $('sauv');
+  if (!el) return;
+  try {
+    SAUV = await api('/app/backups?moduleId=' + encodeURIComponent(MOD));
+  } catch (e) {
+    el.innerHTML = '<div class="note ko">Sauvegardes illisibles : ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (!SAUV.length) {
+    el.innerHTML = '<div class="note warn">Aucun état enregistré pour l&rsquo;instant. '
+                 + 'Le premier arrive à la prochaine synchronisation du module.</div>';
+    return;
+  }
+  // La premiere ligne est l'etat courant : c'est le dernier que le module a
+  // envoye, donc ce qu'il porte en ce moment.
+  el.innerHTML = SAUV.map((s, k) => {
+    const nom = s.label ? esc(s.label)
+              : (k === 0 ? 'État actuel' : 'Configuration n&deg;' + esc(s.revision));
+    return '<button class="sv' + (k === 0 ? ' cour' : '') + '" data-sv="' + s.id + '">'
+         + (s.pinned ? '<span class="ep" title="conservée hors purge">&#9733;</span>' : '')
+         + '<span class="nm">' + nom + '</span>'
+         + '<span class="qd">' + esc(depuis(s.capturedAt)) + '</span></button>';
+  }).join('');
+  el.querySelectorAll('[data-sv]').forEach(b => {
+    b.onclick = () => ouvrirSauvegarde(Number(b.dataset.sv));
+  });
+}
+
+// Libelles des reglages hors arrosage. Une cle absente de cette table n'est pas
+// affichee : mieux vaut ne rien montrer qu'un nom de champ brut.
+const LIB_REG = {
+  ntp:               'Serveur de temps',
+  owm:               'Météo',
+  wind:              'Alerte vent',
+  touch:             'Calibration tactile',
+  display:           'Affichage',
+  manualDurationMin: 'Arrosage manuel'
+};
+
+function resumeReglage(cle, v){
+  if (cle === 'ntp') {
+    return esc(v.server) + ' (UTC' + (v.gmtOffset >= 0 ? '+' : '') + (v.gmtOffset / 3600) + ')';
+  }
+  if (cle === 'owm') {
+    const ou = v.city ? esc(v.city) + ', ' + esc(v.country) : esc(v.lat) + ' / ' + esc(v.lon);
+    // Le dire ici evite de croire la meteo restaurable alors qu'il manque la
+    // seule chose que la sauvegarde ne rapporte volontairement pas.
+    return ou + (v.apiKeySet ? '' : ' &mdash; aucune clé configurée');
+  }
+  if (cle === 'wind') {
+    return 'rafale ' + esc(v.gustKmh) + ' km/h, sévère ' + esc(v.severeKmh) + ' km/h';
+  }
+  if (cle === 'touch') {
+    return 'X ' + esc(v.xMin) + '&ndash;' + esc(v.xMax)
+         + ', Y ' + esc(v.yMin) + '&ndash;' + esc(v.yMax);
+  }
+  if (cle === 'display') return Object.keys(v).length + ' réglages de thème';
+  if (cle === 'manualDurationMin') return esc(v) + ' minutes';
+  return '';
+}
+
+async function ouvrirSauvegarde(id){
+  let s;
+  try {
+    s = await api('/app/backup?moduleId=' + encodeURIComponent(MOD) + '&id=' + id);
+  } catch (e) { toast(e.message, true); return; }
+
+  const zones = (s.payload && s.payload.zones) || [];
+  const reg   = (s.payload && s.payload.settings) || null;
+
+  // Nombre de creneaux actifs : c'est ce qui distingue reellement deux
+  // sauvegardes aux yeux de quelqu'un qui cherche laquelle restaurer.
+  let actifs = 0;
+  zones.forEach(z => {
+    const src = (Number(z.mode) === 1) ? [z.interval || []] : (z.days || []);
+    src.forEach(j => (j || []).forEach(c => {
+      if (Array.isArray(c) && Number(c[3]) === 1) actifs++;
+    }));
+  });
+
+  let h = '<h3>' + (s.label ? esc(s.label) : 'Configuration n&deg;' + esc(s.revision)) + '</h3>'
+        + '<p class="sous">Enregistrée ' + esc(depuis(s.capturedAt)) + ' &middot; '
+        + zones.length + ' zone(s) &middot; ' + actifs + ' créneau(x) actif(s).</p>';
+
+  if (reg) {
+    let lignes = '';
+    Object.keys(LIB_REG).forEach(c => {
+      if (reg[c] == null) return;
+      const d = resumeReglage(c, reg[c]);
+      if (!d) return;
+      lignes += '<dt>' + LIB_REG[c] + '</dt><dd>' + d + '</dd>';
+    });
+    if (lignes) h += '<dl class="reg">' + lignes + '</dl>';
+  }
+
+  // Dire ce que la restauration ne fait pas : une sauvegarde en laquelle on
+  // croit a tort est pire qu'une sauvegarde dont on connait les limites.
+  h += '<div class="note warn">La restauration renvoie <b>les créneaux d&rsquo;arrosage</b> '
+     + 'au module. Les réglages ci-dessus sont conservés et consultables, mais le module '
+     + 'ne sait pas encore les recevoir : ils se ressaisissent depuis son interface.</div>'
+     + '<div class="note">Le mot de passe WiFi, la clé météo et le jeton de notification '
+     + 'ne sont <b>jamais</b> envoyés au serveur. Ils se ressaisissent une fois sur un '
+     + 'module neuf.</div>';
+
+  h += '<div class="row" style="margin-top:16px">'
+     + '<input id="sv-nom" style="flex:1" maxlength="80" '
+     + 'placeholder="Nommer cette sauvegarde" value="' + esc(s.label || '') + '"></div>'
+     + '<div class="row" style="margin-top:10px">'
+     + '<button class="primary" id="sv-res">Restaurer les créneaux</button>'
+     + '<button id="sv-enr">Enregistrer le nom</button>'
+     + '<button id="sv-ep">' + (s.pinned ? 'Ne plus conserver' : 'Conserver toujours') + '</button>'
+     + '<button class="ghost" id="sv-non">Fermer</button></div>';
+
+  $('panneau').innerHTML = h;
+  $('voile').classList.add('on');
+  $('sv-non').onclick = fermer;
+  $('sv-enr').onclick = () => annoterSauvegarde(id, { label: $('sv-nom').value.trim() });
+  $('sv-ep').onclick  = () => annoterSauvegarde(id, { pinned: !s.pinned });
+  $('sv-res').onclick = e => restaurerSauvegarde(id, e.target);
+}
+
+async function annoterSauvegarde(id, champs){
+  try {
+    await api('/app/backup/annotate', { method: 'POST',
+      body: JSON.stringify(Object.assign({ moduleId: MOD, id: id }, champs)) });
+    fermer();
+    await chargerSauvegardes();
+    toast('Sauvegarde mise à jour.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function restaurerSauvegarde(id, bouton){
+  bouton.disabled = true;
+  try {
+    const r = await api('/app/backup/restore', { method: 'POST',
+      body: JSON.stringify({ moduleId: MOD, id: id }) });
+    fermer();
+    await recharger();
+    toast('Restauration envoyée : ' + r.zones + ' zone(s). Le module l&rsquo;applique '
+        + 'à sa prochaine synchronisation.');
+  } catch (e) {
+    bouton.disabled = false;
+    toast(e.message, true);
+  }
 }
 
 function rendrePlanning(){

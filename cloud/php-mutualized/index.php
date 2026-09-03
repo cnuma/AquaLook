@@ -416,6 +416,125 @@ try {
         ]);
     }
 
+    // ── Sauvegarde de l'installation ────────────────────────────────────────
+    //
+    // Le module renvoie sa configuration a chaque synchronisation ; le serveur
+    // en garde les etats successifs distincts. Cela sert le jour ou le module
+    // est remplace, mais aussi le jour bien plus frequent ou l'on veut
+    // simplement revenir a ce qui marchait la semaine derniere.
+
+    if ($method === 'GET' && $path === '/app/backups') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        send_json(200, list_config_backups($moduleId));
+    }
+
+    if ($method === 'GET' && $path === '/app/backup') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $moduleId = $_GET['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        $sauvegarde = config_backup($moduleId, (int)($_GET['id'] ?? 0));
+        if ($sauvegarde === null) {
+            send_json(404, ['detail' => 'sauvegarde inconnue']);
+        }
+        send_json(200, $sauvegarde);
+    }
+
+    if ($method === 'POST' && $path === '/app/backup/annotate') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        $label  = array_key_exists('label', $body) ? (string)$body['label'] : null;
+        $pinned = array_key_exists('pinned', $body) ? (bool)$body['pinned'] : null;
+        if (!annotate_config_backup($moduleId, (int)($body['id'] ?? 0), $label, $pinned)) {
+            send_json(404, ['detail' => 'sauvegarde inconnue']);
+        }
+        send_json(200, ['ok' => true]);
+    }
+
+    // Restauration : fabrique une commande config.apply a partir d'un etat
+    // sauvegarde. Deux points qui ne sont pas des details.
+    //
+    // 1. Elle emprunte le canal ORDINAIRE. Le module la juge comme n'importe
+    //    quelle autre commande, verrouillage optimiste compris, et garde le
+    //    droit de la refuser. Rien ici ne permet au serveur d'imposer un etat.
+    //
+    // 2. Elle ne restaure QUE les creneaux d'arrosage. La section settings
+    //    (NTP, meteo, affichage, tactile) est sauvegardee et consultable, mais
+    //    le firmware n'accepte pas encore de la reecrire. La reponse le dit
+    //    explicitement plutot que de laisser croire a une restauration
+    //    complete -- une sauvegarde en laquelle on croit a tort est pire
+    //    qu'une sauvegarde dont on connait les limites.
+    if ($method === 'POST' && $path === '/app/backup/restore') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        $sauvegarde = config_backup($moduleId, (int)($body['id'] ?? 0));
+        if ($sauvegarde === null) {
+            send_json(404, ['detail' => 'sauvegarde inconnue']);
+        }
+        $zones = $sauvegarde['payload']['zones'] ?? null;
+        if (!is_array($zones) || $zones === []) {
+            send_json(409, ['detail' => 'cette sauvegarde ne contient aucune zone']);
+        }
+
+        // baseRevision vient de l'etat COURANT, pas de la sauvegarde : c'est
+        // la revision que le module porte maintenant. Renvoyer celle d'un
+        // etat passe ferait echouer toute restauration, puisque la revision
+        // ne fait que croitre.
+        $courante = module_config($moduleId);
+        if ($courante === null) {
+            send_json(409, [
+                'detail' => 'configuration du module inconnue du serveur : attendez sa prochaine synchronisation',
+            ]);
+        }
+
+        $enAttente = pending_config_command($moduleId);
+        if ($enAttente !== null) {
+            // Une restauration remplace l'intention en cours au lieu de
+            // fusionner avec elle : revenir a un etat connu n'a de sens que
+            // si c'est bien CET etat qui arrive, non un melange.
+            cancel_command($enAttente['correlationId'],
+                'remplacee par une restauration de sauvegarde');
+        }
+
+        $commande = ['type' => 'config.apply', 'baseRevision' => $courante['revision'], 'zones' => $zones];
+        check_payload_size($commande);
+        $correlationId = create_command($moduleId, $commande,
+            'restauration:' . $user['email'] . ':sauvegarde#' . $sauvegarde['id']);
+        send_json(200, [
+            'correlationId' => $correlationId,
+            'baseRevision'  => $courante['revision'],
+            'zones'         => count($zones),
+            'remplace'      => $enAttente !== null,
+            // Ce que la restauration NE fait pas, dit sur place.
+            'nonRestaure'   => array_keys($sauvegarde['payload']['settings'] ?? []),
+        ]);
+    }
+
     // ── Routes admin (jeton admin) ──────────────────────────────────────────
 
     // La console d'administration est un fichier statique servi par Apache
