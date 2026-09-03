@@ -52,7 +52,11 @@ public:
         MANUAL_TEST,
         ZONE_EVENT,
         UPDATE_AVAILABLE,
-        WEB_ASSETS_UPDATE_AVAILABLE
+        WEB_ASSETS_UPDATE_AVAILABLE,
+        // Reglages recus du serveur et appliques -- ou refuses. L'utilisateur
+        // doit savoir qu'un arrosage a change sans qu'il touche au module :
+        // c'est le seul evenement ou la configuration bouge a distance.
+        REMOTE_CONFIG
     };
 
     enum class WorkerResult : uint8_t {
@@ -81,6 +85,11 @@ public:
                            bool preserveTokenWhenEmpty);
     static bool requestTest();
     static bool enqueueZoneEvent(uint8_t zone, bool active);
+    /** Signale l'arrivee de reglages venus du serveur. detail est repris tel
+     *  quel dans le message : c'est deja la phrase que le module renvoie au
+     *  serveur en accuse. */
+    static bool enqueueRemoteConfig(bool applied, uint8_t champs,
+                                    uint32_t revision, const char* detail);
 
 private:
     static void loadConfig();

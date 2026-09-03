@@ -84,6 +84,18 @@ NotificationManager::WorkType g_retryWork = NotificationManager::WorkType::NONE;
 volatile bool g_testPending = false;
 volatile bool g_updatePending = false;
 volatile bool g_webAssetsUpdatePending = false;
+
+// Un seul emplacement, volontairement : deux arrivees de reglages coup sur
+// coup n'ont pas d'interet a etre notifiees separement, seule la derniere
+// decrit l'etat du module.
+struct RemoteConfigEvent {
+    bool     applied  = false;
+    uint8_t  champs   = 0U;
+    uint32_t revision = 0U;
+    char     detail[72] = "";
+};
+RemoteConfigEvent g_remoteConfig;
+volatile bool g_remoteConfigPending = false;
 MaintenanceResult g_updateResult;
 uint32_t g_attempts = 0U;
 uint32_t g_nextAttemptMs = 0U;
@@ -332,6 +344,19 @@ bool NotificationManager::requestTest() {
     return true;
 }
 
+bool NotificationManager::enqueueRemoteConfig(bool applied, uint8_t champs,
+                                              uint32_t revision, const char* detail) {
+    begin();
+    portENTER_CRITICAL(&g_mux);
+    g_remoteConfig.applied  = applied;
+    g_remoteConfig.champs   = champs;
+    g_remoteConfig.revision = revision;
+    copyText(g_remoteConfig.detail, sizeof(g_remoteConfig.detail), detail ? detail : "");
+    g_remoteConfigPending = true;
+    portEXIT_CRITICAL(&g_mux);
+    return true;
+}
+
 bool NotificationManager::enqueueZoneEvent(uint8_t zone, bool active) {
     if (!g_zoneConfig || zone >= g_zoneConfig->nbZones()) return false;
     const uint8_t required = active ? ZONE_NOTIFY_START : ZONE_NOTIFY_STOP;
@@ -468,6 +493,8 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
     if (result == WorkerResult::SUCCESS) {
         if (g_work == WorkType::MANUAL_TEST) {
             g_testPending = false;
+        } else if (g_work == WorkType::REMOTE_CONFIG) {
+            g_remoteConfigPending = false;
         } else if (g_work == WorkType::ZONE_EVENT) {
             portENTER_CRITICAL(&g_mux);
             if (g_zoneEventCount > 0U) {
@@ -550,6 +577,7 @@ NotificationManager::WorkType NotificationManager::nextWork() {
     if (g_testPending) return WorkType::MANUAL_TEST;
     if (g_updatePending) return WorkType::UPDATE_AVAILABLE;
     if (g_webAssetsUpdatePending) return WorkType::WEB_ASSETS_UPDATE_AVAILABLE;
+    if (g_remoteConfigPending) return WorkType::REMOTE_CONFIG;
     if (g_zoneEventCount > 0U) return WorkType::ZONE_EVENT;
     return WorkType::NONE;
 }
@@ -691,6 +719,27 @@ bool NotificationManager::sendCurrentWork() {
                        "Depuis la page /ota, section Ressources Web.";
             priority = "default";
             tags = "arrow_up,globe_with_meridians";
+            break;
+        case WorkType::REMOTE_CONFIG:
+            if (g_remoteConfig.applied) {
+                title = "AquaLook - reglages recus";
+                message = "Des reglages envoyes depuis l'espace en ligne viennent d'etre "
+                          "appliques.\n";
+                message += g_remoteConfig.champs;
+                message += " reglage(s), configuration n";
+                message += String(g_remoteConfig.revision);
+                message += ".";
+                tags = "gear,cloud";
+            } else {
+                title = "AquaLook - reglages a distance refuses";
+                message = "Des reglages envoyes depuis l'espace en ligne ont ete REFUSES, "
+                          "et AUCUN n'a ete applique.\n";
+                message += g_remoteConfig.detail;
+                message += "\nLe module refuse en bloc quand ses reglages ont change "
+                           "entre-temps. Rouvrez l'espace en ligne et renvoyez.";
+                priority = "default";
+                tags = "warning,cloud";
+            }
             break;
         default:
             client.stop();

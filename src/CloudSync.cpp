@@ -13,6 +13,7 @@
 #include "ScheduleManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "NotificationManager.h"
 #include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
 #include "OtaTlsTrust.h"
@@ -885,6 +886,9 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
                       "CloudSync: commande refusee, config modifiee localement "
                       "(base=%lu courant=%lu)",
                       (unsigned long)base, (unsigned long)current);
+        // Prevenir : c'est le seul cas ou une demande faite depuis l'espace en
+        // ligne ne produit RIEN, et ou l'utilisateur peut etre ailleurs.
+        NotificationManager::enqueueRemoteConfig(false, 0U, current, _pendingAck.detail);
         return;
     }
 
@@ -1036,6 +1040,10 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
              (unsigned)applied, (unsigned long)_configTarget->configRevision());
     EventLog::log(LOG_INFO, "CloudSync: commande appliquee, %u champ(s), revision=%lu",
                   (unsigned)applied, (unsigned long)_configTarget->configRevision());
+    // Une configuration qui change sans que personne n'ait touche au module
+    // merite d'etre annoncee : c'est le seul evenement de ce genre.
+    NotificationManager::enqueueRemoteConfig(true, applied,
+                                             _configTarget->configRevision(), "");
 }
 
 void CloudSyncScheduler::applyPendingResult() {
@@ -1055,7 +1063,17 @@ void CloudSyncScheduler::applyPendingResult() {
                   "CloudSync: cycle rapport=%s config=%s cmd=%s",
                   result.reportSuccess ? "ok" : "echec",
                   result.configSuccess ? "ok" : "echec",
-                  result.commandReceived ? (result.ackSuccess ? "ok" : "echec") : "aucune");
+                  // "accuse-differe" et non "echec" : une commande fraichement
+                  // recue repart TOUJOURS sans accuse, par conception -- c'est
+                  // la boucle principale qui l'applique, et l'accuse part au
+                  // cycle suivant. Journaliser cela comme un echec fait
+                  // soupconner une panne la ou tout se passe comme prevu ;
+                  // constate le 2 septembre 2026 en suivant la premiere
+                  // commande reelle, ou la ligne disait "cmd=echec" alors que
+                  // la commande venait d'etre appliquee avec succes.
+                  result.commandReceived
+                      ? (result.ackSuccess ? "accuse-ok" : "accuse-differe")
+                      : "aucune");
     if (!ok && result.detail[0]) {
         EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
     }
