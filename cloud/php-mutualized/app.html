@@ -317,6 +317,23 @@ function indexerAttente(cmds){
   return idx;
 }
 
+// Vrai si ce jour porte au moins un creneau REELLEMENT modifie. Marquer un
+// jour parce qu'une commande le mentionne, sans regarder si elle le change,
+// mettrait un point sur presque tous les jours.
+function jourModifie(i, d){
+  const att = attenteZone(i);
+  if (!att || !att.jours[d]) return false;
+  const z = CFG.payload.zones[i] || {};
+  const jours = Array.isArray(z.days) ? z.days : [];
+  const src = Array.isArray(jours[d]) ? jours[d] : [];
+  return Object.keys(att.jours[d]).some(r => {
+    const s = att.jours[d][r];
+    const c = Array.isArray(src[r]) ? src[r] : [6, 0, 0, 0];
+    return s.h !== (Number(c[0]) || 0) || s.m !== (Number(c[1]) || 0)
+        || s.dur !== (Number(c[2]) || 10) || !!s.on !== (Number(c[3]) === 1);
+  });
+}
+
 function attenteZone(i){
   return (ATTENTE && ATTENTE.zones[i]) ? ATTENTE.zones[i] : null;
 }
@@ -369,11 +386,16 @@ function rendreCorps(i){
     + '<input type="number" id="rh' + i + '" min="0" max="48" style="width:70px" '
     + 'value="' + esc(rain.forecastHours != null ? rain.forecastHours : 24) + '"> <label>heures</label></div>';
 
+  if (att) {
+    h += '<div class="note warn">Des modifications sont déjà envoyées et attendent la '
+       + 'prochaine synchronisation du module. Elles sont <b>surlignées</b> ci-dessous, '
+       + 'et incluses dans ce que vous voyez : continuez simplement à éditer.</div>';
+  }
   if (mode === 0) {
     // Signaler les jours porteurs d'une modification en attente : sans cela,
     // rien n'indique qu'un autre jour attend d'etre applique.
     h += '<div class="days">' + JOURS.map((j,d) => {
-      const enAtt = !!(att && att.jours[d]);
+      const enAtt = jourModifie(i, d);
       const cls = [d === JOUR ? 'on' : '', enAtt ? 'attente' : ''].filter(Boolean).join(' ');
       return '<button data-j="' + d + '"' + (cls ? ' class="' + cls + '"' : '') + '>'
            + j + (enAtt ? ' &bull;' : '') + '</button>';
@@ -382,11 +404,6 @@ function rendreCorps(i){
   } else {
     h += '<div class="hint" style="margin-top:14px">Horaires appliqués les jours d&rsquo;arrosage.</div>';
     h += '<div id="sl' + i + '"></div>';
-  }
-  if (att) {
-    h += '<div class="note warn">Des modifications sont déjà envoyées et attendent la '
-       + 'prochaine synchronisation du module. Elles sont <b>surlignées</b> ci-dessous, '
-       + 'et incluses dans ce que vous voyez : continuez simplement à éditer.</div>';
   }
   h += '<div class="row" style="margin-top:14px">'
     + '<button class="primary" id="s' + i + '">Envoyer au module</button>'
@@ -413,14 +430,20 @@ function creneauxDe(z, mode){
 // Creneau tel qu'il SERA : celui du module, remplace par celui en attente s'il
 // y en a un. Rend aussi de quoi le signaler.
 function creneauEffectif(i, mode, rang, brut){
+  const c = Array.isArray(brut) ? brut : [6, 0, 0, 0];
+  const module = { h: Number(c[0]) || 0, m: Number(c[1]) || 0,
+                   dur: Number(c[2]) || 10, on: Number(c[3]) === 1 };
   const att = attenteZone(i);
   const s = att ? (mode === 1 ? att.inter[rang] : (att.jours[JOUR] || {})[rang]) : null;
-  if (s) {
-    return { h: s.h, m: s.m, dur: s.dur, on: !!s.on, attente: true };
-  }
-  const c = Array.isArray(brut) ? brut : [6, 0, 0, 0];
-  return { h: Number(c[0]) || 0, m: Number(c[1]) || 0,
-           dur: Number(c[2]) || 10, on: Number(c[3]) === 1, attente: false };
+  if (!s) return Object.assign({ attente: false }, module);
+
+  // Ne signaler que ce qui CHANGE. L'envoi transmet toujours les cinq
+  // creneaux, y compris ceux qu'on n'a pas touches ; les marquer tous vidait
+  // la mention de son sens -- cinq lignes "en attente" dont trois inchangees
+  // et desactivees.
+  const identique = s.h === module.h && s.m === module.m
+                 && s.dur === module.dur && !!s.on === module.on;
+  return { h: s.h, m: s.m, dur: s.dur, on: !!s.on, attente: !identique };
 }
 
 function rendreCreneaux(i){
