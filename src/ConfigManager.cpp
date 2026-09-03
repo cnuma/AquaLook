@@ -176,7 +176,16 @@ bool ConfigManager::loadNvs() {
     }
 
     const size_t len = prefs.getBytesLength(CFG_NVS_KEY);
-    if (len != sizeof(PersistedConfig) && len != sizeof(PersistedConfigV1)) {
+    // Toute taille historique encore migrable doit figurer ici, SANS EXCEPTION.
+    //
+    // Cette garde s'execute avant les branches de migration : une taille
+    // oubliee ne produit pas une migration ratee mais un bloc rejete, donc une
+    // configuration d'usine ecrite par-dessus. Le 3 septembre 2026, avoir
+    // ajoute la branche schema 2 -> 3 sans toucher a cette ligne a efface le
+    // WiFi et le planning du module d'essai.
+    if (len != sizeof(PersistedConfig) &&
+        len != sizeof(PersistedConfigV2) &&
+        len != sizeof(PersistedConfigV1)) {
         _nvsRejected = len != 0U;
         prefs.end();
         if (len != 0) EventLog::log(LOG_WARN, "Config: taille NVS invalide (%u/%u)",
