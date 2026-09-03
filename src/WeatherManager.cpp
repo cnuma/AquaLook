@@ -702,10 +702,15 @@ bool WeatherManager::resolveCoordinates(FetchRequest& request, FetchResult& resu
     filtre["results"][0]["latitude"] = true;
     filtre["results"][0]["longitude"] = true;
 
+    // Meme raison que pour les previsions : le corps peut arriver en morceaux.
+    // Le filtre reste utile, il evite de construire en memoire la liste des
+    // codes postaux de la commune.
+    const String corps = http.getString();
+    http.end();
+
     JsonDocument doc;
     const DeserializationError err = deserializeJson(
-        doc, http.getStream(), DeserializationOption::Filter(filtre));
-    http.end();
+        doc, corps, DeserializationOption::Filter(filtre));
     if (err) {
         strlcpy(result.error, "geocodage: JSON illisible", sizeof(result.error));
         return false;
@@ -764,11 +769,20 @@ bool WeatherManager::fetchOpenMeteo(FetchRequest& request, FetchResult& result) 
         http.end();
         return false;
     }
-    result.payloadSize = http.getSize();
+    // getString() et non getStream() : Open-Meteo repond en morceaux
+    // (transfer-encoding: chunked, d'ou un getSize() a -1), et le flux brut
+    // porte alors les tailles hexadecimales de chaque morceau au milieu du
+    // corps. deserializeJson bute dessus avec InvalidInput. HTTPClient sait
+    // recomposer le corps, mais seulement par cette voie.
+    //
+    // Le cout memoire qui avait justifie le flux pour OpenWeatherMap ne
+    // s'applique pas ici : la reponse agregee fait ~1,3 Ko, pas 17 Ko.
+    const String corps = http.getString();
+    http.end();
+    result.payloadSize = static_cast<int32_t>(corps.length());
 
     JsonDocument doc;
-    const DeserializationError err = deserializeJson(doc, http.getStream());
-    http.end();
+    const DeserializationError err = deserializeJson(doc, corps);
     if (err) {
         snprintf(result.error, sizeof(result.error), "JSON: %.40s", err.c_str());
         return false;
