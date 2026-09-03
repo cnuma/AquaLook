@@ -286,11 +286,26 @@ async function voirListe(){
 // s'affichaient alors sur TOUTES les lignes du planning, y compris des zones
 // que la commande ne mentionnait pas. Constate le 3 septembre 2026.
 function indexerCommandes(cmds, etat){
-  const choisies = (cmds || []).filter(c => c.state === etat);
+  const liste = cmds || [];
+  // Un refus n'est affichable que s'il est la DERNIERE chose qui soit arrivee.
+  //
+  // Prendre le refus le plus recent ne suffisait pas : une commande reussie
+  // envoyee apres lui le rend caduc, et pourtant les croix restaient. Le
+  // planning annoncait des tentatives refusees alors que tout venait d'etre
+  // applique -- constate le 3 septembre 2026, apres un "30 champ(s)
+  // applique(s)". Toute commande posterieure, reussie ou en attente, remplace
+  // l'intention qui avait ete refusee.
+  if (etat === 'refused') {
+    return (liste.length && liste[0].state === 'refused')
+      ? construireIndex([liste[0]]) : null;
+  }
+  const choisies = liste.filter(c => c.state === etat);
   if (!choisies.length) return null;
-  // Pour un refus, seul le plus recent compte : garder les anciens ferait
-  // trainer des echecs sur des creneaux depuis longtemps corriges.
-  const source = (etat === 'refused') ? [choisies[0]] : choisies;
+  const source = choisies;
+  return construireIndex(source);
+}
+
+function construireIndex(source){
   const idx = {};
   source.forEach(c => {
     ((c.command && c.command.zones) || []).forEach(z => {
@@ -435,10 +450,10 @@ function celluleJour(i, mode, d, large){
   }
   const corps = lignes.length ? lignes.join('')
                               : '<span style="color:var(--muted)">&ndash;</span>';
-  const note = echecs
-    ? '<span class="echec">&#10007; ' + echecs + ' tentative'
-      + ((echecs > 1) ? 's refusées' : ' refusée') + '</span>'
-    : '';
+  // Une mention, pas un compte : le nombre d'objets envoyes est un detail
+  // d'implementation, pas une information. Cinq creneaux partent toujours
+  // ensemble, y compris ceux qu'on n'a pas touches.
+  const note = echecs ? '<span class="echec">&#10007; dernière tentative refusée</span>' : '';
   const suite = large
     ? '<span class="mod-s" style="margin-top:4px">appliqués les jours d&rsquo;arrosage</span>'
     : '';
