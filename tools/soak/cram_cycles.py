@@ -29,22 +29,50 @@ DURATION_MIN = 2
 LEAD_MIN = 4           # marge avant le premier creneau d'une passe
 
 
+# Le reseau de la maison se coupe vers 3h30. Sans patience, la campagne
+# mourrait sur ce blip et la nuit serait perdue : on retente longtemps
+# plutot que d'echouer. Une coupure n'est pas une divergence.
+OUTAGE_PATIENCE_S = 2400   # 40 min : large devant une coupure de box
+RETRY_WAIT_S = 20
+
+
+def _try_open(req):
+    with urllib.request.urlopen(req, timeout=12) as r:
+        return r.status, r.read()
+
+
 def post(host, path, payload):
     req = urllib.request.Request(
         'http://%s%s' % (host, path),
         data=json.dumps(payload).encode(),
         headers={'Content-Type': 'application/json'},
         method='POST')
-    try:
-        with urllib.request.urlopen(req, timeout=12) as r:
-            return r.status
-    except Exception as exc:  # noqa: BLE001
-        return 'ERR:%s' % exc
+    deadline = time.time() + OUTAGE_PATIENCE_S
+    last = None
+    while time.time() < deadline:
+        try:
+            return _try_open(req)[0]
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            time.sleep(RETRY_WAIT_S)
+    return 'ERR:%s' % last
 
 
 def get(host, path):
-    with urllib.request.urlopen('http://%s%s' % (host, path), timeout=12) as r:
-        return json.loads(r.read())
+    """Lecture patiente : rend la main seulement apres une coupure durable."""
+    req = urllib.request.Request('http://%s%s' % (host, path))
+    deadline = time.time() + OUTAGE_PATIENCE_S
+    last = None
+    while time.time() < deadline:
+        try:
+            return json.loads(_try_open(req)[1])
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            print('  reseau indisponible (%s), nouvelle tentative dans %ds'
+                  % (type(last).__name__, RETRY_WAIT_S), flush=True)
+            time.sleep(RETRY_WAIT_S)
+    raise RuntimeError('module injoignable depuis %d s : %s'
+                       % (OUTAGE_PATIENCE_S, last))
 
 
 def module_now(host):
