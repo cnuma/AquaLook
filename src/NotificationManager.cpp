@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
 
 #include "BootLoopGuard.h"
@@ -10,6 +11,7 @@
 #include "HeapMetrics.h"
 #include "ConfigManager.h"
 #include "MaintenanceResult.h"
+#include "OtaTlsTrust.h"
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_notify";
@@ -37,7 +39,7 @@ constexpr uint32_t NETWORK_TIMEOUT_MS = 8000U;
 // attente et renvoyait la meme notification. L'utilisateur recevait donc une
 // alerte en double pour un envoi qui avait parfaitement reussi.
 constexpr uint32_t SUPERVISOR_STACK = 8192U;
-constexpr uint32_t SENDER_STACK = 4096U;
+constexpr uint32_t SENDER_STACK = 8192U;  // poignee de main TLS
 constexpr UBaseType_t TASK_PRIORITY = 1U;
 constexpr BaseType_t TASK_CORE = 0;
 constexpr size_t SERVER_SIZE = 96U;
@@ -114,7 +116,8 @@ void copyText(char* target, size_t size, const char* source) {
 
 String extractHost(const char* server) {
     String value = server ? server : "";
-    if (value.startsWith("http://")) value.remove(0, 7);
+    if (value.startsWith("https://")) value.remove(0, 8);
+    else if (value.startsWith("http://")) value.remove(0, 7);
     const int slash = value.indexOf('/');
     if (slash >= 0) value.remove(slash);
     const int colon = value.indexOf(':');
@@ -124,7 +127,8 @@ String extractHost(const char* server) {
 
 String extractBasePath(const char* server) {
     String value = server ? server : "";
-    if (value.startsWith("http://")) value.remove(0, 7);
+    if (value.startsWith("https://")) value.remove(0, 8);
+    else if (value.startsWith("http://")) value.remove(0, 7);
     const int slash = value.indexOf('/');
     if (slash < 0) return "";
     String path = value.substring(slash);
@@ -611,8 +615,24 @@ bool NotificationManager::sendCurrentWork() {
         return false;
     }
 
-    WiFiClient client;
-    client.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+    // Transport choisi selon le schema de l'URL. Sur ce module (S3, ~200 Ko
+    // de heap libre), TLS n'est plus hors de portee : ntfy.sh valide contre
+    // les racines deja embarquees pour l'OTA, donc a cout flash nul. HTTP
+    // reste disponible pour un serveur local ou un module a faibles
+    // ressources (l'ancien ESP32 n'avait pas la RAM pour TLS).
+    const bool useHttps = String(configCopy.server).startsWith("https://");
+    const uint16_t port = useHttps ? 443U : 80U;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    Client* net;
+    if (useHttps) {
+        OtaTlsTrust::configure(secureClient);
+        secureClient.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+        net = &secureClient;
+    } else {
+        plainClient.setTimeout(NETWORK_TIMEOUT_MS / 1000U);
+        net = &plainClient;
+    }
 
     EventLog::log(
         LOG_INFO,
@@ -622,26 +642,28 @@ bool NotificationManager::sendCurrentWork() {
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );
 
-    const bool tcpOk = client.connect(host.c_str(), 80);
+    const bool tcpOk = net->connect(host.c_str(), port);
     if (!tcpOk) {
         g_lastHttpCode = ERROR_TCP;
         EventLog::log(
             LOG_ERROR,
-            "Notification: tcp host=%s port=80 status=failed heap=%lu maxblock=%lu epoch=%lu stackFree=%u",
+            "Notification: tcp host=%s port=%u status=failed heap=%lu maxblock=%lu epoch=%lu stackFree=%u",
             host.c_str(),
+            static_cast<unsigned>(port),
             static_cast<unsigned long>(ESP.getFreeHeap()),
             static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
             static_cast<unsigned long>(epoch),
             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
         );
-        client.stop();
+        net->stop();
         return false;
     }
 
     EventLog::log(
         LOG_INFO,
-        "Notification: tcp host=%s port=80 status=ok heap=%lu maxblock=%lu stackFree=%u",
+        "Notification: tcp host=%s port=%u status=ok heap=%lu maxblock=%lu stackFree=%u",
         host.c_str(),
+        static_cast<unsigned>(port),
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(AquaLook::Heap::largestFreeBlock()),
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
@@ -653,7 +675,7 @@ bool NotificationManager::sendCurrentWork() {
         portENTER_CRITICAL(&g_mux);
         if (g_zoneEventCount == 0U) {
             portEXIT_CRITICAL(&g_mux);
-            client.stop();
+            net->stop();
             return false;
         }
         zoneEvent = g_zoneEvents[g_zoneEventHead];
@@ -742,7 +764,7 @@ bool NotificationManager::sendCurrentWork() {
             }
             break;
         default:
-            client.stop();
+            net->stop();
             return false;
     }
 
@@ -763,46 +785,46 @@ bool NotificationManager::sendCurrentWork() {
     path += "/";
     path += configCopy.topic;
 
-    client.print("POST ");
-    client.print(path);
-    client.print(" HTTP/1.1\r\nHost: ");
-    client.print(host);
-    client.print("\r\nUser-Agent: AquaLook/5.8\r\nContent-Type: text/plain; charset=utf-8\r\nTitle: ");
-    client.print(title);
-    client.print("\r\nPriority: ");
-    client.print(priority);
-    client.print("\r\nTags: ");
-    client.print(tags);
-    client.print("\r\n");
+    net->print("POST ");
+    net->print(path);
+    net->print(" HTTP/1.1\r\nHost: ");
+    net->print(host);
+    net->print("\r\nUser-Agent: AquaLook/5.8\r\nContent-Type: text/plain; charset=utf-8\r\nTitle: ");
+    net->print(title);
+    net->print("\r\nPriority: ");
+    net->print(priority);
+    net->print("\r\nTags: ");
+    net->print(tags);
+    net->print("\r\n");
     if (configCopy.token[0] != '\0') {
-        client.print("Authorization: Bearer ");
-        client.print(configCopy.token);
-        client.print("\r\n");
+        net->print("Authorization: Bearer ");
+        net->print(configCopy.token);
+        net->print("\r\n");
     }
-    client.print("Content-Length: ");
-    client.print(message.length());
-    client.print("\r\nConnection: close\r\n\r\n");
-    client.print(message);
+    net->print("Content-Length: ");
+    net->print(message.length());
+    net->print("\r\nConnection: close\r\n\r\n");
+    net->print(message);
 
     const uint32_t responseDeadline = millis() + NETWORK_TIMEOUT_MS;
-    while (!client.available() && client.connected() &&
+    while (!net->available() && net->connected() &&
            !deadlineReached(millis(), responseDeadline)) {
         vTaskDelay(pdMS_TO_TICKS(10U));
     }
 
-    if (!client.available()) {
+    if (!net->available()) {
         g_lastHttpCode = ERROR_RESPONSE_TIMEOUT;
         EventLog::log(
             LOG_ERROR,
             "Notification: reponse absente connected=%s heap=%lu",
-            client.connected() ? "yes" : "no",
+            net->connected() ? "yes" : "no",
             static_cast<unsigned long>(ESP.getFreeHeap())
         );
-        client.stop();
+        net->stop();
         return false;
     }
 
-    const String statusLine = client.readStringUntil('\n');
+    const String statusLine = net->readStringUntil('\n');
     const int statusCode = parseHttpStatus(statusLine);
     g_lastHttpCode = statusCode;
 
@@ -814,15 +836,15 @@ bool NotificationManager::sendCurrentWork() {
         static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr))
     );
 
-    client.stop();
+    net->stop();
     return statusCode >= 200 && statusCode < 300;
 }
 
 bool NotificationManager::validServer(const char* server) {
     if (!server) return false;
     const String value = server;
-    return value.startsWith("http://") &&
-           value.length() >= 12U &&
+    return (value.startsWith("https://") || value.startsWith("http://")) &&
+           value.length() >= 11U &&
            value.length() < SERVER_SIZE;
 }
 
