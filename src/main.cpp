@@ -62,6 +62,13 @@ AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
 static bool equipmentOrchestratorShadowReady = false;
+
+// Compteurs de parite d'execution V4 vs legacy (voir
+// AQUALOOK_V4_REPRISE_MIGRATION_DECISION.md). L'utilisateur n'etant pas au
+// module, c'est par le port serie qu'on prouve que V4 saurait executer ce que
+// le legacy decide -- avant toute bascule d'autorite. Purement observationnel.
+static uint32_t g_parityAgree = 0U;
+static uint32_t g_parityDisagree = 0U;
 enum class OrchestratorAuthorityMode : uint8_t {
     Disabled = 0U,
     Controlled
@@ -424,6 +431,28 @@ static void onRelayRequest(uint8_t zone, bool state) {
 
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
+        // ── Parite d'execution V4 vs legacy (observationnel) ──────────────
+        // Le legacy vient de decider l'intention (zone, ouvre/ferme). V4, sur
+        // la meme intention, produit-il un plan VALIDE et EXECUTABLE ? Si oui,
+        // V4 saurait executer ce que le legacy demande : ACCORD. Une ligne
+        // lisible par decision, plus un cumul, pour prouver la parite au serie
+        // sans jamais laisser V4 toucher une vanne.
+        const bool v4CanExecute = shadowPlan.valid() && shadowPlan.stepCount > 0U;
+        if (v4CanExecute) g_parityAgree++; else g_parityDisagree++;
+        EventLog::log(
+            v4CanExecute ? LOG_INFO : LOG_WARN,
+            "PARITE-EXEC zone=%u intent=%s v4-plan=%s steps=%u pompe=%s => %s "
+            "(accord=%lu desaccord=%lu)",
+            zone + 1U,
+            state ? "OUVRE" : "FERME",
+            shadowPlan.valid() ? "VALIDE" : "INVALIDE",
+            static_cast<unsigned>(shadowPlan.stepCount),
+            shadowPlan.requiresPump ? "oui" : "non",
+            v4CanExecute ? "ACCORD" : "DESACCORD",
+            static_cast<unsigned long>(g_parityAgree),
+            static_cast<unsigned long>(g_parityDisagree)
+        );
+
         const EquipmentManager::ActionResult result = state
             ? equipmentMgr.startZone(zone)
             : equipmentMgr.stopZone(zone);
@@ -660,6 +689,7 @@ void setup() {
     webMgr.setIoExpander(&ioExpander);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
+    EventLog::log(LOG_INFO, "Parite V4: instrumentation active (observationnel, legacy autoritaire) -- voir lignes PARITE-EXEC");
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
 }
 
