@@ -575,6 +575,12 @@ void WebManager::setupRoutes() {
                [this](AsyncWebServerRequest* req) { handlePersistTopology(req); });
     _server.on("/api/relay/topology/reset", HTTP_POST,
                [this](AsyncWebServerRequest* req) { handleResetTopology(req); });
+    _server.on("/api/relay/topology", HTTP_GET,
+               [this](AsyncWebServerRequest* req) { handleGetTopology(req); });
+    addJsonHandler("/api/relay/topology",
+                   [this](AsyncWebServerRequest* req, JsonVariant& jv) {
+                       JsonDocument doc; doc.set(jv); handleSetTopology(req, doc);
+                   });
     // Scan réseau WiFi — portail captif
     _server.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleWifiScan(req);
@@ -1535,6 +1541,98 @@ void WebManager::handleSetZoneNotifications(AsyncWebServerRequest* req,
 void WebManager::handleStartCaptive(AsyncWebServerRequest* req) {
     sendOk(req);
     EventBus::captiveRequested = true;  // WiFiManager le consomme dans update()
+}
+
+// Lecture de la topologie en vigueur, avec sa source reelle (derivee du
+// legacy, ou chargee depuis la NVS).
+void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
+    if (!_relais.relay) { sendError(req, "indisponible"); return; }
+    const RelayTopology::RelayTopologyConfig& topo = _relais.relay->topology();
+
+    JsonDocument doc;
+    doc["source"] = _relais.relay->topologyFromStore() ? "nvs" : "legacy";
+    doc["persisted"] = RelayTopologyStore::exists();
+
+    JsonArray boards = doc["boards"].to<JsonArray>();
+    for (uint8_t b = 0; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
+        const RelayTopology::RelayBoardConfig& bd = topo.boards[b];
+        if (!bd.enabled) continue;
+        JsonObject o = boards.add<JsonObject>();
+        o["i"] = b;
+        o["controller"] = bd.controller;
+        o["name"] = RelayTopology::controllerName(bd.controller);
+        o["addr"] = bd.i2cAddress;
+        o["channels"] = bd.channelCount;
+        o["logic"] = bd.logic;
+    }
+
+    JsonArray asg = doc["assignments"].to<JsonArray>();
+    for (uint8_t a = 0; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
+        const RelayTopology::RelayAssignment& as = topo.assignments[a];
+        if (!as.enabled) continue;
+        JsonObject o = asg.add<JsonObject>();
+        o["i"] = a;
+        o["role"] = as.role;
+        o["roleName"] = RelayTopology::roleName(as.role);
+        o["target"] = as.targetIndex;
+        o["board"] = as.boardIndex;
+        o["channel"] = as.channelIndex;
+    }
+    sendJson(req, doc);
+}
+
+// Ecriture d'une topologie arbitraire. Validee poste par poste, refusee
+// pendant un arrosage (recabler les voies a chaud laisserait un relais dans
+// un etat incoherent), et appliquee au prochain demarrage.
+void WebManager::handleSetTopology(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_config || !_relais.relay) { sendError(req, "indisponible"); return; }
+
+    for (uint8_t z = 0; z < _config->nbZones(); ++z) {
+        if (_relais.relay->getState(z)) { sendError(req, "arrosage en cours"); return; }
+    }
+
+    RelayTopology::RelayTopologyConfig topo;
+    RelayTopology::clear(topo);
+
+    for (JsonObjectConst o : doc["boards"].as<JsonArrayConst>()) {
+        const uint8_t i = o["i"] | 255;
+        if (i >= RelayTopology::MAX_RELAY_BOARDS) { sendError(req, "carte invalide"); return; }
+        RelayTopology::RelayBoardConfig& bd = topo.boards[i];
+        bd.enabled = true;
+        bd.controller = o["controller"] | RelayTopology::CONTROLLER_XL9535;
+        bd.i2cAddress = o["addr"] | RelayTopology::defaultAddressForController(bd.controller);
+        bd.channelCount = o["channels"] | 8;
+        bd.logic = o["logic"] | RelayTopology::LOGIC_DIRECT;
+        if (!RelayTopology::validateBoard(bd)) { sendError(req, "carte invalide"); return; }
+    }
+
+    for (JsonObjectConst o : doc["assignments"].as<JsonArrayConst>()) {
+        const uint8_t i = o["i"] | 255;
+        if (i >= RelayTopology::MAX_RELAY_ASSIGNMENTS) { sendError(req, "affectation invalide"); return; }
+        RelayTopology::RelayAssignment& as = topo.assignments[i];
+        as.enabled = true;
+        as.role = o["role"] | RelayTopology::ROLE_UNUSED;
+        as.targetIndex = o["target"] | 0;
+        as.boardIndex = o["board"] | 0;
+        as.channelIndex = o["channel"] | 0;
+        if (!RelayTopology::isSupportedRole(as.role)) { sendError(req, "role invalide"); return; }
+    }
+
+    for (uint8_t i = 0; i < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++i) {
+        if (!topo.assignments[i].enabled) continue;
+        if (!RelayTopology::validateAssignment(topo, i)) {
+            sendError(req, "affectation incoherente"); return;
+        }
+    }
+
+    if (!RelayTopologyStore::save(topo, _config->nbZones())) {
+        sendError(req, "topologie refusee"); return;
+    }
+
+    JsonDocument out;
+    out["ok"] = true;
+    out["applied"] = "reboot";  // pas de recablage a chaud
+    sendJson(req, out);
 }
 
 // Enregistre la topologie relais actuellement en vigueur. Par defaut elle

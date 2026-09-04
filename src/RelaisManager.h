@@ -41,6 +41,9 @@ public:
     bool setAssignment(uint8_t assignmentIndex, bool state);
     bool getAssignmentState(uint8_t assignmentIndex) const;
     const RelayTopology::RelayTopologyConfig& topology() const;
+    // true si la topologie en vigueur vient de la NVS, false si elle a ete
+    // derivee du legacy (le defaut).
+    bool topologyFromStore() const { return _topologyFromStore; }
 
 private:
     ConfigManager* _config = nullptr;
@@ -49,6 +52,7 @@ private:
     bool _assignmentState[RelayTopology::MAX_RELAY_ASSIGNMENTS] = {};
 
     RelayTopology::RelayTopologyConfig _topology;
+    bool _topologyFromStore = false;
     uint8_t _regP0[RelayTopology::MAX_RELAY_BOARDS] = {};
     uint8_t _regP1[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _boardReady[RelayTopology::MAX_RELAY_BOARDS] = {};

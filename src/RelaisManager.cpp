@@ -65,6 +65,7 @@ void RelaisManager::buildRuntimeTopology() {
     // topologie legacy, qui reste la reference eprouvee et le
     // comportement par defaut (aucun enregistrement = rien ne change).
     if (RelayTopologyStore::load(_topology, nbZ)) {
+        _topologyFromStore = true;
         const RelayTopology::RelayBoardConfig& p0 = _topology.boards[0];
         EventLog::log(LOG_INFO,
                       "Relais: topologie NVS, carte0=%s 0x%02X, voies=%u",
@@ -80,6 +81,7 @@ void RelaisManager::buildRuntimeTopology() {
         ? _config->relayLogic()
         : RelayTopology::LOGIC_DIRECT;
 
+    _topologyFromStore = false;
     RelayTopology::buildLegacyCompatibleTopology(
         _topology,
         nbZ,
