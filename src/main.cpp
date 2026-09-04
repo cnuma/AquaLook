@@ -431,27 +431,63 @@ static void onRelayRequest(uint8_t zone, bool state) {
 
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
-        // ── Parite d'execution V4 vs legacy (observationnel) ──────────────
-        // Le legacy vient de decider l'intention (zone, ouvre/ferme). V4, sur
-        // la meme intention, produit-il un plan VALIDE et EXECUTABLE ? Si oui,
-        // V4 saurait executer ce que le legacy demande : ACCORD. Une ligne
-        // lisible par decision, plus un cumul, pour prouver la parite au serie
-        // sans jamais laisser V4 toucher une vanne.
-        const bool v4CanExecute = shadowPlan.valid() && shadowPlan.stepCount > 0U;
-        if (v4CanExecute) g_parityAgree++; else g_parityDisagree++;
+        // ── Parite d'execution STRICTE : meme voie, meme etat ─────────────
+        // "ACCORD" ne signifie plus "plan valide" mais "V4 piloterait la MEME
+        // voie physique dans le MEME etat que le legacy". Cinq criteres, tous
+        // via des accesseurs publics : bonne zone, une seule commande de vanne,
+        // etat concordant, meme equipement de vanne, meme carte/canal. Au
+        // moindre doute on penche vers DESACCORD -- jamais de fausse confiance.
+        const uint8_t nbZonesNow = configMgr.nbZones();
+        const RelayTopology::MappingResolution legacyValve =
+            RelayTopology::resolveZoneValve(relaisMgr.topology(), zone, nbZonesNow);
+        const EquipmentManager::ZoneResolution v4Valve = equipmentMgr.resolveZone(zone);
+
+        uint8_t valveSteps = 0U;
+        bool v4ValveOn = false;
+        uint8_t v4ValveEquip = 0xFFU;
+        for (uint8_t s = 0U;
+             s < shadowPlan.stepCount && s < EquipmentManager::MAX_PLAN_STEPS; ++s) {
+            const EquipmentManager::PlanStep& st = shadowPlan.steps[s];
+            if (st.action == EquipmentManager::PLAN_ACTION_VALVE_ON) {
+                valveSteps++; v4ValveOn = true; v4ValveEquip = st.equipmentIndex;
+            } else if (st.action == EquipmentManager::PLAN_ACTION_VALVE_OFF) {
+                valveSteps++; v4ValveOn = false; v4ValveEquip = st.equipmentIndex;
+            }
+        }
+
+        const bool cZone  = (shadowPlan.zone == zone);
+        const bool cOne   = (valveSteps == 1U);
+        const bool cState = (v4ValveOn == state);
+        const bool cEquip = v4Valve.valid() && (v4ValveEquip == v4Valve.equipmentIndex);
+        const bool cChan  = legacyValve.valid && v4Valve.relay.valid &&
+                            legacyValve.boardIndex   == v4Valve.relay.boardIndex &&
+                            legacyValve.channelIndex == v4Valve.relay.channelIndex;
+        const bool accord = cZone && cOne && cState && cEquip && cChan;
+        if (accord) g_parityAgree++; else g_parityDisagree++;
+
+        // Ligne compacte (< LOG_MSG_LEN=72) : le niveau porte le verdict
+        // (INFO=accord, WARN=desaccord), donc `grep WARN PARITE` debusque
+        // instantanement toute divergence. Le detail des criteres n'est
+        // journalise qu'en cas de desaccord, pour comprendre lequel a lache.
         EventLog::log(
-            v4CanExecute ? LOG_INFO : LOG_WARN,
-            "PARITE-EXEC zone=%u intent=%s v4-plan=%s steps=%u pompe=%s => %s "
-            "(accord=%lu desaccord=%lu)",
-            zone + 1U,
-            state ? "OUVRE" : "FERME",
-            shadowPlan.valid() ? "VALIDE" : "INVALIDE",
-            static_cast<unsigned>(shadowPlan.stepCount),
-            shadowPlan.requiresPump ? "oui" : "non",
-            v4CanExecute ? "ACCORD" : "DESACCORD",
+            accord ? LOG_INFO : LOG_WARN,
+            "PARITE z%u %s L=%u.%u/%s V=%u.%u/%s ok=%lu ko=%lu %s",
+            zone + 1U, state ? "OUVRE" : "FERME",
+            static_cast<unsigned>(legacyValve.boardIndex),
+            static_cast<unsigned>(legacyValve.channelIndex), state ? "ON" : "OFF",
+            static_cast<unsigned>(v4Valve.relay.boardIndex),
+            static_cast<unsigned>(v4Valve.relay.channelIndex), v4ValveOn ? "ON" : "OFF",
             static_cast<unsigned long>(g_parityAgree),
-            static_cast<unsigned long>(g_parityDisagree)
+            static_cast<unsigned long>(g_parityDisagree),
+            accord ? "ACCORD" : "DESACCORD"
         );
+        if (!accord) {
+            EventLog::log(LOG_WARN,
+                "PARITE-KO z%u crit zone=%u une=%u etat=%u equip=%u voie=%u",
+                zone + 1U, static_cast<unsigned>(cZone), static_cast<unsigned>(cOne),
+                static_cast<unsigned>(cState), static_cast<unsigned>(cEquip),
+                static_cast<unsigned>(cChan));
+        }
 
         const EquipmentManager::ActionResult result = state
             ? equipmentMgr.startZone(zone)
