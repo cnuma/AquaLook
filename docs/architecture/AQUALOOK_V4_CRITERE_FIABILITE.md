@@ -57,7 +57,20 @@ Un seul désaccord bloquant, un seul crash imputable → le compteur repart apr�
 correction.
 
 ### Gate 2 — Autorité sur UNE zone, au banc, matériel réel
-V4 devient autoritaire pour **une** zone (profil V4, sans repli) :
+V4 devient autoritaire pour **une** zone (profil V4, sans repli).
+
+**Le mécanisme existe déjà**, découvert le 4 septembre 2026 : le backend V4
+porte un `_migratedZoneMask`, et `V4PilotRuntime` y pose `1 << 0` — seule la
+zone 1 passe par le modèle de ports V4, toutes les autres restent sur le
+chemin legacy. La migration est donc **progressive par zone**, sans rien à
+inventer. Concrètement :
+
+- **Gate 2** = flasher le profil `ProgrammeArrosage_s3_v4` (compile déjà) ;
+  la zone 1 bascule, le reste ne bouge pas.
+- **Gate 3** = élargir le masque aux autres zones.
+- **Rollback** = reflash du profil `ProgrammeArrosage_s3`.
+
+Conditions :
 
 - **toi** confirmes que la vanne s'ouvre et se ferme réellement (je ne peux pas
   certifier le mouvement physique depuis un banc sans relais) ;
