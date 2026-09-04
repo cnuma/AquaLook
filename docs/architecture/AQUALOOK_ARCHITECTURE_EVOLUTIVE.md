@@ -103,7 +103,7 @@ distant, MCP23017 ou GPIO direct.
 |--------|------|
 | 0 Transports | I2C + GPIO locaux en service. `RS485`/`REMOTE`/`UART`/`CAN` réservés, éteints. |
 | 1 Nœuds | Un seul nœud (principal). Satellites : prévus, non implémentés. |
-| 2 Endpoints | Squelette V4 (catalogue, modèle de ports). Pilote concret : **`IoExpander`** (TOR configurable). Topologie relais modélisée mais **pas encore persistée**. |
+| 2 Endpoints | Squelette V4 (catalogue, modèle de ports). Pilote concret : **`IoExpander`** (TOR configurable). Topologie relais modélisée **et persistable** (`RelayTopologyStore`, NVS `aq_topo`) ; à défaut, dérivation legacy. |
 | 3 Ressources | Zones : chemin **LEGACY** en production. `EquipmentManager` V4 : câblé seulement pour la pompe. |
 | 4 Automation | **Rien.** Le planning d'arrosage existe (legacy) mais pas de moteur de règles généralisé. |
 | 5 UI / Cloud | Web module + appli cloud + LCD en service ; sauvegarde cloud opérationnelle. |
