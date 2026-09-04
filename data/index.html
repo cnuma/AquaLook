@@ -428,6 +428,24 @@
       </button>
     </div>
   </div>
+  <div class="cfg-section" id="sec-io">
+    <div class="cfg-section-header" onclick="toggleSection('sec-io')">
+      <span class="cfg-section-title"><span class="sec-icon">&#128268;</span>Entrées / Sorties (MCP23017)</span>
+      <span class="cfg-chevron">&#9654;</span>
+    </div>
+    <div class="cfg-section-body">
+      <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="checkbox" id="io-enabled" style="width:auto;margin:0">
+        <label for="io-enabled" style="margin:0;cursor:pointer">Activer la couche E/S</label>
+        <label style="margin:0 0 0 12px">Période (s)</label>
+        <input type="number" id="io-poll" min="1" max="60" value="5" style="width:64px">
+      </div>
+      <div id="io-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
+      <button class="btn-cfg primary" onclick="saveCfgIo()" style="margin-top:8px">Enregistrer</button>
+      <button class="btn-cfg" onclick="loadCfgIo()" style="margin-top:6px">Rafraîchir l&rsquo;état</button>
+      <div class="cfg-hint" style="margin-top:6px">Surveillance de la présence des électrovannes (fuite au repos via optocoupleur), pilotage de sorties (éclairage, ventilation) et lecture de capteurs TOR. La présence n&rsquo;est évaluée que lorsque la zone est au repos.</div>
+    </div>
+  </div>
   <div class="cfg-section" id="sec-weather-tooltips">
     <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
       <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Info-bulles météo Web</span>

@@ -718,6 +718,8 @@ const CFG_GROUPS = [
     sections: ['sec-upd'] },
   { id: 'g-systeme', icon: '&#9881;',   label: 'Système',
     sections: ['sec-system'] },
+  { id: 'g-io',      icon: '&#128268;', label: 'Entrées / Sorties',
+    sections: ['sec-io'] },
 ];
 
 // Sections presentes dans le DOM mais rattachees a aucune rubrique. Elles
@@ -761,6 +763,7 @@ function openCfgPage(groupId) {
   if (g.sections.indexOf('sec-zones') >= 0) buildCfgZoneList();
   if (g.sections.indexOf('sec-cloud') >= 0) populateCloudSync();
   if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
+  if (g.sections.indexOf('sec-io')    >= 0) loadCfgIo();
 
   const drawer = document.getElementById('drawer');
   drawer.classList.add('cfg-detail');
@@ -1486,3 +1489,169 @@ async function resetCfgDisplay() {
     toast('Erreur reinitialisation', true);
   }
 }
+
+// ── Couche E/S TOR (MCP23017) — editeur configurable ───────────────────────
+// Convention : guillemets simples en JS, doubles en HTML, &rsquo; pour
+// l&rsquo;apostrophe. Aucun echappement fragile.
+
+let ioBoards = [];   // { addr }
+let ioBinds  = [];   // { board, pin, dir, role, zone, active, pullup, state, missing, command }
+let ioEnabled = false;
+let ioPoll = 5;
+
+const IO_ROLES_IN  = [[1, 'Presence vanne'], [2, 'Entree TOR']];
+const IO_ROLES_OUT = [[3, 'Eclairage'], [4, 'Ventilation'], [5, 'Sortie TOR']];
+
+function ioZoneCount() {
+  const s = adminStatus && adminStatus.system;
+  const n = s && Number(s.nbZones);
+  return (n && n > 0) ? n : 8;
+}
+
+async function loadCfgIo() {
+  let d;
+  try { d = await (await fetch('/api/io')).json(); }
+  catch (e) { document.getElementById('io-editor').innerHTML =
+    '<div class="cfg-hint">Lecture impossible : ' + e.message + '</div>'; return; }
+  ioEnabled = !!d.enabled;
+  ioPoll = d.pollSeconds || 5;
+  ioBoards = (d.boards || []).filter(b => b.enabled).map(b => ({ addr: b.addr, ready: b.ready }));
+  ioBinds = (d.bindings || []).filter(b => b.enabled).map(b => ({
+    board: b.board, pin: b.pin, dir: b.dir, role: b.role,
+    zone: (b.zone == null ? 255 : b.zone), active: b.activeLevel,
+    pullup: !!b.pullup, state: b.state, missing: b.missing, command: b.command
+  }));
+  document.getElementById('io-enabled').checked = ioEnabled;
+  document.getElementById('io-poll').value = ioPoll;
+  renderIoEditor();
+}
+
+function ioBoardOptions(sel) {
+  if (!ioBoards.length) return '<option value="0">(aucune carte)</option>';
+  return ioBoards.map((b, i) =>
+    '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>Carte ' + i +
+    ' (0x' + b.addr.toString(16) + ')</option>').join('');
+}
+
+function ioRoleOptions(dir, sel) {
+  const list = (dir === 1) ? IO_ROLES_OUT : IO_ROLES_IN;
+  return list.map(r => '<option value="' + r[0] + '"' +
+    (r[0] === sel ? ' selected' : '') + '>' + r[1] + '</option>').join('');
+}
+
+function ioZoneOptions(sel) {
+  let h = '<option value="255"' + (sel === 255 ? ' selected' : '') + '>aucune</option>';
+  for (let z = 0; z < ioZoneCount(); z++)
+    h += '<option value="' + z + '"' + (z === sel ? ' selected' : '') + '>Zone ' + (z + 1) + '</option>';
+  return h;
+}
+
+function ioPinOptions(sel) {
+  let h = '';
+  for (let p = 0; p < 16; p++) {
+    const lbl = (p < 8) ? ('A' + p) : ('B' + (p - 8));
+    h += '<option value="' + p + '"' + (p === sel ? ' selected' : '') + '>' + lbl + '</option>';
+  }
+  return h;
+}
+
+function ioStateBadge(b) {
+  if (b.dir === 1) return b.command ? '<span class="io-on">ON</span>' : 'OFF';
+  if (b.state === 'present') return '<span class="io-ok">presente</span>';
+  if (b.state === 'absent')  return '<span class="io-ko">ABSENTE</span>';
+  if (b.state === 'actif')   return '<span class="io-ok">actif</span>';
+  if (b.state === 'inactif') return 'inactif';
+  return '<span class="cfg-muted">&mdash;</span>';
+}
+
+function renderIoEditor() {
+  const el = document.getElementById('io-editor');
+  let h = '<div class="cfg-subsection-title">Cartes MCP23017</div>';
+  if (!ioBoards.length) h += '<div class="cfg-hint">Aucune carte declaree.</div>';
+  ioBoards.forEach((b, i) => {
+    h += '<div class="io-row"><span class="io-lbl">Carte ' + i + '</span>'
+      + '<label>Adresse</label><select data-io="baddr" data-i="' + i + '">';
+    for (let a = 0x20; a <= 0x27; a++)
+      h += '<option value="' + a + '"' + (a === b.addr ? ' selected' : '') + '>0x' + a.toString(16) + '</option>';
+    h += '</select><span class="io-st">' + (b.ready ? '<span class="io-ok">prete</span>' : '<span class="io-ko">absente</span>') + '</span>'
+      + '<button class="io-del" onclick="ioRemoveBoard(' + i + ')">&#10007;</button></div>';
+  });
+  h += '<button class="btn-cfg" onclick="ioAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
+
+  h += '<div class="cfg-subsection-title" style="margin-top:12px">Broches</div>';
+  h += '<div class="cfg-hint">Chaque broche : carte, broche, sens, role, zone, niveau actif. '
+     + 'La presence de vanne n&rsquo;est lue qu&rsquo;au repos de sa zone.</div>';
+  if (!ioBinds.length) h += '<div class="cfg-hint">Aucune broche declaree.</div>';
+  ioBinds.forEach((b, i) => {
+    h += '<div class="io-bind">'
+      + '<select data-io="board" data-i="' + i + '">' + ioBoardOptions(b.board) + '</select>'
+      + '<select data-io="pin" data-i="' + i + '">' + ioPinOptions(b.pin) + '</select>'
+      + '<select data-io="dir" data-i="' + i + '" onchange="ioOnDirChange(' + i + ')">'
+      + '<option value="0"' + (b.dir === 0 ? ' selected' : '') + '>Entree</option>'
+      + '<option value="1"' + (b.dir === 1 ? ' selected' : '') + '>Sortie</option></select>'
+      + '<select data-io="role" data-i="' + i + '">' + ioRoleOptions(b.dir, b.role) + '</select>'
+      + '<select data-io="zone" data-i="' + i + '">' + ioZoneOptions(b.zone) + '</select>'
+      + '<select data-io="active" data-i="' + i + '" title="niveau logique actif/present">'
+      + '<option value="1"' + (b.active === 1 ? ' selected' : '') + '>actif=1</option>'
+      + '<option value="0"' + (b.active === 0 ? ' selected' : '') + '>actif=0</option></select>'
+      + '<label class="io-pu"><input type="checkbox" data-io="pullup" data-i="' + i + '"' + (b.pullup ? ' checked' : '') + '>pull-up</label>'
+      + '<span class="io-st">' + ioStateBadge(b) + '</span>'
+      + '<button class="io-del" onclick="ioRemoveBind(' + i + ')">&#10007;</button></div>';
+  });
+  h += '<button class="btn-cfg" onclick="ioAddBind()" style="margin:6px 0">+ Ajouter une broche</button>';
+  el.innerHTML = h;
+}
+
+// Recopie l'etat des selects/checkbox dans les tableaux avant tout re-render.
+function ioGatherFromDom() {
+  document.querySelectorAll('#io-editor [data-io]').forEach(elm => {
+    const k = elm.dataset.io, i = Number(elm.dataset.i);
+    const val = (elm.type === 'checkbox') ? elm.checked : Number(elm.value);
+    if (k === 'baddr' && ioBoards[i]) ioBoards[i].addr = val;
+    else if (ioBinds[i]) {
+      if (k === 'board') ioBinds[i].board = val;
+      else if (k === 'pin') ioBinds[i].pin = val;
+      else if (k === 'dir') ioBinds[i].dir = val;
+      else if (k === 'role') ioBinds[i].role = val;
+      else if (k === 'zone') ioBinds[i].zone = val;
+      else if (k === 'active') ioBinds[i].active = val;
+      else if (k === 'pullup') ioBinds[i].pullup = val;
+    }
+  });
+}
+
+function ioAddBoard() { ioGatherFromDom(); if (ioBoards.length < 8) { ioBoards.push({ addr: 0x21, ready: false }); renderIoEditor(); } }
+function ioRemoveBoard(i) { ioGatherFromDom(); ioBoards.splice(i, 1); renderIoEditor(); }
+function ioAddBind() { ioGatherFromDom(); if (ioBinds.length < 32) { ioBinds.push({ board: 0, pin: 0, dir: 0, role: 1, zone: 255, active: 0, pullup: true }); renderIoEditor(); } }
+function ioRemoveBind(i) { ioGatherFromDom(); ioBinds.splice(i, 1); renderIoEditor(); }
+
+// Quand le sens change, le role doit rester coherent (entree<->sortie).
+function ioOnDirChange(i) {
+  ioGatherFromDom();
+  const b = ioBinds[i];
+  b.role = (b.dir === 1) ? 3 : 1;
+  renderIoEditor();
+}
+
+async function saveCfgIo() {
+  ioGatherFromDom();
+  const body = {
+    enabled: document.getElementById('io-enabled').checked,
+    pollSeconds: Math.min(60, Math.max(1, Number(document.getElementById('io-poll').value) || 5)),
+    boards: ioBoards.map((b, i) => ({ i: i, enabled: true, addr: b.addr })),
+    bindings: ioBinds.map((b, i) => ({
+      i: i, enabled: true, board: b.board, pin: b.pin, dir: b.dir,
+      role: b.role, zone: b.zone, activeLevel: b.active, pullup: b.pullup
+    }))
+  };
+  try {
+    const r = await fetch('/api/io/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast((d && d.error) || ('Erreur ' + r.status), true); return; }
+    toast('Configuration E/S enregistree');
+    await loadCfgIo();
+  } catch (e) { toast('Erreur reseau', true); }
+}
+
