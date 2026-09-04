@@ -501,6 +501,14 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     }
 
     const uint16_t port = cfg.port != 0U ? cfg.port : (cfg.useHttps ? 443U : 80U);
+
+    // Le jeton d'appairage ne part JAMAIS en clair. En HTTP simple (autorise
+    // seulement vers un serveur d'etabli local), l'en-tete Authorization est
+    // omis : sans cela, rediriger le canal vers un hote HTTP prive suffisait a
+    // capturer le jeton complet (docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut
+    // n°3). En HTTPS, la validation de certificat empeche toute redirection
+    // vers un hote non legitime, donc l'envoi du jeton y reste sur.
+    const char* authToken = cfg.useHttps ? cfg.token : "";
     EventLog::log(LOG_INFO, "CloudSync: connexion %s:%u...", cfg.host, port);
     const uint32_t connectStartMs = millis();
     if (!client->connect(cfg.host, port)) {
@@ -530,7 +538,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
         int status = 0;
         String respBody;
-        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", cfg.token, body, status, respBody)) {
+        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", authToken, body, status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "rapport: pas de reponse");
             client->stop();
             return result;
@@ -561,7 +569,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
         int status = 0;
         String respBody;
-        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", cfg.token, configBody, status, respBody)) {
+        if (!httpExchange(*client, "POST", cfg.host, "/v1/report", authToken, configBody, status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "config: pas de reponse");
             client->stop();
             result.valid = true;
@@ -585,7 +593,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     {
         int status = 0;
         String respBody;
-        if (!httpExchange(*client, "GET", cfg.host, "/v1/pending-command", cfg.token, "", status, respBody)) {
+        if (!httpExchange(*client, "GET", cfg.host, "/v1/pending-command", authToken, "", status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "sondage: pas de reponse");
             client->stop();
             result.valid = true;
@@ -648,7 +656,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
             int status = 0;
             String respBody;
-            if (httpExchange(*client, "POST", cfg.host, "/v1/command/ack", cfg.token, body, status, respBody)) {
+            if (httpExchange(*client, "POST", cfg.host, "/v1/command/ack", authToken, body, status, respBody)) {
                 result.ackSuccess = (status >= 200 && status < 300);
             }
         }

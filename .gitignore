@@ -46,3 +46,6 @@ dist/
 
 # Images produites par tools/apercu_web (regenerables)
 docs/apercus/
+
+# Caches Python des scripts outils
+__pycache__/
