@@ -335,6 +335,9 @@ void WebManager::setupRoutes() {
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleStatus(req);
     });
+    _server.on("/api/io", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleGetIo(req);
+    });
     _server.on("/api/adminStatus", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleAdminStatus(req);
     });
@@ -391,6 +394,8 @@ void WebManager::setupRoutes() {
     })
 
     POST_JSON("/api/mode",          handleSetMode);
+    POST_JSON("/api/io/config",     handleSetIoConfig);
+    POST_JSON("/api/io/output",     handleSetIoOutput);
     POST_JSON("/api/interval",      handleSetInterval);
     POST_JSON("/api/intervalAnchor",handleSetIntervalAnchor);
     POST_JSON("/api/deleteInterval",handleDeleteIntervalProgramming);
@@ -1831,3 +1836,122 @@ void WebManager::addJsonHandler(const char* uri,
     h->setMethod(HTTP_POST);
     _server.addHandler(h);
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  API couche E/S TOR (IoExpander) — tout configurable, rien en dur
+// ═══════════════════════════════════════════════════════════════
+
+namespace {
+const char* ioStateName(IoExpanderManager::State st, bool isInput) {
+    if (st == IoExpanderManager::ST_UNKNOWN) return "indetermine";
+    if (isInput) return st == IoExpanderManager::ST_ACTIVE ? "present" : "absent";
+    return st == IoExpanderManager::ST_ACTIVE ? "actif" : "inactif";
+}
+}  // namespace
+
+void WebManager::handleGetIo(AsyncWebServerRequest* req) {
+    if (!_ioExpander) { sendError(req, "couche E/S indisponible", 503); return; }
+    const IoExpander::Config& c = _ioExpander->config();
+
+    JsonDocument doc;
+    doc["enabled"]     = c.enabled != 0;
+    doc["pollSeconds"] = c.pollSeconds;
+    doc["maxBoards"]   = IoExpander::MAX_BOARDS;
+    doc["maxBindings"] = IoExpander::MAX_BINDINGS;
+
+    JsonArray boards = doc["boards"].to<JsonArray>();
+    for (uint8_t i = 0; i < IoExpander::MAX_BOARDS; ++i) {
+        JsonObject b = boards.add<JsonObject>();
+        b["i"]       = i;
+        b["enabled"] = c.boards[i].enabled != 0;
+        b["addr"]    = c.boards[i].i2cAddress;
+        b["ready"]   = _ioExpander->boardReady(i);
+    }
+
+    JsonArray binds = doc["bindings"].to<JsonArray>();
+    for (uint8_t i = 0; i < IoExpander::MAX_BINDINGS; ++i) {
+        const IoExpander::Binding& bd = c.bindings[i];
+        JsonObject o = binds.add<JsonObject>();
+        o["i"]           = i;
+        o["enabled"]     = bd.enabled != 0;
+        o["board"]       = bd.boardIndex;
+        o["pin"]         = bd.pin;
+        o["dir"]         = bd.direction;
+        o["role"]        = bd.role;
+        o["zone"]        = bd.zone;
+        o["activeLevel"] = bd.activeLevel;
+        o["pullup"]      = bd.pullup != 0;
+        const bool isInput = IoExpander::roleIsInput(bd.role);
+        if (bd.enabled) {
+            o["state"]   = ioStateName(_ioExpander->inputState(i), isInput);
+            o["missing"] = _ioExpander->valveMissing(i);
+            if (!isInput) o["command"] = _ioExpander->outputCommand(i);
+        }
+    }
+    sendJson(req, doc);
+}
+
+void WebManager::handleSetIoConfig(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_ioExpander) { sendError(req, "couche E/S indisponible", 503); return; }
+    const uint8_t nbZones = _config ? _config->nbZones() : (uint8_t)NB_ZONES;
+
+    IoExpander::Config c = IoExpander::makeSafeDefault();
+    c.enabled     = (doc["enabled"] | false) ? 1 : 0;
+    int poll      = doc["pollSeconds"] | 5;
+    c.pollSeconds = (uint8_t)constrain(poll, 1, 60);
+
+    JsonArrayConst boards = doc["boards"].as<JsonArrayConst>();
+    for (JsonObjectConst b : boards) {
+        int idx = b["i"] | -1;
+        if (idx < 0 || idx >= IoExpander::MAX_BOARDS) continue;
+        IoExpander::Board& board = c.boards[idx];
+        board.enabled    = (b["enabled"] | false) ? 1 : 0;
+        board.i2cAddress = (uint8_t)(b["addr"] | 0x21);
+        if (board.enabled && !IoExpander::validBoard(board)) {
+            sendError(req, "adresse I2C de carte invalide (0x20-0x27)"); return;
+        }
+    }
+
+    JsonArrayConst binds = doc["bindings"].as<JsonArrayConst>();
+    for (JsonObjectConst o : binds) {
+        int idx = o["i"] | -1;
+        if (idx < 0 || idx >= IoExpander::MAX_BINDINGS) continue;
+        IoExpander::Binding& bd = c.bindings[idx];
+        bd.enabled     = (o["enabled"] | false) ? 1 : 0;
+        bd.boardIndex  = (uint8_t)(o["board"] | 0);
+        bd.pin         = (uint8_t)(o["pin"] | 0);
+        bd.direction   = (uint8_t)(o["dir"] | 0);
+        bd.role        = (uint8_t)(o["role"] | 0);
+        bd.zone        = (uint8_t)(o["zone"] | IoExpander::ZONE_NONE);
+        bd.activeLevel = (uint8_t)(o["activeLevel"] | 1);
+        bd.pullup      = (o["pullup"] | true) ? 1 : 0;
+    }
+
+    // Validation globale : un seul binding incoherent fait rejeter l'ensemble,
+    // pour ne jamais persister une configuration a moitie fausse.
+    for (uint8_t i = 0; i < IoExpander::MAX_BINDINGS; ++i) {
+        if (!IoExpander::validBinding(c, i, nbZones)) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "binding %u incoherent (direction/role/zone)", i);
+            sendError(req, msg);
+            return;
+        }
+    }
+
+    if (!_ioExpander->applyConfig(c)) { sendError(req, "ecriture NVS impossible", 500); return; }
+    EventLog::log(LOG_INFO, "IoExpander: configuration mise a jour (active=%u)", c.enabled);
+    sendOk(req);
+}
+
+void WebManager::handleSetIoOutput(AsyncWebServerRequest* req, JsonDocument& doc) {
+    if (!_ioExpander) { sendError(req, "couche E/S indisponible", 503); return; }
+    int idx = doc["binding"] | -1;
+    if (idx < 0 || idx >= IoExpander::MAX_BINDINGS) { sendError(req, "binding invalide"); return; }
+    const bool on = doc["on"] | false;
+    if (!_ioExpander->setOutput((uint8_t)idx, on)) {
+        sendError(req, "binding non pilotable (pas une sortie active ou carte absente)");
+        return;
+    }
+    sendOk(req);
+}
+

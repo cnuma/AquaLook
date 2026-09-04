@@ -13,6 +13,7 @@
 #include "NotificationManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
+#include "IoExpanderManager.h"
 #include "RelaisManagerBackend.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
@@ -37,6 +38,7 @@ WiFiManager wifiMgr;
 NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
+IoExpanderManager ioExpander;
 AquaLook::Runtime::RelaisManagerBackend relaisBackend;
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 ScheduleManager scheduleMgr;
@@ -524,6 +526,9 @@ void setup() {
 
     relaisMgr.setXl9535SharedOutputState(&xl9535SharedOutputState);
     relaisMgr.begin(&configMgr);
+    // Couche E/S TOR (MCP23017 configurables) : inerte tant qu'aucune
+    // carte n'est declaree. Apres relaisMgr.begin : le bus I2C est pret.
+    ioExpander.begin(&relaisMgr);
     relaisBackend.bind(&relaisMgr);
 
 #if AQUALOOK_RELAY_BACKEND_V4
@@ -652,6 +657,7 @@ void setup() {
     webMgr.setDisplay(&displayMgr);
     webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
     webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
+    webMgr.setIoExpander(&ioExpander);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
@@ -742,6 +748,11 @@ void loop() {
     startedUs = RuntimeProfiler::start();
     relaisMgr.update();
     RuntimeProfiler::stop(RuntimeProfiler::Component::RELAY, startedUs);
+
+    // Couche E/S TOR : scrute les entrees a sa propre periode, pilote les
+    // sorties. Non bloquant, inerte si desactivee. Apres relaisMgr.update()
+    // pour que l'etat des zones (gating presence-vanne) soit a jour.
+    ioExpander.update(millis(), configMgr.nbZones());
 
     startedUs = RuntimeProfiler::start();
     webMgr.update();
