@@ -67,8 +67,8 @@ static bool equipmentOrchestratorShadowReady = false;
 // AQUALOOK_V4_REPRISE_MIGRATION_DECISION.md). L'utilisateur n'etant pas au
 // module, c'est par le port serie qu'on prouve que V4 saurait executer ce que
 // le legacy decide -- avant toute bascule d'autorite. Purement observationnel.
-static uint32_t g_parityAgree = 0U;
-static uint32_t g_parityDisagree = 0U;
+uint32_t g_parityAgree = 0U;      // expose via /api/diagnostics
+uint32_t g_parityDisagree = 0U;   // pour un soak mesurable sans le log
 enum class OrchestratorAuthorityMode : uint8_t {
     Disabled = 0U,
     Controlled

@@ -394,6 +394,15 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     portEXIT_CRITICAL(&_mux);
 
     JsonObject system = doc["system"].to<JsonObject>();
+    // Parite V4 vs legacy : cumul interrogeable, car le journal
+    // circulaire fait defiler les lignes sur un soak de plusieurs jours.
+    {
+        extern uint32_t g_parityAgree;
+        extern uint32_t g_parityDisagree;
+        JsonObject parity = doc["parity"].to<JsonObject>();
+        parity["ok"] = g_parityAgree;
+        parity["ko"] = g_parityDisagree;
+    }
     system["uptimeSec"] = millis() / 1000UL;
     system["cpuMhz"] = ESP.getCpuFreqMHz();
     system["sdk"] = ESP.getSdkVersion();
