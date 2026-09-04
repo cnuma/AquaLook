@@ -720,6 +720,8 @@ const CFG_GROUPS = [
     sections: ['sec-system'] },
   { id: 'g-io',      icon: '&#128268;', label: 'Entrées / Sorties',
     sections: ['sec-io'] },
+  { id: 'g-relais',  icon: '&#9889;',   label: 'Câblage relais',
+    sections: ['sec-topo'] },
 ];
 
 // Sections presentes dans le DOM mais rattachees a aucune rubrique. Elles
@@ -764,6 +766,7 @@ function openCfgPage(groupId) {
   if (g.sections.indexOf('sec-cloud') >= 0) populateCloudSync();
   if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
   if (g.sections.indexOf('sec-io')    >= 0) loadCfgIo();
+  if (g.sections.indexOf('sec-topo')  >= 0) loadCfgTopo();
 
   const drawer = document.getElementById('drawer');
   drawer.classList.add('cfg-detail');
@@ -1655,3 +1658,216 @@ async function saveCfgIo() {
   } catch (e) { toast('Erreur reseau', true); }
 }
 
+// ── Topologie relais (cablage) — editeur configurable ──────────────────────
+// Convention : guillemets simples en JS, doubles en HTML, &rsquo; pour
+// l&rsquo;apostrophe. Aucun echappement fragile.
+
+let topoBoards = [];   // { i, controller, addr, channels, logic }
+let topoAssign = [];   // { i, role, target, board, channel }
+let topoSource = 'legacy';
+
+const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
+const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
+const TOPO_ROLES = [[1, 'Vanne de zone'], [2, 'Pompe'], [3, 'Auxiliaire'],
+                    [4, 'Ventilation serre'], [5, 'Eclairage']];
+const TOPO_CHANCOUNT = [4, 8, 16];
+
+function topoZoneCount() {
+  const s = adminStatus && adminStatus.system;
+  const n = s && Number(s.nbZones);
+  return (n && n > 0) ? n : 8;
+}
+
+async function loadCfgTopo() {
+  let d;
+  try { d = await (await fetch('/api/relay/topology')).json(); }
+  catch (e) {
+    document.getElementById('topo-editor').innerHTML =
+      '<div class="cfg-hint">Lecture impossible : ' + e.message + '</div>';
+    return;
+  }
+  topoSource = d.source || 'legacy';
+  topoBoards = (d.boards || []).map(b => ({
+    i: b.i, controller: b.controller, addr: b.addr,
+    channels: b.channels, logic: b.logic
+  }));
+  topoAssign = (d.assignments || []).map(a => ({
+    i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel
+  }));
+  renderTopoEditor();
+}
+
+function topoOptions(list, sel) {
+  return list.map(o => '<option value="' + o[0] + '"' +
+    (o[0] === sel ? ' selected' : '') + '>' + o[1] + '</option>').join('');
+}
+
+function topoNumOptions(list, sel) {
+  return list.map(v => '<option value="' + v + '"' +
+    (v === sel ? ' selected' : '') + '>' + v + '</option>').join('');
+}
+
+function topoAddrOptions(sel) {
+  let h = '';
+  for (let a = 0x20; a <= 0x27; a++)
+    h += '<option value="' + a + '"' + (a === sel ? ' selected' : '') +
+         '>0x' + a.toString(16) + '</option>';
+  return h;
+}
+
+function topoBoardOptions(sel) {
+  if (!topoBoards.length) return '<option value="0">(aucune carte)</option>';
+  return topoBoards.map(b => '<option value="' + b.i + '"' +
+    (b.i === sel ? ' selected' : '') + '>Carte ' + b.i +
+    ' (0x' + b.addr.toString(16) + ')</option>').join('');
+}
+
+function topoChannelOptions(boardIdx, sel) {
+  const b = topoBoards.find(x => x.i === boardIdx);
+  const n = b ? b.channels : 8;
+  let h = '';
+  for (let c = 0; c < n; c++)
+    h += '<option value="' + c + '"' + (c === sel ? ' selected' : '') + '>' + c + '</option>';
+  return h;
+}
+
+// La cible depend du role : une vanne vise une zone, les autres un index libre.
+function topoTargetOptions(role, sel) {
+  let h = '';
+  if (role !== 1) {
+    for (let t = 0; t < 8; t++)
+      h += '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + t + '</option>';
+    return h;
+  }
+  for (let z = 0; z < topoZoneCount(); z++)
+    h += '<option value="' + z + '"' + (z === sel ? ' selected' : '') +
+         '>Zone ' + (z + 1) + '</option>';
+  return h;
+}
+
+function renderTopoEditor() {
+  const el = document.getElementById('topo-editor');
+  const src = (topoSource === 'nvs')
+    ? '<span class="io-ok">enregistree</span>'
+    : '<span class="cfg-muted">derivee automatiquement</span>';
+  let h = '<div class="cfg-hint">Source en vigueur : ' + src +
+          '. Toute modification s&rsquo;applique au prochain redemarrage.</div>';
+
+  h += '<div class="cfg-subsection-title">Cartes relais</div>';
+  if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
+  topoBoards.forEach((b, n) => {
+    h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
+      + '<select data-topo="ctrl" data-n="' + n + '">' + topoOptions(TOPO_CTRL, b.controller) + '</select>'
+      + '<select data-topo="addr" data-n="' + n + '">' + topoAddrOptions(b.addr) + '</select>'
+      + '<select data-topo="chan" data-n="' + n + '" title="nombre de voies">'
+      + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>'
+      + '<select data-topo="logic" data-n="' + n + '">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>'
+      + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
+  });
+  h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
+
+  h += '<div class="cfg-subsection-title" style="margin-top:12px">Affectations</div>';
+  h += '<div class="cfg-hint">Chaque affectation relie un role (vanne de zone, pompe&hellip;) '
+     + 'a une voie physique : carte + canal.</div>';
+  if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
+  topoAssign.forEach((a, n) => {
+    h += '<div class="io-bind">'
+      + '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">'
+      + topoOptions(TOPO_ROLES, a.role) + '</select>'
+      + '<select data-topo="target" data-n="' + n + '">' + topoTargetOptions(a.role, a.target) + '</select>'
+      + '<select data-topo="board" data-n="' + n + '" onchange="topoOnBoardChange(' + n + ')">'
+      + topoBoardOptions(a.board) + '</select>'
+      + '<select data-topo="channel" data-n="' + n + '">' + topoChannelOptions(a.board, a.channel) + '</select>'
+      + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
+  });
+  h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
+  el.innerHTML = h;
+}
+
+// Recopie l'etat des selects dans les tableaux avant tout re-render.
+function topoGatherFromDom() {
+  document.querySelectorAll('#topo-editor [data-topo]').forEach(elm => {
+    const k = elm.dataset.topo, n = Number(elm.dataset.n);
+    const val = Number(elm.value);
+    if (k === 'ctrl' && topoBoards[n]) topoBoards[n].controller = val;
+    else if (k === 'addr' && topoBoards[n]) topoBoards[n].addr = val;
+    else if (k === 'chan' && topoBoards[n]) topoBoards[n].channels = val;
+    else if (k === 'logic' && topoBoards[n]) topoBoards[n].logic = val;
+    else if (topoAssign[n]) {
+      if (k === 'role') topoAssign[n].role = val;
+      else if (k === 'target') topoAssign[n].target = val;
+      else if (k === 'board') topoAssign[n].board = val;
+      else if (k === 'channel') topoAssign[n].channel = val;
+    }
+  });
+}
+
+function topoNextIndex(list, max) {
+  for (let i = 0; i < max; i++) if (!list.some(x => x.i === i)) return i;
+  return -1;
+}
+
+function topoAddBoard() {
+  topoGatherFromDom();
+  const i = topoNextIndex(topoBoards, 8);
+  if (i < 0) { toast('8 cartes au maximum', true); return; }
+  topoBoards.push({ i: i, controller: 0, addr: 0x20, channels: 8, logic: 1 });
+  renderTopoEditor();
+}
+function topoRemoveBoard(n) { topoGatherFromDom(); topoBoards.splice(n, 1); renderTopoEditor(); }
+
+function topoAddAssign() {
+  topoGatherFromDom();
+  const i = topoNextIndex(topoAssign, 20);
+  if (i < 0) { toast('20 affectations au maximum', true); return; }
+  const board = topoBoards.length ? topoBoards[0].i : 0;
+  topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0 });
+  renderTopoEditor();
+}
+function topoRemoveAssign(n) { topoGatherFromDom(); topoAssign.splice(n, 1); renderTopoEditor(); }
+
+// Changer de role change la nature de la cible ; changer de carte peut rendre
+// le canal hors bornes. Dans les deux cas on repart d'une valeur sure.
+function topoOnRoleChange(n) { topoGatherFromDom(); topoAssign[n].target = 0; renderTopoEditor(); }
+function topoOnBoardChange(n) { topoGatherFromDom(); topoAssign[n].channel = 0; renderTopoEditor(); }
+
+async function saveCfgTopo() {
+  topoGatherFromDom();
+  const body = {
+    boards: topoBoards.map(b => ({
+      i: b.i, controller: b.controller, addr: b.addr,
+      channels: b.channels, logic: b.logic
+    })),
+    assignments: topoAssign.map(a => ({
+      i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel
+    }))
+  };
+  try {
+    const r = await fetch('/api/relay/topology', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast((d && d.error) || ('Erreur ' + r.status), true); return; }
+    toast('Topologie enregistree, active au prochain redemarrage');
+    await loadCfgTopo();
+  } catch (e) { toast('Erreur reseau', true); }
+}
+
+async function topoPersistCurrent() {
+  try {
+    const r = await fetch('/api/relay/topology/persist', { method: 'POST' });
+    if (!r.ok) { toast('Enregistrement refuse', true); return; }
+    toast('Cablage actuel fige');
+    await loadCfgTopo();
+  } catch (e) { toast('Erreur reseau', true); }
+}
+
+async function topoBackToLegacy() {
+  try {
+    const r = await fetch('/api/relay/topology/reset', { method: 'POST' });
+    if (!r.ok) { toast('Effacement refuse', true); return; }
+    toast('Retour au cablage derive, actif au prochain redemarrage');
+    await loadCfgTopo();
+  } catch (e) { toast('Erreur reseau', true); }
+}

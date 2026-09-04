@@ -851,6 +851,9 @@ header {
 
 /* Editeur E/S TOR (MCP23017) */
 .io-row,.io-bind{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:5px 0;font-size:13px}
+/* Utilisees par les editeurs E/S et cablage relais, jusqu ici sans style. */
+.cfg-subsection-title{font-weight:600;font-size:13px;margin:10px 0 4px;color:#789c80}
+.cfg-muted{color:#8a8a8a}
 .io-bind select,.io-row select{padding:4px 6px;font-size:12px;max-width:130px}
 .io-lbl{min-width:58px;color:#789c80}
 .io-st{margin-left:auto;font-size:12px}

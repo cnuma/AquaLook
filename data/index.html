@@ -446,6 +446,19 @@
       <div class="cfg-hint" style="margin-top:6px">Surveillance de la présence des électrovannes (fuite au repos via optocoupleur), pilotage de sorties (éclairage, ventilation) et lecture de capteurs TOR. La présence n&rsquo;est évaluée que lorsque la zone est au repos.</div>
     </div>
   </div>
+  <div class="cfg-section" id="sec-topo">
+    <div class="cfg-section-header" onclick="toggleSection('sec-topo')">
+      <span class="cfg-section-title"><span class="sec-icon">&#9889;</span>Câblage relais (topologie)</span>
+      <span class="cfg-chevron">&#9654;</span>
+    </div>
+    <div class="cfg-section-body">
+      <div id="topo-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
+      <button class="btn-cfg primary" onclick="saveCfgTopo()" style="margin-top:8px">Enregistrer</button>
+      <button class="btn-cfg" onclick="topoPersistCurrent()" style="margin-top:6px">Figer le câblage actuel</button>
+      <button class="btn-cfg" onclick="topoBackToLegacy()" style="margin-top:6px">Revenir au câblage dérivé</button>
+      <div class="cfg-hint" style="margin-top:6px">Décrit quelle voie physique (carte + canal) pilote chaque rôle : vanne de zone, pompe, éclairage&hellip; Sans enregistrement, le câblage est dérivé automatiquement du nombre de zones. Toute modification prend effet au prochain redémarrage.</div>
+    </div>
+  </div>
   <div class="cfg-section" id="sec-weather-tooltips">
     <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
       <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Info-bulles météo Web</span>
