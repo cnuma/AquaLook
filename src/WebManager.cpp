@@ -1,4 +1,5 @@
 #include "WebManager.h"
+#include "RelayTopologyStore.h"
 #include "HeapMetrics.h"
 #include "BootLoopGuard.h"
 #include "EventBus.h"
@@ -570,6 +571,10 @@ void WebManager::setupRoutes() {
     _server.on("/api/resetConfig", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleResetConfig(req);
     });
+    _server.on("/api/relay/topology/persist", HTTP_POST,
+               [this](AsyncWebServerRequest* req) { handlePersistTopology(req); });
+    _server.on("/api/relay/topology/reset", HTTP_POST,
+               [this](AsyncWebServerRequest* req) { handleResetTopology(req); });
     // Scan réseau WiFi — portail captif
     _server.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleWifiScan(req);
@@ -1530,6 +1535,25 @@ void WebManager::handleSetZoneNotifications(AsyncWebServerRequest* req,
 void WebManager::handleStartCaptive(AsyncWebServerRequest* req) {
     sendOk(req);
     EventBus::captiveRequested = true;  // WiFiManager le consomme dans update()
+}
+
+// Enregistre la topologie relais actuellement en vigueur. Par defaut elle
+// est derivee du legacy a chaque demarrage ; la persister permet de la
+// figer puis de la faire evoluer sans toucher au code.
+void WebManager::handlePersistTopology(AsyncWebServerRequest* req) {
+    if (!_config || !_relais.relay) { sendError(req, "indisponible"); return; }
+    if (!RelayTopologyStore::save(_relais.relay->topology(), _config->nbZones())) {
+        sendError(req, "topologie refusee");
+        return;
+    }
+    sendOk(req);
+}
+
+// Efface la topologie persistee : le prochain demarrage repart de la
+// derivation legacy, qui reste la reference.
+void WebManager::handleResetTopology(AsyncWebServerRequest* req) {
+    RelayTopologyStore::clear();
+    sendOk(req);
 }
 
 void WebManager::handleResetConfig(AsyncWebServerRequest* req) {

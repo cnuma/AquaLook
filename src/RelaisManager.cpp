@@ -1,4 +1,5 @@
 #include "RelaisManager.h"
+#include "RelayTopologyStore.h"
 #include "ConfigManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
@@ -59,6 +60,18 @@ void RelaisManager::begin(ConfigManager* config) {
 
 void RelaisManager::buildRuntimeTopology() {
     const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+
+    // Une topologie enregistree prend le pas ; a defaut on derive la
+    // topologie legacy, qui reste la reference eprouvee et le
+    // comportement par defaut (aucun enregistrement = rien ne change).
+    if (RelayTopologyStore::load(_topology, nbZ)) {
+        const RelayTopology::RelayBoardConfig& p0 = _topology.boards[0];
+        EventLog::log(LOG_INFO,
+                      "Relais: topologie NVS, carte0=%s 0x%02X, voies=%u",
+                      RelayTopology::controllerName(p0.controller),
+                      p0.i2cAddress, p0.channelCount);
+        return;
+    }
     const uint8_t nbR = _config ? _config->nbRelais() : NB_ZONES;
     const uint8_t controller = _config
         ? _config->relayController()

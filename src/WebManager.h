@@ -840,6 +840,9 @@ private:
     void handleSetLogConfig(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleStartCaptive(AsyncWebServerRequest* req);
     void handleResetConfig(AsyncWebServerRequest* req);
+    // Topologie relais : persister celle en vigueur, ou revenir au legacy.
+    void handlePersistTopology(AsyncWebServerRequest* req);
+    void handleResetTopology(AsyncWebServerRequest* req);
     void handleWifiScan(AsyncWebServerRequest* req);
     void handleGetLogs(AsyncWebServerRequest* req);
     void handleGetDisplay(AsyncWebServerRequest* req);
