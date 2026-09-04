@@ -139,3 +139,123 @@ Tout est reproductible depuis les scripts de la campagne :
 - `endurance.py` — trafic séquentiel doux sur la nuit, recherche de fuite mémoire lente.
 
 Les routes destructrices ont été **exclues par construction** du fuzzing : `/api/wifi` (redémarrage + perte du réseau), `/api/resetConfig`, `/api/cloudSync` (canal de production), `/api/webassets/update`, `/api/debug/deploy-*`, `/api/manual`.
+
+---
+
+# Suite : correctifs, validation et campagnes n°2 et n°3 (4 septembre 2026)
+
+Cette section documente les correctifs appliqués aux défauts ci-dessus, deux
+campagnes supplémentaires plus offensives, et une re-caractérisation importante
+apportée par un changement de conditions radio.
+
+## Correctifs appliqués et validés
+
+| Défaut | Gravité | Correctif | État |
+|--------|---------|-----------|------|
+| **Débordement de tas (Content-Length mensonger)** | **Critique** | Corps borné au Content-Length dans `_parse` **et** copie bornée dans `handleBody` | **Corrigé, vérifié** |
+| n°1 DoS URI géante | Élevée | `UriLengthGuard` (414 au-delà de 512 o) + plafond 8 Ko sur l'accumulation ligne/en-tête | **Corrigé, vérifié** |
+| Null-deref à l'acceptation (churn) | Élevée | Garde `pcb == NULL || err` dans `AsyncServer::_accept` | **Corrigé** (un point ; voir limite résiduelle) |
+| n°3 Exfiltration du jeton cloud | Moyenne | Jeton `Authorization` émis uniquement en HTTPS | **Corrigé** |
+| n°6 Préfixe de secret masqué | Faible | Masques réduits à la présence, sans caractère en clair | **Corrigé, vérifié** |
+| n°7 `z` non numérique | Faible | Rejet `400` d'un `z` non numérique | **Corrigé, vérifié** |
+
+Deux durcissements des dépendances (`ESPAsyncWebServer`, `AsyncTCP`) sont
+appliqués à la source au build par `tools/patch_asyncwebserver.py`, idempotents
+et rejoués à chaque compilation puisque `.pio` n'est pas versionné.
+
+### Le défaut critique : débordement de tas
+
+Découvert par la campagne n°2, c'est le plus grave de toute l'étude. Une requête
+POST dont le corps réel dépasse le `Content-Length` annoncé corrompait la
+mémoire :
+
+```
+Content-Length: 5   +   corps de 219 octets ("{...}" + "AAAA…")
+→ Guru Meditation (LoadStoreAlignment / IllegalInstruction)
+→ pointeur d'exécution à 0x41414141  (les octets "AAAA" de l'attaquant)
+```
+
+`AsyncCallbackJsonWebHandler::handleBody` faisait `memcpy(malloc(total)+index,
+data, len)` sans borner `len` à `total`, et le parseur lui livrait la taille
+complète du segment TCP reçu. Les octets en trop, **contrôlés par l'attaquant**,
+débordaient le tampon et écrasaient le tas — un pointeur de code prenait la
+valeur des octets envoyés. Reproductible sans authentification.
+
+Corrigé des deux côtés (défense en profondeur). Vérifié : `CL=5` avec 200, 5 000
+puis 50 000 octets de corps → `400 Bad Request`, plus aucun redémarrage ; un
+corps valide suivi de 100 Ko de surplus → `200 OK`, surplus ignoré sans dommage.
+
+## Amélioration : canal ntfy chiffré (HTTPS)
+
+À la demande de l'utilisateur. L'ancien module ESP32 n'avait pas la RAM pour
+TLS, d'où un canal ntfy en HTTP clair (sujet et messages exposés). Le module S3
+(≈ 200 Ko de heap libre) le supporte : le transport suit désormais le schéma de
+l'URL, `ntfy.sh` valide contre les racines déjà embarquées pour l'OTA (coût
+flash nul), et un test a été livré `http=200` sur le port 443. Le module envoie
+maintenant ses notifications chiffrées.
+
+## Re-caractérisation : la « tempête » dépendait du signal radio
+
+**Important.** Une grande partie de la campagne s'est déroulée avec un RSSI de
+**−90 dBm** (plancher de bruit), le module posé sur l'établi loin de la box. En
+cours d'étude, le signal est remonté à **−57 dBm**. Le défaut n°2 (tempête de
+connexions → redémarrage) a alors changé de nature :
+
+| | −90 dBm | −57 dBm |
+|---|---|---|
+| 300 requêtes / 30 fils | 54 réussies, redémarrage | **252 réussies, aucun redémarrage** |
+
+La tempête n'était donc pas un déni de service robuste : à signal sain, le module
+encaisse 300 requêtes concurrentes sans broncher. Le blocage de `async_tcp` au
+watchdog était provoqué par la congestion réseau du signal faible, pas par la
+concurrence en soi. Les défauts de **logique** (URI, débordement, null-deref),
+eux, sont indépendants du signal.
+
+## Limite résiduelle : churn de connexions extrême
+
+Un flot soutenu de connexions ouvertes puis immédiatement réinitialisées
+(centaines de `connect`+`RST` par salve) reste capable de faire redémarrer le
+module, et, au pire (≈ 1 500 d'affilée), de le figer jusqu'à un reset matériel.
+Le garde à l'acceptation ferme un point de crash (`_accept`), mais une course du
+cycle de vie des connexions subsiste **dans AsyncTCP 3.3.2** : la destruction de
+l'objet requête/réponse au moment du `FIN` déréférence de la mémoire déjà
+libérée (`~AsyncWebServerRequest` → `~AsyncWebHeader`).
+
+Ce n'est pas corrigeable par un simple garde. Les pistes réelles : suivre une
+mise à jour amont d'AsyncTCP qui corrige ce cycle de vie, ou ajouter un
+limiteur de débit de connexions (refuser d'accepter au-delà d'un certain rythme).
+Dans l'immédiat, le comportement observé est le plus souvent auto-réparateur
+(redémarrage puis reprise, configuration préservée), avec `BootLoopGuard` comme
+garde-fou. Documenté ici plutôt que corrigé par une chirurgie risquée d'une
+bibliothèque par ailleurs saine.
+
+## Ce que les campagnes 2 et 3 ont confirmé solide
+
+- **Corps / Content-Length** : chunked malformé (taille énorme, non hexadécimale,
+  négative, sans fin) → `400` ; `Content-Length` plus grand que le corps → attente
+  sans crash.
+- **Confusion de protocole** : double `Content-Length`, `Content-Length` +
+  `Transfer-Encoding`, préface HTTP/2, double `Host`, espaces avant les
+  deux-points, méthode en minuscules → tous rejetés proprement, aucun crash.
+  `Expect: 100-continue` correctement géré (`100 Continue`).
+- **Encodage d'URL** : `%00`, `%0d%0a` (injection d'en-tête), `%2e%2e`
+  (traversée), 500 paramètres de requête → `404` ou décodage sûr, aucune
+  injection ni traversée.
+- **Multipart** : frontière vide, frontière de 16 Ko, sans terminateur →
+  `404` ou connexion coupée par le plafond 8 Ko.
+- **Course d'écritures concurrentes** : 40 POST simultanés sur la même zone →
+  aucune corruption de configuration.
+- **Pipeline** : 200 requêtes valides sur une seule connexion → servies sans
+  incident.
+
+## Défauts encore ouverts (authentification différée)
+
+Deux défauts identifiés relèvent du trou d'authentification assumé en conception
+et ne sont pas refermés ici, car ils exigent la couche d'authentification prévue :
+
+- **n°4** : le sujet ntfy reste lisible par `/api/notifications` (le passage en
+  HTTPS chiffre désormais le transit, mais l'API locale l'expose toujours) ;
+- **n°5** : `/api/resetConfig` reste déclenchable sans authentification.
+
+À refermer avant toute mise en service réelle, avec l'authentification de
+l'interface du module.
