@@ -83,6 +83,29 @@ PATCHES = [
         "    }\n",
         "AQUALOOK_BODY_BOUND",
     ),
+    # ── Patch 3 : garde a l'acceptation d'une connexion (defaut churn) ────
+    # lwIP peut invoquer le callback d'acceptation avec une erreur ou un pcb
+    # nul quand une connexion est reinitialisee pendant l'acceptation --
+    # frequent sous un churn de connexions (500 connect+RST rapides faisaient
+    # redemarrer le module, LoadProhibited dans AsyncServer::_accept). Le code
+    # d'origine ne verifiait rien et faisait new AsyncClient(pcb) sur un pcb
+    # invalide. On reprend la garde standard des callbacks d'acceptation lwIP.
+    (
+        os.path.join("AsyncTCP", "src", "AsyncTCP.cpp"),
+        "int8_t AsyncServer::_accept(tcp_pcb* pcb, int8_t err) {\n"
+        "  // ets_printf(\"+A: 0x%08x\\n\", pcb);\n"
+        "  if (_connect_cb) {\n",
+        "int8_t AsyncServer::_accept(tcp_pcb* pcb, int8_t err) {\n"
+        "  // AQUALOOK_ACCEPT_GUARD : ne jamais deferencer un pcb nul ou remis a\n"
+        "  // zero pendant l'acceptation (connexion RST sous churn).\n"
+        "  if (pcb == NULL || err != ERR_OK) {\n"
+        "    if (pcb != NULL) { tcp_abort(pcb); }\n"
+        "    return ERR_OK;\n"
+        "  }\n"
+        "  // ets_printf(\"+A: 0x%08x\\n\", pcb);\n"
+        "  if (_connect_cb) {\n",
+        "AQUALOOK_ACCEPT_GUARD",
+    ),
 ]
 
 
