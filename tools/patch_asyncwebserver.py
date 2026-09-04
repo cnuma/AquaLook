@@ -1,46 +1,89 @@
-"""Plafonne la taille de la ligne de requete / des en-tetes dans ESPAsyncWebServer.
+"""Correctifs de robustesse appliques a ESPAsyncWebServer / AsyncTCP au build.
 
-Pourquoi ce patch existe. La campagne de robustesse du 4 septembre 2026 a montre
-qu'une requete HTTP dont la ligne de requete atteint quelques centaines de
-kilo-octets fait redemarrer le module : `AsyncWebServerRequest::_onData`
-accumule tout dans un `String` (`_temp`) sans aucun plafond, jusqu'a la
-nouvelle ligne. La croissance repetee de ce `String` est en O(n^2) et bloque la
-tache `async_tcp` au-dela du chien de garde de tache, qui declenche un panic
-(voir docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut n°1). Le garde applicatif
-(UriLengthGuard) ne peut rien : il n'est consulte qu'une fois la ligne
-entierement accumulee, donc trop tard.
+La campagne de robustesse (docs/ROBUSTESSE_RESEAU_2026-09-04.md) a mis au jour
+deux defauts dans la bibliotheque, tous deux exploitables sans authentification
+depuis le reseau. La lib n'expose aucun reglage pour s'en premunir ; on la
+corrige donc a la source, au plus pres du defaut, en reprenant ses propres
+idiomes. Chaque correctif porte un marqueur qui le rend idempotent, et le tout
+est rejoue a chaque build car .pio n'est pas versionne.
 
-La bibliotheque n'expose aucune limite configurable. On l'ajoute donc a la
-source, au plus pres du defaut, en reprenant exactement l'idiome que la lib
-utilise deja pour avorter proprement (`_parseState = PARSE_REQ_FAIL;
-_client->abort();`).
+Patch 1 -- DoS par requete demesuree (defaut n°1).
+  AsyncWebServerRequest::_onData accumule la ligne de requete / les en-tetes
+  dans un String sans plafond. Quelques centaines de kilo-octets suffisaient a
+  bloquer async_tcp au-dela du chien de garde (croissance O(n^2)), d'ou un
+  redemarrage. On coupe la connexion des que l'accumulation depasse 8 Ko.
 
-Le patch est idempotent (un marqueur empeche la double application) et
-s'applique a chaque build via extra_scripts, car .pio/libdeps est regenerable
-et n'est pas versionne. S'il ne trouve pas le fichier (libs pas encore
-installees), il n'echoue pas : le build suivant l'appliquera.
+Patch 2 -- Debordement de tas par Content-Length mensonger (CRITIQUE).
+  Un corps plus long que le Content-Length annonce corrompait la memoire :
+  AsyncCallbackJsonWebHandler::handleBody fait memcpy(malloc(total)+index, data,
+  len) sans borner len a total, et le parseur lui livrait la taille complete du
+  segment recu au lieu du reste attendu. Les octets en trop debordaient le
+  tampon (crash a 0x41414141, l'attaquant controlant les octets ecrits). On
+  borne les deux : la copie dans handleBody, et la longueur livree par _parse.
+
+N'echoue jamais le build : un fichier absent (libs pas encore installees) ou une
+ancre introuvable (version differente) est signale, et le build continue.
 """
 Import("env")  # noqa: F821  (fourni par PlatformIO)
 
 import glob
 import os
 
-MARQUEUR = "AQUALOOK_MAX_REQUEST_LINE"
-PLAFOND = 8192  # octets : large pour toute requete legitime, loin de l'explosion
-
-ANCRE = "        _temp.concat(ch);\n"
-INJECTION = (
-    "        _temp.concat(ch);\n"
-    "        // " + MARQUEUR + " : couper une ligne de requete/entete demesuree\n"
-    "        // AVANT que la croissance illimitee de _temp (O(n^2)) ne bloque\n"
-    "        // async_tcp au-dela du chien de garde. Meme idiome d'avortement\n"
-    "        // que la lib pour un caractere nul en en-tete.\n"
-    "        if (_temp.length() > " + str(PLAFOND) + ") {\n"
-    "          _parseState = PARSE_REQ_FAIL;\n"
-    "          _client->abort();\n"
-    "          return;\n"
-    "        }\n"
-)
+# (sous-chemin, ancre, remplacement, marqueur)
+PATCHES = [
+    # ── Patch 1 : plafond ligne/entete ───────────────────────────────────
+    (
+        os.path.join("ESPAsyncWebServer", "src", "WebRequest.cpp"),
+        "        _temp.concat(ch);\n",
+        "        _temp.concat(ch);\n"
+        "        // AQUALOOK_MAX_REQUEST_LINE : couper une ligne/entete demesuree\n"
+        "        // AVANT que la croissance illimitee de _temp (O(n^2)) ne bloque\n"
+        "        // async_tcp au-dela du chien de garde. Meme idiome d'avortement\n"
+        "        // que la lib pour un caractere nul en en-tete.\n"
+        "        if (_temp.length() > 8192) {\n"
+        "          _parseState = PARSE_REQ_FAIL;\n"
+        "          _client->abort();\n"
+        "          return;\n"
+        "        }\n",
+        "AQUALOOK_MAX_REQUEST_LINE",
+    ),
+    # ── Patch 2a : borner la longueur livree par le parseur ──────────────
+    (
+        os.path.join("ESPAsyncWebServer", "src", "WebRequest.cpp"),
+        "        if (!_isPlainPost) {\n"
+        "          if (_handler)\n"
+        "            _handler->handleBody(this, (uint8_t*)buf, len, _parsedLength, _contentLength);\n"
+        "          _parsedLength += len;\n",
+        "        if (!_isPlainPost) {\n"
+        "          // AQUALOOK_BODY_CLAMP : ne jamais livrer au handler plus que le\n"
+        "          // Content-Length restant. Un corps plus long debordait sinon le\n"
+        "          // tampon du handler (voir AsyncJson). Le surplus est ignore.\n"
+        "          size_t aq_body = len;\n"
+        "          if (_parsedLength + aq_body > _contentLength)\n"
+        "            aq_body = (_parsedLength < _contentLength) ? (_contentLength - _parsedLength) : 0;\n"
+        "          if (_handler)\n"
+        "            _handler->handleBody(this, (uint8_t*)buf, aq_body, _parsedLength, _contentLength);\n"
+        "          _parsedLength += aq_body;\n",
+        "AQUALOOK_BODY_CLAMP",
+    ),
+    # ── Patch 2b : borner la copie dans le handler JSON ──────────────────
+    (
+        os.path.join("ESPAsyncWebServer", "src", "AsyncJson.cpp"),
+        "    if (request->_tempObject != NULL) {\n"
+        "      memcpy((uint8_t*)(request->_tempObject) + index, data, len);\n"
+        "    }\n",
+        "    if (request->_tempObject != NULL) {\n"
+        "      // AQUALOOK_BODY_BOUND : borner la copie a la taille allouee (total).\n"
+        "      // Un Content-Length plus petit que le corps reel faisait deborder ce\n"
+        "      // malloc(total) et corrompait le tas (crash a 0x41414141).\n"
+        "      size_t aq_len = len;\n"
+        "      if (index >= total) aq_len = 0;\n"
+        "      else if (index + aq_len > total) aq_len = total - index;\n"
+        "      memcpy((uint8_t*)(request->_tempObject) + index, data, aq_len);\n"
+        "    }\n",
+        "AQUALOOK_BODY_BOUND",
+    ),
+]
 
 
 def libdeps_dir():
@@ -52,29 +95,30 @@ def libdeps_dir():
 
 def appliquer(_source, _target, _env):
     base = libdeps_dir()
-    motif = os.path.join(base, "*", "ESPAsyncWebServer", "src", "WebRequest.cpp")
-    fichiers = glob.glob(motif)
-    if not fichiers:
-        print("patch_asyncwebserver: WebRequest.cpp introuvable (sera applique au prochain build)")
-        return
-    for chemin in fichiers:
-        with open(chemin, "r", encoding="utf-8", errors="replace") as f:
-            contenu = f.read()
-        if MARQUEUR in contenu:
+    for sous_chemin, ancre, remplacement, marqueur in PATCHES:
+        motif = os.path.join(base, "*", sous_chemin)
+        fichiers = glob.glob(motif)
+        if not fichiers:
+            print("patch_asyncwebserver: %s introuvable (prochain build)" % sous_chemin)
             continue
-        if ANCRE not in contenu:
-            print("patch_asyncwebserver: ancre absente dans %s (version differente ?)" % chemin)
-            continue
-        contenu = contenu.replace(ANCRE, INJECTION, 1)
-        with open(chemin, "w", encoding="utf-8") as f:
-            f.write(contenu)
-        print("patch_asyncwebserver: plafond de %d octets pose dans %s" % (PLAFOND, chemin))
+        for chemin in fichiers:
+            with open(chemin, "r", encoding="utf-8", errors="replace") as f:
+                contenu = f.read()
+            if marqueur in contenu:
+                continue
+            if ancre not in contenu:
+                print("patch_asyncwebserver: ancre [%s] absente dans %s (version differente ?)"
+                      % (marqueur, chemin))
+                continue
+            contenu = contenu.replace(ancre, remplacement, 1)
+            with open(chemin, "w", encoding="utf-8") as f:
+                f.write(contenu)
+            print("patch_asyncwebserver: [%s] pose dans %s" % (marqueur, chemin))
 
 
 # Une seule application, au chargement du pre-script : il s'execute apres
 # l'installation des dependances et avant la compilation, donc la source patchee
 # est bien celle qui sera compilee. On ne se re-branche PAS sur "buildprog" :
 # modifier une source de lib en cours de build brouille le suivi incremental de
-# SCons (echec au premier passage, succes au second). Le marqueur rend l'action
-# idempotente d'un build a l'autre.
+# SCons (echec au premier passage, succes au second).
 appliquer(None, None, env)
