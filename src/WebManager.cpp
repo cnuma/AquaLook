@@ -256,7 +256,33 @@ void WebManager::update() {
     }
 }
 
+namespace {
+// Rejette d'un 414 toute URL anormalement longue AVANT que le serveur de
+// fichiers statiques ne tente de l'ouvrir comme un chemin LittleFS. Sans ce
+// garde, une URI de 16 Ko faisait redemarrer le module : l'ouverture du chemin
+// geant, plus son impression sur la console serie, bloquaient la tache
+// async_tcp au-dela des 5 s du chien de garde de tache, qui declenchait un
+// panic (voir docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut n°1). 512 octets
+// couvrent largement les URL legitimes du projet, chemins de fichiers compris.
+constexpr size_t MAX_URL_LENGTH = 512;
+
+class UriLengthGuard : public AsyncWebHandler {
+public:
+    bool canHandle(AsyncWebServerRequest* request) const override {
+        return request->url().length() > MAX_URL_LENGTH;
+    }
+    void handleRequest(AsyncWebServerRequest* request) override {
+        request->send(414, "text/plain", "URI trop longue");
+    }
+};
+UriLengthGuard g_uriLengthGuard;
+}  // namespace
+
 void WebManager::setupRoutes() {
+    // Premier handler enregistre, donc premier consulte : il court-circuite les
+    // URL demesurees avant tout autre routage, serveStatic compris.
+    _server.addHandler(&g_uriLengthGuard);
+
     // ── Détection portail captif (iOS/Android/Windows) ──────────
     // Stratégie : répondre de façon à ce que chaque OS détecte un portail
     // et ouvre automatiquement le navigateur captif.
@@ -319,7 +345,16 @@ void WebManager::setupRoutes() {
     // Route query param : /api/zone?z=N — evite les problemes de regex AsyncWebServer
     _server.on("/api/zone", HTTP_GET, [this](AsyncWebServerRequest* req) {
         if (!req->hasParam("z")) { sendError(req, "parametre z manquant"); return; }
-        uint8_t z = (uint8_t)req->getParam("z")->value().toInt();
+        const String zStr = req->getParam("z")->value();
+        // Rejeter explicitement une valeur non numerique : toInt() rendrait 0
+        // sur "abc" ou "", et l'on renverrait la zone 0 au lieu d'un refus
+        // (docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut n°7).
+        bool numerique = zStr.length() > 0 && zStr.length() <= 3;
+        for (unsigned i = 0; numerique && i < zStr.length(); ++i) {
+            if (!isdigit((unsigned char)zStr[i])) numerique = false;
+        }
+        if (!numerique) { sendError(req, "zone invalide"); return; }
+        uint8_t z = (uint8_t)zStr.toInt();
         if (!_config || z >= _config->nbZones()) { sendError(req, "zone invalide"); return; }
         JsonDocument doc;
         if (_schedule) {
@@ -711,29 +746,18 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         cloud["useHttps"] = cs.useHttps;
         cloud["moduleId"] = cs.moduleId;
         cloud["intervalMinutes"] = cs.intervalMinutes;
-        // Jeton masque : meme principe que la cle OWM ci-dessous, jamais
-        // renvoye en clair une fois enregistre.
-        char masked[12] = "****";
-        if (strlen(cs.token) > 4) {
-            strncpy(masked, cs.token, 4);
-            masked[4] = '\0';
-            strcat(masked, "****");
-        }
-        cloud["tokenMasked"] = cs.token[0] ? masked : "";
+        // Presence seule, aucun caractere revele : l'ancien masque montrait les
+        // 4 premiers, ce qui reduisait sans raison l'espace de recherche
+        // (docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut n°6).
+        cloud["tokenMasked"] = cs.token[0] ? "****" : "";
     }
 
     // OWM
     if (_config) {
         JsonObject owm = doc["owm"].to<JsonObject>();
-        // Masquer la clé : montrer seulement les 4 premiers chars
+        // Presence seule, aucun caractere revele (defaut n°6).
         const char* key = _config->owm().apiKey;
-        char masked[12] = "****";
-        if (strlen(key) > 4) {
-            strncpy(masked, key, 4);
-            masked[4] = '\0';
-            strcat(masked, "****");
-        }
-        owm["apiKeyMasked"] = masked;
+        owm["apiKeyMasked"] = key[0] ? "****" : "";
         owm["hasKey"]  = (key[0] != '\0');
         owm["lat"]     = _config->owm().lat;
         owm["lon"]     = _config->owm().lon;
