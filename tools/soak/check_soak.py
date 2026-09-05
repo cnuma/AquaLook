@@ -9,7 +9,9 @@ desaccord, donc un blocage.
     python tools/soak/check_soak.py [--host 192.168.1.141]
 """
 import argparse
+import datetime as dt
 import json
+import os
 import sys
 import urllib.request
 
@@ -47,8 +49,33 @@ def main():
     except Exception:  # noqa: BLE001
         divergences = []
 
-    print('parite     : ok=%d  ko=%d' % (ok, ko))
-    print('uptime     : %.2f jour(s)  (%d s)' % (days, uptime))
+    # Le module redemarre volontairement chaque jour (verification de mise a
+    # jour) : son compteur repart de zero. Le cumul de campagne vit donc dans
+    # un registre local, sinon la campagne semblerait recommencer chaque matin.
+    ledger = {}
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               'ledger.json'), encoding='utf-8') as fh:
+            ledger = json.load(fh)
+    except Exception:  # noqa: BLE001
+        pass
+    reporte = ledger.get('cumul_avant_redemarrages', 0)
+    cumul = reporte + ok
+
+    print('parite     : session ok=%d ko=%d' % (ok, ko))
+    print('campagne   : %d cycles cumules (%d reportes sur %d redemarrage(s))'
+          % (cumul, reporte, ledger.get('redemarrages', 0)))
+    # Duree de CAMPAGNE : depuis le debut, pas depuis le dernier demarrage --
+    # l'uptime repart chaque nuit avec la verification de mise a jour.
+    campagne_j = 0.0
+    if ledger.get('debut'):
+        try:
+            debut = dt.datetime.fromisoformat(ledger['debut'])
+            campagne_j = (dt.datetime.now() - debut).total_seconds() / 86400.0
+        except Exception:  # noqa: BLE001
+            pass
+    print('uptime     : %.2f j depuis le dernier demarrage (%d s)' % (days, uptime))
+    print('campagne   : %.2f jour(s) ecoules' % campagne_j)
     heap = diag.get('memory') or diag.get('heap')
     if heap:
         print('memoire    : %s' % json.dumps(heap)[:120])
@@ -56,8 +83,8 @@ def main():
     # Criteres du Gate 1 (cf. AQUALOOK_V4_CRITERE_FIABILITE.md).
     checks = [
         ('desaccord = 0', ko == 0),
-        ('>= 100 cycles', ok >= 100),
-        ('>= 7 jours continus', days >= 7.0),
+        ('>= 100 cycles cumules', cumul >= 100),
+        ('>= 7 jours de campagne', campagne_j >= 7.0),
     ]
     print('--- Gate 1 ---')
     for label, passed in checks:

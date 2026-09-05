@@ -46,12 +46,27 @@ Chaque case cochée = **au moins 5 occurrences en ACCORD**, avec un cumul global
 ### Gate 1 — Soak shadow (endurance)
 V4 tourne en shadow, le legacy pilote, sur des cycles réels :
 
-- **≥ 7 jours** d'uptime continu réel ;
-- **≥ 100 cycles** réels (start+stop) toutes zones confondues ;
+- **≥ 7 jours de campagne** ;
+- **≥ 100 cycles** réels (start+stop) toutes zones confondues, **cumulés au
+  travers des redémarrages** ;
 - cumul **désaccord = 0** ;
-- **aucun** reboot / watchdog imputable au chemin shadow ;
+- **aucun redémarrage inexpliqué** ;
 - **heap stable** (pas de fuite : le plancher revient, cf. campagne de robustesse) ;
 - parité **reproductible après ≥ 3 redémarrages** (config rechargée).
+
+> **Correction du 5 septembre 2026.** Ce critère exigeait d'abord « ≥ 7 jours
+> d'**uptime continu** ». C'était **impossible par construction** : la
+> vérification quotidienne de mise à jour (`UpdateCheckScheduler`) redémarre
+> délibérément le module en mode maintenance, chaque jour à l'heure réglée —
+> `BootLoopGuard::restartDeliberately`. Le module ne peut donc jamais afficher
+> 7 jours d'uptime tant que cette vérification est active.
+>
+> On ne desactive pas cette verification pour faire passer le test : ce serait
+> mesurer un systeme qui n'existe pas. On mesure celui qui tourne vraiment.
+> D'où la reformulation : **7 jours de campagne**, et **aucun redémarrage
+> *inexpliqué*** — le redémarrage quotidien de maintenance étant attendu et
+> légitime. Corollaire : le compteur de parité repartant à zéro à chaque
+> redémarrage, les cycles se **cumulent hors du module** (`tools/soak/`).
 
 Un seul désaccord bloquant, un seul crash imputable → le compteur repart après
 correction.

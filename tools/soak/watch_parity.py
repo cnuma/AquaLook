@@ -10,7 +10,9 @@ derive memoire.
     python tools/soak/watch_parity.py [--host 192.168.1.141] [--interval 300]
 """
 import argparse
+import datetime as dt
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -18,6 +20,30 @@ import urllib.request
 MILESTONES = (50, 100, 150, 200, 300, 500)
 HEAP_FLOOR = 40000          # octets : en dessous, on veut le savoir
 OUTAGE_ALERT_S = 900        # coupure signalee au-dela de 15 min
+
+# Le module se redemarre volontairement chaque jour (verification de mise a
+# jour, cf. UpdateCheckScheduler), ce qui remet son compteur de parite a zero.
+# Les cycles doivent donc etre cumules HORS du module, sinon la campagne
+# semblerait repartir de rien chaque matin.
+LEDGER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ledger.json')
+
+
+def ledger_read():
+    try:
+        with open(LEDGER, encoding='utf-8') as fh:
+            return json.load(fh)
+    except Exception:  # noqa: BLE001 - premier demarrage
+        return {'cumul_avant_redemarrages': 0, 'redemarrages': 0,
+                'debut': dt.datetime.now().isoformat(timespec='seconds')}
+
+
+def ledger_write(d):
+    with open(LEDGER, 'w', encoding='utf-8') as fh:
+        json.dump(d, fh, indent=1)
+
+
+def now_hour():
+    return dt.datetime.now().hour
 
 
 def snapshot(host):
@@ -43,6 +69,7 @@ def main():
     seen_ko = 0
     seen_milestones = set()
     prev_uptime = None
+    last_ok = 0
     offline_since = None
     offline_reported = False
     heap_reported = False
@@ -76,16 +103,25 @@ def main():
 
         # 2. Redemarrage : remet le compteur et l'horloge d'endurance a zero.
         if prev_uptime is not None and s['uptime'] < prev_uptime:
-            print('REDEMARRAGE detecte : uptime retombe a %ds, ok=%d '
-                  '-- horloge d endurance repartie de zero'
-                  % (s['uptime'], s['ok']), flush=True)
+            led = ledger_read()
+            led['cumul_avant_redemarrages'] += last_ok
+            led['redemarrages'] += 1
+            ledger_write(led)
+            attendu = 'attendu' if 3 <= now_hour() <= 4 else 'INEXPLIQUE'
+            print('REDEMARRAGE (%s) : uptime %ds, %d cycles reportes, '
+                  'cumul campagne=%d'
+                  % (attendu, s['uptime'], last_ok, led['cumul_avant_redemarrages']),
+                  flush=True)
+            seen_milestones.clear()
         prev_uptime = s['uptime']
+        last_ok = s['ok']
 
         # 3. Jalons de volume.
+        cumul = ledger_read()['cumul_avant_redemarrages'] + s['ok']
         for m in MILESTONES:
-            if s['ok'] >= m and m not in seen_milestones:
+            if cumul >= m and m not in seen_milestones:
                 seen_milestones.add(m)
-                print('JALON %d cycles atteint (ok=%d ko=%d, uptime %.2f j)'
+                print('JALON %d cycles cumules (session ok=%d ko=%d, uptime %.2f j)'
                       % (m, s['ok'], s['ko'], s['uptime'] / 86400.0), flush=True)
 
         # 4. Derive memoire.
