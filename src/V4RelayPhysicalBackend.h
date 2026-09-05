@@ -83,6 +83,13 @@ private:
     Domain::BinaryActuatorDriverRegistry* _driverRegistry = nullptr;
     mutable Domain::BinaryActuatorSession _sessions[MAX_ZONES];
     uint32_t _migratedZoneMask = 0U;
+    // Le domaine V4 modelise la sante des actionneurs mais ne connait ni
+    // FaultManager ni le journal -- et ne doit pas les connaitre. C est donc
+    // a cet adaptateur, cote plateforme, de traduire les echecs du pilote en
+    // defaut visible, comme le fait RelaisManager depuis toujours.
+    bool _faultRaised = false;
+    void reportFailure(uint8_t zoneIndex, const char* etape);
+    void reportSuccess();
 };
 
 }} // namespace AquaLook::Runtime

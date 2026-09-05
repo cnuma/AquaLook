@@ -1,5 +1,8 @@
 #include "V4RelayPhysicalBackend.h"
 
+#include "EventLog.h"
+#include "FaultManager.h"
+
 namespace AquaLook { namespace Runtime {
 
 void V4RelayPhysicalBackend::bind(
@@ -34,6 +37,25 @@ bool V4RelayPhysicalBackend::isReady() const {
            _driverRegistry != nullptr && !_driverRegistry->empty();
 }
 
+// Un echec de pilotage doit s entendre. On n emet qu au CHANGEMENT d etat :
+// un defaut persistant noierait le journal circulaire, et le retablissement
+// doit rester lisible.
+void V4RelayPhysicalBackend::reportFailure(uint8_t zoneIndex, const char* etape) {
+    FaultManager::setActive(FaultId::RELAY_I2C, true);
+    if (!_faultRaised) {
+        _faultRaised = true;
+        EventLog::log(LOG_ERROR, "Relais V4: echec %s zone=%u", etape, zoneIndex + 1U);
+    }
+}
+
+void V4RelayPhysicalBackend::reportSuccess() {
+    if (_faultRaised) {
+        _faultRaised = false;
+        EventLog::log(LOG_INFO, "Relais V4: pilotage retabli");
+    }
+    FaultManager::setActive(FaultId::RELAY_I2C, false);
+}
+
 bool V4RelayPhysicalBackend::setZoneValve(
     uint8_t zoneIndex,
     bool active,
@@ -47,6 +69,7 @@ bool V4RelayPhysicalBackend::setZoneValve(
 
     ResolvedZoneTarget target;
     if (!resolveZoneTarget(zoneIndex, target)) {
+        reportFailure(zoneIndex, "resolution");
         return false;
     }
 
@@ -60,6 +83,7 @@ bool V4RelayPhysicalBackend::setZoneValve(
                 session
             );
         if (!configured.succeeded()) {
+            reportFailure(zoneIndex, "configuration");
             return false;
         }
     }
@@ -68,12 +92,19 @@ bool V4RelayPhysicalBackend::setZoneValve(
         ? Domain::BinaryActuatorState::ACTIVE
         : Domain::BinaryActuatorState::INACTIVE;
 
-    return Domain::commandBinaryActuator(
+    const bool ok = Domain::commandBinaryActuator(
         *target.driver,
         *target.port,
         requested,
         session
     ).succeeded();
+
+    if (ok) {
+        reportSuccess();
+    } else {
+        reportFailure(zoneIndex, "commande");
+    }
+    return ok;
 }
 
 bool V4RelayPhysicalBackend::getZoneValveState(

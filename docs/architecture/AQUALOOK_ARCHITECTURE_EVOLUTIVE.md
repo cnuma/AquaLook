@@ -97,6 +97,42 @@ distant, MCP23017 ou GPIO direct.
 
 ---
 
+## 4bis. La couche transversale d'erreurs — règle non négociable
+
+**Toute erreur constatée à n'importe quel étage doit remonter à la couche
+transversale qui les gère.** La surveillance est ce qui permet de *comprendre*
+le système ; elle doit être connectée à **tous** les étages, pas seulement aux
+plus visibles.
+
+Cette couche **existe déjà** et n'est pas à réinventer : `FaultManager`
+(vocabulaire de défauts : `WIFI`, `FILESYSTEM`, `SOFTWARE`, `STORAGE_SD`,
+`CONFIG_PERSIST`, `DISPLAY_ALLOC`, `MEMORY_LOW`, `TIME_UNSYNCED`, `BOOT_LOOP`,
+`RELAY_I2C`), `EventLog`, `IncidentManager`, et les notifications. Le travail
+consiste à **y raccorder V4**, pas à bâtir un étage de plus.
+
+### Comment une couche rend compte, selon sa nature
+
+| couche | façon de rendre compte |
+|--------|------------------------|
+| **pure** (domaine, moteur d'exécution) | rend un **résultat typé**. Elle ne connaît ni `FaultManager` ni le journal — l'y lier la rendrait dépendante de la plateforme et intestable |
+| **adaptation** (runtime, backends) | **traduit** ces résultats en défaut et en trace : c'est elle qui parle à la couche transversale |
+| **application** (managers, orchestration) | journalise la décision et son motif |
+
+> **Ce qui est interdit : qu'une erreur meure entre les deux.** Un résultat
+> d'échec rendu par une couche pure et ignoré par son appelant est un défaut
+> silencieux — le pire des cas, puisqu'il ôte tout moyen de comprendre.
+
+### Dette constatée le 5 septembre 2026
+
+Audit du raccordement de V4 : sur onze composants, **un seul signalait un
+défaut**. Les pannes I2C du chemin V4 étaient **entièrement silencieuses** —
+là où le moteur historique allume `RELAY_I2C`, le journalise et refuse de
+piloter une carte absente. Corrigé pour `V4RelayPhysicalBackend` ; le reste
+des étages est à passer en revue au même titre, en distinguant le silence
+**légitime** d'une couche pure du silence **fautif** d'un appelant.
+
+---
+
 ## 5. État actuel des couches
 
 | Couche | État |
