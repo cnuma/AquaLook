@@ -87,6 +87,16 @@ inventer. Concrètement :
 
 Conditions :
 
+> **Confirmation physique obtenue le 5 septembre 2026.** L'utilisateur, au
+> module : « les relais claquent bien dans le bon ordre et les diodes
+> respirent bien aussi ». Cela valide le point le plus delicat du montage :
+> V4 pilote la zone 1 et le moteur historique les zones 2 a 8 **sur la meme
+> puce XL9535**, chacun reecrivant un registre 16 bits complet. Un etat
+> partage mal tenu (`Xl9535SharedOutputState`) aurait fait claquer les relais
+> dans le desordre. La cohabitation des deux moteurs sur le meme composant
+> est donc verifiee — ce qu'aucun log ne pouvait etablir.
+
+
 - **toi** confirmes que la vanne s'ouvre et se ferme réellement (je ne peux pas
   certifier le mouvement physique depuis un banc sans relais) ;
 - parité maintenue sur les autres zones ;
