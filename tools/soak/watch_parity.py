@@ -67,7 +67,10 @@ def main():
     args = ap.parse_args()
 
     seen_ko = 0
-    seen_milestones = set()
+    # Les jalons deja franchis avant ce demarrage ne sont pas des nouvelles :
+    # sans cela, chaque relance du veilleur les reannoncerait tous.
+    seen_milestones = {m for m in MILESTONES
+                       if m <= ledger_read().get('cumul_avant_redemarrages', 0)}
     prev_uptime = None
     last_ok = 0
     offline_since = None
