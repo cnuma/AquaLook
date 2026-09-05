@@ -641,7 +641,13 @@ void setup() {
     webMgr.setIoExpander(&ioExpander);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
-    EventLog::log(LOG_INFO, "Parite V4: instrumentation active (observationnel, legacy autoritaire) -- voir lignes PARITE-EXEC");
+#if AQUALOOK_RELAY_BACKEND_V4
+    EventLog::log(LOG_INFO,
+                  "Parite: V4 pilote la zone 1, legacy pour les autres");
+#else
+    EventLog::log(LOG_INFO,
+                  "Parite: observationnel, legacy autoritaire");
+#endif
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
 }
 

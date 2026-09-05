@@ -1,5 +1,7 @@
 #include "V4PilotRuntime.h"
 
+#include "config.h"
+
 #include <Wire.h>
 
 #include "domain/HardwareCatalog.h"
@@ -71,7 +73,11 @@ bool V4PilotRuntime::begin(
     }
 
     _xl9535Context.i2c = &Drivers::arduinoI2cPlatformOps();
-    _xl9535Context.platformContext = &Wire;
+    // Le bus des relais depend de la carte : sur le S3 le tactile occupe
+    // Wire, et le bloc relais vit sur Wire1 (cf. RELAY_WIRE_BUS dans
+    // config.h). Le moteur historique le savait ; ecrire &Wire en dur ici
+    // faisait parler V4 au mauvais bus, et sa configuration echouait.
+    _xl9535Context.platformContext = &RELAY_WIRE_BUS;
     _xl9535Context.sharedOutputState = &sharedOutputState;
 
     // RelaisManager initialized every declared relay channel as an output.
