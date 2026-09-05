@@ -1765,6 +1765,14 @@ function renderTopoEditor() {
       + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
+  // Le backend V4 ne dispose aujourd'hui que d'un pilote XL9535 : une carte
+  // MCP23017 fonctionne en profil historique mais serait impilotable en V4.
+  // On le dit ici plutot que de laisser decouvrir la panne apres un flash.
+  if (topoBoards.some(b => b.controller === 1)) {
+    h += '<div class="cfg-hint io-ko">Attention : le pilotage MCP23017 '
+       + 'n&rsquo;existe que dans le moteur historique. Le moteur V4 ne sait '
+       + 'piloter que des cartes XL9535.</div>';
+  }
 
   h += '<div class="cfg-subsection-title" style="margin-top:12px">Affectations</div>';
   h += '<div class="cfg-hint">Chaque affectation relie un role (vanne de zone, pompe&hellip;) '

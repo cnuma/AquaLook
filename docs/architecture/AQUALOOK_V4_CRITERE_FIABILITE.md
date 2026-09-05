@@ -111,6 +111,31 @@ V4 calcule et journalise ce que le legacy **aurait** décidé, et **alerte** (lo
 ntfy) sur toute divergence. C'est bon marché, ça n'arbitre rien, et ça reste un
 garde-fou permanent — cohérent avec « la fiabilité d'abord ».
 
+## Parité de *capacité* — une limite connue
+
+La parité de comportement ne suffit pas : V4 doit aussi savoir piloter **tout
+le matériel que la configuration autorise**, sinon le remplacer serait une
+régression.
+
+**Constat du 5 septembre 2026.** `RelayTopology` autorise deux contrôleurs de
+relais, XL9535 et **MCP23017**, et le moteur historique (`RelaisManager`) sait
+piloter les deux. Le domaine V4, lui, ne dispose que des pilotes `Gpio`,
+`Simulated` et `Xl9535` — et son amorçage n'active que XL9535. **Une carte
+relais MCP23017 serait donc impilotable sous le profil V4.**
+
+Conséquences retenues :
+
+- l'éditeur de câblage **avertit** désormais quand une carte MCP23017 est
+  déclarée, plutôt que de laisser découvrir la panne après un flash ;
+- le pilote MCP23017 reste **à écrire** : il serait structurellement identique
+  au pilote XL9535 (mêmes opérations 16 bits ; registres `IODIR=0x00`,
+  `GPIO=0x12`, `OLAT=0x14`). **Il n'a pas été écrit** faute de carte MCP23017
+  sur le banc : livrer un pilote matériel non testé contredirait ce document ;
+- l'installation actuelle utilisant une XL9535, cette limite **ne bloque pas**
+  la promotion ici. Elle bloquerait une généralisation.
+
+---
+
 ## Ce que je peux certifier, et ce qui reste à toi
 
 - **Certifiable par moi, au série** : la **parité de décision** (V4 déciderait /
