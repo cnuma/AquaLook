@@ -106,6 +106,42 @@ PATCHES = [
         "  if (_connect_cb) {\n",
         "AQUALOOK_ACCEPT_GUARD",
     ),
+    # -- Patch 4 : purger les evenements en file a la destruction du client --
+    # Le serveur web detruit le client dans son propre rappel onDisconnect
+    # (delete c). Or le destructeur d'origine ne retirait pas de la file les
+    # evenements deja empiles pour ce client : le service les traitait ensuite
+    # avec un pointeur libere, corrompant le tas. La corruption ne se voyait
+    # qu'a la liberation suivante, loin de sa cause.
+    #
+    # Plantage reel du 6 septembre 2026 a 10:52, sous coupure reseau :
+    #   assert block_merge_prev (heap_tlsf.c:344) dans
+    #   ~AsyncWebServerRequest -> _headers.clear() -> operator delete,
+    #   pile remontant a AsyncClient::_error via _async_service_task.
+    # Reproduit a la demande par churn de connexions coupees en RST
+    # (tools/robustesse/repro_error_uaf.py), en 3 a 6 tours.
+    #
+    # La fonction de purge existe deja dans la bibliotheque ; elle n'etait
+    # simplement jamais appelee sur ce chemin.
+    (
+        os.path.join("AsyncTCP", "src", "AsyncTCP.cpp"),
+        "AsyncClient::~AsyncClient() {\n"
+        "  if (_pcb) {\n"
+        "    _close();\n"
+        "  }\n"
+        "  _free_closed_slot();\n"
+        "}\n",
+        "AsyncClient::~AsyncClient() {\n"
+        "  if (_pcb) {\n"
+        "    _close();\n"
+        "  }\n"
+        "  // AQUALOOK_EVENT_PURGE : retirer de la file les evenements qui\n"
+        "  // referencent encore ce client. Sans cela, un client detruit laisse\n"
+        "  // des evenements pointant sur de la memoire liberee.\n"
+        "  _remove_events_with_arg(this);\n"
+        "  _free_closed_slot();\n"
+        "}\n",
+        "AQUALOOK_EVENT_PURGE",
+    ),
 ]
 
 
