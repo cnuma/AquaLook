@@ -642,8 +642,13 @@ void setup() {
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
 #if AQUALOOK_RELAY_BACKEND_V4
+    // N annonce que ce dont ce message est sur. Le perimetre pilote depend
+    // du masque de zones migrees, qui evolue : le graver ici avait deja
+    // produit un journal contradictoire au Gate 3 (le demarrage annoncait
+    // a la fois "toutes les zones" et "la zone 1 seule"). Le perimetre
+    // exact est journalise par V4PilotRuntime, qui, lui, le connait.
     EventLog::log(LOG_INFO,
-                  "Parite: V4 pilote la zone 1, legacy pour les autres");
+                  "Parite: comparaison V4 vs legacy a chaque decision");
 #else
     EventLog::log(LOG_INFO,
                   "Parite: observationnel, legacy autoritaire");
