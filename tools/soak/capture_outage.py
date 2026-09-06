@@ -27,9 +27,13 @@ def parse_hhmm(value):
     h, m = value.split(':')
     now = dt.datetime.now()
     moment = now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
-    if moment < now:
+    # Une minute deja entamee vaut "maintenant", pas "demain" : passer l'heure
+    # courante en --start faisait sinon attendre 24 h, et la capture manquait
+    # l'evenement qu'elle devait observer (constate le 6 septembre 2026, en
+    # pleine coupure reseau).
+    if moment < now - dt.timedelta(minutes=1):
         moment += dt.timedelta(days=1)
-    return moment
+    return max(moment, now)
 
 
 def main():
