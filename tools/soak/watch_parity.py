@@ -115,7 +115,10 @@ def main():
                   'cumul campagne=%d'
                   % (attendu, s['uptime'], last_ok, led['cumul_avant_redemarrages']),
                   flush=True)
-            seen_milestones.clear()
+            # Re-amorcer sur le nouveau cumul, sans effacer : vider ferait
+            # reannoncer chaque nuit des jalons deja acquis.
+            seen_milestones = {m for m in MILESTONES
+                               if m <= led['cumul_avant_redemarrages']}
         prev_uptime = s['uptime']
         last_ok = s['ok']
 
