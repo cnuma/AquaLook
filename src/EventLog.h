@@ -11,7 +11,11 @@ enum LogLevel : uint8_t {
 };
 
 static constexpr uint8_t LOG_CAPACITY = 60;
-static constexpr uint8_t LOG_MSG_LEN  = 72;
+// Porte de 72 a 120 le 6 septembre 2026 : a 72, les messages utiles etaient
+// tronques -- verdict et compteur des lignes de parite perdus, contexte de
+// diagnostic coupe en plein milieu. Un journal qu'on ne peut pas lire ne
+// sert a rien. Cout : 60 entrees x 48 octets = ~3 Ko sur ~200 Ko libres.
+static constexpr uint8_t LOG_MSG_LEN  = 120;
 
 struct LogEntry {
     uint32_t ms;
