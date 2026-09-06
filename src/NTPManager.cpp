@@ -31,10 +31,32 @@ static constexpr uint32_t UNSYNCED_ALERT_MS  = 300000UL;   // 5 min
 static constexpr uint32_t UNSYNCED_REPEAT_MS = 1800000UL;  // 30 min
 
 // ─────────────────────────────────────────────────────────────
+// L horloge de l ESP32 SURVIT a un redemarrage logiciel : verifie le
+// 6 septembre 2026, les premieres lignes de journal apres un reset portent
+// deja l heure exacte, avant tout contact reseau. Elle ne survit pas a une
+// coupure d alimentation, d ou le controle de plausibilite.
+//
+// Pourquoi ca compte : le planificateur n est evalue que si l heure est
+// connue. Refuser l heure retenue tant que NTP n avait pas repondu laissait
+// un module qui redemarre SANS RESEAU totalement sec -- constate le
+// 6 septembre : plantage a 10:52, reseau coupe, creneau de 11:00 jamais
+// declenche. Le local doit gagner : on adopte l heure retenue, et NTP la
+// confirmera ou la corrigera.
+static constexpr time_t PLAUSIBLE_EPOCH_MIN = 1704067200;  // 1er janvier 2024
+
 void NTPManager::begin(ConfigManager* config) {
     _config = config;
     _beginMs = millis();
     applyConfig();
+
+    const time_t retained = time(nullptr);
+    if (retained >= PLAUSIBLE_EPOCH_MIN) {
+        _retainedClock = true;
+        FaultManager::setActive(FaultId::TIME_UNSYNCED, false);
+        EventLog::log(LOG_INFO,
+                      "NTP: heure retenue au redemarrage, arrosage possible "
+                      "sans attendre la synchronisation");
+    }
     EventLog::log(LOG_INFO, "NTP: synchronisation lancee");
 }
 
@@ -129,7 +151,10 @@ void NTPManager::applyConfig() {
 // ─────────────────────────────────────────────────────────────
 //  Getters
 // ─────────────────────────────────────────────────────────────
-bool NTPManager::isSynced() const { return _synced; }
+// Une heure retenue est une heure utilisable. Le rythme d interrogation NTP,
+// lui, continue de se baser sur _synced seul : tant que NTP n a pas confirme,
+// on interroge au rythme rapide.
+bool NTPManager::isSynced() const { return _synced || _retainedClock; }
 
 bool NTPManager::fillTm(struct tm& out) const {
     return getLocalTime(&out, 0);

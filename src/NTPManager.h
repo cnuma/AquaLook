@@ -34,6 +34,9 @@ public:
 private:
     ConfigManager* _config    = nullptr;
     bool           _synced    = false;
+    // Horloge retenue au redemarrage, distincte d une synchronisation NTP :
+    // l heure est utilisable, mais NTP doit encore la confirmer.
+    bool           _retainedClock = false;
     uint32_t       _lastPoll  = 0;
     uint32_t       _lastSync  = 0;
     uint32_t       _beginMs   = 0;
