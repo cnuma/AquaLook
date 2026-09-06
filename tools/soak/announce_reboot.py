@@ -7,6 +7,7 @@ precisement le signal qui doit rester credible.
 
     python tools/soak/announce_reboot.py     # a lancer AVANT le flash
 """
+import datetime as dt
 import json
 import os
 import sys
@@ -20,10 +21,17 @@ def main():
             led = json.load(fh)
     except Exception:  # noqa: BLE001
         led = {'cumul_avant_redemarrages': 0, 'redemarrages': 0}
-    led['redemarrage_annonce'] = True
+    # Une fenetre, pas un drapeau a usage unique : une sequence de flash et
+    # de verification enchaine plusieurs redemarrages, et le veilleur ne
+    # sonde que toutes les 5 minutes. Un drapeau consomme une seule fois
+    # laissait passer les suivants en 'INEXPLIQUE' -- de fausses alertes
+    # qui usent la credibilite du seul signal qui doit rester ecoute.
+    fin = dt.datetime.now() + dt.timedelta(minutes=20)
+    led['maintenance_jusqu_a'] = fin.isoformat(timespec='seconds')
+    led.pop('redemarrage_annonce', None)
     with open(LEDGER, 'w', encoding='utf-8') as fh:
         json.dump(led, fh, indent=1)
-    print('prochain redemarrage : annonce')
+    print('fenetre de maintenance ouverte jusqu a %s' % fin.strftime('%H:%M'))
     return 0
 
 

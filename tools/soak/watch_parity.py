@@ -42,6 +42,17 @@ def ledger_write(d):
         json.dump(d, fh, indent=1)
 
 
+def in_maintenance(led):
+    """Une fenetre declaree couvre TOUS les redemarrages qu'elle contient."""
+    fin = led.get('maintenance_jusqu_a')
+    if not fin:
+        return False
+    try:
+        return dt.datetime.now() <= dt.datetime.fromisoformat(fin)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def now_hour():
     return dt.datetime.now().hour
 
@@ -113,8 +124,8 @@ def main():
             # Un flash ou une intervention se declare a l'avance (drapeau
             # du registre) : sans cela chaque flash crierait au loup, et
             # l'alerte perdrait la valeur qui fait tout son interet.
-            if led.pop('redemarrage_annonce', False):
-                attendu = 'annonce'
+            if in_maintenance(led):
+                attendu = 'annonce (fenetre de maintenance)'
             elif 3 <= now_hour() <= 4:
                 attendu = 'attendu (maintenance)'
             else:
