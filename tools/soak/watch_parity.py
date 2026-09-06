@@ -110,7 +110,16 @@ def main():
             led['cumul_avant_redemarrages'] += last_ok
             led['redemarrages'] += 1
             ledger_write(led)
-            attendu = 'attendu' if 3 <= now_hour() <= 4 else 'INEXPLIQUE'
+            # Un flash ou une intervention se declare a l'avance (drapeau
+            # du registre) : sans cela chaque flash crierait au loup, et
+            # l'alerte perdrait la valeur qui fait tout son interet.
+            if led.pop('redemarrage_annonce', False):
+                attendu = 'annonce'
+            elif 3 <= now_hour() <= 4:
+                attendu = 'attendu (maintenance)'
+            else:
+                attendu = 'INEXPLIQUE'
+            ledger_write(led)
             print('REDEMARRAGE (%s) : uptime %ds, %d cycles reportes, '
                   'cumul campagne=%d'
                   % (attendu, s['uptime'], last_ok, led['cumul_avant_redemarrages']),

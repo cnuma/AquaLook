@@ -1,6 +1,6 @@
 {
- "cumul_avant_redemarrages": 218,
+ "cumul_avant_redemarrages": 0,
  "redemarrages": 1,
- "debut": "2026-09-04T21:30:00",
- "note": "amorce : 218 cycles prouves avant le redemarrage quotidien de 03:50"
+ "debut": "2026-09-06T09:32:16",
+ "note": "campagne V4 + resilience reseau (jamais d abandon WiFi)"
 }
