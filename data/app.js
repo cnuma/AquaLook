@@ -1674,6 +1674,12 @@ const TOPO_ROLES = [[1, 'Vanne de zone'], [2, 'Pompe'], [3, 'Auxiliaire'],
 // fabriquait un choix que l'API refusait ensuite.
 const TOPO_CHANCOUNT = [1, 2, 4, 8];
 
+// Seul l'I2C local dispose d'un pilote. Les autres sont montres pour dire ou
+// va l'architecture, mais desactives : mieux vaut une porte visiblement
+// fermee qu'un choix qui echoue a l'enregistrement.
+const TOPO_TRANSPORTS = [[0, 'I2C local'], [1, 'RS485'], [2, 'Reseau IP'], [3, 'LoRa']];
+const TOPO_TRANSPORT_DISPO = [0];
+
 function topoZoneCount() {
   const s = adminStatus && adminStatus.system;
   const n = s && Number(s.nbZones);
@@ -1691,7 +1697,7 @@ async function loadCfgTopo() {
   topoSource = d.source || 'legacy';
   topoBoards = (d.boards || []).map(b => ({
     i: b.i, controller: b.controller, addr: b.addr,
-    channels: b.channels, logic: b.logic
+    channels: b.channels, logic: b.logic, transport: b.transport || 0
   }));
   topoAssign = (d.assignments || []).map(a => ({
     i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel
@@ -1764,6 +1770,12 @@ function renderTopoEditor() {
       + '<select data-topo="chan" data-n="' + n + '" title="nombre de voies">'
       + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>'
       + '<select data-topo="logic" data-n="' + n + '">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>'
+      + '<select data-topo="transport" data-n="' + n + '" title="ou vit la carte">'
+      + TOPO_TRANSPORTS.map(o => '<option value="' + o[0] + '"'
+          + (o[0] === (b.transport || 0) ? ' selected' : '')
+          + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' disabled' : '')
+          + '>' + o[1] + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' (a venir)' : '')
+          + '</option>').join('') + '</select>'
       + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
@@ -1803,6 +1815,7 @@ function topoGatherFromDom() {
     else if (k === 'addr' && topoBoards[n]) topoBoards[n].addr = val;
     else if (k === 'chan' && topoBoards[n]) topoBoards[n].channels = val;
     else if (k === 'logic' && topoBoards[n]) topoBoards[n].logic = val;
+    else if (k === 'transport' && topoBoards[n]) topoBoards[n].transport = val;
     else if (topoAssign[n]) {
       if (k === 'role') topoAssign[n].role = val;
       else if (k === 'target') topoAssign[n].target = val;
@@ -1846,7 +1859,7 @@ async function saveCfgTopo() {
   const body = {
     boards: topoBoards.map(b => ({
       i: b.i, controller: b.controller, addr: b.addr,
-      channels: b.channels, logic: b.logic
+      channels: b.channels, logic: b.logic, transport: b.transport || 0
     })),
     assignments: topoAssign.map(a => ({
       i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel

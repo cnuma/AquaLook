@@ -98,8 +98,15 @@ void buildLegacyCompatibleTopology(
     }
 }
 
+// Un transport sans pilote est refuse plutot qu accepte puis silencieusement
+// inoperant : mieux vaut un refus clair a la configuration.
+bool isSupportedTransport(uint8_t transport) {
+    return transport == TRANSPORT_I2C_LOCAL;
+}
+
 bool validateBoard(const RelayBoardConfig& board) {
     if (!board.enabled) return false;
+    if (!isSupportedTransport(board.transport)) return false;
     if (!isSupportedController(board.controller)) return false;
     if (!isSupportedChannelCount(board.channelCount)) return false;
     if (board.logic > 1) return false;

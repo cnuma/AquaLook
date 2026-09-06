@@ -1564,6 +1564,8 @@ void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
         o["addr"] = bd.i2cAddress;
         o["channels"] = bd.channelCount;
         o["logic"] = bd.logic;
+        o["transport"] = bd.transport;
+        o["node"] = bd.node;
     }
 
     JsonArray asg = doc["assignments"].to<JsonArray>();
@@ -1603,6 +1605,11 @@ void WebManager::handleSetTopology(AsyncWebServerRequest* req, JsonDocument& doc
         bd.i2cAddress = o["addr"] | RelayTopology::defaultAddressForController(bd.controller);
         bd.channelCount = o["channels"] | 8;
         bd.logic = o["logic"] | RelayTopology::LOGIC_DIRECT;
+        bd.transport = o["transport"] | RelayTopology::TRANSPORT_I2C_LOCAL;
+        bd.node = o["node"] | 0;
+        if (!RelayTopology::isSupportedTransport(bd.transport)) {
+            sendError(req, "transport sans pilote"); return;
+        }
         if (!RelayTopology::validateBoard(bd)) { sendError(req, "carte invalide"); return; }
     }
 

@@ -26,6 +26,19 @@ static constexpr uint8_t MAX_RELAY_ASSIGNMENTS =
 static constexpr uint8_t CONTROLLER_XL9535 = 0;
 static constexpr uint8_t CONTROLLER_MCP23017 = 1;
 
+// Ou vit la carte. Le transport est une DONNEE, pas une hypothese du code :
+// une carte peut etre locale sur I2C, au bout d un RS485, joignable en IP,
+// ou sur un lien LoRa. Les couches du dessus ne doivent jamais le savoir --
+// ajouter un transport doit se reduire a un pilote et une valeur de config.
+//
+// Seul I2C_LOCAL dispose d un pilote a ce jour ; les autres valeurs sont
+// reservees et refusees a la validation tant que leur pilote n existe pas,
+// pour ne pas laisser croire a une capacite absente.
+static constexpr uint8_t TRANSPORT_I2C_LOCAL = 0;
+static constexpr uint8_t TRANSPORT_RS485     = 1;
+static constexpr uint8_t TRANSPORT_IP        = 2;
+static constexpr uint8_t TRANSPORT_LORA      = 3;
+
 static constexpr uint8_t LOGIC_INVERTED = 0;
 static constexpr uint8_t LOGIC_DIRECT = 1;
 
@@ -45,13 +58,17 @@ struct RelayBoardConfig {
     uint8_t i2cAddress;
     uint8_t channelCount;
     uint8_t logic;
+    uint8_t transport;      // TRANSPORT_* : ou vit la carte
+    uint8_t node;           // adresse sur le transport (noeud RS485, id LoRa)
 
     RelayBoardConfig()
         : enabled(false),
           controller(CONTROLLER_XL9535),
           i2cAddress(XL9535_ADDR),
           channelCount(0),
-          logic(LOGIC_DIRECT) {}
+          logic(LOGIC_DIRECT),
+          transport(TRANSPORT_I2C_LOCAL),
+          node(0) {}
 };
 
 struct RelayAssignment {
@@ -96,6 +113,7 @@ const char* roleName(uint8_t role);
 bool isSupportedController(uint8_t controller);
 bool isSupportedChannelCount(uint8_t channelCount);
 bool isSupportedRole(uint8_t role);
+bool isSupportedTransport(uint8_t transport);
 uint8_t normalizeChannelCount(uint8_t channelCount);
 uint8_t defaultAddressForController(uint8_t controller);
 
