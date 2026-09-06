@@ -3046,7 +3046,17 @@ void DisplayManager::drawZoneFull(uint8_t zone) {
     _tft.setTextColor(active ? Theme::GREEN : Theme::RED, Theme::BG);
     _tft.setFreeFont(THEME_FONT_HEADLINE);
     _tft.setTextSize(1);
-    _tft.drawString(active ? "ARROSAGE EN COURS" : "ARRET", 10, 40);
+    // C'est ici qu'on vient chercher pourquoi une zone ne part pas : le dire
+    // franchement plutot que d'afficher un "ARRET" indiscernable d'un repos.
+    const bool zoneMapped = _relais.relay &&
+        RelayTopology::resolveZoneValve(
+            _relais.relay->topology(), zone, _nbZones).valid;
+    if (!zoneMapped) {
+        _tft.setTextColor(Theme::AMBER, Theme::BG);
+        _tft.drawString("SANS SORTIE AFFECTEE", 10, 40);
+    } else {
+        _tft.drawString(active ? "ARROSAGE EN COURS" : "ARRET", 10, 40);
+    }
     _tft.setFreeFont(nullptr);
 
     if (active && _schedule) {
@@ -3075,7 +3085,11 @@ void DisplayManager::drawZoneFull(uint8_t zone) {
         uint16_t dur = _schedule ? _schedule->getManualDurationMin() : 10;
         snprintf(btnLabel, sizeof(btnLabel), "Arroser %dmin", dur);
     }
-    drawButton(2, 176, 230, 40, btnLabel, active ? Theme::RED : Theme::GREEN, Theme::TEXT);
+    // Pas de bouton vert engageant pour une zone qu on ne peut pas piloter.
+    drawButton(2, 176, 230, 40,
+               zoneMapped ? btnLabel : "Aucune sortie affectee",
+               zoneMapped ? (active ? Theme::RED : Theme::GREEN) : Theme::SURFACE2,
+               zoneMapped ? Theme::TEXT : Theme::MUTED);
     drawButton(236, 176, 82, 40, "Retour", Theme::SURFACE, Theme::TEXT);
 }
 

@@ -867,6 +867,15 @@ header {
 /* Zone sans voie physique affectee : la tuile recule, l'action est inerte.
    Le module ne peut pas deviner ce cas -- les cartes relais ne presentent
    pas leur configuration -- donc il doit se voir. */
-.zone-unassigned{opacity:.62}
+/* Trame diagonale plutot qu'un aplat gris : un gris se lit comme "desactive
+   par choix" ou comme une variation de theme, alors qu'une trame se lit comme
+   "indisponible" -- la convention des creneaux non reservables. Et un motif
+   reste lisible la ou une simple teinte se perd (daltonisme, faible
+   contraste, plein soleil sur un telephone). */
+.zone-unassigned{
+  opacity:.72;
+  background-image:repeating-linear-gradient(45deg,
+      transparent 0 7px, rgba(128,128,128,.16) 7px 14px);
+}
 .zone-unassigned .zt-reason{color:#b8860b}
 .zone-unassigned .btn-run{cursor:not-allowed;filter:grayscale(1)}
