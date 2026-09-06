@@ -148,22 +148,25 @@ function renderZonesGrid() {
     const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
     const reason   = z.reason || z.lastReason || 'En attente';
+    // Une zone sans voie physique ne pourra jamais arroser : le dire, plutot
+    // que d'afficher un motif sans rapport et un bouton qui n'agira pas.
+    const noOut = (z.hasOutput === false);
     return `
-    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''}">
+    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''} ${noOut ? 'zone-unassigned' : ''}">
       <div class="zt-head">
         <span class="zone-dot zone-dot-${color}"></span>
         <span class="zt-name" title="${name}">${name}</span>
-        <span class="zone-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
+        <span class="zone-badge ${noOut ? 'off' : (active ? 'on' : 'off')}" title="${noOut ? 'Aucune sortie physique affectee' : ''}">${noOut ? 'N/C' : (active ? 'ON' : 'OFF')}</span>
       </div>
       <div class="zt-facts">
         <span class="zt-fact" title="Mode de programmation">&#128197; ${modeStr}</span>
         <span class="zt-fact" title="Arrosage suspendu au-dela de ce cumul de pluie">&#9748; &ge;${threshMm}mm / ${hours}h</span>
       </div>
-      <div class="zt-reason" title="${reason}">${reason}</div>
+      <div class="zt-reason" title="${noOut ? 'Aucune sortie physique affectee a cette zone' : reason}">${noOut ? '&#9888; Aucune sortie affectee &mdash; a definir dans le cablage' : reason}</div>
       <div class="zt-actions">
-        <button class="btn-run ${active ? 'active' : ''}"
+        <button class="btn-run ${active ? 'active' : ''}" ${noOut ? 'disabled' : ''}
                 onclick="toggleManual(${i}, ${!active})">
-          ${active ? 'Arreter' : 'Arroser ' + manDur + ' min'}
+          ${noOut ? 'Sans sortie' : (active ? 'Arreter' : 'Arroser ' + manDur + ' min')}
         </button>
         <button class="btn-identify" title="Fait clignoter en blanc la LED de cette zone, pour la reperer au branchement"
                 onclick="identifyZone(${i})">&#128161;</button>
@@ -205,22 +208,23 @@ function renderZonesTable() {
     const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
     const reason   = z.reason || z.lastReason || 'En attente';
-    return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''}"
+    const noOut    = (z.hasOutput === false);
+    return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''} ${noOut ? 'zone-unassigned' : ''}"
                 onclick="openZoneConfigModal(${i})"
                 title="Configurer ${name}">
       <td class="zt-name zt-name-${color}">
         <span class="zone-dot zone-dot-${color}"></span>
         ${name}
-        <span class="zt-badge ${active ? 'on' : 'off'}">${active ? 'ON' : 'OFF'}</span>
+        <span class="zt-badge ${noOut ? 'off' : (active ? 'on' : 'off')}">${noOut ? 'N/C' : (active ? 'ON' : 'OFF')}</span>
       </td>
       <td class="zt-cell zt-mode">${mode}</td>
       <td class="zt-cell zt-rain">&#9748;&nbsp;&ge;&nbsp;${threshMm}mm&nbsp;/&nbsp;${hours}h</td>
-      <td class="zt-cell zt-reason">${reason}</td>
+      <td class="zt-cell zt-reason">${noOut ? '&#9888; Aucune sortie affectee' : reason}</td>
       <td class="zt-cell zt-edit-hint">&#9998;</td>
       <td class="zt-action" onclick="event.stopPropagation()">
-        <button class="btn-run ${active ? 'active' : ''}"
+        <button class="btn-run ${active ? 'active' : ''}" ${noOut ? 'disabled' : ''}
                 onclick="toggleManual(${i}, ${!active})">
-          ${active ? 'Arreter' : 'Arroser&nbsp;'+manDur+'&nbsp;min'}
+          ${noOut ? 'Sans&nbsp;sortie' : (active ? 'Arreter' : 'Arroser&nbsp;'+manDur+'&nbsp;min')}
         </button>
       </td>
     </tr>`;

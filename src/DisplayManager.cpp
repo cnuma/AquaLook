@@ -2929,9 +2929,16 @@ void DisplayManager::drawZoneRow(uint8_t zone, uint16_t x, uint16_t y,
     uint16_t bg     = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
     uint16_t zColor = Theme::ZONE_COLORS[zone % 4];
+    // Au-dela de 4 zones l'ecran utilise ces rangees, pas les cartes : c'est
+    // ici que l'absence de sortie doit se voir. Sans quoi la rangee invite a
+    // "appuyer pour arroser" et offre un bouton GO vert pour une action qui
+    // ne fera rien.
+    const bool mapped = _relais.relay &&
+        RelayTopology::resolveZoneValve(
+            _relais.relay->topology(), zone, _nbZones).valid;
 
     drawCardBg(_tft, x, y, w, h, Theme::R_SM, bg, border, true);
-    drawAccentBar(_tft, x, y, h, Theme::R_SM, zColor);
+    drawAccentBar(_tft, x, y, h, Theme::R_SM, mapped ? zColor : Theme::SURFACE2);
     _tft.setFreeFont(nullptr);
     _tft.setTextSize(1);
 
@@ -2950,6 +2957,9 @@ void DisplayManager::drawZoneRow(uint8_t zone, uint16_t x, uint16_t y,
                  rem / 60000UL, (rem % 60000UL) / 1000UL);
         _tft.setTextColor(Theme::AMBER, bg);
         _tft.drawString(buf, x + 14, y + 14);
+    } else if (!mapped) {
+        _tft.setTextColor(Theme::AMBER, bg);
+        _tft.drawString("Aucune sortie affectee", x + 14, y + 14);
     } else {
         _tft.drawString("Appuyer pour arroser", x + 14, y + 14);
     }
@@ -2957,11 +2967,13 @@ void DisplayManager::drawZoneRow(uint8_t zone, uint16_t x, uint16_t y,
     // Bouton GO/STOP à droite — couleur vive assumée (action, pas une carte)
     uint16_t btnX = x + w - 36;
     uint16_t btnY = y + h/2 - 10;
-    _tft.fillRoundRect(btnX, btnY, 32, 20, Theme::R_SM,
-                       active ? Theme::RED : Theme::GREEN);
-    _tft.setTextColor(active ? Theme::TEXT : 0x0000, active ? Theme::RED : Theme::GREEN);
+    // Pas de bouton vert engageant pour une zone qu on ne peut pas piloter.
+    const uint16_t btnBg = !mapped ? Theme::SURFACE2
+                                   : (active ? Theme::RED : Theme::GREEN);
+    _tft.fillRoundRect(btnX, btnY, 32, 20, Theme::R_SM, btnBg);
+    _tft.setTextColor(!mapped ? Theme::MUTED : (active ? Theme::TEXT : 0x0000), btnBg);
     _tft.setTextDatum(MC_DATUM);
-    _tft.drawString(active ? "STOP" : "GO", btnX + 16, btnY + 10);
+    _tft.drawString(!mapped ? "N/C" : (active ? "STOP" : "GO"), btnX + 16, btnY + 10);
     _tft.setTextDatum(TL_DATUM);
 }
 

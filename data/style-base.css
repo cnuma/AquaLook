@@ -863,3 +863,10 @@ header {
 .io-on{color:#2e7d32;font-weight:600}
 .io-pu{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:#789c80}
 .io-pu input{width:auto;margin:0}
+
+/* Zone sans voie physique affectee : la tuile recule, l'action est inerte.
+   Le module ne peut pas deviner ce cas -- les cartes relais ne presentent
+   pas leur configuration -- donc il doit se voir. */
+.zone-unassigned{opacity:.62}
+.zone-unassigned .zt-reason{color:#b8860b}
+.zone-unassigned .btn-run{cursor:not-allowed;filter:grayscale(1)}
