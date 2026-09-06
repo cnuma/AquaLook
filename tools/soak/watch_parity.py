@@ -79,10 +79,16 @@ def main():
     args = ap.parse_args()
 
     seen_ko = 0
-    # Les jalons deja franchis avant ce demarrage ne sont pas des nouvelles :
-    # sans cela, chaque relance du veilleur les reannoncerait tous.
-    seen_milestones = {m for m in MILESTONES
-                       if m <= ledger_read().get('cumul_avant_redemarrages', 0)}
+    # Amorcer sur le cumul REEL : le report du registre PLUS la session en
+    # cours. N'amorcer que sur le report laissait reannoncer les jalons deja
+    # franchis pendant la session -- la meme fausse alerte, sous une autre
+    # forme, pour la quatrieme fois.
+    try:
+        _start = snapshot(args.host)['ok']
+    except Exception:  # noqa: BLE001 - module injoignable au demarrage
+        _start = 0
+    _cumul0 = ledger_read().get('cumul_avant_redemarrages', 0) + _start
+    seen_milestones = {m for m in MILESTONES if m <= _cumul0}
     prev_uptime = None
     last_ok = 0
     offline_since = None
