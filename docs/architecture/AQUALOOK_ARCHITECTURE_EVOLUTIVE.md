@@ -92,6 +92,16 @@ distant, MCP23017 ou GPIO direct.
   casser les installations existantes. Chaque couche stocke dans son espace NVS.
 - **Peu d'interfaces, mais stables.** Moins il y a de contrats internes et plus
   ils sont stables, plus on peut échanger les implémentations dessous.
+- **La résilience prime : on ne renonce jamais.** Tant que des paramètres
+  WiFi sont presents en flash, le module retente indefiniment de se
+  connecter, avec un espacement croissant plafonne (30 s, 1 min, 5 min,
+  15 min). Il doit revenir seul quand le reseau revient, sans qu'on aille
+  le debrancher. Le **portail captif** ne se declenche que dans deux cas :
+  **aucun parametre enregistre**, ou **demande explicite de l'utilisateur**
+  (ecran ou web). Jamais en consequence d'echecs repetes.
+  *Contre-exemple corrige le 6 septembre 2026 : apres cinq echecs, soit
+  2 min 30, le module abandonnait le reseau definitivement -- vivant et
+  arrosant, mais injoignable jusqu'a un debranchement.*
 - **L'utilisateur déclenche.** Aucune action irréversible ni mise à jour n'est
   imposée à distance ; le système assiste, l'utilisateur décide.
 
