@@ -222,7 +222,7 @@ void WiFiManager::handleConnecting(uint32_t now) {
 
     if (hardFail || noSsid || timedOut) {
         const char* cause =
-            hardFail ? "mot de passe refuse" :
+            hardFail ? "association refusee" :
             noSsid ? "SSID introuvable" :
             "timeout 15s";
 
@@ -244,16 +244,20 @@ void WiFiManager::handleConnecting(uint32_t now) {
         }
 
         if (hardFail) {
+            // WL_CONNECT_FAILED est generique : mot de passe, mais aussi
+            // filtrage MAC ou point d acces sature. Conclure "mot de passe"
+            // envoyait chercher au mauvais endroit -- constate le 6 sept.
+            // 2026 en mettant le module en liste noire cote box.
             EventLog::log(
                 LOG_WARN,
-                "WiFi: connexion refusee, verifier le mot de passe"
+                "WiFi: refus assoc: mot de passe, filtrage MAC ou AP sature ?"
             );
         }
 
         WiFi.disconnect(true);
         _state = State::DISCONNECTED;
         _lastActionMs = now;
-        _retryCount++;
+        if (_retryCount < 250U) _retryCount++;  // pas de repli a 0
         EventBus::displayDirty = true;
     }
 }
@@ -387,24 +391,36 @@ void WiFiManager::recordZombieEventAndMaybeEscalate(uint32_t now) {
     );
 }
 
-void WiFiManager::handleDisconnected(uint32_t now) {
-    if ((now - _lastActionMs) < RETRY_INTERVAL_MS) return;
+// Espacement croissant plafonne : 30 s tant qu on espere une reprise
+// immediate, puis 1 min, 5 min, et 15 min au plus. Assez frequent pour
+// revenir vite, assez espace pour ne pas marteler la radio des heures.
+uint32_t WiFiManager::retryDelayMs() const {
+    if (_retryCount < MAX_RETRIES) return RETRY_INTERVAL_MS;
+    const uint8_t beyond = static_cast<uint8_t>(_retryCount - MAX_RETRIES);
+    if (beyond < 3U) return 60000UL;
+    if (beyond < 6U) return 300000UL;
+    return 900000UL;
+}
 
-    if (_retryCount >= MAX_RETRIES) {
-        if (_retryCount == MAX_RETRIES) {
-            FaultManager::setActive(FaultId::WIFI, true);
-            EventLog::log(
-                LOG_ERROR,
-                "WiFi: %u echecs consecutifs sur '%s'",
-                MAX_RETRIES,
-                _ssid
-            );
-            _retryCount++;
-            EventBus::displayDirty = true;
-        }
-        return;
+void WiFiManager::handleDisconnected(uint32_t now) {
+    if ((now - _lastActionMs) < retryDelayMs()) return;
+
+    if (_retryCount == MAX_RETRIES) {
+        FaultManager::setActive(FaultId::WIFI, true);
+        EventLog::log(
+            LOG_ERROR,
+            "WiFi: %u echecs sur '%s', reprise espacee",
+            MAX_RETRIES,
+            _ssid
+        );
+        EventBus::displayDirty = true;
     }
 
+    // On ne renonce JAMAIS. Un module d arrosage doit revenir seul quand
+    // le reseau revient, sans qu on aille le debrancher. Avant le 6
+    // septembre 2026 il abandonnait apres 5 echecs, soit 2 min 30 : une
+    // box lente a redemarrer suffisait a le couper du monde jusqu au
+    // prochain redemarrage.
     startConnection();
 }
 

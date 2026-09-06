@@ -103,6 +103,7 @@ private:
     static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
     static constexpr uint32_t RETRY_INTERVAL_MS = 30000;
     static constexpr uint8_t  MAX_RETRIES = 5;
+    uint32_t retryDelayMs() const;
 
     static constexpr uint32_t WIFI_DISCONNECT_SETTLE_MS = 100;
     static constexpr uint32_t WIFI_MODE_SETTLE_MS = 50;
