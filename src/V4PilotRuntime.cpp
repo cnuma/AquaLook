@@ -106,8 +106,14 @@ bool V4PilotRuntime::begin(
         board.portCount,
         &_driverRegistry
     );
-    _backend.setMigratedZoneMask(1UL << 0U);
-    _ready = _backend.isReady() && _backend.isZoneMigrated(0U);
+    // Gate 3 : toutes les voies declarees de la carte passent par le modele
+    // de ports V4, non plus la seule zone 1. Le masque suit portCount, donc
+    // il s ajuste si la topologie change. Rollback = reflash du profil s3.
+    const uint32_t migrated = (board.portCount >= 32U)
+        ? 0xFFFFFFFFUL
+        : static_cast<uint32_t>((1UL << board.portCount) - 1UL);
+    _backend.setMigratedZoneMask(migrated);
+    _ready = _backend.isReady() && _backend.hasAnyMigratedZone();
     return _ready;
 }
 

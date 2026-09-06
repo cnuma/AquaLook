@@ -520,7 +520,7 @@ void setup() {
     if (v4PilotReady) {
         outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());
         EventLog::log(LOG_WARN,
-                      "Relais V4: zone pilote 1 active, fallback legacy conserve");
+                      "Relais V4: toutes les zones de la carte pilotees par V4");
     } else {
         outputAdapter.setPhysicalBackend(&relaisBackend);
         EventLog::log(LOG_ERROR,
