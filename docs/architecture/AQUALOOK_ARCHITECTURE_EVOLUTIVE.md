@@ -62,6 +62,11 @@ analogique, capteur), une *direction*, un *rôle*. Déjà présent dans le modè
 prévu. Ajouter une classe de matériel = **un pilote** derrière cette couture.
 
 ### 3.2 Le nœud + transport
+*(État au 6 septembre 2026 : la moitié « transport » de cette couture est
+posée — une carte déclare où elle vit, et un transport sans pilote est refusé.
+Ajouter le LoRa ou le RS485 se réduit désormais à un pilote de trois fonctions
+et une valeur de configuration. La moitié « nœud distant » reste à faire.)*
+
 Un endpoint « vit sur un nœud joignable par un transport ». Si cette
 **localisation est une donnée**, « local » et « satellite » ne sont plus une
 bifurcation d'architecture mais un champ de config. Les créneaux `REMOTE`,
@@ -147,10 +152,10 @@ des étages est à passer en revue au même titre, en distinguant le silence
 
 | Couche | État |
 |--------|------|
-| 0 Transports | I2C + GPIO locaux en service. `RS485`/`REMOTE`/`UART`/`CAN` réservés, éteints. |
-| 1 Nœuds | Un seul nœud (principal). Satellites : prévus, non implémentés. |
+| 0 Transports | I2C + GPIO locaux en service. Le **transport est désormais une donnée** de la topologie (`TRANSPORT_I2C_LOCAL`/`RS485`/`IP`/`LORA`, persistée en NVS schéma 2) ; seul l'I2C a un pilote, les autres sont **refusés à la validation**. |
+| 1 Nœuds | Un seul nœud. **Plusieurs cartes** pilotables sur ce nœud, chacune avec son contexte et son adresse. Satellites distants : modélisés (transport), sans pilote. |
 | 2 Endpoints | Squelette V4 (catalogue, modèle de ports). Pilote concret : **`IoExpander`** (TOR configurable). Topologie relais modélisée **et persistable** (`RelayTopologyStore`, NVS `aq_topo`) ; à défaut, dérivation legacy. |
-| 3 Ressources | Zones : chemin **LEGACY** en production. `EquipmentManager` V4 : câblé seulement pour la pompe. |
+| 3 Ressources | Zones : **V4 pilote au banc** (profil `s3_v4`), legacy en production. Le masque de zones migrées se déduit de la topologie. |
 | 4 Automation | **Rien.** Le planning d'arrosage existe (legacy) mais pas de moteur de règles généralisé. |
 | 5 UI / Cloud | Web module + appli cloud + LCD en service ; sauvegarde cloud opérationnelle. |
 
