@@ -26,17 +26,24 @@ public:
     V4RelayPhysicalBackend& backend();
 
 private:
-    static constexpr size_t CONTROLLER_COUNT = 1U;
-    static constexpr size_t BOARD_COUNT = 1U;
-    static constexpr size_t PORT_COUNT = 16U;
-    static constexpr size_t DRIVER_CAPACITY = 1U;
+    // Une entree par carte declarable dans la topologie : le runtime ne doit
+    // plus etre le facteur limitant. Chaque carte a SON contexte, donc sa
+    // propre adresse -- prerequis d'un montage a plusieurs cartes, et du jour
+    // ou une carte vivra au bout d'un RS485, d'un Ethernet ou d'un LoRa.
+    static constexpr size_t CONTROLLER_COUNT = RelayTopology::MAX_RELAY_BOARDS;
+    static constexpr size_t BOARD_COUNT = RelayTopology::MAX_RELAY_BOARDS;
+    static constexpr size_t PORT_COUNT =
+        RelayTopology::MAX_RELAY_BOARDS * RelayTopology::MAX_CHANNELS_PER_BOARD;
+    static constexpr size_t DRIVER_CAPACITY = RelayTopology::MAX_RELAY_BOARDS;
 
     Domain::ControllerDefinition _controllers[CONTROLLER_COUNT];
     Domain::BoardDefinition _boards[BOARD_COUNT];
     Domain::PortDefinition _ports[PORT_COUNT];
     Domain::BinaryActuatorDriverBinding _driverStorage[DRIVER_CAPACITY];
     Domain::BinaryActuatorDriverRegistry _driverRegistry;
-    Domain::Xl9535BinaryActuatorContext _xl9535Context;
+    Domain::Xl9535BinaryActuatorContext _xl9535Contexts[BOARD_COUNT];
+    size_t _boardCount = 0U;
+    size_t _portCount = 0U;
     V4RelayPhysicalBackend _backend;
     bool _ready;
 };

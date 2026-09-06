@@ -200,7 +200,7 @@ bool V4RelayPhysicalBackend::resolveZoneTarget(
         return false;
     }
 
-    target.driver = _driverRegistry->find(target.controller->typeId);
+    target.driver = _driverRegistry->findByController(target.controller->id);
     return target.valid();
 }
 

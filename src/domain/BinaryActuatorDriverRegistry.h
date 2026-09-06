@@ -76,6 +76,29 @@ public:
         );
     }
 
+    // Recherche par INSTANCE : c est elle qui permet plusieurs cartes du
+    // meme type. La recherche par type est conservee pour les usages ou
+    // une seule carte existe.
+    const BinaryActuatorDriverBinding* findByController(
+        ControllerId controllerId
+    ) const {
+        for (size_t i = 0U; i < size_; ++i) {
+            if (storage_[i].controllerId == controllerId) {
+                return &storage_[i];
+            }
+        }
+        return nullptr;
+    }
+
+    BinaryActuatorDriverBinding* findByController(ControllerId controllerId) {
+        for (size_t i = 0U; i < size_; ++i) {
+            if (storage_[i].controllerId == controllerId) {
+                return &storage_[i];
+            }
+        }
+        return nullptr;
+    }
+
     const BinaryActuatorDriverBinding* find(
         ControllerTypeId controllerTypeId
     ) const {

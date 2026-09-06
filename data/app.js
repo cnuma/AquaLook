@@ -1670,7 +1670,9 @@ const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
 const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
 const TOPO_ROLES = [[1, 'Vanne de zone'], [2, 'Pompe'], [3, 'Auxiliaire'],
                     [4, 'Ventilation serre'], [5, 'Eclairage']];
-const TOPO_CHANCOUNT = [4, 8, 16];
+// Valeurs acceptees par isSupportedChannelCount() : 1, 2, 4, 8. Proposer 16
+// fabriquait un choix que l'API refusait ensuite.
+const TOPO_CHANCOUNT = [1, 2, 4, 8];
 
 function topoZoneCount() {
   const s = adminStatus && adminStatus.system;

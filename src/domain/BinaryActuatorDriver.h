@@ -87,13 +87,20 @@ struct BinaryActuatorDriverOps {
     );
 };
 
+// Un lien designe UNE carte physique, pas un type de carte. Deux cartes du
+// meme modele a deux adresses ont chacune leur contexte -- sans quoi la
+// derniere configuree ecrase l adresse des autres, et les commandes partent
+// silencieusement au mauvais endroit. C est aussi ce qui permettra a une carte
+// distante (RS485, Ethernet, LoRa) d etre une instance de plus, avec son
+// propre contexte de transport, sans rien changer au-dessus.
 struct BinaryActuatorDriverBinding {
+    ControllerId controllerId;
     ControllerTypeId controllerTypeId;
     const BinaryActuatorDriverOps* operations;
     void* context;
 
     constexpr BinaryActuatorDriverBinding()
-        : controllerTypeId(), operations(nullptr), context(nullptr) {}
+        : controllerId(), controllerTypeId(), operations(nullptr), context(nullptr) {}
 };
 
 struct BinaryActuatorSession {

@@ -17,102 +17,122 @@ bool V4PilotRuntime::begin(
     Domain::Xl9535SharedOutputState& sharedOutputState
 ) {
     _ready = false;
+    _boardCount = 0U;
+    _portCount = 0U;
     _driverRegistry.clear();
-    _xl9535Context = Domain::Xl9535BinaryActuatorContext();
 
-    const RelayTopology::RelayBoardConfig& sourceBoard = topology.boards[0];
-    if (!RelayTopology::validateBoard(sourceBoard) ||
-        sourceBoard.controller != RelayTopology::CONTROLLER_XL9535 ||
-        sourceBoard.channelCount == 0U || sourceBoard.channelCount > PORT_COUNT) {
-        return false;
+    // Les tableaux sont indexes par l'index de TOPOLOGIE, pas compactes : le
+    // backend retrouve une carte par acces direct (findBoardByTopologyIndex).
+    // Les cartes non prises en charge laissent donc un trou, exclu ensuite du
+    // masque de zones migrees -- elles restent servies par le moteur
+    // historique au lieu de faire echouer tout le runtime.
+    for (size_t i = 0U; i < BOARD_COUNT; ++i) {
+        _controllers[i] = Domain::ControllerDefinition();
+        _boards[i] = Domain::BoardDefinition();
     }
 
-    Domain::ControllerDefinition& controller = _controllers[0];
-    controller = Domain::ControllerDefinition();
-    controller.id = Domain::ControllerId(1U);
-    controller.typeId = Domain::ControllerTypeIds::XL9535;
-    controller.busId = Domain::BusId(1U);
-    controller.address = Domain::ControllerAddress(sourceBoard.i2cAddress);
-    controller.capabilities = Domain::CONTROLLER_CAP_DIGITAL_OUTPUT |
-                              Domain::CONTROLLER_CAP_RELAY_OUTPUT;
-    controller.channelCount = 16U;
-    controller.status = Domain::ControllerStatus::AVAILABLE;
-    controller.flags = Domain::CONTROLLER_FLAG_ENABLED |
-                       Domain::CONTROLLER_FLAG_ADDRESS_REQUIRED |
-                       Domain::CONTROLLER_FLAG_EXCLUSIVE_ENDPOINT;
+    uint32_t managedBoards = 0U;
+    size_t nextPort = 0U;
 
-    Domain::BoardDefinition& board = _boards[0];
-    board = Domain::BoardDefinition();
-    board.id = Domain::BoardId(1U);
-    board.typeId = Domain::BoardTypeIds::RELAY_8_XL9535;
-    board.controllerId = controller.id;
-    board.modelVersion = 1U;
-    board.firstPortIndex = 0U;
-    board.portCount = sourceBoard.channelCount;
-    board.status = Domain::BoardStatus::AVAILABLE;
-    board.flags = Domain::BOARD_FLAG_ENABLED | Domain::BOARD_FLAG_EXTERNAL;
+    for (uint8_t b = 0U; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
+        const RelayTopology::RelayBoardConfig& src = topology.boards[b];
+        if (!src.enabled || !RelayTopology::validateBoard(src)) continue;
+        // Seul le XL9535 dispose d'un pilote V4 a ce jour. Une carte d'un autre
+        // type (MCP23017) reste pilotee par le moteur historique.
+        if (src.controller != RelayTopology::CONTROLLER_XL9535) continue;
+        if (nextPort + src.channelCount > PORT_COUNT) break;
 
-    for (size_t index = 0U; index < PORT_COUNT; ++index) {
-        Domain::PortDefinition& port = _ports[index];
-        port = Domain::PortDefinition();
-        port.controllerId = controller.id;
-        port.boardId = board.id;
-        port.id = Domain::PortId(static_cast<uint16_t>(index + 1U));
-        port.channel = static_cast<uint16_t>(index);
-        port.capabilities = Domain::PORT_CAP_DIGITAL_OUTPUT |
-                            Domain::PORT_CAP_RELAY_OUTPUT;
-        port.type = Domain::PortType::RELAY;
-        // Arduino defines OUTPUT as a macro. Use the stable enum value to avoid
-        // preprocessing Domain::PortDirection::OUTPUT into an integer token.
-        port.direction = static_cast<Domain::PortDirection>(2U);
-        port.safeState = Domain::PortSafeState::INACTIVE;
-        port.flags = Domain::PORT_FLAG_ENABLED;
-        if (sourceBoard.logic == RelayTopology::LOGIC_INVERTED) {
-            port.flags = static_cast<uint8_t>(port.flags | Domain::PORT_FLAG_INVERTED);
+        Domain::ControllerDefinition& controller = _controllers[b];
+        controller.id = Domain::ControllerId(static_cast<uint16_t>(b + 1U));
+        controller.typeId = Domain::ControllerTypeIds::XL9535;
+        controller.busId = Domain::BusId(1U);
+        controller.address = Domain::ControllerAddress(src.i2cAddress);
+        controller.capabilities = Domain::CONTROLLER_CAP_DIGITAL_OUTPUT |
+                                  Domain::CONTROLLER_CAP_RELAY_OUTPUT;
+        controller.channelCount = 16U;
+        controller.status = Domain::ControllerStatus::AVAILABLE;
+        controller.flags = Domain::CONTROLLER_FLAG_ENABLED |
+                           Domain::CONTROLLER_FLAG_ADDRESS_REQUIRED |
+                           Domain::CONTROLLER_FLAG_EXCLUSIVE_ENDPOINT;
+
+        Domain::BoardDefinition& board = _boards[b];
+        board.id = Domain::BoardId(static_cast<uint16_t>(b + 1U));
+        board.typeId = Domain::BoardTypeIds::RELAY_8_XL9535;
+        board.controllerId = controller.id;
+        board.modelVersion = 1U;
+        board.firstPortIndex = static_cast<uint16_t>(nextPort);
+        board.portCount = src.channelCount;
+        board.status = Domain::BoardStatus::AVAILABLE;
+        board.flags = Domain::BOARD_FLAG_ENABLED | Domain::BOARD_FLAG_EXTERNAL;
+
+        for (uint8_t c = 0U; c < src.channelCount; ++c) {
+            Domain::PortDefinition& port = _ports[nextPort + c];
+            port = Domain::PortDefinition();
+            port.controllerId = controller.id;
+            port.boardId = board.id;
+            port.id = Domain::PortId(static_cast<uint16_t>(nextPort + c + 1U));
+            port.channel = static_cast<uint16_t>(c);
+            port.capabilities = Domain::PORT_CAP_DIGITAL_OUTPUT |
+                                Domain::PORT_CAP_RELAY_OUTPUT;
+            port.type = Domain::PortType::RELAY;
+            // Arduino definit OUTPUT en macro : passer par la valeur d'enum.
+            port.direction = static_cast<Domain::PortDirection>(2U);
+            port.safeState = Domain::PortSafeState::INACTIVE;
+            port.flags = Domain::PORT_FLAG_ENABLED;
+            if (src.logic == RelayTopology::LOGIC_INVERTED) {
+                port.flags = static_cast<uint8_t>(port.flags | Domain::PORT_FLAG_INVERTED);
+            }
         }
+
+        // Chaque carte a SON contexte, donc sa propre adresse : c'est ce qui
+        // permet deux cartes du meme type sans qu'elles se marchent dessus.
+        Domain::Xl9535BinaryActuatorContext& ctx = _xl9535Contexts[b];
+        ctx = Domain::Xl9535BinaryActuatorContext();
+        ctx.i2c = &Drivers::arduinoI2cPlatformOps();
+        ctx.platformContext = &RELAY_WIRE_BUS;
+        ctx.sharedOutputState = &sharedOutputState;
+        const uint16_t outputs = (src.channelCount >= 16U)
+            ? 0xFFFFU
+            : static_cast<uint16_t>((1UL << src.channelCount) - 1UL);
+        ctx.directionMask = static_cast<uint16_t>(~outputs);
+
+        Domain::BinaryActuatorDriverBinding binding =
+            Domain::makeXl9535BinaryActuatorDriverBinding(ctx);
+        binding.controllerId = controller.id;
+        if (!_driverRegistry.registerDriver(binding).ok()) break;
+
+        nextPort += src.channelCount;
+        managedBoards |= (1UL << b);
+        _boardCount = static_cast<size_t>(b) + 1U;
     }
 
-    _xl9535Context.i2c = &Drivers::arduinoI2cPlatformOps();
-    // Le bus des relais depend de la carte : sur le S3 le tactile occupe
-    // Wire, et le bloc relais vit sur Wire1 (cf. RELAY_WIRE_BUS dans
-    // config.h). Le moteur historique le savait ; ecrire &Wire en dur ici
-    // faisait parler V4 au mauvais bus, et sa configuration echouait.
-    _xl9535Context.platformContext = &RELAY_WIRE_BUS;
-    _xl9535Context.sharedOutputState = &sharedOutputState;
-
-    // RelaisManager initialized every declared relay channel as an output.
-    // The V4 driver rewrites the complete 16-bit direction register when its
-    // first port is configured, so preload the same board-wide direction state
-    // instead of leaving every non-pilot channel as an input.
-    const uint16_t relayOutputMask = board.portCount >= 16U
-        ? 0xFFFFU
-        : static_cast<uint16_t>((1UL << board.portCount) - 1UL);
-    _xl9535Context.directionMask = static_cast<uint16_t>(~relayOutputMask);
-
-    const Domain::DriverRegistryResult registered = _driverRegistry.registerDriver(
-        Domain::makeXl9535BinaryActuatorDriverBinding(_xl9535Context)
-    );
-    if (!registered.ok()) {
-        return false;
-    }
+    if (managedBoards == 0U) return false;
+    _portCount = nextPort;
 
     _backend.bind(
         &topology,
         _controllers,
-        CONTROLLER_COUNT,
+        _boardCount,
         _boards,
-        BOARD_COUNT,
+        _boardCount,
         _ports,
-        board.portCount,
+        _portCount,
         &_driverRegistry
     );
-    // Gate 3 : toutes les voies declarees de la carte passent par le modele
-    // de ports V4, non plus la seule zone 1. Le masque suit portCount, donc
-    // il s ajuste si la topologie change. Rollback = reflash du profil s3.
-    const uint32_t migrated = (board.portCount >= 32U)
-        ? 0xFFFFFFFFUL
-        : static_cast<uint32_t>((1UL << board.portCount) - 1UL);
+
+    // Une zone n'est migree que si SA carte est effectivement pilotee par V4.
+    // Sans ce filtrage, une zone servie par une carte laissee au moteur
+    // historique remonterait un echec de pilotage au lieu d'un repli normal.
+    uint32_t migrated = 0U;
+    for (uint8_t z = 0U; z < MAX_ZONES && z < 32U; ++z) {
+        const RelayTopology::MappingResolution m =
+            RelayTopology::resolveZoneValve(topology, z, MAX_ZONES);
+        if (m.valid && (managedBoards & (1UL << m.boardIndex)) != 0U) {
+            migrated |= (1UL << z);
+        }
+    }
     _backend.setMigratedZoneMask(migrated);
+
     _ready = _backend.isReady() && _backend.hasAnyMigratedZone();
     return _ready;
 }
