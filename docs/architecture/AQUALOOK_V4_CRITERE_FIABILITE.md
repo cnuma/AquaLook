@@ -103,6 +103,19 @@ Conditions :
 - **≥ 24 h**, désaccord = 0, aucun incident.
 
 ### Gate 3 — Autorité complète, au banc
+
+> **Multi-cartes confirme le 6 septembre 2026, sur materiel reel.**
+> L'utilisateur a raccorde une seconde carte relais : les deux puces
+> repondent (0x20 et 0x21), la topologie route les zones 1-2 vers la premiere
+> et 3-4 vers la seconde -- sur les MEMES numeros de canal, 0 et 1. Verdict de
+> l'utilisateur : « nickel sur cette partie ».
+>
+> C'est exactement le cas qui, le matin meme, aurait envoye les commandes a la
+> mauvaise adresse en silence : le pilote etait alors indexe par TYPE de
+> controleur, et command() ne recoit pas le controleur -- configurer la
+> seconde carte aurait redirige les commandes de la premiere. Le passage a un
+> pilote par INSTANCE est donc valide par le materiel, pas seulement par la
+> compilation.
 Toutes les zones en V4, cycles complets :
 
 - **≥ 3 jours**, désaccord = 0, comportement identique au legacy confirmé.
