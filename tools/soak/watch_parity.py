@@ -63,6 +63,7 @@ def snapshot(host):
     p = d.get('parity') or {}
     mem = d.get('memory') or {}
     return {
+        'reset': (d.get('system') or {}).get('resetReason', ''),
         'ok': p.get('ok', 0),
         'ko': p.get('ko', 0),
         'uptime': (d.get('system') or {}).get('uptimeSec', 0),
@@ -124,10 +125,21 @@ def main():
             # Un flash ou une intervention se declare a l'avance (drapeau
             # du registre) : sans cela chaque flash crierait au loup, et
             # l'alerte perdrait la valeur qui fait tout son interet.
-            if in_maintenance(led):
+            # Le module sait lui-meme distinguer un redemarrage voulu d'un
+            # accident : un plantage laisse "panic / exception", et la garde
+            # anti-boucle ne compte comme suspects que les demarrages non
+            # planifies. S'en servir evite de crier au loup sur une simple
+            # application de configuration -- et rend credible l'alerte quand
+            # elle survient vraiment.
+            reset = (s.get('reset') or '').lower()
+            if 'panic' in reset or 'exception' in reset:
+                attendu = 'PLANTAGE (%s)' % s.get('reset')
+            elif in_maintenance(led):
                 attendu = 'annonce (fenetre de maintenance)'
             elif 3 <= now_hour() <= 4:
                 attendu = 'attendu (maintenance)'
+            elif 'logiciel' in reset:
+                attendu = 'volontaire (%s)' % s.get('reset')
             else:
                 attendu = 'INEXPLIQUE'
             ledger_write(led)
