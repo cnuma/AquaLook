@@ -1863,6 +1863,15 @@ String DisplayManager::nextSlotLabel(uint8_t zone) {
 
 void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     bool    active   = _relais && _relais->getState(zone);
+    // Une zone sans voie physique ne pourra jamais arroser, et le module ne
+    // peut pas le deviner : les cartes relais ne presentent pas leur
+    // configuration -- le circuit est identique qu il y ait 1, 2, 4 ou 8
+    // relais soudes. L information vient donc du cablage declare, et elle
+    // doit se voir sur l ecran plutot que de se deduire d une zone qui refuse
+    // de demarrer sans explication.
+    const bool mapped = _relais.relay &&
+        RelayTopology::resolveZoneValve(
+            _relais.relay->topology(), zone, _nbZones).valid;
     uint16_t bg      = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border  = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
     uint16_t zColor  = Theme::ZONE_COLORS[zone % 4];
@@ -1883,7 +1892,10 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     // varier selon l'ordre des octets du sprite TFT_eSPI.
     _sprBtn0.fillSprite(Theme::BG);
     drawCardBg(_sprBtn0, 0, 0, PL_BTN_W, visibleH, Theme::R_LG, bg, border, false);
-    drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG, zColor);
+    // Barre d accent eteinte quand la zone n a pas de sortie : la carte
+    // recule visuellement au lieu de se confondre avec une zone au repos.
+    drawAccentBar(_sprBtn0, 0, 0, visibleH, Theme::R_LG,
+                  mapped ? zColor : Theme::SURFACE2);
 
 #if AQUALOOK_BOARD_S3
     // ── Carte 228x156 (480x272) ────────────────────────────────
@@ -1919,7 +1931,8 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
         _sprBtn0.setTextColor(active ? Theme::BG : Theme::MUTED,
                               active ? zColor : Theme::SURFACE2);
         _sprBtn0.setTextDatum(MC_DATUM);
-        _sprBtn0.drawString(active ? "ON" : "OFF", pillX + pillW / 2, 9 + pillH / 2);
+        _sprBtn0.drawString(!mapped ? "N/C" : (active ? "ON" : "OFF"),
+                            pillX + pillW / 2, 9 + pillH / 2);
         _sprBtn0.setTextDatum(TL_DATUM);
     }
 
@@ -1953,6 +1966,14 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
                  elapsed / 60000UL, (elapsed % 60000UL) / 1000UL);
         _sprBtn0.setTextColor(Theme::MUTED, bg);
         _sprBtn0.drawString(ebuf, PAD, 112);
+
+    } else if (!mapped) {
+        // Afficher le prochain creneau serait mensonger : il ne tombera
+        // jamais, faute de sortie a piloter.
+        _sprBtn0.setTextColor(Theme::AMBER, bg);
+        _sprBtn0.drawString("Aucune sortie affectee", PAD, 48);
+        _sprBtn0.setTextColor(Theme::MUTED, bg);
+        _sprBtn0.drawString("a definir dans le cablage", PAD, 66);
 
     } else {
         const String next = nextSlotLabel(zone);
