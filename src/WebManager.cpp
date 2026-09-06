@@ -667,6 +667,16 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         zo["remaining"]= _schedule ? _schedule->getRemainingMs(z): 0;
         zo["schedActive"] = _schedule ? _schedule->isZoneActive(z) : false;
         zo["reason"]   = _schedule ? _schedule->getLastReason(z).c_str() : "";
+        // Une zone sans voie physique ne peut pas arroser, et le moteur le
+        // sait -- mais l utilisateur, lui, ne voyait qu une zone qui refuse
+        // de demarrer, sans explication. Le cas est reel : une carte 2 voies
+        // pour 8 zones declarees. On expose donc l affectation, pour que
+        // l ecran comme le web puissent la faire ressortir.
+        const bool mapped = _relais.relay &&
+            RelayTopology::resolveZoneValve(
+                _relais.relay->topology(), z,
+                _config ? _config->nbZones() : z + 1U).valid;
+        zo["hasOutput"] = mapped;
         if (_config) zo["name"] = _config->zone(z).name;
         if (_config) {
             const uint8_t notifyMask = _config->zoneNotificationMask(z);
