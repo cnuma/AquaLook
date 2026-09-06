@@ -1665,6 +1665,7 @@ async function saveCfgIo() {
 let topoBoards = [];   // { i, controller, addr, channels, logic }
 let topoAssign = [];   // { i, role, target, board, channel }
 let topoSource = 'legacy';
+let topoPendingReboot = false;
 
 const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
 const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
@@ -1695,6 +1696,7 @@ async function loadCfgTopo() {
     return;
   }
   topoSource = d.source || 'legacy';
+  topoPendingReboot = false;
   topoBoards = (d.boards || []).map(b => ({
     i: b.i, controller: b.controller, addr: b.addr,
     channels: b.channels, logic: b.logic, transport: b.transport || 0
@@ -1760,6 +1762,11 @@ function renderTopoEditor() {
     : '<span class="cfg-muted">derivee automatiquement</span>';
   let h = '<div class="cfg-hint">Source en vigueur : ' + src +
           '. Toute modification s&rsquo;applique au prochain redemarrage.</div>';
+  if (topoPendingReboot) {
+    h += '<div class="cfg-hint io-ok">Enregistre. Ce qui est affiche ci-dessous '
+       + 'est votre saisie, en attente du prochain redemarrage &mdash; la '
+       + 'configuration en vigueur reste celle d&rsquo;avant.</div>';
+  }
 
   h += '<div class="cfg-subsection-title">Cartes relais</div>';
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
@@ -1872,8 +1879,13 @@ async function saveCfgTopo() {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast((d && d.error) || ('Erreur ' + r.status), true); return; }
-    toast('Topologie enregistree, active au prochain redemarrage');
-    await loadCfgTopo();
+    // Surtout NE PAS relire ici : /api/relay/topology renvoie la topologie
+    // EN VIGUEUR, pas celle qu'on vient d'enregistrer -- elle ne s'applique
+    // qu'au redemarrage. Relire effacait donc a l'ecran la saisie que l'on
+    // venait de sauvegarder, en laissant croire a une perte.
+    topoPendingReboot = true;
+    toast('Topologie enregistree — active au prochain redemarrage');
+    renderTopoEditor();
   } catch (e) { toast('Erreur reseau', true); }
 }
 
