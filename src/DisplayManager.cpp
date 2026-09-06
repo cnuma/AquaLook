@@ -1461,10 +1461,24 @@ void DisplayManager::renderPlanSprite() {
         const int16_t bulletX = PL_LABEL_W / 2;
         const int16_t bulletY = rowY + _planZoneH / 2;
         const int16_t bulletR = max(3, min(5, (int)(_planZoneH / 2 - 2)));
-        _sprPlan.fillCircle(bulletX, bulletY, bulletR, col_z);
+
+        // Une zone sans sortie physique n'arrosera aucun de ces jours :
+        // hachurer la ligne entiere et eteindre sa bulle, plutot que d'afficher
+        // un planning qui ne se produira jamais. Meme langage visuel que le
+        // blocage par la pluie, deja lisible sur cet ecran.
+        const bool zMapped = _relais.relay &&
+            RelayTopology::resolveZoneValve(
+                _relais.relay->topology(), z, _nbZones).valid;
+        if (!zMapped) {
+            fillHatchRect(_sprPlan, PL_LABEL_W, rowY + 1,
+                          PL_PLAN_W - PL_LABEL_W, _planZoneH - 2,
+                          Theme::SURFACE, Theme::MUTED);
+        }
+        _sprPlan.fillCircle(bulletX, bulletY, bulletR,
+                            zMapped ? col_z : Theme::SURFACE2);
 
         // Barres de slots
-        if (!_schedule) continue;
+        if (!_schedule || !zMapped) continue;
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
 
         for (int col = 0; col < 7; col++) {
@@ -2261,6 +2275,24 @@ void DisplayManager::drawHomeFull_list() {
         _tft.setTextDatum(MC_DATUM);
         _tft.drawString(_listShowForce ? "< Planning" : "Marche forcee >",
                         SCREEN_W / 2, 230);
+        // L'ecran ne montre que les 4 premieres zones : un marquage par zone
+        // resterait invisible pour les suivantes. Un compteur d'ensemble, lui,
+        // se voit quel que soit le defilement.
+        uint8_t sansSortie = 0;
+        for (uint8_t z = 0; z < _nbZones && _relais.relay; z++) {
+            if (!RelayTopology::resolveZoneValve(
+                    _relais.relay->topology(), z, _nbZones).valid) {
+                sansSortie++;
+            }
+        }
+        if (sansSortie > 0) {
+            char warn[24];
+            snprintf(warn, sizeof(warn), "%u sans sortie", (unsigned)sansSortie);
+            _tft.setTextColor(Theme::AMBER, Theme::SURFACE2);
+            _tft.setTextDatum(ML_DATUM);
+            _tft.drawString(warn, 6, 230);
+            _tft.setTextDatum(MC_DATUM);
+        }
         // Scroll indicator si nécessaire
         if (_listScrollOff > 0 || _listScrollOff + 4 < _nbZones) {
             char nav[12]; snprintf(nav, sizeof(nav), "%d/%d",
