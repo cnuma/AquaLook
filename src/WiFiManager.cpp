@@ -226,13 +226,17 @@ void WiFiManager::handleConnecting(uint32_t now) {
             noSsid ? "SSID introuvable" :
             "timeout 15s";
 
+        // Annoncer le VRAI delai. Le message affichait toujours 30 s, meme
+        // quand le module attendait 15 minutes : le silence devenait alors
+        // indiscernable d un gel -- constate le 6 septembre 2026, ou j ai
+        // cru le module bloque alors qu il patientait normalement.
         EventLog::log(
             LOG_WARN,
-            "WiFi: echec #%u, %s, wl_status=%d, retry dans %lus",
+            "WiFi: echec #%u, %s, wl_status=%d, prochaine tentative dans %lus",
             _retryCount + 1,
             cause,
             static_cast<int>(s),
-            RETRY_INTERVAL_MS / 1000UL
+            retryDelayMs() / 1000UL
         );
 
         if (noSsid) {
