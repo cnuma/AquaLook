@@ -905,17 +905,29 @@ header {
 @media (min-width: 1000px) {
   #drawer { --drawer-w: min(940px, 94vw); }
 
-  .io-row  { display: grid; grid-template-columns: 76px repeat(5, 1fr) 26px;
+  /* PORTEE STRICTE a l'editeur de cablage : l'editeur E/S utilise les MEMES
+     classes .io-row / .io-bind avec un nombre de champs different (9 pour une
+     broche). Une grille non portee l'aurait desaligne. */
+  #topo-editor .io-row  { display: grid;
+             grid-template-columns: 76px repeat(5, 1fr) 26px;
              gap: 10px; align-items: end; }
-  .io-bind { display: grid; grid-template-columns: repeat(4, 1fr) 26px;
+  #topo-editor .io-bind { display: grid;
+             grid-template-columns: repeat(4, 1fr) 26px;
              gap: 10px; align-items: end; }
-  .io-row select, .io-bind select { max-width: none; width: 100%; }
-  .topo-field { width: 100%; }
-  .io-row .io-lbl, .io-row .io-st, .io-bind .io-st { align-self: center; }
+  #topo-editor select { max-width: none; width: 100%; }
+  #topo-editor .topo-field { width: 100%; }
+  #topo-editor .io-lbl, #topo-editor .io-st { align-self: center; }
+
+  /* Les autres menus ont ete dessines pour 420 px : un champ de saisie etire
+     sur 940 px est moins lisible, pas plus. On leur garde leur largeur
+     naturelle -- seuls les tableaux de cablage exploitent la place. */
+  #drawer .cfg-field,
+  #drawer .cfg-hint:not(#topo-editor .cfg-hint) { max-width: 460px; }
+  #drawer #io-editor { max-width: 640px; }
 
   /* Seule la premiere ligne montre ses etiquettes : elles deviennent les
      en-tetes. Le selecteur de voisinage evite de dependre de :first-of-type,
      qui compte les balises et non les classes. */
-  .io-row ~ .io-row .topo-field > span,
-  .io-bind ~ .io-bind .topo-field > span { visibility: hidden; }
+  #topo-editor .io-row ~ .io-row .topo-field > span,
+  #topo-editor .io-bind ~ .io-bind .topo-field > span { visibility: hidden; }
 }
