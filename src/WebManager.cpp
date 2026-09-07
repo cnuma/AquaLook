@@ -1442,13 +1442,16 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
 
     const uint8_t oldNbZones = _config->nbZones();
     if (doc["nbZones"].is<uint8_t>() || doc["nbZones"].is<int>()) {
-        uint8_t requested = constrain((uint8_t)(doc["nbZones"] | oldNbZones),
-                                      (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
-        if (next.relayController == RELAY_CONTROLLER_XL9535) {
-            // Configuration provisoire XL9535 : cartes ajoutées par paires de sorties.
-            requested = constrain((uint8_t)((requested + 1U) & 0xFEU), (uint8_t)2, (uint8_t)8);
-        }
-        next.nbZones = requested;
+        // Le nombre de zones est une notion LOGIQUE : combien de zones
+        // l'utilisateur veut piloter. Il etait arrondi au pair superieur sur
+        // XL9535 (5 devenait 6) parce que le cablage etait DEDUIT et supposait
+        // une carte dont les sorties allaient par paires. Le cablage etant
+        // desormais decrit explicitement -- le banc porte deux cartes de deux
+        // voies -- cette supposition n'a plus lieu d'etre, et arrondir en
+        // silence donnait a l'utilisateur une valeur qu'il n'avait pas
+        // demandee. Retire le 7 septembre 2026.
+        next.nbZones = constrain((uint8_t)(doc["nbZones"] | oldNbZones),
+                                 (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
     }
 
     // Invariant matériel AquaLook : une zone correspond exactement à une sortie relais.

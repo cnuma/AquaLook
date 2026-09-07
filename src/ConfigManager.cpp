@@ -86,12 +86,15 @@ static_assert(offsetof(PersistedConfig, weatherProvider) ==
 static_assert(sizeof(PersistedConfig) == sizeof(PersistedConfigV2) + 4U,
               "Le schema 3 doit ajouter exactement quatre octets en queue");
 
-uint8_t normalizeActiveZones(uint8_t zones, uint8_t controller) {
-    zones = constrain(zones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
-    if (controller == RELAY_CONTROLLER_XL9535) {
-        zones = constrain((uint8_t)((zones + 1U) & 0xFEU), (uint8_t)2, (uint8_t)8);
-    }
-    return zones;
+// Le nombre de zones actives est une notion LOGIQUE, bornee par le seul
+// maximum du produit. Il etait arrondi au pair superieur sur XL9535 (5
+// devenait 6) : cette regle datait du temps ou le cablage etait DEDUIT et
+// supposait une carte dont les sorties allaient par paires. Le cablage etant
+// desormais decrit explicitement -- le banc porte deux cartes de deux voies
+// --, l'arrondi ne faisait plus qu'une chose : rendre a l'utilisateur une
+// valeur qu'il n'avait pas demandee, sans le lui dire.
+uint8_t normalizeActiveZones(uint8_t zones) {
+    return constrain(zones, (uint8_t)1, (uint8_t)MAX_ACTIVE_ZONES);
 }
 
 uint32_t crc32Bytes(const uint8_t* data, size_t len) {
@@ -244,7 +247,7 @@ bool ConfigManager::loadNvs() {
         }
         _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
                                   ? _system.relayController : RELAY_CONTROLLER_XL9535;
-        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbZones = normalizeActiveZones(_system.nbZones);
         _system.nbRelaisPhysical = _system.nbZones;
         _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
         _loaded = true;
@@ -287,7 +290,7 @@ bool ConfigManager::loadNvs() {
         free(raw);
         _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
                                   ? _system.relayController : RELAY_CONTROLLER_XL9535;
-        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbZones = normalizeActiveZones(_system.nbZones);
         _system.nbRelaisPhysical = _system.nbZones;
         _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
         _loaded = true;
@@ -342,7 +345,7 @@ bool ConfigManager::loadNvs() {
 
     _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
                               ? _system.relayController : RELAY_CONTROLLER_XL9535;
-    _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+    _system.nbZones = normalizeActiveZones(_system.nbZones);
     _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic = (_system.relayLogic <= 1) ? _system.relayLogic : 1;
 
@@ -464,7 +467,7 @@ bool ConfigManager::loadLegacyJson() {
         _system.relayLogic = (rl <= 1) ? rl : 1;  // absent -> 1 (direct)
         uint8_t rc = sys["relayController"] | (uint8_t)RELAY_CONTROLLER_XL9535;
         _system.relayController = (rc <= RELAY_CONTROLLER_MCP23017) ? rc : RELAY_CONTROLLER_XL9535;
-        _system.nbZones = normalizeActiveZones(_system.nbZones, _system.relayController);
+        _system.nbZones = normalizeActiveZones(_system.nbZones);
         _system.nbRelaisPhysical = _system.nbZones;
     }
 
@@ -790,7 +793,7 @@ void ConfigManager::setSystemAndManualDuration(const CfgSystem& cfg,
     _system.ledMode          = constrain(cfg.ledMode, (uint8_t)0, (uint8_t)4);
     _system.relayController  = (cfg.relayController <= RELAY_CONTROLLER_MCP23017)
                                ? cfg.relayController : RELAY_CONTROLLER_XL9535;
-    _system.nbZones          = normalizeActiveZones(cfg.nbZones, _system.relayController);
+    _system.nbZones          = normalizeActiveZones(cfg.nbZones);
     _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic       = (cfg.relayLogic <= 1) ? cfg.relayLogic : 1;
 
@@ -845,7 +848,7 @@ void ConfigManager::setSystem(const CfgSystem& cfg) {
     _system.ledMode          = constrain(cfg.ledMode, (uint8_t)0, (uint8_t)4);
     _system.relayController  = (cfg.relayController <= RELAY_CONTROLLER_MCP23017)
                                ? cfg.relayController : RELAY_CONTROLLER_XL9535;
-    _system.nbZones          = normalizeActiveZones(cfg.nbZones, _system.relayController);
+    _system.nbZones          = normalizeActiveZones(cfg.nbZones);
     _system.nbRelaisPhysical = _system.nbZones;
     _system.relayLogic       = (cfg.relayLogic <= 1) ? cfg.relayLogic : 1;
 
