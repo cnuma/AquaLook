@@ -1553,14 +1553,18 @@ void WebManager::handleStartCaptive(AsyncWebServerRequest* req) {
     EventBus::captiveRequested = true;  // WiFiManager le consomme dans update()
 }
 
-// Lecture de la topologie en vigueur, avec sa source reelle (derivee du
-// legacy, ou chargee depuis la NVS).
+// Lecture du cablage en vigueur. "source" ne peut plus valoir que "nvs"
+// (cablage enregistre) ou "absent" (module jamais cable) : la deduction de
+// secours a ete retiree le 7 septembre 2026. "wired" dit si une carte valide
+// existe -- c'est ce que l'interface utilise pour guider vers la page de
+// cablage plutot que d'afficher des zones qui ne peuvent pas arroser.
 void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
     if (!_relais.relay) { sendError(req, "indisponible"); return; }
     const RelayTopology::RelayTopologyConfig& topo = _relais.relay->topology();
 
     JsonDocument doc;
-    doc["source"] = _relais.relay->topologyFromStore() ? "nvs" : "legacy";
+    doc["source"] = _relais.relay->topologyFromStore() ? "nvs" : "absent";
+    doc["wired"] = _relais.relay->isWired();
     doc["persisted"] = RelayTopologyStore::exists();
 
     JsonArray boards = doc["boards"].to<JsonArray>();
@@ -1652,9 +1656,10 @@ void WebManager::handleSetTopology(AsyncWebServerRequest* req, JsonDocument& doc
     sendJson(req, out);
 }
 
-// Enregistre la topologie relais actuellement en vigueur. Par defaut elle
-// est derivee du legacy a chaque demarrage ; la persister permet de la
-// figer puis de la faire evoluer sans toucher au code.
+// Enregistre le cablage actuellement en memoire. N'avait d'interet que pour
+// figer une topologie DERIVEE ; la deduction ayant ete retiree, l'interface
+// n'expose plus ce bouton. La route est conservee : elle reste un moyen
+// legitime de figer un cablage construit par un autre chemin.
 void WebManager::handlePersistTopology(AsyncWebServerRequest* req) {
     if (!_config || !_relais.relay) { sendError(req, "indisponible"); return; }
     if (!RelayTopologyStore::save(_relais.relay->topology(), _config->nbZones())) {
@@ -1664,8 +1669,9 @@ void WebManager::handlePersistTopology(AsyncWebServerRequest* req) {
     sendOk(req);
 }
 
-// Efface la topologie persistee : le prochain demarrage repart de la
-// derivation legacy, qui reste la reference.
+// Efface le cablage persiste. Il n'y a plus de deduction derriere : au
+// prochain demarrage le module ne pilotera plus aucune sortie tant qu'un
+// nouveau cablage n'aura pas ete decrit.
 void WebManager::handleResetTopology(AsyncWebServerRequest* req) {
     RelayTopologyStore::clear();
     sendOk(req);

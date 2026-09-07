@@ -36,7 +36,7 @@ const RelayTopologyConfig& topology() const;
 - `relayController()` ;
 - `relayLogic()`.
 
-Elle appelle ensuite `RelayTopology::buildLegacyCompatibleTopology()`. Les doublons de mapping sont détectés par `RelayTopology::hasDuplicateMappings()`.
+En l'absence de câblage enregistré, la topologie reste **vide** : aucune sortie n'est pilotée. La dérivation `buildLegacyCompatibleTopology()` a été retirée le 7 septembre 2026 — deviner un câblage exposait à ouvrir la mauvaise vanne, ce que l'avertissement « logique relais » de l'interface annonçait lui-même. `RelayTopology::isWired()` distingue « non câblé » (état normal de première mise en service, aucun défaut signalé) de « câblé mais injoignable » (défaut `RELAY_I2C`). Les doublons de mapping sont détectés par `RelayTopology::hasDuplicateMappings()`.
 
 ## Contrôleurs pris en charge
 

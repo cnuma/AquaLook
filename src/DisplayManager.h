@@ -457,6 +457,11 @@ private:
 
     // ── Rendu complet (sur _needsFullRedraw) ──
     void drawHomeFull();           // dispatcher → mode courant
+    // Ecran d'accueil d'un module dont le cablage n'est pas renseigne : il
+    // remplace la grille de zones plutot que de s'y ajouter, pour ne laisser
+    // qu'un seul message a l'ecran.
+    void drawHomeFull_unwired();
+    bool homeUnwired() const { return _relais.relay && !_relais.relay->isWired(); }
     void drawHomeFull_list();      // 1-4 zones : liste + planning J/J+1
     void drawHomeFull_grid2();     // 5-8 zones : 2 colonnes
     void drawHomeFull_grid4();     // 9-16 zones : grille 4×N

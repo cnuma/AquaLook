@@ -944,6 +944,12 @@ void DisplayManager::handleTouch() {
 }
 
 void DisplayManager::handleTouchHome(uint16_t tx, uint16_t ty) {
+    // Sur l'ecran "non cable" aucune tuile n'existe : seul le menu reste
+    // actif, sans quoi l'utilisateur serait enferme sur cet ecran.
+    if (homeUnwired()) {
+        if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) goTo(Screen::ADMIN);
+        return;
+    }
     switch (_homeMode) {
         case HomeMode::LIST:  handleTouchHome_list(tx, ty);  break;
         case HomeMode::GRID2: handleTouchHome_grid2(tx, ty); break;
@@ -2195,6 +2201,11 @@ void DisplayManager::drawWeatherIcon(TFT_eSprite& spr, uint16_t x, uint16_t y,
 //  Dispatcher HOME → mode courant
 // ─────────────────────────────────────────────
 void DisplayManager::drawHomeFull() {
+    // Interception AVANT la dispatch de mode : c'est le seul point par lequel
+    // passent LIST, GRID2 et GRID4. Marquer les tuiles une par une ne suffit
+    // pas ici -- au-dela de quelques zones l'ecran n'en montre pas la moitie,
+    // et un module non cable doit dire son etat d'un seul coup d'oeil.
+    if (homeUnwired()) { drawHomeFull_unwired(); return; }
     switch (_homeMode) {
         case HomeMode::LIST:  drawHomeFull_list();  break;
         case HomeMode::GRID2: drawHomeFull_grid2(); break;
@@ -2210,6 +2221,54 @@ void DisplayManager::drawHomeFull() {
 //  >4 zones  : sous-vue PLAN (planning seul) ou FORCE (drawZoneRow scrollable)
 //              bouton bascule en bas y=220..239
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+//  HOME NON CABLE — aucune sortie declaree
+//
+//  Un module neuf ne devine plus son cablage (cf. RelaisManager). Il ne peut
+//  donc pas arroser, et afficher huit tuiles hachurees le dirait mal : on
+//  affiche UN message, celui de l'action a faire, et rien d'autre.
+// ─────────────────────────────────────────────
+void DisplayManager::drawHomeFull_unwired() {
+    _tft.fillScreen(Theme::BG);
+
+    // Meme bandeau que les autres modes : le [≡] est la seule porte vers le
+    // menu, le retirer enfermerait l'utilisateur ici.
+    _tft.fillRect(0, 0, SCREEN_W, G2_HDR_H, Theme::SURFACE);
+    _tft.setFreeFont(nullptr);
+    drawMenuIcon(_tft, 6, 7, Theme::TEXT);
+    _tft.setTextSize(1);
+    _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
+    _tft.setTextDatum(TL_DATUM);
+    _tft.drawString("AquaLook", 24, 8);
+    renderTimeSprite();
+    renderSignalSprite();
+
+    const uint16_t cx = SCREEN_W / 2;
+    uint16_t y = G2_CONTENT_Y + (SCREEN_H - G2_CONTENT_Y) / 2 - 52;
+
+    _tft.setTextDatum(TC_DATUM);
+    _tft.setTextSize(2);
+    _tft.setTextColor(Theme::AMBER, Theme::BG);
+    _tft.drawString("Module non cable", cx, y);
+    y += 30;
+
+    _tft.setTextSize(1);
+    _tft.setTextColor(Theme::TEXT, Theme::BG);
+    _tft.drawString("Aucune sortie n'est affectee :", cx, y);   y += 14;
+    _tft.drawString("le module ne peut pas arroser.", cx, y);   y += 24;
+
+    _tft.setTextColor(Theme::TEXT2, Theme::BG);
+    _tft.drawString("Interface web  >  Zones", cx, y);          y += 14;
+    _tft.drawString(">  Cablage relais", cx, y);                y += 24;
+
+    _tft.setTextColor(Theme::BLUE, Theme::BG);
+    const String ip = WiFi.localIP().toString();
+    _tft.drawString(ip.length() > 6 ? ip.c_str() : "en attente du reseau",
+                    cx, y);
+
+    _tft.setTextDatum(TL_DATUM);
+}
+
 void DisplayManager::drawHomeFull_list() {
     // ── Header commun ──
     _tft.fillRect(0, 0, SCREEN_W, 28, Theme::SURFACE);
@@ -2314,6 +2373,9 @@ void DisplayManager::drawHomeFull_list() {
 }
 
 void DisplayManager::updateHomeDynamic() {
+    // L'ecran "non cable" n'a rien de dynamique a rafraichir, et le laisser
+    // passer ici repeindrait des elements de la grille par-dessus lui.
+    if (homeUnwired()) { renderTimeSprite(); renderSignalSprite(); return; }
     switch (_homeMode) {
         case HomeMode::LIST:  updateHomeDynamic_list();  break;
         case HomeMode::GRID2: updateHomeDynamic_grid2(); break;
@@ -2620,9 +2682,9 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
             // faux : ce creneau ne se produira jamais. La tuile est deja
             // hachuree, le texte doit dire la meme chose.
             _tft.setTextColor(Theme::AMBER, bg);
-            _tft.drawString("Sans sortie", x + pad, y + 26);
+            _tft.drawString("Non affectee", x + pad, y + 26);
             _tft.setTextColor(Theme::MUTED, bg);
-            _tft.drawString("a affecter", x + pad, y + 40);
+            _tft.drawString("Cablage relais", x + pad, y + 40);
 
         } else {
             _tft.setTextColor(Theme::MUTED, bg);

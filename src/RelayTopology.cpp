@@ -67,35 +67,11 @@ void clear(RelayTopologyConfig& topology) {
     }
 }
 
-void buildLegacyCompatibleTopology(
-    RelayTopologyConfig& topology,
-    uint8_t nbZones,
-    uint8_t nbRelaisPhysical,
-    uint8_t controller,
-    uint8_t logic
-) {
-    clear(topology);
-
-    nbZones = constrain(nbZones, (uint8_t)1, (uint8_t)MAX_ZONES);
-    nbRelaisPhysical = constrain(nbRelaisPhysical, (uint8_t)1, nbZones);
-    controller = isSupportedController(controller) ? controller : CONTROLLER_XL9535;
-    logic = (logic <= 1) ? logic : LOGIC_DIRECT;
-
-    RelayBoardConfig& board0 = topology.boards[0];
-    board0.enabled = true;
-    board0.controller = controller;
-    board0.i2cAddress = defaultAddressForController(controller);
-    board0.channelCount = normalizeChannelCount(nbRelaisPhysical);
-    board0.logic = logic;
-
-    for (uint8_t z = 0; z < nbZones && z < board0.channelCount; z++) {
-        RelayAssignment& a = topology.assignments[z];
-        a.enabled = true;
-        a.role = ROLE_ZONE_VALVE;
-        a.targetIndex = z;
-        a.boardIndex = 0;
-        a.channelIndex = z;
+bool isWired(const RelayTopologyConfig& topology) {
+    for (uint8_t b = 0; b < MAX_RELAY_BOARDS; b++) {
+        if (validateBoard(topology.boards[b])) return true;
     }
+    return false;
 }
 
 // Un transport sans pilote est refuse plutot qu accepte puis silencieusement

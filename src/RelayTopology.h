@@ -118,13 +118,11 @@ uint8_t normalizeChannelCount(uint8_t channelCount);
 uint8_t defaultAddressForController(uint8_t controller);
 
 void clear(RelayTopologyConfig& topology);
-void buildLegacyCompatibleTopology(
-    RelayTopologyConfig& topology,
-    uint8_t nbZones,
-    uint8_t nbRelaisPhysical,
-    uint8_t controller,
-    uint8_t logic
-);
+
+// true si au moins une carte est declaree ET valide. Un module dont le
+// cablage n'a jamais ete renseigne repond false : il ne pilote rien, ce qui
+// est un etat NORMAL de premiere mise en service, pas une panne.
+bool isWired(const RelayTopologyConfig& topology);
 
 bool validateBoard(const RelayBoardConfig& board);
 bool validateAssignment(

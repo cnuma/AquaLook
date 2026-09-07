@@ -283,31 +283,26 @@
         </div>
       </div>
       <div id="relay-admin">
-      <div class="cfg-hint" id="relay-superseded" style="display:none;color:var(--amber)">
-        &#9888; Un c&acirc;blage est enregistr&eacute; : le contr&ocirc;leur et la logique se d&eacute;finissent
-        d&eacute;sormais <b>par carte</b> dans &laquo;&nbsp;C&acirc;blage relais&nbsp;&raquo;. Les r&eacute;glages
-        ci-dessous ne servent plus qu&rsquo;&agrave; l&rsquo;amor&ccedil;age d&rsquo;un module neuf.
-      </div>
-      <div class="cfg-field" id="relay-controller-field">
-        <label>Contrôleur des relais</label>
-        <select id="cfg-relay-controller" onchange="updateZoneOptions()">
-          <option value="0">XL9535 (carte YellowCard)</option>
-          <option value="1">MCP23017 (modules relais externes)</option>
-        </select>
-        <div class="cfg-hint">Le changement de contrôleur nécessite un redémarrage.</div>
+      <!-- Le controleur et la logique se definissaient ici, globalement, et
+           servaient a DEDUIRE un cablage quand aucun n'etait enregistre.
+           Retires le 7 septembre 2026 : deduire un cablage revenait a
+           risquer d'ouvrir la mauvaise vanne, ce que l'avertissement de ce
+           meme bloc annoncait lui-meme. Ces reglages se definissent
+           desormais PAR CARTE dans "Cablage relais", seule source de
+           verite. Ne reste ici que le nombre de zones, qui est une notion
+           logique et non un reglage materiel. -->
+      <div class="cfg-hint" id="relay-unwired" style="display:none;
+           padding:10px;border:1px dashed var(--amber);border-radius:6px;
+           background:var(--bg2);color:var(--amber);margin-bottom:12px">
+        &#9888; <b>Aucun c&acirc;blage enregistr&eacute;.</b> Le module ne peut piloter aucune
+        sortie tant que les cartes relais ne sont pas d&eacute;crites.
+        <button class="btn-cfg" style="margin-top:8px"
+                onclick="openTopoEditor()">Configurer le c&acirc;blage relais</button>
       </div>
       <div class="cfg-field">
         <label>Nombre de zones</label>
         <select id="cfg-nb-zones"></select>
         <div class="cfg-hint" id="cfg-zones-hint">1 zone pilote 1 sortie.</div>
-      </div>
-      <div class="cfg-field" style="padding:10px;border:1px dashed var(--amber);border-radius:6px;background:var(--bg2)">
-        <label style="color:var(--amber)">&#9888; Logique relais</label>
-        <select id="cfg-relay-logic">
-          <option value="0">Inverse (niveau 0 → relais actif)</option>
-          <option value="1">Directe (niveau 1 → relais actif)</option>
-        </select>
-        <div class="cfg-hint" style="color:var(--amber)">Un mauvais choix peut activer les relais au démarrage.</div>
       </div>
       </div><div class="cfg-field-row">
         <div class="cfg-field"><label>Duree max arrosage (min)</label>
@@ -460,9 +455,8 @@
     <div class="cfg-section-body">
       <div id="topo-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
       <button class="btn-cfg primary" onclick="saveCfgTopo()" style="margin-top:8px">Enregistrer</button>
-      <button class="btn-cfg" onclick="topoPersistCurrent()" style="margin-top:6px">Figer le câblage actuel</button>
-      <button class="btn-cfg" onclick="topoBackToLegacy()" style="margin-top:6px">Revenir au câblage dérivé</button>
-      <div class="cfg-hint" style="margin-top:6px">Décrit quelle voie physique (carte + canal) pilote chaque rôle : vanne de zone, pompe, éclairage&hellip; Sans enregistrement, le câblage est dérivé automatiquement du nombre de zones. Toute modification prend effet au prochain redémarrage.</div>
+      <button class="btn-cfg" onclick="topoEraseWiring()" style="margin-top:6px">Effacer le câblage enregistré</button>
+      <div class="cfg-hint" style="margin-top:6px">Décrit quelle voie physique (carte + canal) pilote chaque rôle : vanne de zone, pompe, éclairage&hellip; <b>Sans câblage enregistré, le module ne pilote aucune sortie</b> : il ne devine pas comment il est raccordé. Toute modification prend effet au prochain redémarrage.</div>
     </div>
   </div>
   <div class="cfg-section" id="sec-weather-tooltips">

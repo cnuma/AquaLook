@@ -54,8 +54,8 @@ struct Persisted {
 
 // Une topologie n'est retenue que si elle tient debout : au moins une carte
 // activee ET valide, aucune carte activee incoherente, aucun doublon de voie.
-// Au moindre doute on refuse -- l'appelant retombe sur la derivation legacy,
-// qui reste la reference eprouvee.
+// Au moindre doute on refuse -- l'appelant laisse alors la topologie vide,
+// et le module annonce qu'il n'est pas cable plutot que de piloter au juge.
 bool coherent(const RelayTopology::RelayTopologyConfig& topology, uint8_t nbZones) {
     uint8_t validBoards = 0U;
     for (uint8_t b = 0U; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {

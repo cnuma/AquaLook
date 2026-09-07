@@ -771,7 +771,7 @@ function openCfgPage(groupId) {
   if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
   if (g.sections.indexOf('sec-io')    >= 0) loadCfgIo();
   if (g.sections.indexOf('sec-topo')  >= 0) loadCfgTopo();
-  if (g.sections.indexOf('sec-zones') >= 0) markRelaySettingsSuperseded();
+  if (g.sections.indexOf('sec-zones') >= 0) refreshWiringState();
 
   const drawer = document.getElementById('drawer');
   drawer.classList.add('cfg-detail');
@@ -948,11 +948,7 @@ function populateDrawer() {
   const s = adminStatus;
   if (s.system) {
     const zonesEl = document.getElementById('cfg-nb-zones');
-    const ctrlEl  = document.getElementById('cfg-relay-controller');
-    const logicEl = document.getElementById('cfg-relay-logic');
     if (zonesEl) zonesEl.dataset.current = s.system.nbZones ?? 2;
-    if (ctrlEl)  ctrlEl.dataset.current  = s.system.relayController ?? 0;
-    if (logicEl) logicEl.dataset.current = s.system.relayLogic ?? 0;
   }
   // header-title (ligne "AQUALOOK") et header-city (sous-titre, voir
   // .logo-city dans index.html) forment deja un affichage sur 2 lignes :
@@ -1026,19 +1022,15 @@ function populateDrawer() {
     document.getElementById('cfg-maxwater').value       = s.system.maxWateringMin ?? 60;
     document.getElementById('cfg-screen-timeout').value = s.system.screenTimeout  ?? 5;
     document.getElementById('cfg-led-mode').value       = s.system.ledMode        ?? 1;
-    const nbZ = s.system.nbZones ?? 2;
-    const rcSel = document.getElementById('cfg-relay-controller');
-    if (rcSel) rcSel.value = s.system.relayController ?? 0;
-    updateZoneOptions(nbZ);
-    const rlSel = document.getElementById('cfg-relay-logic');
-    if (rlSel) rlSel.value = s.system.relayLogic ?? 0;
+    updateZoneOptions(s.system.nbZones ?? 2);
   }
   if (status) {
     document.getElementById('cfg-manual-dur').value = status.manualDurationMin ?? 10;
   }
   _applyZonesViewBtn();
-  const rlLabel = (s.system?.relayLogic === 1) ? 'Directe (bit=1 ON)' : 'Inverse (bit=0 ON)';
-  const rcLabel = (s.system?.relayController === 1) ? 'MCP23017' : 'XL9535';
+  // Le controleur et la logique ne sont plus des reglages globaux : ils
+  // appartiennent a chaque carte du cablage. Afficher ici les anciennes
+  // valeurs de configuration donnerait une information sans effet reel.
   document.getElementById('sys-info').innerHTML =
     `IP : <span>${s.wifi?.ip||'--'}</span><br>
      RAM libre : <span>${s.heap||'--'} o</span><br>
@@ -1048,8 +1040,9 @@ function populateDrawer() {
      Ville : <span>${s.owm?.city || s.owm?.lat || '--'}</span><br>
      Veille : <span>${s.system?.screenTimeout===0 ? 'Desactivee' : (s.system?.screenTimeout||5)+'min'}</span><br>
      Zones : <span>${s.system?.nbZones||2}</span><br>
-     Contrôleur relais : <span>${rcLabel}</span><br>
-     Logique relais : <span>${rlLabel}</span>`;
+     Câblage : <span id="sys-wiring">${wiringLabel()}</span>`;
+  // Apres l'insertion : la fiche vient d'etre reconstruite, le span existe.
+  refreshWiringState();
 }
 function fmtUptime(s) {
   if (!s) return '--';
@@ -1151,27 +1144,19 @@ async function saveCfgOwm() {
   toast('Meteo enregistree');
 }
 async function saveCfgRelaySetup() {
-  const controller = parseInt(document.getElementById('cfg-relay-controller').value) || 0;
-  const relayLogic = parseInt(document.getElementById('cfg-relay-logic').value) || 0;
   const nbZones = Math.min(8, parseInt(document.getElementById('cfg-nb-zones').value) || 2);
   const maxMin = Math.min(120, Math.max(1, parseInt(document.getElementById('cfg-maxwater').value) || 60));
   const manDur = Math.min(120, Math.max(1, parseInt(document.getElementById('cfg-manual-dur').value) || 10));
-  const ctrlEl = document.getElementById('cfg-relay-controller');
-  const logicEl = document.getElementById('cfg-relay-logic');
   const zonesEl = document.getElementById('cfg-nb-zones');
-  const oldController = parseInt(ctrlEl.dataset.current || '0');
-  const oldRelayLogic = parseInt(logicEl.dataset.current || '0');
   const oldNbZones = parseInt(zonesEl.dataset.current || '2');
-  const needReboot = controller !== oldController || relayLogic !== oldRelayLogic || nbZones !== oldNbZones;
+  const needReboot = nbZones !== oldNbZones;
   if (needReboot) {
-    const controllerLabel = controller === 1 ? 'MCP23017' : 'XL9535';
-    const logicLabel = relayLogic === 0 ? 'inverse' : 'directe';
-    const message = `Appliquer ${controllerLabel}, ${nbZones} zone${nbZones>1?'s':''}, logique ${logicLabel} ? Le module va redémarrer.`;
-    if (!confirm(message)) return;
+    if (!confirm(`Passer a ${nbZones} zone${nbZones>1?'s':''} ? Le module va redémarrer.`)) return;
   }
+  // Ni relayController ni relayLogic : ils appartiennent au cablage, carte
+  // par carte. La route ne modifie que les champs presents, les envoyer
+  // ecraserait le cablage decrit ailleurs.
   const response = await api('/api/system', {
-    relayController: controller,
-    relayLogic,
     nbZones,
     maxWateringMin: maxMin,
     manualDurationMin: manDur
@@ -1188,24 +1173,28 @@ async function saveCfgRelaySetup() {
     fetchAdminStatus();
   }
 }
+// Le nombre de zones est une notion LOGIQUE : combien de zones l'utilisateur
+// veut piloter. Il etait auparavant contraint par le controleur (paires de 2
+// sur XL9535) parce que le cablage en etait deduit. Le cablage etant
+// desormais decrit explicitement, cette contrainte n'a plus de raison
+// d'etre : c'est l'editeur de cablage qui dit quelle zone sort ou.
 function updateZoneOptions(preferredValue) {
-  const controller = parseInt(document.getElementById('cfg-relay-controller')?.value || '0');
   const select = document.getElementById('cfg-nb-zones');
   if (!select) return;
   const current = Number.isFinite(Number(preferredValue))
     ? Number(preferredValue)
     : (parseInt(select.value) || parseInt(select.dataset.current) || 2);
-  const values = controller === 1 ? [1,2,3,4,5,6,7,8] : [2,4,6,8];
-  const chosen = values.reduce((best, value) =>
-    Math.abs(value-current) < Math.abs(best-current) ? value : best, values[0]);
+  const values = [1,2,3,4,5,6,7,8];
+  const chosen = values.indexOf(current) >= 0 ? current : 2;
   select.innerHTML = values.map(value =>
     `<option value="${value}">${value} zone${value>1?'s':''}</option>`).join('');
   select.value = String(chosen);
   const hint = document.getElementById('cfg-zones-hint');
-  if (hint) hint.textContent = controller === 1
-    ? 'MCP23017 : choix libre de 1 a 8 zones. 1 zone pilote 1 sortie.'
-    : 'XL9535 : choix provisoire par paires de 2, de 2 a 8 zones.';
+  if (hint) hint.textContent =
+    'Nombre de zones a piloter. Leur raccordement se decrit dans ' +
+    '"Cablage relais".';
 }
+
 async function saveCfgSystem() {
   const timeout = parseInt(document.getElementById('cfg-screen-timeout').value) || 5;
   const ledMode = parseInt(document.getElementById('cfg-led-mode').value) || 1;
@@ -1772,7 +1761,7 @@ function renderTopoEditor() {
   const el = document.getElementById('topo-editor');
   const src = (topoSource === 'nvs')
     ? '<span class="io-ok">enregistree</span>'
-    : '<span class="cfg-muted">derivee automatiquement</span>';
+    : '<span class="cfg-muted">aucun c&acirc;blage enregistr&eacute;</span>';
   let h = '<div class="cfg-hint">Source en vigueur : ' + src +
           '. Toute modification s&rsquo;applique au prochain redemarrage.</div>';
   if (topoPendingReboot) {
@@ -1899,34 +1888,49 @@ async function saveCfgTopo() {
   } catch (e) { toast('Erreur reseau', true); }
 }
 
-async function topoPersistCurrent() {
-  try {
-    const r = await fetch('/api/relay/topology/persist', { method: 'POST' });
-    if (!r.ok) { toast('Enregistrement refuse', true); return; }
-    toast('Cablage actuel fige');
-    await loadCfgTopo();
-  } catch (e) { toast('Erreur reseau', true); }
-}
 
-async function topoBackToLegacy() {
+// Effacer le cablage ne "revient" plus a rien : il ne reste aucune
+// deduction de secours derriere. Le module cessera simplement de piloter
+// quoi que ce soit, ce que la confirmation doit dire sans detour.
+async function topoEraseWiring() {
+  if (!confirm('Effacer le cablage enregistre ? Le module ne pilotera plus '
+             + 'aucune sortie tant qu un nouveau cablage n aura pas ete decrit.')) return;
   try {
     const r = await fetch('/api/relay/topology/reset', { method: 'POST' });
     if (!r.ok) { toast('Effacement refuse', true); return; }
-    toast('Retour au cablage derive, actif au prochain redemarrage');
+    toast('Cablage efface, effectif au prochain redemarrage');
     await loadCfgTopo();
+    await refreshWiringState();
   } catch (e) { toast('Erreur reseau', true); }
 }
 
-// Le controleur et la logique se definissent par carte dans l'editeur de
-// cablage. Les champs globaux du menu Zones restent utiles pour amorcer un
-// module neuf, mais deviennent une seconde source de verite des qu'un
-// cablage est enregistre : on le dit alors clairement plutot que de laisser
-// deux reglages se contredire en silence.
-async function markRelaySettingsSuperseded() {
-  const note = document.getElementById('relay-superseded');
-  if (!note) return;
+// Etat du cablage, partage par le bandeau du menu Zones et par la fiche
+// systeme. Un module sans cablage ne peut rien piloter : plutot que de le
+// laisser deviner devant huit tuiles hachurees, on nomme l'etat et on ouvre
+// la page qui le corrige.
+let _wiring = null;
+
+function wiringLabel() {
+  if (!_wiring) return '--';
+  if (!_wiring.wired) return 'non configuré';
+  const b = _wiring.boards || 0, c = _wiring.channels || 0;
+  return `${b} carte${b>1?'s':''}, ${c} voie${c>1?'s':''}`;
+}
+
+function openTopoEditor() { openCfgPage('g-relais'); }
+
+async function refreshWiringState() {
   try {
     const d = await (await fetch('/api/relay/topology')).json();
-    note.style.display = (d.source === 'nvs') ? 'block' : 'none';
-  } catch (e) { note.style.display = 'none'; }
+    const boards = d.boards || [];
+    _wiring = {
+      wired: d.wired === true,
+      boards: boards.length,
+      channels: boards.reduce((n, b) => n + (b.channels || 0), 0)
+    };
+  } catch (e) { _wiring = null; }
+  const note = document.getElementById('relay-unwired');
+  if (note) note.style.display = (_wiring && !_wiring.wired) ? 'block' : 'none';
+  const span = document.getElementById('sys-wiring');
+  if (span) span.textContent = wiringLabel();
 }

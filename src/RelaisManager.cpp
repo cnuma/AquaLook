@@ -41,9 +41,24 @@ void RelaisManager::begin(ConfigManager* config) {
     }
 
     _hardwareReady = initHardware();
-    FaultManager::setActive(FaultId::RELAY_I2C, !_hardwareReady);
 
-    if (_hardwareReady) {
+    // Trois etats a ne pas confondre, parce qu'ils appellent trois gestes
+    // differents de la part de l'utilisateur :
+    //   - non cable      -> il doit CONFIGURER (etat normal a la sortie de
+    //                       l'usine, aucun defaut a signaler) ;
+    //   - cable, HS      -> il doit VERIFIER LE MATERIEL (defaut I2C) ;
+    //   - cable, OK      -> rien a faire.
+    // Allumer le defaut I2C sur un module neuf l'enverrait chercher une
+    // panne inexistante.
+    const bool wired = RelayTopology::isWired(_topology);
+    FaultManager::setActive(FaultId::RELAY_I2C, wired && !_hardwareReady);
+
+    if (!wired) {
+        EventLog::log(
+            LOG_WARN,
+            "Relais: aucun cablage enregistre, aucune sortie pilotable"
+        );
+    } else if (_hardwareReady) {
         EventLog::log(
             LOG_INFO,
             "Relais: topologie init OK, cartes=%u, canaux=%u",
@@ -58,51 +73,41 @@ void RelaisManager::begin(ConfigManager* config) {
     }
 }
 
+// Le cablage est une DONNEE de configuration, jamais une deduction.
+//
+// Jusqu'au 7 septembre 2026 un module sans cablage enregistre s'en inventait
+// un (une carte, les zones cablees dans l'ordre) a partir du controleur et de
+// la logique saisis dans le menu Zones. C'etait commode et c'etait dangereux :
+// l'interface elle-meme avertissait qu'un mauvais choix de logique "peut
+// activer les relais au demarrage". Deviner le cablage, c'est risquer d'ouvrir
+// la mauvaise vanne en silence.
+//
+// Desormais : pas de cablage enregistre = aucune sortie pilotee, et le module
+// le dit -- sur l'ecran comme sur le Web. Il n'arrose pas tant qu'il n'est pas
+// renseigne, ce qui est le comportement voulu : ne rien faire est toujours
+// preferable a faire n'importe quoi sur un circuit d'eau.
 void RelaisManager::buildRuntimeTopology() {
     const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
 
-    // Une topologie enregistree prend le pas ; a defaut on derive la
-    // topologie legacy, qui reste la reference eprouvee et le
-    // comportement par defaut (aucun enregistrement = rien ne change).
     if (RelayTopologyStore::load(_topology, nbZ)) {
         _topologyFromStore = true;
+        if (RelayTopology::hasDuplicateMappings(_topology, nbZ)) {
+            EventLog::log(LOG_ERROR,
+                          "Relais: cablage invalide, doublon de mapping");
+        }
         const RelayTopology::RelayBoardConfig& p0 = _topology.boards[0];
         EventLog::log(LOG_INFO,
-                      "Relais: topologie NVS, carte0=%s 0x%02X, voies=%u",
+                      "Relais: cablage NVS, carte0=%s 0x%02X, voies=%u",
                       RelayTopology::controllerName(p0.controller),
                       p0.i2cAddress, p0.channelCount);
         return;
     }
-    const uint8_t nbR = _config ? _config->nbRelais() : NB_ZONES;
-    const uint8_t controller = _config
-        ? _config->relayController()
-        : RelayTopology::CONTROLLER_XL9535;
-    const uint8_t logic = _config
-        ? _config->relayLogic()
-        : RelayTopology::LOGIC_DIRECT;
 
     _topologyFromStore = false;
-    RelayTopology::buildLegacyCompatibleTopology(
-        _topology,
-        nbZ,
-        nbR,
-        controller,
-        logic
-    );
-
-    if (RelayTopology::hasDuplicateMappings(_topology, nbZ)) {
-        EventLog::log(LOG_ERROR, "Relais: topologie invalide, doublon de mapping");
-    }
-
-    const RelayTopology::RelayBoardConfig& b0 = _topology.boards[0];
-    EventLog::log(
-        LOG_INFO,
-        "Relais: topologie legacy, carte0=%s 0x%02X, voies=%u, logique=%s",
-        RelayTopology::controllerName(b0.controller),
-        b0.i2cAddress,
-        b0.channelCount,
-        b0.logic == RelayTopology::LOGIC_INVERTED ? "inverse" : "directe"
-    );
+    RelayTopology::clear(_topology);
+    EventLog::log(LOG_WARN,
+                  "Relais: module non cable -- interface web, Zones > "
+                  "Cablage relais");
 }
 
 bool RelaisManager::initHardware() {
