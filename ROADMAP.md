@@ -594,3 +594,19 @@ Points d’architecture à étudier :
 - définition progressive de plusieurs niveaux de fonctionnement : observation seule, recommandation, application après validation et automatisation encadrée.
 
 Invariant impératif : aucune modification de programme ou de durée ne doit être appliquée silencieusement. Le mode par défaut doit rester la recommandation soumise à validation de l’utilisateur. Toute automatisation future devra être explicitement activée, bornée par des limites de sécurité, réversible et désactivée automatiquement en cas de données insuffisantes ou de capteur défaillant.
+
+### Splash : afficher aussi la version des pages Web
+
+L'ecran de demarrage annonce la version du **programme**
+(`OtaBuildIdentity::VERSION`, cf. `DisplaySplashWrap.cpp`) mais reste muet sur
+celle des **ressources Web**, alors que les deux evoluent independamment : le
+firmware se flashe, les pages se publient. On peut donc tourner avec un
+firmware a jour et des pages d'une version anterieure sans qu'aucun ecran ne
+le dise -- situation reellement rencontree le 7 septembre 2026, ou le module
+servait encore d'anciennes pages faute d'avoir rapatrie la publication.
+
+La version installee est deja lisible par le firmware :
+`readInstalledVersion()` dans `WebAssetsUpdater.cpp` lit
+`/www/assets-version.json`. Il ne manque que son affichage.
+
+Demande utilisateur du 7 septembre 2026, explicitement differee.
