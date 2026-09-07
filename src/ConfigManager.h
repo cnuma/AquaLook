@@ -37,7 +37,7 @@
 // que par le WiFi : figer la source dans le firmware imposerait de le
 // reflasher - donc de le demonter - pour changer de canal de mise a jour.
 #define CFG_NVS_WEBASSETS_URL_KEY "waUrl"
-#define CFG_NVS_SCHEMA    3
+#define CFG_NVS_SCHEMA    4
 
 // Longueur maximale de cette URL, terminateur compris.
 static constexpr size_t WEBASSETS_URL_MAX = 160;
@@ -266,6 +266,14 @@ public:
     uint8_t zoneNotificationMask(uint8_t z) const {
         return z < MAX_ZONES ? _zoneNotificationMasks[z] : 0U;
     }
+    // Couleur d'identite de la zone, en "#rrggbb". Une par zone depuis le
+    // schema 4 : la palette de quatre entrees que les zones se partageaient
+    // par `zone % 4` ne pouvait pas distinguer plus de quatre zones, et
+    // n'offrait aucun reglage a partir de la cinquieme.
+    const char* zoneColor(uint8_t z) const {
+        return z < MAX_ZONES ? _zoneColors[z] : _display.cZone0;
+    }
+    void setZoneColor(uint8_t z, const char* hex);
     uint32_t          intervalAnchorDay(uint8_t z) const;
     const CfgDisplay& display() const { return _display; }
     bool weatherVisualsEnabled() const { return _weatherVisualsEnabled; }
@@ -391,6 +399,10 @@ private:
     bool     _revisionBumped = false;
     CfgZone   _zones[MAX_ZONES];  // capacité max — actif = system().nbZones
     uint8_t   _zoneNotificationMasks[MAX_ZONES] = {};
+    // Rangee a part de CfgZone, ou elle aurait sa place logique : y ajouter
+    // un champ decalerait zones[] dans le bloc NVS et ferait rejeter les
+    // configurations existantes. Voir PersistedConfig dans le .cpp.
+    char      _zoneColors[MAX_ZONES][8] = {};
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
     bool      _loaded = false;
     bool      _nvsRejected = false;

@@ -267,21 +267,12 @@
       <div class="cfg-subsection-title" style="margin-top:10px">Réglages par zone</div>
       <div class="cfg-zone-list" id="cfg-zone-list"></div>
 
-      <div class="cfg-subsection-title" style="margin-top:10px">Couleur des zones</div>
-      <div class="cfg-field-row">
-        <div class="cfg-field"><label>Zone 1</label>
-          <input type="color" id="disp-cZone0" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 2</label>
-          <input type="color" id="disp-cZone1" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 3</label>
-          <input type="color" id="disp-cZone2" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-        <div class="cfg-field"><label>Zone 4+</label>
-          <input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()">
-        </div>
-      </div>
+      <!-- La palette de quatre couleurs vivait ici. Elle etait partagee par
+           les zones via `zone % 4` : au-dela de quatre zones, deux zones
+           portaient la meme couleur, et la cinquieme n'etait pas reglable du
+           tout -- ce qu'un utilisateur a constate avec cinq zones. La couleur
+           appartient a la zone : elle se regle desormais dans la fiche de
+           chaque zone, juste sous son nom. Retiree le 7 septembre 2026. -->
       <div id="relay-admin">
       <!-- Le controleur et la logique se definissaient ici, globalement, et
            servaient a DEDUIRE un cablage quand aucun n'etait enregistre.

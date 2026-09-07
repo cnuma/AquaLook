@@ -189,6 +189,11 @@ int16_t RelaisManager::findZoneAssignment(uint8_t zone, uint8_t nbZones) const {
     return -1;
 }
 
+bool RelaisManager::zoneHasOutput(uint8_t zone) const {
+    const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+    return RelayTopology::resolveZoneValve(_topology, zone, nbZ).valid;
+}
+
 bool RelaisManager::setRelay(uint8_t relay, bool state) {
     if (relay >= MAX_ZONES) {
         EventLog::log(LOG_ERROR, "Relais: index zone invalide %u", relay);
@@ -199,9 +204,13 @@ bool RelaisManager::setRelay(uint8_t relay, bool state) {
     const int16_t assignmentIndex = findZoneAssignment(relay, nbZ);
 
     if (assignmentIndex < 0) {
+        // AVERTISSEMENT et non erreur : une zone sans voie affectee est un
+        // etat de CONFIGURATION, pas une panne. Le module fait exactement ce
+        // qu'il doit -- ne rien piloter -- et le dit. En faire une erreur
+        // noyait les vraies pannes sous une ligne rouge par cycle.
         EventLog::log(
-            LOG_ERROR,
-            "Relais: zone %u sans mapping materiel valide (%s logique)",
+            LOG_WARN,
+            "Relais: zone %u sans sortie affectee, %s ignore",
             relay + 1,
             state ? "ON" : "OFF"
         );

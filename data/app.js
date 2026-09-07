@@ -93,8 +93,24 @@ function renderAll() {
       addLog('Erreur affichage planning : ' + e.message);
     });
 }
+// Les noms ci-dessous ne servent plus qu'aux classes CSS de structure
+// (fond de ligne active, pastille). La COULEUR reelle d'une zone vient
+// desormais de la zone elle-meme -- voir zoneHex().
 const ZONE_COLORS = ['green','blue','amber','purple','green','blue','amber','purple',
                      'green','blue','amber','purple','green','blue','amber','purple'];
+
+// Couleur d'identite d'une zone, en "#rrggbb".
+//
+// Chaque zone porte la sienne depuis le schema NVS 4. Avant cela, quatre
+// couleurs etaient partagees par `zone % 4` : deux zones se ressemblaient des
+// la cinquieme, qui n'etait pas reglable du tout. Le repli sur l'ancienne
+// palette couvre un module dont le firmware ne renvoie pas encore le champ.
+const ZONE_FALLBACK_HEX = ['#00fc00', '#0090f8', '#f8a400', '#780078'];
+function zoneHex(z, i) {
+  if (z && typeof z.color === 'string' && z.color[0] === '#') return z.color;
+  const key = ['cZone0','cZone1','cZone2','cZone3'][i % 4];
+  return (displayConfig && displayConfig[key]) || ZONE_FALLBACK_HEX[i % 4];
+}
 let _zonesView = 'normal';
 try { _zonesView = localStorage.getItem('zonesView') || 'normal'; } catch(e) {}
 function setZonesView(v) {
@@ -152,7 +168,7 @@ function renderZonesGrid() {
     // que d'afficher un motif sans rapport et un bouton qui n'agira pas.
     const noOut = (z.hasOutput === false);
     return `
-    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''} ${noOut ? 'zone-unassigned' : ''}">
+    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''} ${noOut ? 'zone-unassigned' : ''}" style="--zc:${zoneHex(z, i)}">
       <div class="zt-head">
         <span class="zone-dot zone-dot-${color}"></span>
         <span class="zt-name" title="${name}">${name}</span>
@@ -212,7 +228,7 @@ function renderZonesTable() {
     return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''} ${noOut ? 'zone-unassigned' : ''}"
                 onclick="openZoneConfigModal(${i})"
                 title="Configurer ${name}">
-      <td class="zt-name zt-name-${color}">
+      <td class="zt-name zt-name-${color}" style="--zc:${zoneHex(z, i)}">
         <span class="zone-dot zone-dot-${color}"></span>
         ${name}
         <span class="zt-badge ${noOut ? 'off' : (active ? 'on' : 'off')}">${noOut ? 'N/C' : (active ? 'ON' : 'OFF')}</span>
@@ -235,6 +251,7 @@ function openZoneConfigModal(zoneIdx) {
   const z      = status.zones[zoneIdx];
   const name   = z.name || `Zone ${zoneIdx+1}`;
   const color  = ZONE_COLORS[zoneIdx];
+  const zHex   = zoneHex(z, zoneIdx);
   const mode   = z.mode ?? 0;
   const intD   = z.intervalDays || z.interval || 2;
   const anchorDay = z.intervalAnchorDay || 0;
@@ -246,12 +263,20 @@ function openZoneConfigModal(zoneIdx) {
   document.getElementById('modal-title-text').textContent = `Config -- ${name}`;
   document.getElementById('modal-body').innerHTML = `
     <div class="zone-cfg-modal-header">
-      <span class="zone-dot zone-dot-${color}" style="width:12px;height:12px"></span>
+      <span class="zone-dot" id="zcfg-dot"
+            style="width:12px;height:12px;background:${zHex}"></span>
       <span class="zone-cfg-modal-name">${name}</span>
+      <span class="cfg-zone-ref">Z${zoneIdx + 1}</span>
     </div>
     <div class="zone-cfg-field">
       <label>Nom</label>
       <input type="text" id="zcfg-name" value="${name}" maxlength="20" placeholder="Nom de la zone">
+    </div>
+    <div class="zone-cfg-field">
+      <label>Couleur</label>
+      <input type="color" id="zcfg-color" class="cfg-color" value="${zHex}"
+             oninput="document.getElementById('zcfg-dot').style.background = this.value">
+      <div class="cfg-hint">Identifie la zone sur l&rsquo;&eacute;cran, le planning et le ruban lumineux.</div>
     </div>
     <hr class="zone-cfg-sep">
     <div class="zone-cfg-field">
@@ -312,7 +337,8 @@ async function saveZoneConfig(zoneIdx) {
     toast('Date de debut requise', true);
     return;
   }
-  if (name) await api('/api/zoneName', { zone: zoneIdx, name });
+  const color = document.getElementById('zcfg-color')?.value || '';
+  if (name) await api('/api/zoneName', { zone: zoneIdx, name, color });
   await api('/api/rain', { zone: zoneIdx, threshold: thresh, hours });
   await api('/api/zoneNotifications', { zone: zoneIdx, notifyStart, notifyStop });
   if (mode === 1) {
@@ -376,11 +402,10 @@ function renderPlanning() {
   status.zones.forEach((z,zi) => {
     const name = z.name || `Zone ${zi+1}`;
     const rainThresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
-    const zoneColor = ZONE_COLORS[zi];  // identite couleur de cette zone
-    const colorKeyMap = {green:'cZone0', blue:'cZone1', amber:'cZone2', purple:'cZone3'};
-    const zHex = (displayConfig && displayConfig[colorKeyMap[zoneColor]]) || null;
+    const zoneColor = ZONE_COLORS[zi];  // classe CSS de structure
+    const zHex = zoneHex(z, zi);        // couleur propre a cette zone
     if (z.mode === 0) {
-      html += `<div class="pg-header zone-hdr pg-zone-label-${zoneColor}" style="font-size:${nb>8?'9px':'11px'}">${name}</div>`;
+      html += `<div class="pg-header zone-hdr pg-zone-label-${zoneColor}" style="color:${zHex};font-size:${nb>8?'9px':'11px'}">${name}</div>`;
       colDays.forEach((espIdx,col) => {
       const slots   = (_zoneSlots[zi]?.daySlots?.[espIdx]) || (z.daySlots && z.daySlots[espIdx]) || [];
         const enabled = slots.filter(s => s.e??s.enabled);
@@ -415,7 +440,7 @@ function renderPlanning() {
         triggerCols.add(offset);
       }
       html += `<div class="pg-header zone-hdr interval-zone-hdr">
-        <span class="pg-zone-label-${zoneColor}">${name}</span>
+        <span class="pg-zone-label-${zoneColor}" style="color:${zHex}">${name}</span>
         <span style="font-size:9px;color:var(--muted);margin-left:4px">/${intervalD}j</span>
       </div>`;
       colDays.forEach((espIdx, col) => {
@@ -427,7 +452,7 @@ function renderPlanning() {
         const inner     = isTrigger
           ? (enabled.length
               ? enabled.map(s=>`<div class="mini-slot">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
-              : `<span class="pg-zone-label-${zoneColor}" style="font-size:11px">&#8635; /${intervalD}j</span>`)
+              : `<span class="pg-zone-label-${zoneColor}" style="color:${zHex};font-size:11px">&#8635; /${intervalD}j</span>`)
           : `<div class="pg-cross">--</div>`;
         const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
@@ -934,8 +959,12 @@ function buildCfgZoneList() {
     const mode = z.mode === 1
       ? `Intervalle / ${z.intervalDays || z.interval || 2}j`
       : 'Jours fixes';
+    // Rappeler la reference : une zone renommee "Potager distant" ne dit plus
+    // a quelle sortie elle correspond, et l'utilisateur s'y perd des que les
+    // noms ne suivent plus l'ordre.
     return `<button class="cfg-zone-link" onclick="openZoneConfigModal(${i})">
-              <span class="zone-dot zone-dot-${ZONE_COLORS[i]}"></span>
+              <span class="zone-dot" style="background:${zoneHex(z, i)}"></span>
+              <span class="cfg-zone-ref">Z${i + 1}</span>
               <span class="cfg-zone-link-name">${name}</span>
               <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${mode}</span>
               <span class="cfg-menu-chevron">&#8250;</span>
@@ -1333,9 +1362,12 @@ async function fetchAssetsVersion() {
 setInterval(fetchStatus, 8000);        // 8s -- moins agressif pour l'ESP32
 setInterval(fetchAdminStatus, 60000);  // 1min -- rarement necessaire
 let displayConfig = null;
+// cZone0..3 ne figurent plus ici : leurs champs ont quitte le menu Zones,
+// la couleur etant desormais reglee zone par zone. Les valeurs restent en
+// configuration et servent de repli pour une zone jamais configuree ; ne pas
+// les envoyer les laisse intactes (voir copyColor cote firmware).
 const DISP_COLOR_FIELDS   = ['cBg','cSurface','cSurface2','cBorder',
-                              'cText','cText2','cMuted','cActiveBg',
-                              'cZone0','cZone1','cZone2','cZone3'];
+                              'cText','cText2','cMuted','cActiveBg'];
 const DISP_NUMERIC_FIELDS = ['rSm','rMd','rLg','accentBarW',
                               'refreshNomMs','refreshActMs',
                               'planGap','g2Gpad','g4Gpad',
@@ -1396,33 +1428,16 @@ function applyWebZoneColors(cfg) {
     el.id = id;
     document.head.appendChild(el);
   }
-  var z0 = cfg.cZone0 || '#00fc00';
-  var z1 = cfg.cZone1 || '#0090f8';
-  var z2 = cfg.cZone2 || '#f8a400';
-  var z3 = cfg.cZone3 || '#780078';
-  el.textContent = [
-    '.zone-color-green  { border-left-color: ' + z0 + ' !important; }',
-    '.zone-color-blue   { border-left-color: ' + z1 + ' !important; }',
-    '.zone-color-amber  { border-left-color: ' + z2 + ' !important; }',
-    '.zone-color-purple { border-left-color: ' + z3 + ' !important; }',
-    // Le fond d'une zone ACTIVE n'est plus teinte par la couleur de la
-    // zone : depuis le 30 aout 2026 le bleu est la couleur d'etat commune
-    // au ruban WS2812, au LCD et a cette page. L'identite de la zone reste
-    // portee par le lisere de gauche, regle juste au-dessus. Ces quatre
-    // regles ecrasaient le bleu de style-base.css, d'ou leur retrait.
-
-    // .mini-slot n'est plus teinte par zone : voir --slot-bg/--slot-text
-    // (style-base.css), une couleur fixe pour rester lisible quel que
-    // soit le fond de zone choisi par l'utilisateur.
-    '.zt-name-green  { border-left-color: ' + z0 + ' !important; }',
-    '.zt-name-blue   { border-left-color: ' + z1 + ' !important; }',
-    '.zt-name-amber  { border-left-color: ' + z2 + ' !important; }',
-    '.zt-name-purple { border-left-color: ' + z3 + ' !important; }',
-    '.pg-zone-label-green  { color: ' + z0 + ' !important; }',
-    '.pg-zone-label-blue   { color: ' + z1 + ' !important; }',
-    '.pg-zone-label-amber  { color: ' + z2 + ' !important; }',
-    '.pg-zone-label-purple { color: ' + z3 + ' !important; }'
-  ].join('\n');
+  // Cette feuille appliquait la palette de quatre couleurs par-dessus tout,
+  // en !important. Depuis que chaque zone porte la sienne, ces regles
+  // battaient le style pose sur l'element : la couleur choisie par
+  // l'utilisateur n'apparaissait nulle part. Il n'y a donc plus rien a
+  // generer ici -- la couleur voyage avec la zone, par --zc pour les liseres
+  // et par `color` pour les libelles de planning.
+  //
+  // La fonction est conservee : d'autres reglages d'affichage pourront y
+  // revenir, et la vider est plus sur que d'en retirer les appels.
+  el.textContent = '';
 }
 var _dispSaveTimer = null;
 function onDispColorChange() {

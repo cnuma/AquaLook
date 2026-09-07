@@ -678,6 +678,7 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
                 _config ? _config->nbZones() : z + 1U).valid;
         zo["hasOutput"] = mapped;
         if (_config) zo["name"] = _config->zone(z).name;
+        if (_config) zo["color"] = _config->zoneColor(z);
         if (_config) {
             const uint8_t notifyMask = _config->zoneNotificationMask(z);
             zo["notificationMask"] = notifyMask;
@@ -1486,10 +1487,15 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
 
 void WebManager::handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc) {
     if (!_config) { sendError(req, "config indisponible"); return; }
-    uint8_t     zone = doc["zone"] | 255;
-    const char* name = doc["name"] | "";
+    uint8_t     zone  = doc["zone"] | 255;
+    const char* name  = doc["name"] | "";
+    // La couleur voyage avec le nom : les deux sont l'identite de la zone, et
+    // se saisissent sur le meme ecran. Absente, elle est simplement laissee
+    // telle quelle -- un client qui ne connait pas ce champ ne l'efface pas.
+    const char* color = doc["color"] | "";
     if (zone >= MAX_ZONES || strlen(name) == 0) { sendError(req, "parametres invalides"); return; }
     _config->setZoneName(zone, name);
+    if (color[0] == '#') _config->setZoneColor(zone, color);
     // EventBus::displayDirty positionné dans ConfigManager::setZoneName()
     sendOk(req);
 }

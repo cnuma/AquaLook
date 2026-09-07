@@ -48,6 +48,10 @@ public:
     // true si au moins une carte valide est declaree. C'est la question a
     // poser avant d'annoncer un defaut materiel ou une zone injoignable.
     bool isWired() const { return RelayTopology::isWired(_topology); }
+    // true si CETTE zone est raccordee a une voie physique. Distingue une
+    // zone simplement pas encore affectee -- un etat de configuration -- d'une
+    // sortie qui refuse de repondre, qui est une panne.
+    bool zoneHasOutput(uint8_t zone) const;
 
 private:
     ConfigManager* _config = nullptr;

@@ -506,10 +506,10 @@ header {
 }
 .zone-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .zone-card-active { box-shadow: 0 0 0 2px var(--blue); }
-.zone-color-green  { border-left: 4px solid var(--green); }
-.zone-color-blue   { border-left: 4px solid var(--blue); }
-.zone-color-amber  { border-left: 4px solid var(--amber); }
-.zone-color-purple { border-left: 4px solid var(--purple); }
+.zone-color-green  { border-left: 4px solid var(--zc, var(--green)); }
+.zone-color-blue   { border-left: 4px solid var(--zc, var(--blue)); }
+.zone-color-amber  { border-left: 4px solid var(--zc, var(--amber)); }
+.zone-color-purple { border-left: 4px solid var(--zc, var(--purple)); }
 /* Zone en cours d'arrosage : fond bleu quelle que soit la couleur de la
    zone. Le bleu est la couleur d'ETAT commune au ruban WS2812, au LCD et
    a cette interface ; l'identite de la zone reste portee par le lisere
@@ -591,10 +591,10 @@ header {
   gap: 8px;
   padding: 9px 10px 9px 12px;
 }
-.zt-name-green  { border-left-color: var(--green); }
-.zt-name-blue   { border-left-color: var(--blue); }
-.zt-name-amber  { border-left-color: var(--amber); }
-.zt-name-purple { border-left-color: var(--purple); }
+.zt-name-green  { border-left-color: var(--zc, var(--green)); }
+.zt-name-blue   { border-left-color: var(--zc, var(--blue)); }
+.zt-name-amber  { border-left-color: var(--zc, var(--amber)); }
+.zt-name-purple { border-left-color: var(--zc, var(--purple)); }
 
 .zt-badge {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
@@ -736,10 +736,10 @@ header {
 /* Le lisere de gauche porte l'identite de la zone ; la couleur d'ETAT
    (bleu = arrosage) est portee par l'anneau et le fond, comme sur le
    ruban et le LCD. */
-.zone-tile.zone-color-green  { border-left: 4px solid var(--green); }
-.zone-tile.zone-color-blue   { border-left: 4px solid var(--blue); }
-.zone-tile.zone-color-amber  { border-left: 4px solid var(--amber); }
-.zone-tile.zone-color-purple { border-left: 4px solid var(--purple); }
+.zone-tile.zone-color-green  { border-left: 4px solid var(--zc, var(--green)); }
+.zone-tile.zone-color-blue   { border-left: 4px solid var(--zc, var(--blue)); }
+.zone-tile.zone-color-amber  { border-left: 4px solid var(--zc, var(--amber)); }
+.zone-tile.zone-color-purple { border-left: 4px solid var(--zc, var(--purple)); }
 
 .zt-head { display: flex; align-items: center; gap: 8px; }
 .zt-name {
@@ -935,4 +935,18 @@ header {
      qui compte les balises et non les classes. */
   #topo-editor .io-row ~ .io-row .topo-field > span,
   #topo-editor .io-bind ~ .io-bind .topo-field > span { visibility: hidden; }
+}
+
+/* Reference de zone (Z1, Z2...) rappelee a cote du nom.
+   Un nom libre -- "Potager distant" -- ne dit plus a quelle sortie la zone
+   correspond des que les noms ne suivent plus l'ordre. */
+.cfg-zone-ref {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex: 0 0 auto;
 }

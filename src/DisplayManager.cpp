@@ -1468,7 +1468,7 @@ void DisplayManager::renderPlanSprite() {
     // ── Repères couleur des zones + barres de slots ──
     for (uint8_t z = 0; z < nbPlan; z++) {
         uint16_t rowY  = _planHdrH + z * _planZoneH;
-        uint16_t col_z = Theme::ZONE_COLORS[z % 4];
+        uint16_t col_z = zoneColor(z);
 
         // Bulle de couleur dans la colonne planning.
         // L'identité de la zone est portée ici, pas dans le bouton d'action.
@@ -1674,7 +1674,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
 
     for (uint8_t z = 0; z < nbPlan; z++) {
         uint16_t rowY = destY + HDR_H + z * zoneH;
-        uint16_t col_z = Theme::ZONE_COLORS[z % 4];
+        uint16_t col_z = zoneColor(z);
         _tft.drawFastHLine(0, rowY + zoneH - 1, planW, Theme::BORDER);
 
         const int16_t bulletX = LABEL_W_G2 / 2;
@@ -1760,7 +1760,7 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
     for (uint8_t zi = 0; zi < nbZ; zi++) {
         uint8_t  z     = zStart + zi;
         uint16_t rowY  = destY + G4_PLAN_HDR_H + zi * zoneH;
-        uint16_t col_z = Theme::ZONE_COLORS[z % 4];
+        uint16_t col_z = zoneColor(z);
         _tft.drawFastHLine(0, rowY + zoneH - 1, SCREEN_W, Theme::BORDER);
 
         // Bulle de couleur dans la colonne planning.
@@ -1902,7 +1902,7 @@ void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
             _relais.relay->topology(), zone, _nbZones).valid;
     uint16_t bg      = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border  = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
-    uint16_t zColor  = Theme::ZONE_COLORS[zone % 4];
+    uint16_t zColor  = zoneColor(zone);
     // Conserver une marge basse réelle : une carte dont le bord inférieur
     // coïncide avec SCREEN_H est physiquement tronquée et paraît carrée.
     static constexpr uint16_t BTN_BOTTOM_MARGIN = 6;
@@ -2553,6 +2553,14 @@ void DisplayManager::applyDisplayConfig() {
     Theme::ZONE_COLORS[2] = hexToRgb565(d.cZone2);
     Theme::ZONE_COLORS[3] = hexToRgb565(d.cZone3);
 
+    // Couleur propre a chaque zone (schema NVS 4). La palette ci-dessus reste
+    // le recours quand une zone n'a jamais ete configuree.
+    for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+        const char* hex = _config->zoneColor(z);
+        _zoneRgb[z] = (hex && hex[0] == '#') ? hexToRgb565(hex)
+                                             : Theme::ZONE_COLORS[z % 4];
+    }
+
     // Formes — Theme:: inline vars
     Theme::R_SM         = d.rSm;
     Theme::R_MD         = d.rMd;
@@ -2613,7 +2621,7 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     bool     active = _relais && _relais->getState(zone);
     uint16_t bg     = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
-    uint16_t zColor = Theme::ZONE_COLORS[zone % 4];
+    uint16_t zColor = zoneColor(zone);
     // C'est CETTE fonction qui dessine les boutons au-dela de 4 zones
     // (HomeMode::GRID2). Une zone sans voie physique ne pourra jamais
     // arroser : meme signal que sur le Web, une trame diagonale, qui se lit
@@ -3051,7 +3059,7 @@ void DisplayManager::drawZoneRow(uint8_t zone, uint16_t x, uint16_t y,
     bool     active = _relais && _relais->getState(zone);
     uint16_t bg     = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
-    uint16_t zColor = Theme::ZONE_COLORS[zone % 4];
+    uint16_t zColor = zoneColor(zone);
     // Au-dela de 4 zones l'ecran utilise ces rangees, pas les cartes : c'est
     // ici que l'absence de sortie doit se voir. Sans quoi la rangee invite a
     // "appuyer pour arroser" et offre un bouton GO vert pour une action qui
@@ -3109,7 +3117,7 @@ void DisplayManager::drawZoneBtnCompact(uint8_t zone, uint16_t x, uint16_t y,
     bool     active = _relais && _relais->getState(zone);
     uint16_t bg     = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
-    uint16_t zColor = Theme::ZONE_COLORS[zone % 4];
+    uint16_t zColor = zoneColor(zone);
 
     drawCardBg(_tft, x, y, w, h, Theme::R_MD, bg, border, true);
     drawAccentBar(_tft, x, y, h, Theme::R_MD, zColor);

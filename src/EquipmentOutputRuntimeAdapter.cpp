@@ -158,9 +158,17 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     if (!applied) {
         recordExecutionPath(ExecutionPath::FAILED);
+        // Deux echecs de nature opposee arrivaient ici sous la meme etiquette
+        // rouge : une zone qu'on n'a pas encore raccordee, et une sortie qui
+        // refuse de repondre. Le premier est un etat de CONFIGURATION -- le
+        // module se comporte correctement en ne pilotant rien -- le second est
+        // une panne. Les confondre noyait les pannes sous un flot de lignes
+        // ERR repetees a chaque creneau.
+        const bool unmapped = _relayManager && !_relayManager->zoneHasOutput(zoneIndex);
         EventLog::log(
-            LOG_ERROR,
-            "Equipment: zone %u %s path=failed error=dependency_unavailable",
+            unmapped ? LOG_WARN : LOG_ERROR,
+            unmapped ? "Equipment: zone %u %s ignore, aucune sortie affectee"
+                     : "Equipment: zone %u %s path=failed error=dependency_unavailable",
             zoneIndex + 1U,
             active ? "ON" : "OFF"
         );

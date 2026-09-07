@@ -456,6 +456,19 @@ private:
     uint8_t  _planZoneH    = 15;    // hauteur ligne zone planning (réduite si temp affichée)
 
     // ── Rendu complet (sur _needsFullRedraw) ──
+    // Couleur d'identite d'une zone, en RGB565.
+    //
+    // Lue depuis la configuration de la zone, plus depuis une palette de
+    // quatre entrees indexee par `zone % 4` : au-dela de quatre zones, deux
+    // zones portaient la meme couleur et la cinquieme n'etait pas reglable.
+    // Le tableau est recalcule par applyDisplayConfig(), pas a chaque trame :
+    // convertir une chaine hexadecimale a chaque bouton dessine serait paye
+    // huit fois par rafraichissement pour un resultat constant.
+    uint16_t _zoneRgb[MAX_ZONES] = {};
+    uint16_t zoneColor(uint8_t z) const {
+        return _zoneRgb[z < MAX_ZONES ? z : 0];
+    }
+
     void drawHomeFull();           // dispatcher → mode courant
     // Ecran d'accueil d'un module dont le cablage n'est pas renseigne : il
     // remplace la grille de zones plutot que de s'y ajouter, pour ne laisser
