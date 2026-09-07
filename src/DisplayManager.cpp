@@ -19,8 +19,16 @@
 // ─────────────────────────────────────────────────────────────
 static uint16_t hexToRgb565(const char* hex) {
     if (!hex || hex[0] != '#' || strlen(hex) != 7) return 0;
-    unsigned r = 0, g = 0, b = 0;
-    sscanf(hex + 1, "%02x%02x%02x", &r, &g, &b);
+    // strtoul plutot que sscanf : voir CloudSync::isPrivateAddress, la famille
+    // scanf de la libc coute ~17 Ko et n'etait utilisee que sur des entiers.
+    char comp[3] = {0, 0, 0};
+    unsigned rgb[3] = {0U, 0U, 0U};
+    for (uint8_t i = 0U; i < 3U; ++i) {
+        comp[0] = hex[1 + i * 2];
+        comp[1] = hex[2 + i * 2];
+        rgb[i] = (unsigned)strtoul(comp, nullptr, 16);
+    }
+    const unsigned r = rgb[0], g = rgb[1], b = rgb[2];
     return (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
 }
 

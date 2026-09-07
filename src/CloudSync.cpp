@@ -430,8 +430,24 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
 // et on ne va pas fonder une decision de securite dessus.
 static bool isPrivateAddress(const char* host) {
     if (!host || !host[0]) return false;
+    // Analyse manuelle plutot que sscanf : les deux seuls appels a sscanf du
+    // firmware ne portaient que sur des entiers, mais faisaient lier toute la
+    // famille de conversion flottante de la libc (~17 Ko de flash pour rien).
     unsigned a = 0U, b = 0U, c = 0U, d = 0U;
-    if (sscanf(host, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) return false;
+    unsigned* const parts[4] = { &a, &b, &c, &d };
+    const char* p = host;
+    for (uint8_t i = 0U; i < 4U; ++i) {
+        if (*p < '0' || *p > '9') return false;
+        unsigned v = 0U;
+        while (*p >= '0' && *p <= '9') {
+            v = v * 10U + (unsigned)(*p - '0');
+            if (v > 255U) return false;
+            ++p;
+        }
+        *parts[i] = v;
+        if (i < 3U) { if (*p != '.') return false; ++p; }
+    }
+    if (*p != ' ') return false;
     if (a > 255U || b > 255U || c > 255U || d > 255U) return false;
     if (a == 127U) return true;                      // 127.0.0.0/8
     if (a == 10U) return true;                       // 10.0.0.0/8
