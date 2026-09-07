@@ -363,8 +363,11 @@ header {
 }
 #drawer-overlay.open { display: block; }
 #drawer {
-  position: fixed; top: 0; right: -420px;
-  width: min(420px, 100vw); height: 100vh;
+  /* Largeur en variable : la position fermee doit suivre la largeur, sinon
+     le tiroir elargi ne se cache plus completement. */
+  --drawer-w: min(420px, 100vw);
+  position: fixed; top: 0; right: calc(-1 * var(--drawer-w));
+  width: var(--drawer-w); height: 100vh;
   background: var(--bg1); border-left: 1px solid var(--border);
   box-shadow: -4px 0 20px rgba(0,0,0,.1);
   z-index: 301; overflow-y: auto;
@@ -884,3 +887,35 @@ header {
    largeur, un en-tete de colonne fixe se desalignerait. */
 .topo-field{display:inline-flex;flex-direction:column;gap:1px;margin:0}
 .topo-field>span{font-size:10px;line-height:1.1;color:#789c80;letter-spacing:.02em}
+
+/* ── Configuration sur grand ecran ─────────────────────────────────────
+   Le tiroir fait 420 px : une largeur pensee pour le telephone, qui force
+   l'empilement vertical meme sur un PC et obligeait a etiqueter chaque
+   champ faute de pouvoir aligner des colonnes.
+
+   Au-dela de 1000 px on lui donne de la place et les lignes deviennent une
+   grille alignee. Les etiquettes ne sont alors affichees que sur la
+   PREMIERE ligne : elles jouent le role d'en-tetes de colonnes, sans
+   dupliquer le balisage. Les suivantes gardent leur place (visibility et
+   non display) pour que l'alignement tienne.
+
+   Le rendu etroit reste la reference sur telephone : on ne renvoie personne
+   vers un ordinateur, on exploite simplement la largeur quand elle existe.
+   ────────────────────────────────────────────────────────────────────── */
+@media (min-width: 1000px) {
+  #drawer { --drawer-w: min(940px, 94vw); }
+
+  .io-row  { display: grid; grid-template-columns: 76px repeat(5, 1fr) 26px;
+             gap: 10px; align-items: end; }
+  .io-bind { display: grid; grid-template-columns: repeat(4, 1fr) 26px;
+             gap: 10px; align-items: end; }
+  .io-row select, .io-bind select { max-width: none; width: 100%; }
+  .topo-field { width: 100%; }
+  .io-row .io-lbl, .io-row .io-st, .io-bind .io-st { align-self: center; }
+
+  /* Seule la premiere ligne montre ses etiquettes : elles deviennent les
+     en-tetes. Le selecteur de voisinage evite de dependre de :first-of-type,
+     qui compte les balises et non les classes. */
+  .io-row ~ .io-row .topo-field > span,
+  .io-bind ~ .io-bind .topo-field > span { visibility: hidden; }
+}
