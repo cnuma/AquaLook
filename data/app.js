@@ -263,10 +263,13 @@ function openZoneConfigModal(zoneIdx) {
   document.getElementById('modal-title-text').textContent = `Config -- ${name}`;
   document.getElementById('modal-body').innerHTML = `
     <div class="zone-cfg-modal-header">
+      <!-- Meme ordre que la liste "Reglages par zone" : pastille, reference,
+           nom. Deux ordres differents pour la meme information se lisent
+           comme deux informations differentes. -->
       <span class="zone-dot" id="zcfg-dot"
             style="width:12px;height:12px;background:${zHex}"></span>
-      <span class="zone-cfg-modal-name">${name}</span>
       <span class="cfg-zone-ref">Z${zoneIdx + 1}</span>
+      <span class="zone-cfg-modal-name">${name}</span>
     </div>
     <div class="zone-cfg-field">
       <label>Nom</label>
