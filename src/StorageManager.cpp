@@ -7,7 +7,11 @@
 
 namespace {
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
-constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 2U;
+// Trois confirmations, chacune deja doublee par une seconde lecture : il
+// faut donc six lectures ratees d'affilee sur ~6 s pour demonter. Une
+// carte reellement retiree echoue a chaque fois et sera vue en 6 s ; un
+// alea sous charge, lui, ne franchit plus ce seuil.
+constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 3U;
 constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
 constexpr uint32_t SD_SLOW_RECOVERY_INTERVAL_MS = 10UL * 60UL * 1000UL;
 constexpr uint32_t SD_RECOVERY_TASK_STACK = 4096U;
@@ -165,6 +169,10 @@ void StorageManager::update() {
     // ce controle sera simplement retente au prochain passage.
     if (!lockSd(50U)) return;
     const bool indexPresent = _sd.exists("/www/index.html");
+    // SdFat renvoie false pour DEUX causes tres differentes : le fichier est
+    // absent, ou la carte n'a pas repondu. Le code d'erreur les distingue --
+    // nul, la carte a parfaitement fonctionne et le fichier n'existe pas.
+    const uint8_t sdError = indexPresent ? 0U : _sd.sdErrorCode();
     unlockSd();
 
     if (indexPresent) {
@@ -172,6 +180,24 @@ void StorageManager::update() {
         return;
     }
 
+    if (sdError == 0U) {
+        // Fichier reellement absent, carte saine. Demonter puis remonter n'y
+        // changerait rien : ce sont les ressources Web qui manquent, pas le
+        // stockage. On le signale une fois, sans declencher d'incident SD ni
+        // de notification -- c'est ce que faisait le code d'origine, et il
+        // accusait la carte pour un probleme de contenu.
+        if (_healthFailureCount == 0U) {
+            _healthFailureCount = 1U;
+            EventLog::log(
+                LOG_WARN,
+                "Stockage: /www/index.html absent, carte saine (ressources Web incompletes)"
+            );
+        }
+        return;
+    }
+
+
+    // A partir d'ici, la carte a REELLEMENT renvoye une erreur.
     if (_healthFailureCount < 0xFFU) {
         _healthFailureCount++;
     }
@@ -179,7 +205,8 @@ void StorageManager::update() {
     if (_healthFailureCount < SD_HEALTH_FAILURE_CONFIRMATIONS) {
         EventLog::log(
             LOG_WARN,
-            "Stockage: controle SD echoue confirmation=%u/%u",
+            "Stockage: erreur E/S SD code=0x%02X confirmation=%u/%u",
+            static_cast<unsigned>(sdError),
             static_cast<unsigned>(_healthFailureCount),
             static_cast<unsigned>(SD_HEALTH_FAILURE_CONFIRMATIONS)
         );
