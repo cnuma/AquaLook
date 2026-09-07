@@ -290,7 +290,12 @@ header {
 /* Modal */
 .modal-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.4); z-index: 200;
+  /* Au-dessus du tiroir (301) : une modale ouverte DEPUIS le tiroir doit
+     passer devant lui. Elle etait a 200, donc dessous -- defaut latent, sans
+     consequence tant que le tiroir ne faisait que 420 px et laissait la
+     modale deborder sur le cote. En l'elargissant, on la recouvrait
+     entierement. Les notifications restent au-dessus (500). */
+  background: rgba(0,0,0,.4); z-index: 400;
   align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay.open { display: flex; }

@@ -771,6 +771,7 @@ function openCfgPage(groupId) {
   if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
   if (g.sections.indexOf('sec-io')    >= 0) loadCfgIo();
   if (g.sections.indexOf('sec-topo')  >= 0) loadCfgTopo();
+  if (g.sections.indexOf('sec-zones') >= 0) markRelaySettingsSuperseded();
 
   const drawer = document.getElementById('drawer');
   drawer.classList.add('cfg-detail');
@@ -1914,4 +1915,18 @@ async function topoBackToLegacy() {
     toast('Retour au cablage derive, actif au prochain redemarrage');
     await loadCfgTopo();
   } catch (e) { toast('Erreur reseau', true); }
+}
+
+// Le controleur et la logique se definissent par carte dans l'editeur de
+// cablage. Les champs globaux du menu Zones restent utiles pour amorcer un
+// module neuf, mais deviennent une seconde source de verite des qu'un
+// cablage est enregistre : on le dit alors clairement plutot que de laisser
+// deux reglages se contredire en silence.
+async function markRelaySettingsSuperseded() {
+  const note = document.getElementById('relay-superseded');
+  if (!note) return;
+  try {
+    const d = await (await fetch('/api/relay/topology')).json();
+    note.style.display = (d.source === 'nvs') ? 'block' : 'none';
+  } catch (e) { note.style.display = 'none'; }
 }

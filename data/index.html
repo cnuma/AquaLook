@@ -282,7 +282,13 @@
           <input type="color" id="disp-cZone3" class="cfg-color" oninput="onDispColorChange()">
         </div>
       </div>
-      <div id="relay-admin"><div class="cfg-field">
+      <div id="relay-admin">
+      <div class="cfg-hint" id="relay-superseded" style="display:none;color:var(--amber)">
+        &#9888; Un c&acirc;blage est enregistr&eacute; : le contr&ocirc;leur et la logique se d&eacute;finissent
+        d&eacute;sormais <b>par carte</b> dans &laquo;&nbsp;C&acirc;blage relais&nbsp;&raquo;. Les r&eacute;glages
+        ci-dessous ne servent plus qu&rsquo;&agrave; l&rsquo;amor&ccedil;age d&rsquo;un module neuf.
+      </div>
+      <div class="cfg-field" id="relay-controller-field">
         <label>Contrôleur des relais</label>
         <select id="cfg-relay-controller" onchange="updateZoneOptions()">
           <option value="0">XL9535 (carte YellowCard)</option>

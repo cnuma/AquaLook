@@ -2615,6 +2615,15 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
             const int16_t  barW    = (int16_t)((int32_t)(w - 2 * pad) * pct / 100);
             _tft.fillRoundRect(x + pad, y + h - 14, w - 2 * pad, 6, 3, Theme::SURFACE2);
             if (barW > 0) _tft.fillRoundRect(x + pad, y + h - 14, barW, 6, 3, zColor);
+        } else if (!mapped) {
+            // Annoncer un prochain arrosage sur une zone sans sortie serait
+            // faux : ce creneau ne se produira jamais. La tuile est deja
+            // hachuree, le texte doit dire la meme chose.
+            _tft.setTextColor(Theme::AMBER, bg);
+            _tft.drawString("Sans sortie", x + pad, y + 26);
+            _tft.setTextColor(Theme::MUTED, bg);
+            _tft.drawString("a affecter", x + pad, y + 40);
+
         } else {
             _tft.setTextColor(Theme::MUTED, bg);
             _tft.drawString("Prochain", x + pad, y + 26);
