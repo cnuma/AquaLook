@@ -1711,6 +1711,14 @@ async function loadCfgTopo() {
   renderTopoEditor();
 }
 
+// Chaque champ porte son etiquette plutot qu'un en-tete de colonne : les
+// lignes passent a la ligne selon la largeur, et des en-tetes fixes se
+// desaligneraient. Un utilisateur s'est deja trompe de configuration faute
+// de savoir ce que designaient les champs.
+function topoField(caption, inner) {
+  return '<label class="topo-field"><span>' + caption + '</span>' + inner + '</label>';
+}
+
 function topoOptions(list, sel) {
   return list.map(o => '<option value="' + o[0] + '"' +
     (o[0] === sel ? ' selected' : '') + '>' + o[1] + '</option>').join('');
@@ -1776,17 +1784,16 @@ function renderTopoEditor() {
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
   topoBoards.forEach((b, n) => {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
-      + '<select data-topo="ctrl" data-n="' + n + '">' + topoOptions(TOPO_CTRL, b.controller) + '</select>'
-      + '<select data-topo="addr" data-n="' + n + '">' + topoAddrOptions(b.addr) + '</select>'
-      + '<select data-topo="chan" data-n="' + n + '" title="nombre de voies">'
-      + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>'
-      + '<select data-topo="logic" data-n="' + n + '">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>'
-      + '<select data-topo="transport" data-n="' + n + '" title="ou vit la carte">'
+      + topoField('Controleur', '<select data-topo="ctrl" data-n="' + n + '">' + topoOptions(TOPO_CTRL, b.controller) + '</select>')
+      + topoField('Adresse I2C', '<select data-topo="addr" data-n="' + n + '">' + topoAddrOptions(b.addr) + '</select>')
+      + topoField('Nb de voies', '<select data-topo="chan" data-n="' + n + '" title="nombre de relais physiques sur la carte">' + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>')
+      + topoField('Logique', '<select data-topo="logic" data-n="' + n + '" title="directe = 1 ouvre le relais ; inversee = 0 ouvre">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>')
+      + topoField('Transport', '<select data-topo="transport" data-n="' + n + '" title="ou vit la carte : bus local, ou lien distant">'
       + TOPO_TRANSPORTS.map(o => '<option value="' + o[0] + '"'
           + (o[0] === (b.transport || 0) ? ' selected' : '')
           + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' disabled' : '')
           + '>' + o[1] + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' (a venir)' : '')
-          + '</option>').join('') + '</select>'
+          + '</option>').join('') + '</select>')
       + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
@@ -1805,12 +1812,10 @@ function renderTopoEditor() {
   if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
   topoAssign.forEach((a, n) => {
     h += '<div class="io-bind">'
-      + '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">'
-      + topoOptions(TOPO_ROLES, a.role) + '</select>'
-      + '<select data-topo="target" data-n="' + n + '">' + topoTargetOptions(a.role, a.target) + '</select>'
-      + '<select data-topo="board" data-n="' + n + '" onchange="topoOnBoardChange(' + n + ')">'
-      + topoBoardOptions(a.board) + '</select>'
-      + '<select data-topo="channel" data-n="' + n + '">' + topoChannelOptions(a.board, a.channel) + '</select>'
+      + topoField('Role', '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
+      + topoField('Pilote', '<select data-topo="target" data-n="' + n + '" title="ce que cette voie commande">' + topoTargetOptions(a.role, a.target) + '</select>')
+      + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '" onchange="topoOnBoardChange(' + n + ')">' + topoBoardOptions(a.board) + '</select>')
+      + topoField('Canal (relais)', '<select data-topo="channel" data-n="' + n + '" title="numero du relais sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';

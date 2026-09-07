@@ -2552,9 +2552,20 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     uint16_t bg     = active ? Theme::ACTIVE_BG : Theme::SURFACE;
     uint16_t border = active ? Theme::ACTIVE_BORDER : Theme::BORDER;
     uint16_t zColor = Theme::ZONE_COLORS[zone % 4];
+    // C'est CETTE fonction qui dessine les boutons au-dela de 4 zones
+    // (HomeMode::GRID2). Une zone sans voie physique ne pourra jamais
+    // arroser : meme signal que sur le Web, une trame diagonale, qui se lit
+    // comme "indisponible" la ou un simple gris passerait pour un choix de
+    // theme.
+    const bool mapped = _relais.relay &&
+        RelayTopology::resolveZoneValve(
+            _relais.relay->topology(), zone, _nbZones).valid;
 
     drawCardBg(_tft, x, y, w, h, Theme::R_MD, bg, border, false);
-    drawAccentBar(_tft, x, y, h, Theme::R_MD, zColor);
+    if (!mapped) {
+        fillHatchRect(_tft, x + 2, y + 2, w - 4, h - 4, bg, Theme::MUTED);
+    }
+    drawAccentBar(_tft, x, y, h, Theme::R_MD, mapped ? zColor : Theme::SURFACE2);
     _tft.setFreeFont(nullptr);
     _tft.setTextSize(1);
 
@@ -2581,7 +2592,8 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
         _tft.setTextColor(active ? Theme::BG : Theme::MUTED,
                           active ? zColor : Theme::SURFACE2);
         _tft.setTextDatum(MC_DATUM);
-        _tft.drawString(active ? "ON" : "OFF", pillX + pillW / 2, y + 5 + pillH / 2);
+        _tft.drawString(!mapped ? "N/C" : (active ? "ON" : "OFF"),
+                        pillX + pillW / 2, y + 5 + pillH / 2);
 
         // Corps 2 seulement quand la hauteur le permet : a 60 px (8 zones)
         // il deborderait sur la pastille.

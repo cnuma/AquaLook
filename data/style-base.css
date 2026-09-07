@@ -879,3 +879,8 @@ header {
 }
 .zone-unassigned .zt-reason{color:#b8860b}
 .zone-unassigned .btn-run{cursor:not-allowed;filter:grayscale(1)}
+
+/* Chaque champ porte son etiquette : les lignes passent a la ligne selon la
+   largeur, un en-tete de colonne fixe se desalignerait. */
+.topo-field{display:inline-flex;flex-direction:column;gap:1px;margin:0}
+.topo-field>span{font-size:10px;line-height:1.1;color:#789c80;letter-spacing:.02em}
