@@ -595,11 +595,16 @@ void WebManager::setupRoutes() {
             ? static_cast<uint16_t>(req->getParam("id")->value().toInt()) : 0U;
         JsonDocument doc;
         doc["id"] = id;
-        bool active = false;
-        const bool ok = _readInput && _readInput(id, active);
+        bool stable = false, raw = false;
+        // "active" est la valeur STABILISEE -- la seule sur laquelle un script
+        // ait le droit de decider. "raw" n'est la que pour le diagnostic :
+        // la publier n'autorise pas a s'en servir.
+        const bool ok = _inputs && _inputs->read(id, stable);
         doc["ok"] = ok;
-        if (ok) doc["active"] = active;
-        else doc["error"] = "entree inconnue, carte muette ou option indisponible";
+        if (ok) doc["active"] = stable;
+        else doc["error"] = "entree inconnue, valeur pas encore stabilisee ou carte muette";
+        if (_inputs && _inputs->readRaw(id, raw)) doc["raw"] = raw;
+        if (_inputs) doc["transitions"] = _inputs->transitions(id);
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);

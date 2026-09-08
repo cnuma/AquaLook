@@ -12,6 +12,7 @@
 #include "NTPManager.h"
 #include "NotificationManager.h"
 #include "WeatherManager.h"
+#include "InputSampler.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
 #include "ScheduleManager.h"
@@ -39,6 +40,7 @@ WeatherManager weatherMgr;
 RelaisManager relaisMgr;
 IoExpanderManager ioExpander;
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
+InputSampler inputSampler;
 ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
@@ -652,9 +654,12 @@ void setup() {
     webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
     webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
     webMgr.setIoExpander(&ioExpander);
-    webMgr.setInputReader([](uint16_t id, bool& active) {
+    // L'echantillonneur lit la broche ; le reste du module lit
+    // l'echantillonneur. Personne d'autre ne touche l'entree.
+    inputSampler.begin(&relaisMgr.topology(), [](uint16_t id, bool& active) {
         return v4PilotRuntime.readInputById(id, active);
     });
+    webMgr.setInputSampler(&inputSampler);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     // N annonce que ce dont ce message est sur. Le perimetre pilote depend
@@ -750,6 +755,10 @@ void loop() {
     RuntimeProfiler::stop(RuntimeProfiler::Component::EQUIPMENT_SHADOW, startedUs);
 
     startedUs = RuntimeProfiler::start();
+    // Avant relaisMgr.update() : une entree qui vient de basculer doit etre
+    // connue AVANT que quoi que ce soit ne decide sur sa foi.
+    inputSampler.update(millis());
+
     relaisMgr.update();
 
     // Coupure de securite : RelaisManager signale les zones qui ont depasse la

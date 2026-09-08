@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include "config.h"
+#include "InputSampler.h"
 #include "NTPManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
@@ -72,8 +73,7 @@ public:
     // Lecture d'entree, injectee plutot qu'appelee directement : WebManager
     // n'a pas a connaitre le pilote V4, et le jour ou une entree viendra d'un
     // autre transport, seul l'injecteur changera.
-    using InputReader = bool (*)(uint16_t inputId, bool& active);
-    void setInputReader(InputReader reader) { _readInput = reader; }
+    void setInputSampler(const InputSampler* sampler) { _inputs = sampler; }
 
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
@@ -527,7 +527,7 @@ private:
     UpdateCheckScheduler* _updateCheck = nullptr;
     CloudSyncScheduler* _cloudSync = nullptr;
     bool _sdStaticHandlerRegistered = false;
-    InputReader _readInput = nullptr;
+    const InputSampler* _inputs = nullptr;
     bool _faultRoutesRegistered = false;
 
     portMUX_TYPE _pendingMux = portMUX_INITIALIZER_UNLOCKED;

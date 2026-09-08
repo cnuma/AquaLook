@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "InputSampler.h"
 #include "domain/ScriptVm.h"
 
 // Autotest de la machine a scripts, execute SUR LA CIBLE.
@@ -95,6 +96,21 @@ uint32_t run(ScriptVm& vm, uint32_t maxTicks, FakeHost* host = nullptr,
     return ticks;
 }
 
+// Faux capteur : une broche que l'autotest fait claqueter a volonte.
+bool g_pin = false;
+RelayTopology::RelayTopologyConfig g_fakeTopology;
+
+bool fakePinReader(uint16_t, bool& active) { active = g_pin; return true; }
+
+void prepareFakeTopology() {
+    RelayTopology::clear(g_fakeTopology);
+    RelayTopology::RelayAssignment& in = g_fakeTopology.assignments[0];
+    in.enabled = true;
+    in.role = RelayTopology::ROLE_INPUT_LEVEL;
+    in.direction = RelayTopology::DIRECTION_INPUT;
+    in.id = 600U;
+}
+
 void record(JsonArray& out, const char* nom, bool ok, const char* detail) {
     JsonObject o = out.add<JsonObject>();
     o["cas"] = nom;
@@ -107,6 +123,7 @@ void record(JsonArray& out, const char* nom, bool ok, const char* detail) {
 bool runScriptVmSelfTest(JsonDocument& doc) {
     using namespace AquaLook::Domain;
 
+    prepareFakeTopology();
     JsonArray cases = doc["cas"].to<JsonArray>();
     uint8_t passed = 0U, total = 0U;
     char detail[64];
@@ -340,6 +357,79 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
                         vm.abortReason() == ScriptAbort::HOST_REFUSED;
         snprintf(detail, sizeof(detail), "arret=%s", scriptAbortName(vm.abortReason()));
         record(cases, "action refusee par l hote", ok, detail);
+        if (ok) passed++;
+    }
+
+    // ── Anti-rebond des entrees ─────────────────────────────────────────
+    //
+    // On ne peut pas faire claqueter un vrai flotteur depuis un autotest.
+    // On fait donc claqueter la LECTURE, ce qui eprouve exactement la partie
+    // qui doit resister : la regle de stabilite.
+
+    // 12. Un contact qui claquette ne fait pas bouger la valeur officielle.
+    {
+        total++;
+        g_pin = false;
+        InputSampler s1;
+        s1.begin(&g_fakeTopology, fakePinReader, false);
+        uint32_t t = 1000U;
+        // Etablir "inactif" au repos.
+        for (uint8_t i = 0U; i < InputSampler::STABLE_SAMPLES + 2U; ++i) {
+            s1.update(t); t += InputSampler::SAMPLE_MS;
+        }
+        bool v = true;
+        const bool established = s1.read(600U, v) && v == false;
+        // Puis 40 basculements, un par echantillon : le clapot type.
+        for (uint8_t i = 0U; i < 40U; ++i) {
+            g_pin = !g_pin;
+            s1.update(t); t += InputSampler::SAMPLE_MS;
+        }
+        bool afterChatter = true;
+        const bool stillStable = s1.read(600U, afterChatter) && afterChatter == false;
+        const bool ok = established && stillStable && s1.transitions(600U) == 0U;
+        snprintf(detail, sizeof(detail), "etabli=%d immobile=%d transitions=%lu",
+                 established ? 1 : 0, stillStable ? 1 : 0,
+                 (unsigned long)s1.transitions(600U));
+        record(cases, "clapot ignore", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 13. Un changement DURABLE, lui, doit passer -- et une seule fois.
+    {
+        total++;
+        g_pin = false;
+        InputSampler s2;
+        s2.begin(&g_fakeTopology, fakePinReader, false);
+        uint32_t t = 1000U;
+        for (uint8_t i = 0U; i < InputSampler::STABLE_SAMPLES + 2U; ++i) {
+            s2.update(t); t += InputSampler::SAMPLE_MS;
+        }
+        g_pin = true;                       // la cuve se vide pour de bon
+        for (uint8_t i = 0U; i < InputSampler::STABLE_SAMPLES + 2U; ++i) {
+            s2.update(t); t += InputSampler::SAMPLE_MS;
+        }
+        bool v = false;
+        const bool ok = s2.read(600U, v) && v == true && s2.transitions(600U) == 1U;
+        snprintf(detail, sizeof(detail), "valeur=%d transitions=%lu",
+                 v ? 1 : 0, (unsigned long)s2.transitions(600U));
+        record(cases, "changement durable retenu", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 14. Carte muette : ne JAMAIS fabriquer un "inactif". Une cuve declaree
+    //     pleine parce que la carte ne repond pas serait le pire des mensonges.
+    {
+        total++;
+        InputSampler s3;
+        s3.begin(&g_fakeTopology, [](uint16_t, bool&) { return false; });
+        uint32_t t = 1000U;
+        for (uint8_t i = 0U; i < InputSampler::STABLE_SAMPLES + 5U; ++i) {
+            s3.update(t); t += InputSampler::SAMPLE_MS;
+        }
+        bool v = false;
+        const bool ok = !s3.read(600U, v);   // rien d'etabli, donc rien d'affirme
+        snprintf(detail, sizeof(detail), "lecture refusee=%d", ok ? 1 : 0);
+        record(cases, "carte muette n invente rien", ok, detail);
         if (ok) passed++;
     }
 
