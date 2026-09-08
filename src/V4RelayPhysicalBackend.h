@@ -48,6 +48,16 @@ public:
     bool isZoneMigrated(uint8_t zoneIndex) const;
     bool hasAnyMigratedZone() const;
 
+    // Configure au DEMARRAGE toutes les voies raccordees : sens des broches et
+    // etat de repos. Sans cela, une carte restait dans son etat de reset --
+    // broches en entree, sorties flottantes -- jusqu'a la premiere commande,
+    // c'est-a-dire jusqu'au premier arrosage, parfois des heures plus tard.
+    // C'est RelaisManager qui s'en chargeait ; le faire ici est la condition
+    // pour que le moteur historique puisse disparaitre.
+    //
+    // Retourne le nombre de voies configurees ; les echecs sont journalises.
+    size_t configureAllZones(uint8_t zoneCount);
+
 private:
     struct ResolvedZoneTarget {
         const Domain::ControllerDefinition* controller = nullptr;

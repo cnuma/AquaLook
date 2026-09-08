@@ -143,11 +143,19 @@ bool V4PilotRuntime::begin(
     // Une zone n'est migree que si SA carte est effectivement pilotee par V4.
     // Sans ce filtrage, une zone servie par une carte laissee au moteur
     // historique remonterait un echec de pilotage au lieu d'un repli normal.
+    // Plus de migration PARTIELLE : toute zone raccordee est pilotee par V4.
+    //
+    // Le filtrage sur managedBoards existait pour laisser au moteur historique
+    // les cartes que V4 ne savait pas piloter. Ce repli a disparu -- il n'y a
+    // plus de second moteur derriere. Une zone dont la carte a ete refusee par
+    // le registre ne doit donc pas etre discretement rendue a personne : elle
+    // echoue, bruyamment, a la premiere commande. C'est la seule facon qu'un
+    // defaut de pilotage se voie.
     uint32_t migrated = 0U;
     for (uint8_t z = 0U; z < MAX_ZONES && z < 32U; ++z) {
         const RelayTopology::MappingResolution m =
             RelayTopology::resolveZoneValve(topology, z, MAX_ZONES);
-        if (m.valid && (managedBoards & (1UL << m.boardIndex)) != 0U) {
+        if (m.valid) {
             migrated |= (1UL << z);
         }
     }
@@ -166,8 +174,21 @@ bool V4PilotRuntime::begin(
         if ((migrated & (1UL << z)) != 0U) migratedCount++;
     }
     EventLog::log(LOG_INFO,
-                  "Relais V4: %u carte(s) pilotee(s), %u zone(s) migree(s)",
+                  "Relais V4: %u carte(s) pilotee(s), %u zone(s) raccordee(s)",
                   (unsigned)managedCount, (unsigned)migratedCount);
+    // Une zone raccordee a une carte que le registre a refusee echouera a la
+    // premiere commande. Le dire MAINTENANT, au demarrage, plutot que de
+    // laisser l'utilisateur le decouvrir devant une vanne qui ne s'ouvre pas.
+    for (uint8_t z = 0U; z < MAX_ZONES && z < 32U; ++z) {
+        if ((migrated & (1UL << z)) == 0U) continue;
+        const RelayTopology::MappingResolution m =
+            RelayTopology::resolveZoneValve(topology, z, MAX_ZONES);
+        if ((managedBoards & (1UL << m.boardIndex)) == 0U) {
+            EventLog::log(LOG_ERROR,
+                          "Relais V4: zone %u sur carte %u sans pilote",
+                          (unsigned)(z + 1U), (unsigned)m.boardIndex);
+        }
+    }
 
     _ready = _backend.isReady() && _backend.hasAnyMigratedZone();
     return _ready;

@@ -339,7 +339,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
             "Orchestrator handoff: zone=%u intent=%s source=%s result=%u steps=%u pump=%s authority=no",
             zone + 1U,
             state ? "START" : "STOP",
-            shadowPlanFromOrchestrator ? "orchestrator" : "legacy_shadow_builder",
+            shadowPlanFromOrchestrator ? "orchestrator" : "plan_builder",
             static_cast<unsigned>(shadowPlan.result),
             static_cast<unsigned>(shadowPlan.stepCount),
             shadowPlan.requiresPump ? "yes" : "no"
@@ -348,13 +348,21 @@ static void onRelayRequest(uint8_t zone, bool state) {
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
 
         // ── Parite d'execution STRICTE : meme voie, meme etat ─────────────
-        // "ACCORD" ne signifie plus "plan valide" mais "V4 piloterait la MEME
-        // voie physique dans le MEME etat que le legacy". Cinq criteres, tous
+        // "ACCORD" ne signifie plus "plan valide" mais "V4 pilote la MEME voie
+        // physique, dans le MEME etat, que ce que dit la table de cablage lue
+        // directement". Ce n'est pas une comparaison avec le moteur historique
+        // -- il n'y en a plus -- mais un controle du planificateur contre sa
+        // source de verite. Cinq criteres, tous
         // via des accesseurs publics : bonne zone, une seule commande de vanne,
         // etat concordant, meme equipement de vanne, meme carte/canal. Au
         // moindre doute on penche vers DESACCORD -- jamais de fausse confiance.
         const uint8_t nbZonesNow = configMgr.nbZones();
-        const RelayTopology::MappingResolution legacyValve =
+        // ATTENTION au nom qu'avait cette variable ("tableValve") : elle ne
+        // vient PAS du moteur historique. C'est une lecture directe de la
+        // table de cablage, qui sert de reference independante au plan
+        // construit par V4. Les deux appartiennent a la generation actuelle ;
+        // seul le mot "legacy" laissait croire le contraire.
+        const RelayTopology::MappingResolution tableValve =
             RelayTopology::resolveZoneValve(relaisMgr.topology(), zone, nbZonesNow);
         const EquipmentManager::ZoneResolution v4Valve = equipmentMgr.resolveZone(zone);
 
@@ -375,9 +383,9 @@ static void onRelayRequest(uint8_t zone, bool state) {
         const bool cOne   = (valveSteps == 1U);
         const bool cState = (v4ValveOn == state);
         const bool cEquip = v4Valve.valid() && (v4ValveEquip == v4Valve.equipmentIndex);
-        const bool cChan  = legacyValve.valid && v4Valve.relay.valid &&
-                            legacyValve.boardIndex   == v4Valve.relay.boardIndex &&
-                            legacyValve.channelIndex == v4Valve.relay.channelIndex;
+        const bool cChan  = tableValve.valid && v4Valve.relay.valid &&
+                            tableValve.boardIndex   == v4Valve.relay.boardIndex &&
+                            tableValve.channelIndex == v4Valve.relay.channelIndex;
         const bool accord = cZone && cOne && cState && cEquip && cChan;
         if (accord) g_parityAgree++; else g_parityDisagree++;
 
@@ -389,8 +397,8 @@ static void onRelayRequest(uint8_t zone, bool state) {
             accord ? LOG_INFO : LOG_WARN,
             "PARITE z%u %s L=%u.%u/%s V=%u.%u/%s ok=%lu ko=%lu %s",
             zone + 1U, state ? "OUVRE" : "FERME",
-            static_cast<unsigned>(legacyValve.boardIndex),
-            static_cast<unsigned>(legacyValve.channelIndex), state ? "ON" : "OFF",
+            static_cast<unsigned>(tableValve.boardIndex),
+            static_cast<unsigned>(tableValve.channelIndex), state ? "ON" : "OFF",
             static_cast<unsigned>(v4Valve.relay.boardIndex),
             static_cast<unsigned>(v4Valve.relay.channelIndex), v4ValveOn ? "ON" : "OFF",
             static_cast<unsigned long>(g_parityAgree),
@@ -519,6 +527,14 @@ void setup() {
     );
     if (v4PilotReady) {
         outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());
+        // Sens des broches et etat de repos poses des le demarrage, par V4.
+        // C'etait RelaisManager::initBoard() qui le faisait ; le faire ici
+        // est ce qui permet a l'etage I2C historique de disparaitre.
+        const size_t configured =
+            v4PilotRuntime.backend().configureAllZones(configMgr.nbZones());
+        EventLog::log(LOG_INFO,
+                      "Relais V4: %u voie(s) configuree(s) au demarrage",
+                      (unsigned)configured);
         // Le decompte reel est journalise par V4PilotRuntime::begin() : ne
         // pas affirmer ici une couverture qui n'a jamais ete verifiee.
         EventLog::log(LOG_INFO, "Relais V4: moteur V4 actif sur les sorties");
@@ -649,7 +665,7 @@ void setup() {
     // a la fois "toutes les zones" et "la zone 1 seule"). Le perimetre
     // exact est journalise par V4PilotRuntime, qui, lui, le connait.
     EventLog::log(LOG_INFO,
-                  "Parite: comparaison V4 vs legacy a chaque decision");
+                  "Parite: plan V4 vs table de cablage a chaque decision");
 #else
     EventLog::log(LOG_INFO,
                   "Parite: observationnel, legacy autoritaire");
@@ -741,6 +757,20 @@ void loop() {
 
     startedUs = RuntimeProfiler::start();
     relaisMgr.update();
+
+    // Coupure de securite : RelaisManager signale les zones qui ont depasse la
+    // duree maximale, on les coupe par le chemin de pilotage NORMAL. Avant, la
+    // securite commandait l'etage I2C historique directement -- un chemin que
+    // le firmware V4 n'empruntait plus jamais, donc que personne ne testait.
+    {
+        uint16_t safetyCut = relaisMgr.consumeSafetyCutMask();
+        for (uint8_t z = 0U; safetyCut != 0U && z < MAX_ZONES; ++z) {
+            if ((safetyCut & (1U << z)) == 0U) continue;
+            safetyCut = static_cast<uint16_t>(safetyCut & ~(1U << z));
+            outputAdapter.setZoneValve(z, false, millis());
+            displayMgr.requestDynamicRefresh();
+        }
+    }
     RuntimeProfiler::stop(RuntimeProfiler::Component::RELAY, startedUs);
 
     // Couche E/S TOR : scrute les entrees a sa propre periode, pilote les

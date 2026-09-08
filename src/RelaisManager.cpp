@@ -161,15 +161,25 @@ void RelaisManager::update() {
     const uint32_t maxMs = maxWateringMs();
     const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
 
+    // La coupure de securite ne commande PLUS elle-meme le relais.
+    //
+    // Elle appelait setRelay(), c'est-a-dire l'etage I2C historique -- y
+    // compris dans le firmware V4, ou tout le reste passe par le nouveau
+    // moteur. Une securite qui emprunte un autre chemin que le pilotage
+    // normal est une securite qu'on ne teste jamais avec le code qu'on
+    // utilise.
+    //
+    // Elle publie desormais l'intention ; l'appelant coupe par le meme
+    // chemin que n'importe quelle autre commande.
     for (uint8_t i = 0; i < nbZ; i++) {
         if (_state[i] && _startMs[i] > 0 &&
             now - _startMs[i] >= maxMs) {
             EventLog::log(
                 LOG_ERROR,
-                "Relais: securite, zone %u coupee apres %lus",
+                "Relais: securite, zone %u a couper apres %lus",
                 i + 1, maxMs / 1000UL
             );
-            setRelay(i, false);
+            _safetyCutMask = static_cast<uint16_t>(_safetyCutMask | (1U << i));
         }
     }
 }

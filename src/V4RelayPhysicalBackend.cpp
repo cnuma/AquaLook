@@ -156,6 +156,35 @@ bool V4RelayPhysicalBackend::getZoneValveState(
     return false;
 }
 
+size_t V4RelayPhysicalBackend::configureAllZones(uint8_t zoneCount) {
+    if (!isReady()) return 0U;
+
+    size_t configuredCount = 0U;
+    for (uint8_t zone = 0U; zone < zoneCount && zone < MAX_ZONES; ++zone) {
+        if (!isZoneMigrated(zone)) continue;
+
+        ResolvedZoneTarget target;
+        if (!resolveZoneTarget(zone, target)) {
+            reportFailure(zone, "resolution au demarrage");
+            continue;
+        }
+
+        Domain::BinaryActuatorSession& session = _sessions[zone];
+        if (session.configured != 0U) { configuredCount++; continue; }
+
+        const Domain::BinaryActuatorDriverResult result =
+            Domain::configureBinaryActuator(
+                *target.driver, *target.controller, *target.port, session
+            );
+        if (result.succeeded()) {
+            configuredCount++;
+        } else {
+            reportFailure(zone, "configuration au demarrage");
+        }
+    }
+    return configuredCount;
+}
+
 bool V4RelayPhysicalBackend::isZoneMigrated(uint8_t zoneIndex) const {
     if (zoneIndex >= MAX_ZONES || zoneIndex >= 32U) {
         return false;

@@ -143,10 +143,15 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
         appliedByPhysicalBackend = applied;
     }
 
+    // L'etat de zone reste tenu par RelaisManager : l'ecran, le Web, le
+    // planificateur et l'expandeur d'E/S le lisent tous la. C'est du MODELE,
+    // pas du pilotage -- rien n'y touche le bus I2C.
     if (appliedByPhysicalBackend && _relayManager) {
         _relayManager->mirrorZoneState(zoneIndex, active, nowMs);
     }
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
+    // Profil legacy : le moteur historique est le seul pilote.
     if (!applied && _relayManager) {
         applied = _relayManager->setRelay(zoneIndex, active);
         if (applied) {
@@ -155,6 +160,18 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     } else if (appliedByPhysicalBackend) {
         recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
     }
+#else
+    // Profil V4 : AUCUN repli. Un echec de V4 doit se voir, pas se faire
+    // rattraper en silence par le moteur historique.
+    //
+    // Ce repli avait cache pendant des semaines que deux cartes sur trois
+    // n'etaient pas pilotees par V4 : tout fonctionnait, donc personne ne
+    // cherchait. Un moteur qu'on ne peut pas prendre en defaut est un moteur
+    // qu'on ne peut pas valider.
+    if (appliedByPhysicalBackend) {
+        recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
+    }
+#endif
 
     if (!applied) {
         recordExecutionPath(ExecutionPath::FAILED);

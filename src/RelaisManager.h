@@ -52,9 +52,18 @@ public:
     // zone simplement pas encore affectee -- un etat de configuration -- d'une
     // sortie qui refuse de repondre, qui est une panne.
     bool zoneHasOutput(uint8_t zone) const;
+    // Zones ayant depasse la duree maximale d'arrosage et qu'il faut couper.
+    // Lue et remise a zero par l'appelant, qui coupe par le chemin de
+    // pilotage normal -- voir RelaisManager::update().
+    uint16_t consumeSafetyCutMask() {
+        const uint16_t mask = _safetyCutMask;
+        _safetyCutMask = 0U;
+        return mask;
+    }
 
 private:
     ConfigManager* _config = nullptr;
+    uint16_t _safetyCutMask = 0U;
     bool _state[MAX_ZONES] = {};
     uint32_t _startMs[MAX_ZONES] = {};
     bool _assignmentState[RelayTopology::MAX_RELAY_ASSIGNMENTS] = {};
