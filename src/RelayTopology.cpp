@@ -18,6 +18,10 @@ const char* roleName(uint8_t role) {
         case ROLE_AUX: return "aux";
         case ROLE_GREENHOUSE_VENT: return "greenhouse_vent";
         case ROLE_LIGHTING: return "lighting";
+        case ROLE_INPUT_TOR: return "entree_tor";
+        case ROLE_INPUT_LEVEL: return "niveau_cuve";
+        case ROLE_INPUT_RAIN: return "pluie";
+        case ROLE_INPUT_PRESENCE: return "presence";
         default: return "unknown";
     }
 }
@@ -38,7 +42,11 @@ bool isSupportedRole(uint8_t role) {
            role == ROLE_PUMP ||
            role == ROLE_AUX ||
            role == ROLE_GREENHOUSE_VENT ||
-           role == ROLE_LIGHTING;
+           role == ROLE_LIGHTING ||
+           role == ROLE_INPUT_TOR ||
+           role == ROLE_INPUT_LEVEL ||
+           role == ROLE_INPUT_RAIN ||
+           role == ROLE_INPUT_PRESENCE;
 }
 
 uint8_t normalizeChannelCount(uint8_t channelCount) {
@@ -105,12 +113,39 @@ bool validateAssignment(
     if (!isSupportedRole(assignment.role)) return false;
     if (assignment.role == ROLE_UNUSED) return false;
     if (assignment.boardIndex >= MAX_RELAY_BOARDS) return false;
+    // Le SENS et le ROLE doivent s'accorder. Une entree declaree "vanne de
+    // zone" ferait croire a une sortie pilotable et laisserait une zone
+    // muette sans explication.
+    if (assignment.direction > DIRECTION_INPUT) return false;
+    if (isInputRole(assignment.role) != assignment.isInput()) return false;
+    // Une entree porte un identifiant, sans quoi aucun script ne peut la
+    // designer -- et une entree que rien ne peut lire ne sert a rien.
+    if (assignment.isInput() && assignment.id == 0U) return false;
 
     const RelayBoardConfig& board = topology.boards[assignment.boardIndex];
     if (!validateBoard(board)) return false;
     if (assignment.channelIndex >= board.channelCount) return false;
 
     return true;
+}
+
+// Une entree se resout par son IDENTIFIANT, jamais par sa position : un
+// script qui citerait un index se mettrait a lire une autre voie des qu'une
+// entree serait ajoutee ou retiree devant elle.
+MappingResolution resolveInputById(
+    const RelayTopologyConfig& topology,
+    uint16_t inputId
+) {
+    MappingResolution resolution;
+    if (inputId == 0U) return resolution;
+
+    for (uint8_t a = 0U; a < MAX_RELAY_ASSIGNMENTS; ++a) {
+        const RelayAssignment& assignment = topology.assignments[a];
+        if (!assignment.isInput() || assignment.id != inputId) continue;
+        if (!validateAssignment(topology, a)) return resolution;
+        return resolveAssignment(topology, a);
+    }
+    return resolution;
 }
 
 MappingResolution resolveAssignment(

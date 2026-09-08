@@ -18,8 +18,13 @@ namespace RelayTopology {
 static constexpr uint8_t MAX_RELAY_BOARDS = 8;
 static constexpr uint8_t MAX_CHANNELS_PER_BOARD = 8;
 static constexpr uint8_t RESERVED_AUXILIARY_ASSIGNMENTS = 4;
+// Les ENTREES partagent la meme table que les sorties : une voie est une
+// voie, sur la meme carte, au bout du meme transport. Seul son SENS change.
+// Les separer aurait duplique la validation, le stockage et l'editeur pour
+// decrire la meme chose.
+static constexpr uint8_t RESERVED_INPUT_ASSIGNMENTS = 8;
 static constexpr uint8_t MAX_RELAY_ASSIGNMENTS =
-    MAX_ZONES + RESERVED_AUXILIARY_ASSIGNMENTS;
+    MAX_ZONES + RESERVED_AUXILIARY_ASSIGNMENTS + RESERVED_INPUT_ASSIGNMENTS;
 
 // Valeurs alignées sur le modèle existant ConfigManager :
 // 0 = XL9535, 1 = MCP23017.
@@ -52,6 +57,25 @@ static constexpr uint8_t ROLE_AUX = 3;
 static constexpr uint8_t ROLE_GREENHOUSE_VENT = 4;
 static constexpr uint8_t ROLE_LIGHTING = 5;
 
+// Roles d'ENTREE, a partir de 16 pour qu'un simple seuil suffise a les
+// distinguer d'un coup d'oeil dans un journal ou un export JSON.
+static constexpr uint8_t ROLE_INPUT_FIRST = 16;
+static constexpr uint8_t ROLE_INPUT_TOR = 16;    // contact sec quelconque
+static constexpr uint8_t ROLE_INPUT_LEVEL = 17;  // niveau de cuve
+static constexpr uint8_t ROLE_INPUT_RAIN = 18;   // pluviometre tout ou rien
+static constexpr uint8_t ROLE_INPUT_PRESENCE = 19;
+
+// Sens d'une voie.
+static constexpr uint8_t DIRECTION_OUTPUT = 0;
+static constexpr uint8_t DIRECTION_INPUT = 1;
+
+// Options d'une entree. Un flotteur de cuve se cable presque toujours en
+// contact a la masse avec resistance de tirage : actif a l'etat BAS.
+static constexpr uint8_t INPUT_FLAG_ACTIVE_LOW = 0x01;
+static constexpr uint8_t INPUT_FLAG_PULLUP     = 0x02;
+
+inline bool isInputRole(uint8_t role) { return role >= ROLE_INPUT_FIRST; }
+
 struct RelayBoardConfig {
     bool    enabled;
     uint8_t controller;
@@ -72,15 +96,21 @@ struct RelayBoardConfig {
 };
 
 struct RelayAssignment {
-    bool    enabled;
-    uint8_t role;
-    uint8_t targetIndex;
-    uint8_t boardIndex;
-    uint8_t channelIndex;
+    bool     enabled;
+    uint8_t  role;
+    uint8_t  targetIndex;
+    uint8_t  boardIndex;
+    uint8_t  channelIndex;
+    uint8_t  direction;   // DIRECTION_OUTPUT ou DIRECTION_INPUT
+    uint8_t  flags;       // INPUT_FLAG_* : n'a de sens que pour une entree
+    uint16_t id;          // identifiant STABLE, cite par les scripts
 
     RelayAssignment()
         : enabled(false), role(ROLE_UNUSED), targetIndex(0),
-          boardIndex(0), channelIndex(0) {}
+          boardIndex(0), channelIndex(0),
+          direction(DIRECTION_OUTPUT), flags(0), id(0) {}
+
+    bool isInput() const { return direction == DIRECTION_INPUT; }
 };
 
 // Alias de compatibilité conceptuelle : une zone d'arrosage est maintenant
@@ -125,6 +155,12 @@ void clear(RelayTopologyConfig& topology);
 bool isWired(const RelayTopologyConfig& topology);
 
 bool validateBoard(const RelayBoardConfig& board);
+// Resolution d'une ENTREE par son identifiant stable. C'est ainsi qu'un
+// script la designe : jamais par un index de table, qui bougerait.
+MappingResolution resolveInputById(
+    const RelayTopologyConfig& topology,
+    uint16_t inputId
+);
 bool validateAssignment(
     const RelayTopologyConfig& topology,
     uint8_t assignmentIndex

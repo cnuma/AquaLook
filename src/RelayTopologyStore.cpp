@@ -13,7 +13,7 @@ namespace {
 constexpr const char* NVS_NS  = "aq_topo";
 constexpr const char* NVS_KEY = "cfg";
 constexpr uint32_t NVS_MAGIC  = 0x52544F50UL;  // "RTOP"
-constexpr uint16_t SCHEMA     = 2U;  // 2 : ajout du transport aux cartes
+constexpr uint16_t SCHEMA     = 3U;  // 3 : les voies portent un sens et un identifiant
 
 uint32_t crc32Bytes(const uint8_t* data, size_t len) {
     uint32_t crc = 0xFFFFFFFFUL;
@@ -38,9 +38,31 @@ struct RelayBoardConfigV1 {
     uint8_t logic;
 };
 
+// Forme historique d'une affectation : ni sens, ni options, ni identifiant.
+// Figee ici parce que la structure vivante a change : s'appuyer sur elle
+// aurait fait varier la taille des blocs anciens avec le code d'aujourd'hui,
+// et donc rejeter des configurations parfaitement valides.
+struct RelayAssignmentV2 {
+    bool    enabled;
+    uint8_t role;
+    uint8_t targetIndex;
+    uint8_t boardIndex;
+    uint8_t channelIndex;
+};
+
+// Les schemas 1 et 2 ne connaissaient que les sorties : leur table etait donc
+// plus courte, sans les places reservees aux entrees.
+static constexpr uint8_t ASSIGNMENTS_V2 =
+    MAX_ZONES + RelayTopology::RESERVED_AUXILIARY_ASSIGNMENTS;
+
 struct RelayTopologyConfigV1 {
     RelayBoardConfigV1 boards[RelayTopology::MAX_RELAY_BOARDS];
-    RelayTopology::RelayAssignment assignments[RelayTopology::MAX_RELAY_ASSIGNMENTS];
+    RelayAssignmentV2 assignments[ASSIGNMENTS_V2];
+};
+
+struct RelayTopologyConfigV2 {
+    RelayTopology::RelayBoardConfig boards[RelayTopology::MAX_RELAY_BOARDS];
+    RelayAssignmentV2 assignments[ASSIGNMENTS_V2];
 };
 
 // Bloc persiste : entete + topologie + CRC. Le CRC couvre tout ce qui precede.
@@ -78,6 +100,31 @@ struct PersistedV1 {
     uint32_t crc32;
 };
 
+struct PersistedV2 {
+    uint32_t magic;
+    uint16_t schema;
+    uint16_t size;
+    RelayTopologyConfigV2 topology;
+    uint32_t crc32;
+};
+
+// Une voie heritee est une SORTIE, et recoit un identifiant stable.
+// Les sorties n'en avaient pas besoin jusqu'ici -- les zones se resolvent par
+// leur role et leur cible -- mais le distribuer des maintenant evite d'avoir
+// a le faire quand un script voudra citer une pompe.
+void adoptLegacyAssignment(const RelayAssignmentV2& src,
+                           RelayTopology::RelayAssignment& dst,
+                           uint16_t id) {
+    dst.enabled      = src.enabled;
+    dst.role         = src.role;
+    dst.targetIndex  = src.targetIndex;
+    dst.boardIndex   = src.boardIndex;
+    dst.channelIndex = src.channelIndex;
+    dst.direction    = RelayTopology::DIRECTION_OUTPUT;
+    dst.flags        = 0U;
+    dst.id           = id;
+}
+
 // Recopie champ a champ : le transport prend sa valeur par defaut (I2C local),
 // qui est ce que decrivaient toutes les topologies du schema 1.
 void migrateV1(const RelayTopologyConfigV1& src, RelayTopology::RelayTopologyConfig& dst) {
@@ -91,8 +138,21 @@ void migrateV1(const RelayTopologyConfigV1& src, RelayTopology::RelayTopologyCon
         dst.boards[b].transport    = RelayTopology::TRANSPORT_I2C_LOCAL;
         dst.boards[b].node         = 0U;
     }
-    for (uint8_t a = 0U; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
-        dst.assignments[a] = src.assignments[a];
+    for (uint8_t a = 0U; a < ASSIGNMENTS_V2; ++a) {
+        adoptLegacyAssignment(src.assignments[a], dst.assignments[a],
+                              static_cast<uint16_t>(a + 1U));
+    }
+}
+
+void migrateV2(const RelayTopologyConfigV2& src,
+               RelayTopology::RelayTopologyConfig& dst) {
+    RelayTopology::clear(dst);
+    for (uint8_t b = 0U; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
+        dst.boards[b] = src.boards[b];
+    }
+    for (uint8_t a = 0U; a < ASSIGNMENTS_V2; ++a) {
+        adoptLegacyAssignment(src.assignments[a], dst.assignments[a],
+                              static_cast<uint16_t>(a + 1U));
     }
 }
 
@@ -108,12 +168,40 @@ bool load(RelayTopology::RelayTopologyConfig& topology, uint8_t nbZones) {
     // precedent, sinon la migration n'a jamais lieu et la configuration
     // disparait en silence au premier changement de modele.
     const bool isV1 = (len == sizeof(PersistedV1));
-    if (len != sizeof(Persisted) && !isV1) {
+    const bool isV2 = (len == sizeof(PersistedV2));
+    if (len != sizeof(Persisted) && !isV1 && !isV2) {
         prefs.end();
-        EventLog::log(LOG_WARN, "Topo: taille NVS %u inattendue (%u ou %u), ignoree",
+        EventLog::log(LOG_WARN, "Topo: taille NVS %u inattendue (%u, %u ou %u), ignoree",
                       (unsigned)len, (unsigned)sizeof(Persisted),
+                      (unsigned)sizeof(PersistedV2),
                       (unsigned)sizeof(PersistedV1));
         return false;
+    }
+
+    if (isV2) {
+        PersistedV2 old;
+        const size_t readOld = prefs.getBytes(NVS_KEY, &old, sizeof(old));
+        prefs.end();
+        if (readOld != sizeof(old) || old.magic != NVS_MAGIC || old.schema != 2U) {
+            EventLog::log(LOG_WARN, "Topo: entete NVS schema 2 invalide, ignoree");
+            return false;
+        }
+        const uint32_t expectedOld = crc32Bytes(
+            reinterpret_cast<const uint8_t*>(&old), offsetof(PersistedV2, crc32));
+        if (expectedOld != old.crc32) {
+            EventLog::log(LOG_WARN, "Topo: CRC NVS schema 2 invalide, ignoree");
+            return false;
+        }
+        RelayTopology::RelayTopologyConfig migrated;
+        migrateV2(old.topology, migrated);
+        if (!coherent(migrated, nbZones)) {
+            EventLog::log(LOG_WARN, "Topo: schema 2 incoherent apres migration, ignoree");
+            return false;
+        }
+        topology = migrated;
+        EventLog::log(LOG_INFO,
+                      "Topo: migree du schema 2 vers 3 (voies en sortie, identifiants poses)");
+        return true;
     }
 
     if (isV1) {

@@ -1615,6 +1615,10 @@ void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
         o["target"] = as.targetIndex;
         o["board"] = as.boardIndex;
         o["channel"] = as.channelIndex;
+        o["direction"] = as.direction;
+        o["input"] = as.isInput();
+        o["flags"] = as.flags;
+        o["id"] = as.id;
     }
     sendJson(req, doc);
 }
@@ -1658,6 +1662,17 @@ void WebManager::handleSetTopology(AsyncWebServerRequest* req, JsonDocument& doc
         as.targetIndex = o["target"] | 0;
         as.boardIndex = o["board"] | 0;
         as.channelIndex = o["channel"] | 0;
+        // Le sens se DEDUIT du role plutot que d'etre saisi separement : deux
+        // champs qui doivent s'accorder finissent toujours par diverger, et
+        // c'est l'utilisateur qui paye la contradiction.
+        as.direction = RelayTopology::isInputRole(as.role)
+            ? RelayTopology::DIRECTION_INPUT
+            : RelayTopology::DIRECTION_OUTPUT;
+        as.flags = o["flags"] | 0;
+        // Une entree sans identifiant serait invisible aux scripts. A defaut
+        // d'un identifiant fourni, on en attribue un stable et unique.
+        as.id = o["id"] | 0;
+        if (as.id == 0U) as.id = static_cast<uint16_t>(i + 1U);
         if (!RelayTopology::isSupportedRole(as.role)) { sendError(req, "role invalide"); return; }
     }
 
