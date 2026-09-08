@@ -623,6 +623,32 @@ void DisplayManager::update() {
 #endif
     _screenMgr.update(anyActive, isWifiSearching(), activeZoneMask, _nbZones, rainMask);
 
+    // Mise a jour ENGAGEE : l'ecran violet pose par showUpdateScreen() est le
+    // seul contenu legitime a l'ecran.
+    //
+    // Sans cette garde, le rendu periodique continuait de repeindre par-dessus
+    // -- bandeau d'entete, sprites d'heure et de signal, tuiles de zone --
+    // chacun avec son propre fond. Le message "Ne pas eteindre le module" se
+    // retrouvait recouvert par morceaux, et les tuiles debordaient sur le
+    // violet. Le pire moment possible pour rendre l'ecran illisible : c'est
+    // precisement celui ou il ne doit dire qu'une chose.
+    //
+    // Meme raisonnement que l'encart meteo plus bas, qui bloque le rendu
+    // periodique pour exactement la meme raison.
+    //
+    // Le touch est bloque du meme coup, volontairement : naviguer ailleurs
+    // pendant une mise a jour ferait disparaitre l'avertissement.
+    if (EventBus::updateInProgress) {
+        _updateScreenHeld = true;
+        return;
+    }
+    // Sortie de l'etat sans redemarrage (mise a jour echouee ou annulee) :
+    // l'ecran violet doit disparaitre, donc redessin complet.
+    if (_updateScreenHeld) {
+        _updateScreenHeld = false;
+        _needsFullRedraw = true;
+    }
+
     // Si en veille : ne pas redessiner, juste gérer le touch pour réveil
     if (_screenMgr.isAsleep()) {
         // Ecran eteint : plus rien ne dessine (on sort juste en dessous sans

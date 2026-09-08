@@ -465,6 +465,10 @@ private:
     // convertir une chaine hexadecimale a chaque bouton dessine serait paye
     // huit fois par rafraichissement pour un resultat constant.
     uint16_t _zoneRgb[MAX_ZONES] = {};
+
+    // true tant que l'ecran de mise a jour occupe la dalle : sert a declencher
+    // un redessin complet quand l'operation se termine sans redemarrage.
+    bool _updateScreenHeld = false;
     uint16_t zoneColor(uint8_t z) const {
         return _zoneRgb[z < MAX_ZONES ? z : 0];
     }
