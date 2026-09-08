@@ -1,12 +1,12 @@
 #pragma once
 
-#include "domain/Xl9535BinaryActuatorDriver.h"
+#include "domain/I2cExpanderBinaryActuatorDriver.h"
 
 namespace AquaLook { namespace Drivers {
 
 #if AQUALOOK_V4_ENABLE_I2C
 
-const Domain::Xl9535I2cOps& arduinoI2cPlatformOps();
+const Domain::I2cExpanderOps& arduinoI2cPlatformOps();
 
 #endif
 

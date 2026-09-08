@@ -1,4 +1,4 @@
-#include "domain/Xl9535BinaryActuatorDriver.h"
+#include "domain/I2cExpanderBinaryActuatorDriver.h"
 
 #if AQUALOOK_V4_ENABLE_I2C
 
@@ -24,16 +24,16 @@ BinaryActuatorDriverResult makeFailed(BinaryActuatorDriverError error) {
     return result;
 }
 
-Xl9535BinaryActuatorContext* asContext(void* context) {
-    return static_cast<Xl9535BinaryActuatorContext*>(context);
+I2cExpanderActuatorContext* asContext(void* context) {
+    return static_cast<I2cExpanderActuatorContext*>(context);
 }
 
-const Xl9535BinaryActuatorContext* asContext(const void* context) {
-    return static_cast<const Xl9535BinaryActuatorContext*>(context);
+const I2cExpanderActuatorContext* asContext(const void* context) {
+    return static_cast<const I2cExpanderActuatorContext*>(context);
 }
 
-bool contextIsUsable(const Xl9535BinaryActuatorContext& context) {
-    return context.i2c && hasCompleteXl9535I2cOps(*context.i2c);
+bool contextIsUsable(const I2cExpanderActuatorContext& context) {
+    return context.i2c && hasCompleteI2cExpanderOps(*context.i2c);
 }
 
 // Plan de registres du XL9535, servant de defaut : un contexte construit
@@ -51,11 +51,11 @@ constexpr I2cExpanderRegisterMap MCP23017_MAP = {
     Mcp23017Registers::IODIR
 };
 
-const I2cExpanderRegisterMap& registersFor(const Xl9535BinaryActuatorContext& context) {
+const I2cExpanderRegisterMap& registersFor(const I2cExpanderActuatorContext& context) {
     return context.registers ? *context.registers : XL9535_MAP;
 }
 
-ControllerTypeId expectedTypeFor(const Xl9535BinaryActuatorContext& context) {
+ControllerTypeId expectedTypeFor(const I2cExpanderActuatorContext& context) {
     return context.expectedControllerType.isValid()
         ? context.expectedControllerType
         : ControllerTypeIds::XL9535;
@@ -93,7 +93,7 @@ BinaryActuatorState safeStateForPort(const PortDefinition& port) {
     return BinaryActuatorState::UNKNOWN;
 }
 
-bool syncOutputLatchFromSharedState(Xl9535BinaryActuatorContext& context) {
+bool syncOutputLatchFromSharedState(I2cExpanderActuatorContext& context) {
     if (!context.sharedOutputState) {
         return true;
     }
@@ -107,7 +107,7 @@ bool syncOutputLatchFromSharedState(Xl9535BinaryActuatorContext& context) {
     return context.sharedOutputState->seed(context.address, context.outputLatch);
 }
 
-bool writeOutputLatch(Xl9535BinaryActuatorContext& context) {
+bool writeOutputLatch(I2cExpanderActuatorContext& context) {
     return context.i2c->writeRegister16(
         context.platformContext,
         context.address,
@@ -116,7 +116,7 @@ bool writeOutputLatch(Xl9535BinaryActuatorContext& context) {
     );
 }
 
-bool writeConfiguration(Xl9535BinaryActuatorContext& context) {
+bool writeConfiguration(I2cExpanderActuatorContext& context) {
     return context.i2c->writeRegister16(
         context.platformContext,
         context.address,
@@ -126,7 +126,7 @@ bool writeConfiguration(Xl9535BinaryActuatorContext& context) {
 }
 
 bool setLatchBit(
-    Xl9535BinaryActuatorContext& context,
+    I2cExpanderActuatorContext& context,
     const PortDefinition& port,
     BinaryActuatorState state
 ) {
@@ -155,7 +155,7 @@ bool setLatchBit(
 }
 
 BinaryActuatorDriverResult writeLogicalState(
-    Xl9535BinaryActuatorContext& context,
+    I2cExpanderActuatorContext& context,
     const PortDefinition& port,
     BinaryActuatorState requested
 ) {
@@ -178,7 +178,7 @@ BinaryActuatorDriverResult configureXl9535(
     const ControllerDefinition& controller,
     const PortDefinition& port
 ) {
-    Xl9535BinaryActuatorContext* context = asContext(rawContext);
+    I2cExpanderActuatorContext* context = asContext(rawContext);
     if (!context || !contextIsUsable(*context)) {
         return makeFailed(BinaryActuatorDriverError::INVALID_ARGUMENT);
     }
@@ -234,7 +234,7 @@ BinaryActuatorDriverResult writeXl9535(
     const PortDefinition& port,
     BinaryActuatorState requested
 ) {
-    Xl9535BinaryActuatorContext* context = asContext(rawContext);
+    I2cExpanderActuatorContext* context = asContext(rawContext);
     if (!context || !contextIsUsable(*context)) {
         return makeFailed(BinaryActuatorDriverError::INVALID_ARGUMENT);
     }
@@ -248,7 +248,7 @@ BinaryActuatorDriverResult readXl9535(
     void* rawContext,
     const PortDefinition& port
 ) {
-    Xl9535BinaryActuatorContext* context = asContext(rawContext);
+    I2cExpanderActuatorContext* context = asContext(rawContext);
     if (!context || !contextIsUsable(*context)) {
         return makeFailed(BinaryActuatorDriverError::INVALID_ARGUMENT);
     }
@@ -276,7 +276,7 @@ BinaryActuatorDriverResult applySafeStateXl9535(
     void* rawContext,
     const PortDefinition& port
 ) {
-    Xl9535BinaryActuatorContext* context = asContext(rawContext);
+    I2cExpanderActuatorContext* context = asContext(rawContext);
     if (!context || !contextIsUsable(*context)) {
         return makeFailed(BinaryActuatorDriverError::INVALID_ARGUMENT);
     }
@@ -295,7 +295,7 @@ BinaryActuatorHealth xl9535Health(
     const void* rawContext,
     const PortDefinition&
 ) {
-    const Xl9535BinaryActuatorContext* context = asContext(rawContext);
+    const I2cExpanderActuatorContext* context = asContext(rawContext);
     if (!context || !contextIsUsable(*context)) {
         return BinaryActuatorHealth::FAULTED;
     }
@@ -318,18 +318,18 @@ const BinaryActuatorDriverOps OPERATIONS = {
 
 } // namespace
 
-bool hasCompleteXl9535I2cOps(const Xl9535I2cOps& operations) {
+bool hasCompleteI2cExpanderOps(const I2cExpanderOps& operations) {
     return operations.probe != nullptr &&
            operations.writeRegister16 != nullptr &&
            operations.readRegister16 != nullptr;
 }
 
-const BinaryActuatorDriverOps& xl9535BinaryActuatorDriverOps() {
+const BinaryActuatorDriverOps& i2cExpanderBinaryActuatorDriverOps() {
     return OPERATIONS;
 }
 
 BinaryActuatorDriverBinding makeXl9535BinaryActuatorDriverBinding(
-    Xl9535BinaryActuatorContext& context
+    I2cExpanderActuatorContext& context
 ) {
     context.registers = &XL9535_MAP;
     context.expectedControllerType = ControllerTypeIds::XL9535;
@@ -341,7 +341,7 @@ BinaryActuatorDriverBinding makeXl9535BinaryActuatorDriverBinding(
 }
 
 BinaryActuatorDriverBinding makeMcp23017BinaryActuatorDriverBinding(
-    Xl9535BinaryActuatorContext& context
+    I2cExpanderActuatorContext& context
 ) {
     context.registers = &MCP23017_MAP;
     context.expectedControllerType = ControllerTypeIds::MCP23017;

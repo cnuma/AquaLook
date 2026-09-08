@@ -5,7 +5,7 @@
 #include "domain/BinaryActuatorDriverRegistry.h"
 #include "domain/GpioBinaryActuatorDriver.h"
 #include "domain/SimulatedBinaryActuatorDriver.h"
-#include "domain/Xl9535BinaryActuatorDriver.h"
+#include "domain/I2cExpanderBinaryActuatorDriver.h"
 
 namespace AquaLook { namespace Domain {
 
@@ -22,7 +22,7 @@ struct BinaryActuatorDriverBootstrapPlan {
     GpioBinaryActuatorContext* gpio;
 #endif
 #if AQUALOOK_V4_ENABLE_I2C
-    Xl9535BinaryActuatorContext* xl9535;
+    I2cExpanderActuatorContext* xl9535;
 #endif
     uint8_t enabledDrivers;
     uint8_t reserved[3];

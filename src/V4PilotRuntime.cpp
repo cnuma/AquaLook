@@ -15,7 +15,7 @@ V4PilotRuntime::V4PilotRuntime()
 
 bool V4PilotRuntime::begin(
     const RelayTopology::RelayTopologyConfig& topology,
-    Domain::Xl9535SharedOutputState& sharedOutputState
+    Domain::I2cExpanderSharedOutputState& sharedOutputState
 ) {
     _ready = false;
     _boardCount = 0U;
@@ -95,8 +95,8 @@ bool V4PilotRuntime::begin(
 
         // Chaque carte a SON contexte, donc sa propre adresse : c'est ce qui
         // permet deux cartes du meme type sans qu'elles se marchent dessus.
-        Domain::Xl9535BinaryActuatorContext& ctx = _xl9535Contexts[b];
-        ctx = Domain::Xl9535BinaryActuatorContext();
+        Domain::I2cExpanderActuatorContext& ctx = _expanderContexts[b];
+        ctx = Domain::I2cExpanderActuatorContext();
         ctx.i2c = &Drivers::arduinoI2cPlatformOps();
         ctx.platformContext = &RELAY_WIRE_BUS;
         ctx.sharedOutputState = &sharedOutputState;

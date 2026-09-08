@@ -1,32 +1,32 @@
-#include "domain/Xl9535SharedOutputState.h"
+#include "domain/I2cExpanderSharedOutputState.h"
 
 namespace AquaLook { namespace Domain {
 
-Xl9535SharedOutputState::Xl9535SharedOutputState() {
+I2cExpanderSharedOutputState::I2cExpanderSharedOutputState() {
     clear();
 }
 
-void Xl9535SharedOutputState::clear() {
+void I2cExpanderSharedOutputState::clear() {
     for (size_t i = 0U; i < MAX_DEVICES; ++i) {
         _entries[i] = Entry();
     }
 }
 
-bool Xl9535SharedOutputState::seed(uint8_t address, uint16_t value) {
+bool I2cExpanderSharedOutputState::seed(uint8_t address, uint16_t value) {
     Entry* entry = findOrCreate(address);
     if (!entry) return false;
     entry->value = value;
     return true;
 }
 
-bool Xl9535SharedOutputState::read(uint8_t address, uint16_t& value) const {
+bool I2cExpanderSharedOutputState::read(uint8_t address, uint16_t& value) const {
     const Entry* entry = find(address);
     if (!entry) return false;
     value = entry->value;
     return true;
 }
 
-bool Xl9535SharedOutputState::updateChannel(
+bool I2cExpanderSharedOutputState::updateChannel(
     uint8_t address,
     uint8_t channel,
     bool high,
@@ -45,7 +45,7 @@ bool Xl9535SharedOutputState::updateChannel(
     return true;
 }
 
-Xl9535SharedOutputState::Entry* Xl9535SharedOutputState::find(uint8_t address) {
+I2cExpanderSharedOutputState::Entry* I2cExpanderSharedOutputState::find(uint8_t address) {
     for (size_t i = 0U; i < MAX_DEVICES; ++i) {
         if (_entries[i].used != 0U && _entries[i].address == address) {
             return &_entries[i];
@@ -54,7 +54,7 @@ Xl9535SharedOutputState::Entry* Xl9535SharedOutputState::find(uint8_t address) {
     return nullptr;
 }
 
-const Xl9535SharedOutputState::Entry* Xl9535SharedOutputState::find(
+const I2cExpanderSharedOutputState::Entry* I2cExpanderSharedOutputState::find(
     uint8_t address
 ) const {
     for (size_t i = 0U; i < MAX_DEVICES; ++i) {
@@ -65,7 +65,7 @@ const Xl9535SharedOutputState::Entry* Xl9535SharedOutputState::find(
     return nullptr;
 }
 
-Xl9535SharedOutputState::Entry* Xl9535SharedOutputState::findOrCreate(
+I2cExpanderSharedOutputState::Entry* I2cExpanderSharedOutputState::findOrCreate(
     uint8_t address
 ) {
     if (Entry* existing = find(address)) return existing;

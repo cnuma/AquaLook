@@ -4,13 +4,13 @@
 
 #include "domain/BinaryActuatorDriver.h"
 #include "domain/ProtocolBuildProfile.h"
-#include "domain/Xl9535SharedOutputState.h"
+#include "domain/I2cExpanderSharedOutputState.h"
 
 namespace AquaLook { namespace Domain {
 
 #if AQUALOOK_V4_ENABLE_I2C
 
-struct Xl9535I2cOps {
+struct I2cExpanderOps {
     bool (*probe)(void* platformContext, uint8_t address);
     bool (*writeRegister16)(
         void* platformContext,
@@ -42,10 +42,10 @@ struct I2cExpanderRegisterMap {
     uint8_t direction;  // sens des broches (1 = entree)
 };
 
-struct Xl9535BinaryActuatorContext {
-    const Xl9535I2cOps* i2c;
+struct I2cExpanderActuatorContext {
+    const I2cExpanderOps* i2c;
     void* platformContext;
-    Xl9535SharedOutputState* sharedOutputState;
+    I2cExpanderSharedOutputState* sharedOutputState;
     // Plan de registres et type attendu. Laisses a zero, le pilote se
     // comporte en XL9535 : les appelants ecrits avant l'arrivee du MCP23017
     // n'ont rien a changer.
@@ -59,7 +59,7 @@ struct Xl9535BinaryActuatorContext {
     BinaryActuatorState lastObserved;
     uint8_t reserved;
 
-    constexpr Xl9535BinaryActuatorContext()
+    constexpr I2cExpanderActuatorContext()
         : i2c(nullptr), platformContext(nullptr), sharedOutputState(nullptr),
           registers(nullptr), expectedControllerType(),
           health(BinaryActuatorHealth::UNKNOWN), configured(0U), address(0U),
@@ -89,19 +89,19 @@ constexpr uint8_t GPIO = 0x12U;
 constexpr uint8_t OLAT = 0x14U;
 }
 
-const BinaryActuatorDriverOps& xl9535BinaryActuatorDriverOps();
+const BinaryActuatorDriverOps& i2cExpanderBinaryActuatorDriverOps();
 
 BinaryActuatorDriverBinding makeXl9535BinaryActuatorDriverBinding(
-    Xl9535BinaryActuatorContext& context
+    I2cExpanderActuatorContext& context
 );
 
 // Meme pilote, autre plan de registres. Le contexte fourni est complete par
 // la fabrique : l'appelant n'a pas a connaitre les numeros de registre.
 BinaryActuatorDriverBinding makeMcp23017BinaryActuatorDriverBinding(
-    Xl9535BinaryActuatorContext& context
+    I2cExpanderActuatorContext& context
 );
 
-bool hasCompleteXl9535I2cOps(const Xl9535I2cOps& operations);
+bool hasCompleteI2cExpanderOps(const I2cExpanderOps& operations);
 
 #endif
 

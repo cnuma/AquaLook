@@ -3,7 +3,7 @@
 #include <Wire.h>
 #include "config.h"
 #include "RelayTopology.h"
-#include "domain/Xl9535SharedOutputState.h"
+#include "domain/I2cExpanderSharedOutputState.h"
 
 class ConfigManager;
 
@@ -23,8 +23,8 @@ public:
     void begin(ConfigManager* config = nullptr);
     void update();
 
-    void setXl9535SharedOutputState(
-        AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
+    void setI2cExpanderSharedOutputState(
+        AquaLook::Domain::I2cExpanderSharedOutputState* sharedOutputState
     );
 
     void mirrorZoneState(uint8_t zone, bool state, uint32_t nowMs) {
@@ -72,7 +72,7 @@ private:
     uint8_t _regP1[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _boardReady[RelayTopology::MAX_RELAY_BOARDS] = {};
     bool _hardwareReady = false;
-    AquaLook::Domain::Xl9535SharedOutputState* _xl9535SharedOutputState = nullptr;
+    AquaLook::Domain::I2cExpanderSharedOutputState* _sharedOutputState = nullptr;
 
     void buildRuntimeTopology();
     int16_t findZoneAssignment(uint8_t zone, uint8_t nbZones) const;

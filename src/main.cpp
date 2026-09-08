@@ -31,7 +31,7 @@
 #include "EquipmentExecutionShadowRuntime.h"
 #include "EquipmentRuntimeConfigStore.h"
 #include "EquipmentOrchestrator.h"
-#include "domain/Xl9535SharedOutputState.h"
+#include "domain/I2cExpanderSharedOutputState.h"
 
 WiFiManager wifiMgr;
 NTPManager ntpMgr;
@@ -55,7 +55,7 @@ AquaLook::Runtime::EquipmentOutputRuntimeAdapter outputAdapter;
 AquaLook::Runtime::EquipmentExecutionShadowRuntime executionShadowRuntime;
 AquaLook::Runtime::EquipmentRuntimeConfigStore equipmentConfigStore;
 AquaLook::Application::EquipmentOrchestrator equipmentOrchestrator;
-AquaLook::Domain::Xl9535SharedOutputState xl9535SharedOutputState;
+AquaLook::Domain::I2cExpanderSharedOutputState sharedOutputState;
 
 static bool equipmentRuntimeReady = false;
 static bool shadowPumpScenarioReady = false;
@@ -511,7 +511,7 @@ void setup() {
 
     splashStep("Configuration");
 
-    relaisMgr.setXl9535SharedOutputState(&xl9535SharedOutputState);
+    relaisMgr.setI2cExpanderSharedOutputState(&sharedOutputState);
     relaisMgr.begin(&configMgr);
     // Couche E/S TOR (MCP23017 configurables) : inerte tant qu'aucune
     // carte n'est declaree. Apres relaisMgr.begin : le bus I2C est pret.
@@ -519,7 +519,7 @@ void setup() {
 
     const bool v4PilotReady = v4PilotRuntime.begin(
         relaisMgr.topology(),
-        xl9535SharedOutputState
+        sharedOutputState
     );
     if (v4PilotReady) {
         outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());

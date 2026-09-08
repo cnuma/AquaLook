@@ -6,8 +6,8 @@
 #include "domain/BinaryActuatorDriverRegistry.h"
 #include "domain/BoardPortModel.h"
 #include "domain/HardwareInventoryModel.h"
-#include "domain/Xl9535BinaryActuatorDriver.h"
-#include "domain/Xl9535SharedOutputState.h"
+#include "domain/I2cExpanderBinaryActuatorDriver.h"
+#include "domain/I2cExpanderSharedOutputState.h"
 #include "RelayTopology.h"
 #include "V4RelayPhysicalBackend.h"
 
@@ -19,7 +19,7 @@ public:
 
     bool begin(
         const RelayTopology::RelayTopologyConfig& topology,
-        Domain::Xl9535SharedOutputState& sharedOutputState
+        Domain::I2cExpanderSharedOutputState& sharedOutputState
     );
 
     bool isReady() const;
@@ -41,7 +41,7 @@ private:
     Domain::PortDefinition _ports[PORT_COUNT];
     Domain::BinaryActuatorDriverBinding _driverStorage[DRIVER_CAPACITY];
     Domain::BinaryActuatorDriverRegistry _driverRegistry;
-    Domain::Xl9535BinaryActuatorContext _xl9535Contexts[BOARD_COUNT];
+    Domain::I2cExpanderActuatorContext _expanderContexts[BOARD_COUNT];
     size_t _boardCount = 0U;
     size_t _portCount = 0U;
     V4RelayPhysicalBackend _backend;

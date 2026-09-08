@@ -59,7 +59,7 @@ bool readRegister16(
     return true;
 }
 
-const Domain::Xl9535I2cOps OPERATIONS = {
+const Domain::I2cExpanderOps OPERATIONS = {
     probe,
     writeRegister16,
     readRegister16
@@ -67,7 +67,7 @@ const Domain::Xl9535I2cOps OPERATIONS = {
 
 } // namespace
 
-const Domain::Xl9535I2cOps& arduinoI2cPlatformOps() {
+const Domain::I2cExpanderOps& arduinoI2cPlatformOps() {
     return OPERATIONS;
 }
 

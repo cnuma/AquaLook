@@ -5,10 +5,10 @@
 #include "EventLog.h"
 #include "FaultManager.h"
 
-void RelaisManager::setXl9535SharedOutputState(
-    AquaLook::Domain::Xl9535SharedOutputState* sharedOutputState
+void RelaisManager::setI2cExpanderSharedOutputState(
+    AquaLook::Domain::I2cExpanderSharedOutputState* sharedOutputState
 ) {
-    _xl9535SharedOutputState = sharedOutputState;
+    _sharedOutputState = sharedOutputState;
 }
 
 void RelaisManager::begin(ConfigManager* config) {
@@ -31,12 +31,12 @@ void RelaisManager::begin(ConfigManager* config) {
         _regP1[b] = inv ? 0xFF : 0x00;
         _boardReady[b] = false;
 
-        if (_xl9535SharedOutputState &&
+        if (_sharedOutputState &&
             RelayTopology::validateBoard(board) &&
             board.controller == RelayTopology::CONTROLLER_XL9535) {
             const uint16_t value = static_cast<uint16_t>(_regP0[b]) |
                 static_cast<uint16_t>(static_cast<uint16_t>(_regP1[b]) << 8U);
-            _xl9535SharedOutputState->seed(board.i2cAddress, value);
+            _sharedOutputState->seed(board.i2cAddress, value);
         }
     }
 

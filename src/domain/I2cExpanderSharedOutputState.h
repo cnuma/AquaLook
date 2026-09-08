@@ -5,11 +5,11 @@
 
 namespace AquaLook { namespace Domain {
 
-class Xl9535SharedOutputState {
+class I2cExpanderSharedOutputState {
 public:
     static constexpr size_t MAX_DEVICES = 8U;
 
-    Xl9535SharedOutputState();
+    I2cExpanderSharedOutputState();
 
     void clear();
     bool seed(uint8_t address, uint16_t value);
