@@ -13,20 +13,21 @@ class RelayPhysicalBackend;
 
 class EquipmentOutputRuntimeAdapter {
 public:
+    // RELAY_MANAGER_FALLBACK a disparu avec le moteur historique : il n'y a
+    // plus qu'un chemin de pilotage, et un echec est un echec.
     enum class ExecutionPath : uint8_t {
         NONE = 0,
         PHYSICAL_BACKEND = 1,
-        RELAY_MANAGER_FALLBACK = 2,
         FAILED = 3
     };
 
     struct ExecutionCounters {
         uint32_t physicalBackend;
-        uint32_t relayManagerFallback;
+
         uint32_t failed;
 
         constexpr ExecutionCounters()
-            : physicalBackend(0U), relayManagerFallback(0U), failed(0U) {}
+            : physicalBackend(0U), failed(0U) {}
     };
 
     void bind(RelaisManager* relayManager);

@@ -415,11 +415,7 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["number"] = AQUALOOK_BUILD_NUMBER;
     build["gitSha"] = AQUALOOK_GIT_SHA;
     build["gitBranch"] = AQUALOOK_GIT_BRANCH;
-#if AQUALOOK_RELAY_BACKEND_V4
     build["relayBackend"] = "v4";
-#else
-    build["relayBackend"] = "legacy";
-#endif
     build["compiledDate"] = __DATE__;
     build["compiledTime"] = __TIME__;
 

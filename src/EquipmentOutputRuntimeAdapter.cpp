@@ -38,9 +38,6 @@ void EquipmentOutputRuntimeAdapter::recordExecutionPath(ExecutionPath path) {
         case ExecutionPath::PHYSICAL_BACKEND:
             ++_executionCounters.physicalBackend;
             break;
-        case ExecutionPath::RELAY_MANAGER_FALLBACK:
-            ++_executionCounters.relayManagerFallback;
-            break;
         case ExecutionPath::FAILED:
             ++_executionCounters.failed;
             break;
@@ -53,7 +50,6 @@ void EquipmentOutputRuntimeAdapter::recordExecutionPath(ExecutionPath path) {
 const char* EquipmentOutputRuntimeAdapter::executionPathName(ExecutionPath path) {
     switch (path) {
         case ExecutionPath::PHYSICAL_BACKEND: return "physical_backend";
-        case ExecutionPath::RELAY_MANAGER_FALLBACK: return "relay_manager_fallback";
         case ExecutionPath::FAILED: return "failed";
         case ExecutionPath::NONE:
         default:
@@ -150,17 +146,6 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
         _relayManager->mirrorZoneState(zoneIndex, active, nowMs);
     }
 
-#if AQUALOOK_RELAY_BACKEND_LEGACY
-    // Profil legacy : le moteur historique est le seul pilote.
-    if (!applied && _relayManager) {
-        applied = _relayManager->setRelay(zoneIndex, active);
-        if (applied) {
-            recordExecutionPath(ExecutionPath::RELAY_MANAGER_FALLBACK);
-        }
-    } else if (appliedByPhysicalBackend) {
-        recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
-    }
-#else
     // Profil V4 : AUCUN repli. Un echec de V4 doit se voir, pas se faire
     // rattraper en silence par le moteur historique.
     //
@@ -171,7 +156,6 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
     if (appliedByPhysicalBackend) {
         recordExecutionPath(ExecutionPath::PHYSICAL_BACKEND);
     }
-#endif
 
     if (!applied) {
         recordExecutionPath(ExecutionPath::FAILED);
@@ -210,13 +194,12 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     EventLog::log(
         LOG_INFO,
-        "Equipment: zone %u %s path=%s exec=%u totals=%lu/%lu/%lu",
+        "Equipment: zone %u %s path=%s exec=%u ok=%lu ko=%lu",
         zoneIndex + 1U,
         active ? "ON" : "OFF",
         executionPathName(_lastExecutionPath),
         static_cast<unsigned>(result.executionId.value),
         static_cast<unsigned long>(_executionCounters.physicalBackend),
-        static_cast<unsigned long>(_executionCounters.relayManagerFallback),
         static_cast<unsigned long>(_executionCounters.failed)
     );
 

@@ -14,7 +14,6 @@
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
-#include "RelaisManagerBackend.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
@@ -39,9 +38,6 @@ NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
 IoExpanderManager ioExpander;
-#if AQUALOOK_RELAY_BACKEND_LEGACY
-AquaLook::Runtime::RelaisManagerBackend relaisBackend;
-#endif
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 ScheduleManager scheduleMgr;
 WebManager webMgr;
@@ -520,11 +516,7 @@ void setup() {
     // Couche E/S TOR (MCP23017 configurables) : inerte tant qu'aucune
     // carte n'est declaree. Apres relaisMgr.begin : le bus I2C est pret.
     ioExpander.begin(&relaisMgr);
-#if AQUALOOK_RELAY_BACKEND_LEGACY
-    relaisBackend.bind(&relaisMgr);
-#endif
 
-#if AQUALOOK_RELAY_BACKEND_V4
     const bool v4PilotReady = v4PilotRuntime.begin(
         relaisMgr.topology(),
         xl9535SharedOutputState
@@ -551,10 +543,6 @@ void setup() {
         EventLog::log(LOG_ERROR,
                       "Relais V4: pilote indisponible, aucune sortie pilotable");
     }
-#else
-    outputAdapter.setPhysicalBackend(&relaisBackend);
-    EventLog::log(LOG_INFO, "Relais: profil backend legacy");
-#endif
 
     outputAdapter.bind(&relaisMgr);
 
@@ -666,7 +654,6 @@ void setup() {
     webMgr.setIoExpander(&ioExpander);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
-#if AQUALOOK_RELAY_BACKEND_V4
     // N annonce que ce dont ce message est sur. Le perimetre pilote depend
     // du masque de zones migrees, qui evolue : le graver ici avait deja
     // produit un journal contradictoire au Gate 3 (le demarrage annoncait
@@ -674,10 +661,6 @@ void setup() {
     // exact est journalise par V4PilotRuntime, qui, lui, le connait.
     EventLog::log(LOG_INFO,
                   "Parite: plan V4 vs table de cablage a chaque decision");
-#else
-    EventLog::log(LOG_INFO,
-                  "Parite: observationnel, legacy autoritaire");
-#endif
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
 }
 

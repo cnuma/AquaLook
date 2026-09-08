@@ -342,13 +342,6 @@ EquipmentManager::ActionResult EquipmentManager::executeZone(uint8_t zone, bool 
         if (result.succeeded()) return ACTION_OK;
     }
 
-#if AQUALOOK_RELAY_BACKEND_LEGACY
-    if (hasRelayExecutor()) {
-        return _relayExecutor->setAssignment(resolution.relayAssignmentIndex, state)
-            ? ACTION_OK
-            : ACTION_EXECUTION_FAILED;
-    }
-#endif
     // Profil V4 : pas de second chemin. Si l'adaptateur echoue, la commande
     // echoue et se voit -- la rattraper par le moteur historique reviendrait
     // a masquer le defaut qu'on cherche precisement a rendre visible.
