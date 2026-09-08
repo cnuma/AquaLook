@@ -1,0 +1,188 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AquaLook - Scripts</title>
+<link rel="stylesheet" href="/style-base.css">
+<style>
+body{margin:0;background:var(--bg,#101820);color:var(--text,#eef);font-family:Arial,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:21px;margin:0 0 4px}
+.sub{color:var(--text2,#91aabd);font-size:13px;margin:0 0 16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font-size:11px;color:var(--text2,#91aabd);text-transform:uppercase;letter-spacing:.5px}
+select,input[type=text],input[type=number]{padding:8px;border-radius:6px;border:1px solid var(--border2,#385064);background:var(--bg2,#172532);color:var(--text,#eef);font-size:14px}
+textarea{width:100%;box-sizing:border-box;min-height:320px;padding:12px;border-radius:8px;
+ border:1px solid var(--border2,#385064);background:#0a1219;color:#d7e9f3;
+ font-family:var(--mono,monospace);font-size:13.5px;line-height:1.55;resize:vertical}
+button{padding:10px 16px;border:0;border-radius:7px;font-size:14px;font-weight:700;
+ background:#4fc3f7;color:#06141b;cursor:pointer}
+button.sec{background:var(--border2,#526d80);color:var(--text,#eef);font-weight:400}
+button.danger{background:#a33;color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+#msg{margin-top:12px;padding:11px 13px;border-radius:7px;font-size:13.5px;
+ border:1px solid var(--border2,#385064);background:var(--bg2,#172532);overflow-wrap:anywhere}
+#msg.ok{border-color:#41956b;color:#6fcf97}
+#msg.ko{border-color:#d59b35;color:#ffd88b}
+details{margin-top:18px;border:1px solid var(--border2,#385064);border-radius:8px;
+ padding:10px 14px;background:var(--bg2,#172532)}
+summary{cursor:pointer;color:var(--text2,#91aabd);font-size:14px}
+details pre{font-family:var(--mono,monospace);font-size:12.5px;line-height:1.6;
+ color:#d7e9f3;overflow-x:auto}
+a.back{display:inline-block;margin-top:18px;padding:9px 14px;border:1px solid var(--border2,#526d80);
+ border-radius:7px;color:var(--text2,#d7e9f3);text-decoration:none;font-size:14px}
+</style></head><body>
+<div class="wrap">
+  <h1>Scripts</h1>
+  <p class="sub">Écrits ici, compilés par le navigateur, vérifiés par le module avant d'être acceptés.</p>
+
+  <div class="row">
+    <div class="f"><label>Emplacement</label><select id="slot"></select></div>
+    <div class="f"><label>Nom</label><input type="text" id="nom" maxlength="23" placeholder="Sans nom"></div>
+    <div class="f"><label>Déclenché par l'entrée</label><input type="number" id="entree" min="0" max="65535" placeholder="100"></div>
+    <div class="f"><label>Actif</label><select id="actif"><option value="1">oui</option><option value="0">non</option></select></div>
+  </div>
+
+  <textarea id="src" spellcheck="false" placeholder="# Exemple&#10;si entree(100) alors&#10;  suspendre zone 5&#10;  message 900&#10;finsi"></textarea>
+
+  <div class="bar">
+    <button onclick="verifier()">Vérifier</button>
+    <button onclick="enregistrer()">Enregistrer</button>
+    <button class="sec" onclick="charger()">Recharger</button>
+    <button class="danger" onclick="effacer()">Effacer</button>
+  </div>
+
+  <div id="msg">Choisissez un emplacement.</div>
+
+  <details><summary>Mémo du langage</summary><pre>
+si &lt;condition&gt; alors ... sinon ... finsi
+tantque &lt;condition&gt; faire ... fintantque
+pour a de 1 à 5 faire ... finpour
+
+attendre &lt;secondes&gt;          rend la main, n'occupe pas le module
+demarrer zone &lt;id&gt; pendant &lt;secondes&gt;
+arreter zone &lt;id&gt;            arrêt franc, le reliquat est perdu
+suspendre zone &lt;id&gt;          conserve le reliquat
+reprendre zone &lt;id&gt;          repart pour le reliquat conservé
+message &lt;code&gt;
+
+a = &lt;expression&gt;             variables a à h
+
+entree(&lt;id&gt;)      valeur stabilisée d'une entrée : 0 ou 1
+zoneactive(&lt;id&gt;)  la zone arrose-t-elle : 0 ou 1
+reste(&lt;id&gt;)       secondes restantes sur la zone
+
++ - * / %   == != &lt; &lt;= &gt; &gt;=   et  ou  non   ( )
+# commentaire jusqu'à la fin de la ligne
+
+Les identifiants de zone et d'entrée sont STABLES : ils ne changent pas
+quand une zone est renommée ou déplacée dans la liste.
+  </pre></details>
+
+  <a class="back" href="/index.html">Retour à AquaLook</a>
+</div>
+
+<script src="/script-lang.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let MAX = 6;
+
+function dire(texte, etat) {
+  const m = $('msg');
+  m.textContent = texte;
+  m.className = etat || '';
+}
+
+async function listeSlots() {
+  const d = await (await fetch('/api/scripts')).json();
+  MAX = d.max;
+  $('slot').innerHTML = d.scripts.map(s =>
+    `<option value="${s.i}">${s.i + 1} — ${s.utilise ? s.nom : 'vide'}</option>`).join('');
+  return d;
+}
+
+function compiler() {
+  return AquaScript.compile($('src').value);
+}
+
+function verifier() {
+  try {
+    const code = compiler();
+    dire('Compilé : ' + code.length + ' octets. Le module le vérifiera à son tour.', 'ok');
+    return code;
+  } catch (e) {
+    // La ligne compte autant que le message : sans elle, il faut relire tout
+    // le script pour trouver le mot fautif.
+    dire(e.line ? ('Ligne ' + e.line + ' : ' + e.message) : e.message, 'ko');
+    return null;
+  }
+}
+
+async function enregistrer() {
+  const code = verifier();
+  if (!code) return;
+  const payload = {
+    i: parseInt($('slot').value, 10),
+    nom: $('nom').value || 'Sans nom',
+    actif: $('actif').value === '1',
+    entree: parseInt($('entree').value, 10) || 0,
+    code: code,
+    source: $('src').value
+  };
+  const r = await fetch('/api/script-save', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const d = await r.json();
+  if (d.ok) {
+    dire('Enregistré : ' + d.octets + ' octets acceptés par le module.', 'ok');
+    await listeSlots();
+  } else {
+    // Un refus du module laisse INTACT le programme precedent : le dire evite
+    // de croire qu'on vient de tout perdre.
+    dire('Refusé par le module : ' + (d.error || 'raison inconnue') +
+         '. Le script précédent est intact.', 'ko');
+  }
+}
+
+async function charger() {
+  const i = parseInt($('slot').value, 10);
+  const d = await (await fetch('/api/script-one?i=' + i)).json();
+  if (!d.ok) {
+    $('nom').value = ''; $('entree').value = ''; $('src').value = '';
+    dire('Emplacement vide.', '');
+    return;
+  }
+  $('nom').value = d.nom;
+  $('entree').value = d.entree;
+  $('actif').value = d.actif ? '1' : '0';
+
+  const r = await fetch('/api/script-source?i=' + i);
+  if (r.status === 200) {
+    $('src').value = await r.text();
+    dire('Chargé : ' + d.code.length + ' octets, source retrouvée.', 'ok');
+  } else {
+    $('src').value = '';
+    // Le programme tourne quand meme : ne pas laisser croire a une perte.
+    dire('Chargé : ' + d.code.length + ' octets. Le texte source n\'est pas ' +
+         'sur la carte SD — le script fonctionne, mais il faudra le réécrire ' +
+         'pour le modifier.', 'ko');
+  }
+}
+
+async function effacer() {
+  const i = parseInt($('slot').value, 10);
+  if (!confirm('Effacer le script ' + (i + 1) + ' ?')) return;
+  const r = await fetch('/api/script-erase', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ i: i })
+  });
+  const d = await r.json();
+  dire(d.ok ? 'Effacé.' : ('Échec : ' + (d.error || '')), d.ok ? 'ok' : 'ko');
+  await listeSlots();
+}
+
+$('slot').addEventListener('change', charger);
+listeSlots().then(charger);
+</script>
+</body></html>

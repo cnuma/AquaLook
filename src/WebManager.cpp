@@ -417,8 +417,8 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/ntp",           handleSetNtp);
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
-    POST_JSON("/api/scripts/save",  handleSaveScript);
-    POST_JSON("/api/scripts/erase", handleEraseScript);
+    POST_JSON("/api/script-save",  handleSaveScript);
+    POST_JSON("/api/script-erase", handleEraseScript);
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
     POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
@@ -663,6 +663,12 @@ void WebManager::setupRoutes() {
     });
 
     // ── Scripts de l'utilisateur ────────────────────────────────────────
+    //
+    // ATTENTION aux prefixes : ESPAsyncWebServer fait repondre un handler a
+    // ses sous-chemins. "/api/scripts" capturait donc "/api/scripts/one" et
+    // renvoyait la liste a la place du script demande. Les routes filles
+    // portent un tiret pour n'avoir aucun prefixe commun -- plus sur que de
+    // compter sur l'ordre d'enregistrement, qui se romprait au premier ajout.
     // La liste ne renvoie que les entetes : relire six bytecodes pour
     // afficher une liste couterait cher sans rien apporter.
     _server.on("/api/scripts", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -688,7 +694,38 @@ void WebManager::setupRoutes() {
         req->send(200, "application/json", body);
     });
 
-    _server.on("/api/scripts/one", HTTP_GET, [](AsyncWebServerRequest* req) {
+    // Texte source d'un script, range sur la carte SD.
+    //
+    // Le module ne le lit JAMAIS pour agir -- il n'execute que le bytecode.
+    // Le garder sert a une seule chose : que l'editeur retrouve ce que
+    // l'utilisateur a ecrit, commentaires et mise en forme compris. Un
+    // editeur qui rendrait un texte reconstitue a partir du bytecode
+    // perdrait tout cela, et cesserait d'etre un editeur.
+    _server.on("/api/script-source", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        const uint8_t i = req->hasParam("i")
+            ? (uint8_t)req->getParam("i")->value().toInt() : 255U;
+        if (i >= ScriptStore::MAX_SCRIPTS || !_storage) {
+            req->send(404, "text/plain", "");
+            return;
+        }
+        char path[32];
+        snprintf(path, sizeof(path), "/scripts/s%u.txt", (unsigned)i);
+        if (!_storage->isSdAvailable() || !_storage->existsOnSd(path)) {
+            // Pas de source enregistree n'est pas une erreur : le script
+            // tourne quand meme, seule l'edition est appauvrie.
+            req->send(204, "text/plain", "");
+            return;
+        }
+        FsFile f;
+        if (!_storage->openRead(path, f)) { req->send(500, "text/plain", ""); return; }
+        String text;
+        text.reserve(2048);
+        while (f.available()) text += (char)f.read();
+        _storage->closeFile(f);
+        req->send(200, "text/plain; charset=utf-8", text);
+    });
+
+    _server.on("/api/script-one", HTTP_GET, [](AsyncWebServerRequest* req) {
         const uint8_t i = req->hasParam("i")
             ? (uint8_t)req->getParam("i")->value().toInt() : 255U;
         ScriptStore::Meta meta;
@@ -1698,6 +1735,30 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
     if (!ScriptStore::save(index, meta, bytes, reason)) {
         sendError(req, reason);
         return;
+    }
+
+    // Le source suit le bytecode, jamais l'inverse : si l'ecriture SD echoue,
+    // le script tourne quand meme. On le signale sans faire echouer
+    // l'enregistrement -- perdre le confort d'edition n'est pas perdre la
+    // regle.
+    bool sourceSaved = false;
+    const char* source = doc["source"] | "";
+    if (_storage && _storage->isSdAvailable() && source[0] != ' ') {
+        // openWrite cree deja le repertoire parent si besoin.
+        char path[32];
+        snprintf(path, sizeof(path), "/scripts/s%u.txt", (unsigned)index);
+        FsFile f;
+        if (_storage->openWrite(path, f)) {
+            const size_t len = strlen(source);
+            sourceSaved = _storage->writeChunk(
+                f, reinterpret_cast<const uint8_t*>(source), len) == (int32_t)len;
+            _storage->closeFile(f);
+        }
+        if (!sourceSaved) {
+            EventLog::log(LOG_WARN,
+                          "Scripts: source %u non enregistree, le programme tourne quand meme",
+                          (unsigned)index);
+        }
     }
     JsonDocument out;
     out["ok"] = true;
