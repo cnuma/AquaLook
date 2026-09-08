@@ -14,6 +14,8 @@ void ScriptRunner::begin(const InputSampler* inputs, ScheduleManager* schedule,
     _config = config;
     for (uint8_t i = 0U; i < ScriptStore::MAX_SCRIPTS; ++i) {
         _seenTransitions[i] = 0U;
+        _seenZoneActive[i] = false;
+        _lastStartMs[i] = 0U;
         _lastAbort[i] = "";
     }
     _primed = false;
@@ -86,25 +88,59 @@ void ScriptRunner::update() {
     ScriptStore::Meta metas[ScriptStore::MAX_SCRIPTS];
     ScriptStore::loadAllMeta(metas, ScriptStore::MAX_SCRIPTS);
 
+    const uint32_t now = millis();
+
     for (uint8_t i = 0U; i < ScriptStore::MAX_SCRIPTS; ++i) {
         const ScriptStore::Meta& m = metas[i];
         if (!m.used || !m.enabled) continue;
-        if (m.trigger != ScriptStore::TRIGGER_INPUT_CHANGE) continue;
-        if (m.triggerInputId == 0U) continue;
+        if (m.trigger == ScriptStore::TRIGGER_NONE) continue;
+        if (m.triggerTarget == 0U) continue;
 
-        const uint32_t seen = _inputs->transitions(m.triggerInputId);
+        bool declenche = false;
 
-        // Premier passage : on prend acte de l'etat sans rien declencher.
-        // Sinon un simple redemarrage relancerait tous les scripts dont
-        // l'entree a bouge un jour -- des vannes qui s'ouvrent au reveil du
-        // module sans que personne ne l'ait demande.
-        if (!_primed) { _seenTransitions[i] = seen; continue; }
+        if (m.trigger == ScriptStore::TRIGGER_INPUT_CHANGE) {
+            const uint32_t seen = _inputs->transitions(m.triggerTarget);
+            // Premier passage : on prend acte sans rien declencher. Sinon un
+            // simple redemarrage relancerait tous les scripts dont l'entree a
+            // bouge un jour -- des vannes qui s'ouvrent au reveil du module
+            // sans que personne ne l'ait demande.
+            if (!_primed) { _seenTransitions[i] = seen; continue; }
+            declenche = (seen != _seenTransitions[i]);
+            _seenTransitions[i] = seen;
 
-        if (seen == _seenTransitions[i]) continue;
-        _seenTransitions[i] = seen;
+        } else if (ScriptStore::triggerIsZone(m.trigger)) {
+            if (!_schedule || !_config) continue;
+            const uint8_t z = _config->zoneIndexById(m.triggerTarget);
+            if (z >= MAX_ZONES) continue;
+            const bool actif = _schedule->isZoneActive(z);
+            if (!_primed) { _seenZoneActive[i] = actif; continue; }
+            // La TRANSITION, pas l'etat : un script attache au demarrage de la
+            // zone 5 part quand elle passe de fermee a ouverte, une fois.
+            if (actif != _seenZoneActive[i]) {
+                declenche = (m.trigger == ScriptStore::TRIGGER_ZONE_START)
+                    ? actif : !actif;
+            }
+            _seenZoneActive[i] = actif;
+        }
+
+        if (!declenche) continue;
+
+        // Un script qui commande la zone qui le declenche se rappellerait
+        // aussitot. Le refus de relancer un script EN COURS ne suffit pas :
+        // un script court a le temps de finir avant de se voir relancer.
+        if (_lastStartMs[i] != 0U && (now - _lastStartMs[i]) < MIN_RESTART_MS) {
+            EventLog::log(LOG_WARN,
+                          "Script %u non relance : moins de %lus depuis son "
+                          "dernier depart (boucle probable)",
+                          (unsigned)(i + 1U),
+                          (unsigned long)(MIN_RESTART_MS / 1000UL));
+            continue;
+        }
 
         const char* reason = "";
-        if (!start(i, reason)) {
+        if (start(i, reason)) {
+            _lastStartMs[i] = now;
+        } else {
             // Ne jamais avaler un declenchement manque : c'est precisement le
             // cas ou l'utilisateur croira que sa regle a joue.
             EventLog::log(LOG_WARN, "Script %u non lance (%s)",

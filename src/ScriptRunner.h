@@ -76,6 +76,15 @@ private:
 
     // Compteur de transitions vu au dernier passage, par script.
     uint32_t _seenTransitions[ScriptStore::MAX_SCRIPTS] = {};
+    // Etat d'arrosage de la zone surveillee, vu au dernier passage.
+    bool _seenZoneActive[ScriptStore::MAX_SCRIPTS] = {};
+    // Instant du dernier depart. Un script declenche par le demarrage d'une
+    // zone et qui demarre cette meme zone se rappellerait sans fin : le
+    // module refuse deja de relancer un script EN COURS, mais un script
+    // court se terminerait avant de se voir relancer. Ce delai casse la
+    // boucle dans tous les cas.
+    uint32_t _lastStartMs[ScriptStore::MAX_SCRIPTS] = {};
+    static constexpr uint32_t MIN_RESTART_MS = 5000U;
     const char* _lastAbort[ScriptStore::MAX_SCRIPTS] = {};
     bool _primed = false;
 };

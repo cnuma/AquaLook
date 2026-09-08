@@ -36,18 +36,30 @@ static constexpr uint8_t MAX_SCRIPTS = 6;
 static constexpr uint16_t MAX_BYTECODE = 400;
 static constexpr uint8_t MAX_NAME = 24;
 
-// Ce qui declenche un script. Un seul mode pour l'instant : le changement de
-// valeur STABILISEE d'une entree. Les declenchements horaires viendront, et
-// la place est prevue pour eux.
-static constexpr uint8_t TRIGGER_NONE = 0;
-static constexpr uint8_t TRIGGER_INPUT_CHANGE = 1;
+// Ce qui declenche un script.
+//
+// Tous surveillent une TRANSITION, jamais un etat : un script ne part pas
+// parce qu'une zone arrose, mais parce qu'elle VIENT de commencer. Sans
+// cela, un script se relancerait a chaque tour de boucle tant que la
+// condition dure.
+static constexpr uint8_t TRIGGER_NONE = 0;         // lancement manuel seulement
+static constexpr uint8_t TRIGGER_INPUT_CHANGE = 1; // cible = identifiant d'entree
+static constexpr uint8_t TRIGGER_ZONE_START = 2;   // cible = identifiant de zone
+static constexpr uint8_t TRIGGER_ZONE_STOP = 3;    // cible = identifiant de zone
+
+inline bool triggerIsZone(uint8_t trigger) {
+    return trigger == TRIGGER_ZONE_START || trigger == TRIGGER_ZONE_STOP;
+}
 
 struct Meta {
     bool     used;
     bool     enabled;
     uint8_t  trigger;
     uint8_t  reserved;
-    uint16_t triggerInputId;   // identifiant STABLE de l'entree
+    // Cible du declencheur : identifiant STABLE d'une entree ou d'une zone
+    // selon le mode. Un seul champ, parce qu'un script n'a qu'un declencheur
+    // -- deux champs dont un seul sert finiraient par se contredire.
+    uint16_t triggerTarget;
     uint16_t codeSize;
     char     name[MAX_NAME];
 };

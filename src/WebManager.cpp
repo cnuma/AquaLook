@@ -701,7 +701,9 @@ void WebManager::setupRoutes() {
             o["nom"] = metas[i].name;
             o["actif"] = metas[i].enabled;
             o["declencheur"] = metas[i].trigger;
-            o["entree"] = metas[i].triggerInputId;
+            o["cible"] = metas[i].triggerTarget;
+            // Conserve : un client plus ancien lit encore ce nom.
+            o["entree"] = metas[i].triggerTarget;
             o["octets"] = metas[i].codeSize;
             if (_scripts) {
                 o["encours"] = _scripts->isRunning(i);
@@ -759,7 +761,8 @@ void WebManager::setupRoutes() {
             doc["nom"] = meta.name;
             doc["actif"] = meta.enabled;
             doc["declencheur"] = meta.trigger;
-            doc["entree"] = meta.triggerInputId;
+            doc["cible"] = meta.triggerTarget;
+            doc["entree"] = meta.triggerTarget;
             JsonArray c = doc["code"].to<JsonArray>();
             for (uint16_t k = 0U; k < meta.codeSize; ++k) c.add(code[k]);
         }
@@ -1782,7 +1785,19 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
     meta.used = true;
     meta.enabled = doc["actif"] | true;
     meta.trigger = doc["declencheur"] | ScriptStore::TRIGGER_INPUT_CHANGE;
-    meta.triggerInputId = doc["entree"] | 0U;
+    // « cible » d'abord, « entree » ensuite : le second nom n'existe que pour
+    // les clients ecrits avant l'arrivee des declencheurs de zone.
+    meta.triggerTarget = doc["cible"] | (uint16_t)(doc["entree"] | 0U);
+    if (meta.trigger > ScriptStore::TRIGGER_ZONE_STOP) {
+        sendError(req, "declencheur inconnu");
+        return;
+    }
+    // Un declencheur sans cible ne partirait jamais : le refuser vaut mieux
+    // que d'enregistrer une regle qui ne joue pas.
+    if (meta.trigger != ScriptStore::TRIGGER_NONE && meta.triggerTarget == 0U) {
+        sendError(req, "ce declencheur demande une cible : entree ou zone");
+        return;
+    }
     meta.codeSize = n;
     strlcpy(meta.name, doc["nom"] | "sans nom", sizeof(meta.name));
 

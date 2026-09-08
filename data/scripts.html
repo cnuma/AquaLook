@@ -89,7 +89,13 @@ a.back{display:inline-block;margin-top:16px;padding:9px 14px;
       <div class="row">
         <div class="f"><label>Emplacement</label><select id="slot"></select></div>
         <div class="f"><label>Nom</label><input type="text" id="nom" maxlength="23" placeholder="Sans nom"></div>
-        <div class="f"><label>Déclenché par l'entrée</label><input type="number" id="entree" min="0" max="65535" placeholder="0"></div>
+        <div class="f"><label>Déclenché par</label><select id="declencheur" onchange="majCible()">
+          <option value="1">le changement d'une entrée</option>
+          <option value="2">le démarrage d'une zone</option>
+          <option value="3">l'arrêt d'une zone</option>
+          <option value="0">rien (lancement manuel)</option>
+        </select></div>
+        <div class="f" id="f-cible"><label id="lbl-cible">Entrée</label><select id="cible"></select></div>
         <div class="f"><label>Actif</label><select id="actif"><option value="1">oui</option><option value="0">non</option></select></div>
       </div>
 
@@ -112,10 +118,17 @@ a.back{display:inline-block;margin-top:16px;padding:9px 14px;
         <tr><td>Emplacement</td><td>Le module garde <b>six</b> scripts. Enregistrer
           remplace celui-ci ; les cinq autres ne bougent pas.</td></tr>
         <tr><td>Nom</td><td>Pour vous y retrouver dans la liste et dans le journal.</td></tr>
-        <tr><td>Déclenché&nbsp;par<br>l'entrée</td><td>L'identifiant d'une entrée du
-          panneau de droite. Le script part quand sa valeur <b>stabilisée change</b>,
-          dans un sens ou dans l'autre — un contact qui claquette ne déclenche rien.
-          Laisser <b>0</b> pour un script lancé uniquement à la main.</td></tr>
+        <tr><td>Déclenché&nbsp;par</td><td>Ce qui réveille le script. Tous les modes
+          surveillent une <b>transition</b>, jamais un état : le script part une fois,
+          au moment où ça change.<br>
+          <b>Le changement d'une entrée</b> — sa valeur stabilisée bascule, dans un
+          sens ou dans l'autre ; un contact qui claquette ne déclenche rien.<br>
+          <b>Le démarrage / l'arrêt d'une zone</b> — au moment où elle s'ouvre ou se
+          ferme, quelle qu'en soit la cause : planning, marche forcée, ou un autre
+          script.<br>
+          <b>Rien</b> — le script ne part que par « Lancer maintenant ».<br>
+          Un même script ne repart pas deux fois en moins de cinq secondes : c'est
+          ce qui empêche un script commandant sa propre zone de boucler.</td></tr>
         <tr><td>Actif</td><td>Un script inactif reste enregistré mais ne part jamais seul.</td></tr>
       </table>
       <p style="font-size:13px;color:var(--text2);line-height:1.6">
@@ -223,6 +236,7 @@ async function rendreReferences() {
          + '<code>zone ' + id + '</code>'
          + '<span class="quoi">' + (z.name || ('Zone ' + (i + 1)))
          + (z.hasOutput === false ? ' — sans sortie' : '') + '</span></button>';
+      ZONES.push({ id: id, nom: z.name || ('Zone ' + (i + 1)) });
     });
   } catch (e) { h += '<div class="vide">Zones illisibles.</div>'; }
 
@@ -239,6 +253,7 @@ async function rendreReferences() {
          + '<code>entree(' + a.id + ')</code>'
          + '<span class="quoi">' + a.roleName + ' — carte ' + a.board
          + ' voie ' + a.channel + '</span></button>';
+      ENTREES.push({ id: a.id, nom: a.roleName });
     });
   } catch (e) { h += '<div class="vide">Entrées illisibles.</div>'; }
 
@@ -297,6 +312,29 @@ async function definirSecret() {
   }
 }
 
+// La cible depend du declencheur : une entree ou une zone, jamais les deux.
+// Un champ « entree » unique obligeait a saisir un identifiant de zone dans
+// une case nommee « entree » -- exactement le genre d'etiquette qui ment.
+let ZONES = [], ENTREES = [];
+
+function majCible(garder) {
+  const t = parseInt($('declencheur').value, 10);
+  const f = $('f-cible'), sel = $('cible');
+  if (t === 0) { f.style.display = 'none'; return; }
+  f.style.display = '';
+  const zone = (t === 2 || t === 3);
+  $('lbl-cible').textContent = zone ? 'Zone' : 'Entrée';
+  const liste = zone ? ZONES : ENTREES;
+  if (!liste.length) {
+    sel.innerHTML = '<option value="0">' + (zone ? 'aucune zone' : 'aucune entrée déclarée') + '</option>';
+    return;
+  }
+  sel.innerHTML = liste.map(function (o) {
+    return '<option value="' + o.id + '">' + o.id + ' — ' + o.nom + '</option>';
+  }).join('');
+  if (garder) sel.value = String(garder);
+}
+
 function dire(texte, etat) {
   const m = $('msg');
   m.textContent = texte;
@@ -351,7 +389,8 @@ async function enregistrer() {
     i: i,
     nom: $('nom').value || 'Sans nom',
     actif: $('actif').value === '1',
-    entree: parseInt($('entree').value, 10) || 0,
+    declencheur: parseInt($('declencheur').value, 10),
+    cible: parseInt($('cible').value, 10) || 0,
     code: code,
     source: $('src').value,
     nonce: etat.nonce,
@@ -377,12 +416,14 @@ async function charger() {
   const i = parseInt($('slot').value, 10);
   const d = await (await fetch('/api/script-one?i=' + i)).json();
   if (!d.ok) {
-    $('nom').value = ''; $('entree').value = ''; $('src').value = '';
+    $('nom').value = ''; $('src').value = '';
+    $('declencheur').value = '1'; majCible();
     dire('Emplacement vide.', '');
     return;
   }
   $('nom').value = d.nom;
-  $('entree').value = d.entree;
+  $('declencheur').value = String(d.declencheur);
+  majCible(d.cible || d.entree || 0);
   $('actif').value = d.actif ? '1' : '0';
 
   const r = await fetch('/api/script-source?i=' + i);
@@ -431,7 +472,11 @@ async function effacer() {
 
 $('slot').addEventListener('change', charger);
 rendreCommandes();
-rendreReferences();
-listeSlots().then(charger);
+// Les listes de cibles viennent des memes donnees que le panneau de droite :
+// il faut donc les avoir lues AVANT de remplir le formulaire.
+rendreReferences().then(function () {
+  majCible();
+  return listeSlots();
+}).then(charger);
 </script>
 </body></html>
