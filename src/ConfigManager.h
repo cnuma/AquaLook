@@ -419,7 +419,6 @@ private:
     void      markSaveOk();
 
     bool loadNvs();
-    bool loadLegacyJson();
     void defaults();
     void deferSave();  // marque une sauvegarde en attente, groupée par update()
 

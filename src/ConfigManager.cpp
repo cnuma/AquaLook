@@ -191,29 +191,12 @@ void ConfigManager::begin() {
 
     if (loadNvs()) return;
 
-    // Migration unique depuis l'ancien /config.json, sans jamais le réécrire.
-    if (loadLegacyJson()) {
-        // L'ancien JSON ne portait qu'une palette de quatre couleurs : on la
-        // deplie en une couleur par zone, a l'identique de ce qu'il affichait.
-        seedZoneColorsFromPalette(_zoneColors, _display);
-        EventLog::log(LOG_INFO, "Config: migration LittleFS -> NVS");
-        save();
-
-        // Vérifier que le bloc NVS existe avant de retirer l'ancien JSON.
-        Preferences check;
-        bool migrated = false;
-        if (check.begin(CFG_NVS_NAMESPACE, true)) {
-            migrated = (check.getBytesLength(CFG_NVS_KEY) == sizeof(PersistedConfig));
-            check.end();
-        }
-        if (migrated && LittleFS.exists(CFG_PATH)) {
-            if (LittleFS.remove(CFG_PATH))
-                EventLog::log(LOG_INFO, "Config: ancien JSON supprime apres migration");
-            else
-                EventLog::log(LOG_WARN, "Config: ancien JSON conserve (suppression impossible)");
-        }
-        return;
-    }
+    // La migration depuis l'ancien /config.json (LittleFS) a ete retiree le
+    // 8 septembre 2026. Elle datait du passage a NVS, quatre versions de
+    // schema plus tot : un module encore sur JSON aurait saute les schemas
+    // 1 a 4 sans jamais demarrer entre-temps. Le lecteur JSON complet
+    // coutait 4,4 Ko de flash pour un chemin que plus aucun module vivant
+    // ne peut emprunter.
 
     if (_nvsRejected) {
         EventLog::log(LOG_ERROR,
@@ -504,159 +487,6 @@ bool ConfigManager::loadNvs() {
 //  Chargement depuis flash
 //  Migration v1 → v2 : sections ntp/owm/system absentes → defaults
 // ─────────────────────────────────────────────────────────────
-bool ConfigManager::loadLegacyJson() {
-    if (!LittleFS.exists(CFG_PATH)) return false;
-
-    File f = LittleFS.open(CFG_PATH, "r");
-    if (!f) return false;
-
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, f);
-    f.close();
-
-    if (err) {
-        // Tout échec de parsing = config inutilisable — reset complet.
-        // Un chargement partiel (IncompleteInput) laisse un état hybride
-        // imprévisible (ex. nbZones=8 sans le reste de la config) — inacceptable.
-        EventLog::log(LOG_ERROR, "Config: JSON invalide (%s) — reset defauts", err.c_str());
-        return false;
-    }
-
-    int version = doc["version"] | 0;
-    // v1 accepté — on migre en chargeant les sections manquantes avec defaults
-    // version 0 = JSON minimal du portail captif (wifi seulement) — accepté
-    if (version < 0) {
-        EventLog::log(LOG_WARN, "Config: version inconnue (%d) — reset", version);
-        return false;
-    }
-    bool needMigration = (version < CFG_VERSION);
-
-    // ── WiFi ──────────────────────────────────────────────────
-    JsonObjectConst w = doc["wifi"];
-    if (w) {
-        strlcpy(_wifi.ssid,     w["ssid"]     | "", sizeof(_wifi.ssid));
-        strlcpy(_wifi.password, w["password"] | "", sizeof(_wifi.password));
-    }
-
-    // ── Touch ──────────────────────────────────────────────────
-    JsonObjectConst t = doc["touch"];
-    if (t) {
-        _touch.xMin = t["xMin"] | 300;
-        _touch.xMax = t["xMax"] | 3758;
-        _touch.yMin = t["yMin"] | 324;
-        _touch.yMax = t["yMax"] | 3790;
-    }
-
-    // ── Manuel ─────────────────────────────────────────────────
-    JsonObjectConst man = doc["manual"];
-    if (man) {
-        _manual.durationMin = man["durationMin"] | (uint16_t)10;
-    }
-
-    // ── NTP (v2) ───────────────────────────────────────────────
-    JsonObjectConst ntp = doc["ntp"];
-    if (ntp) {
-        strlcpy(_ntp.server, ntp["server"] | "pool.ntp.org", sizeof(_ntp.server));
-        _ntp.gmtOffset = ntp["gmtOffset"] | (int32_t)3600;
-        _ntp.dstOffset = ntp["dstOffset"] | (int32_t)3600;
-    }
-    // si absent (migration v1) : valeurs défaut déjà en place via CfgNtp()
-
-    // ── OWM (v2) ───────────────────────────────────────────────
-    JsonObjectConst owm = doc["owm"];
-    if (owm) {
-        strlcpy(_owm.apiKey,  owm["apiKey"]  | "",       sizeof(_owm.apiKey));
-        _owm.lat = owm["lat"] | 0.0f;
-        _owm.lon = owm["lon"] | 0.0f;
-        strlcpy(_owm.units,   owm["units"]   | "metric", sizeof(_owm.units));
-        strlcpy(_owm.city,    owm["city"]    | "",       sizeof(_owm.city));
-        strlcpy(_owm.country, owm["country"] | "FR",     sizeof(_owm.country));
-    }
-
-    // ── Système (v2) ───────────────────────────────────────────
-    JsonObjectConst sys = doc["system"];
-    if (sys) {
-        _system.maxWateringMin   = sys["maxWateringMin"]  | (uint16_t)60;
-        _system.screenTimeoutMin = sys["screenTimeout"]   | (uint8_t)5;
-        _system.ledMode          = sys["ledMode"]         | (uint8_t)1;
-        // nbZones : clamp entre 1 et MAX_ZONES
-        uint8_t nz = sys["nbZones"] | (uint8_t)NB_ZONES;
-        _system.nbZones = constrain(nz, 1, MAX_ACTIVE_ZONES);
-        _system.nbRelaisPhysical = _system.nbZones;
-        // relayLogic : si absent du JSON (config anterieure), defaut=1 (direct)
-        // Le champ | 255 distingue "absent" de "present a 0"
-        uint8_t rl = sys["relayLogic"] | (uint8_t)255;
-        _system.relayLogic = (rl <= 1) ? rl : 1;  // absent -> 1 (direct)
-        uint8_t rc = sys["relayController"] | (uint8_t)RELAY_CONTROLLER_XL9535;
-        _system.relayController = (rc <= RELAY_CONTROLLER_MCP23017) ? rc : RELAY_CONTROLLER_XL9535;
-        _system.nbZones = normalizeActiveZones(_system.nbZones);
-        _system.nbRelaisPhysical = _system.nbZones;
-    }
-
-    // ── Display (tokens de design LCD) ────────────────────────
-    JsonObjectConst disp = doc["display"];
-    if (disp) {
-        auto copyColor = [](const char* src, char* dst) {
-            if (src && src[0] == '#' && strlen(src) == 7) strlcpy(dst, src, 8);
-        };
-        copyColor(disp["cBg"]       | "", _display.cBg);
-        copyColor(disp["cSurface"]  | "", _display.cSurface);
-        copyColor(disp["cSurface2"] | "", _display.cSurface2);
-        copyColor(disp["cBorder"]   | "", _display.cBorder);
-        copyColor(disp["cText"]     | "", _display.cText);
-        copyColor(disp["cText2"]    | "", _display.cText2);
-        copyColor(disp["cMuted"]    | "", _display.cMuted);
-        copyColor(disp["cActiveBg"] | "", _display.cActiveBg);
-        copyColor(disp["cZone0"]    | "", _display.cZone0);
-        copyColor(disp["cZone1"]    | "", _display.cZone1);
-        copyColor(disp["cZone2"]    | "", _display.cZone2);
-        copyColor(disp["cZone3"]    | "", _display.cZone3);
-        _display.rSm        = constrain((uint8_t)(disp["rSm"]        | 4),  1, 20);
-        _display.rMd        = constrain((uint8_t)(disp["rMd"]        | 6),  1, 20);
-        _display.rLg        = constrain((uint8_t)(disp["rLg"]        | 10), 1, 30);
-        _display.accentBarW = constrain((uint8_t)(disp["accentBarW"] | 3),  1, 8);
-        uint16_t rn = disp["refreshNomMs"] | (uint16_t)5000;
-        uint16_t ra = disp["refreshActMs"] | (uint16_t)1000;
-        _display.refreshNomMs = constrain(rn, (uint16_t)500,  (uint16_t)30000);
-        _display.refreshActMs = constrain(ra, (uint16_t)200,  (uint16_t)5000);
-        _display.planGap  = constrain((uint8_t)(disp["planGap"] | 6), (uint8_t)0, (uint8_t)20);
-        _display.g2Gpad   = constrain((uint8_t)(disp["g2Gpad"]  | 1), (uint8_t)0, (uint8_t)8);
-        _display.g4Gpad   = constrain((uint8_t)(disp["g4Gpad"]  | 1), (uint8_t)0, (uint8_t)8);
-        // Options météo — absents en config antérieure → valeurs défaut (true/false)
-        if (disp["showWeatherIcon"].is<bool>()) _display.showWeatherIcon = disp["showWeatherIcon"];
-        if (disp["showWeatherTemp"].is<bool>()) _display.showWeatherTemp = disp["showWeatherTemp"];
-        if (disp["weatherTipCondition"].is<bool>()) _display.weatherTipCondition = disp["weatherTipCondition"];
-        if (disp["weatherTipTemp"].is<bool>())      _display.weatherTipTemp      = disp["weatherTipTemp"];
-        if (disp["weatherTipRain"].is<bool>())      _display.weatherTipRain      = disp["weatherTipRain"];
-        if (disp["weatherTipPop"].is<bool>())       _display.weatherTipPop       = disp["weatherTipPop"];
-        if (disp["weatherTipHumidity"].is<bool>())  _display.weatherTipHumidity  = disp["weatherTipHumidity"];
-        if (disp["weatherTipWind"].is<bool>())      _display.weatherTipWind      = disp["weatherTipWind"];
-        if (disp["weatherTipGust"].is<bool>())      _display.weatherTipGust      = disp["weatherTipGust"];
-        if (disp["weatherTipClouds"].is<bool>())    _display.weatherTipClouds    = disp["weatherTipClouds"];
-        if (disp["weatherTipPressure"].is<bool>())  _display.weatherTipPressure  = disp["weatherTipPressure"];
-    }
-    // Si absent (config anterieure) : valeurs defaut CfgDisplay() deja en place
-
-    // ── Zones ──────────────────────────────────────────────────
-    JsonArrayConst zones = doc["zones"];
-    if (zones) {
-        uint8_t z = 0;
-        for (JsonObjectConst zo : zones) {
-            if (z >= MAX_ZONES) break;
-            zoneFromJson(z, zo);
-            z++;
-        }
-    }
-
-    _loaded = true;
-
-    if (needMigration)
-        EventLog::log(LOG_INFO, "Config: JSON historique v%d charge pour migration", version);
-    else
-        EventLog::log(LOG_INFO, "Config: JSON historique v%d charge pour migration", version);
-
-    return true;
-}
 
 // ─────────────────────────────────────────────────────────────
 //  Valeurs par défaut
