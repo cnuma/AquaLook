@@ -1719,12 +1719,23 @@ async function loadCfgTopo() {
     return;
   }
   topoSource = d.source || 'legacy';
-  topoPendingReboot = false;
-  topoBoards = (d.boards || []).map(b => ({
+  // Un cablage ENREGISTRE mais pas encore applique existe-t-il ?
+  //
+  // Sans cette distinction, l'editeur relisait toujours le cablage EN
+  // VIGUEUR : une affectation supprimee puis enregistree reapparaissait au
+  // rechargement, et l'utilisateur concluait -- legitimement -- que la
+  // suppression n'avait pas pris. Elle avait pris : elle attendait un
+  // redemarrage.
+  //
+  // On edite donc ce qui est ENREGISTRE quand il existe : c'est la derniere
+  // volonte de l'utilisateur, pas ce que le module applique encore.
+  topoPendingReboot = !!d.enAttente;
+  const src = (d.enAttente && d.attente) ? d.attente : d;
+  topoBoards = (src.boards || []).map(b => ({
     i: b.i, controller: b.controller, addr: b.addr,
     channels: b.channels, logic: b.logic, transport: b.transport || 0
   }));
-  topoAssign = (d.assignments || []).map(a => ({
+  topoAssign = (src.assignments || []).map(a => ({
     i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel,
     id: a.id || 0, flags: a.flags || 0
   }));
@@ -1804,9 +1815,13 @@ function renderTopoEditor() {
   let h = '<div class="cfg-hint">Source en vigueur : ' + src +
           '. Toute modification s&rsquo;applique au prochain redemarrage.</div>';
   if (topoPendingReboot) {
-    h += '<div class="cfg-hint io-ok">Enregistre. Ce qui est affiche ci-dessous '
-       + 'est votre saisie, en attente du prochain redemarrage &mdash; la '
-       + 'configuration en vigueur reste celle d&rsquo;avant.</div>';
+    h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
+       + 'currentColor;border-radius:5px;margin:6px 0;font-size:11px;line-height:1.6">'
+       + '&#9888; <b>Ce c&acirc;blage est enregistr&eacute; mais pas encore appliqu&eacute;.</b><br>'
+       + 'Ce que vous voyez ici est votre derni&egrave;re saisie. Le module, lui, '
+       + 'pilote encore l&rsquo;ancien c&acirc;blage et continuera jusqu&rsquo;au '
+       + 'prochain red&eacute;marrage &mdash; recharger cette page n&rsquo;y '
+       + 'changera rien, c&rsquo;est normal.</div>';
   }
 
   h += '<div class="cfg-subsection-title">Cartes relais</div>';

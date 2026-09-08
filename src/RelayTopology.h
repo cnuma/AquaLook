@@ -158,6 +158,18 @@ void clear(RelayTopologyConfig& topology);
 // est un etat NORMAL de premiere mise en service, pas une panne.
 bool isWired(const RelayTopologyConfig& topology);
 
+// Deux cablages decrivent-ils la MEME chose ?
+//
+// Comparer les structures octet a octet ne marche pas : les emplacements
+// desactives gardent ce qu'il y avait avant, et le compilateur insere du
+// bourrage entre les champs. Deux cablages identiques a l'usage peuvent
+// donc differer en memoire -- et un simple memcmp signalait alors en
+// permanence une modification en attente qui n'existait pas.
+//
+// On ne compare donc que ce qui a un sens : les cartes et les affectations
+// ACTIVES, champ par champ.
+bool equivalent(const RelayTopologyConfig& a, const RelayTopologyConfig& b);
+
 bool validateBoard(const RelayBoardConfig& board);
 // Resolution d'une ENTREE par son identifiant stable. C'est ainsi qu'un
 // script la designe : jamais par un index de table, qui bougerait.

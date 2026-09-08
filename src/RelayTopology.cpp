@@ -76,6 +76,32 @@ void clear(RelayTopologyConfig& topology) {
     }
 }
 
+bool equivalent(const RelayTopologyConfig& a, const RelayTopologyConfig& b) {
+    for (uint8_t i = 0U; i < MAX_RELAY_BOARDS; ++i) {
+        const RelayBoardConfig& x = a.boards[i];
+        const RelayBoardConfig& y = b.boards[i];
+        if (x.enabled != y.enabled) return false;
+        if (!x.enabled) continue;
+        if (x.controller != y.controller || x.i2cAddress != y.i2cAddress ||
+            x.channelCount != y.channelCount || x.logic != y.logic ||
+            x.transport != y.transport || x.node != y.node) {
+            return false;
+        }
+    }
+    for (uint8_t i = 0U; i < MAX_RELAY_ASSIGNMENTS; ++i) {
+        const RelayAssignment& x = a.assignments[i];
+        const RelayAssignment& y = b.assignments[i];
+        if (x.enabled != y.enabled) return false;
+        if (!x.enabled) continue;
+        if (x.role != y.role || x.targetIndex != y.targetIndex ||
+            x.boardIndex != y.boardIndex || x.channelIndex != y.channelIndex ||
+            x.direction != y.direction || x.flags != y.flags || x.id != y.id) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool isWired(const RelayTopologyConfig& topology) {
     for (uint8_t b = 0; b < MAX_RELAY_BOARDS; b++) {
         if (validateBoard(topology.boards[b])) return true;

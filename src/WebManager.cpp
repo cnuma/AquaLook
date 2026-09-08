@@ -1968,6 +1968,53 @@ void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
         o["node"] = bd.node;
     }
 
+    // Le cablage ENREGISTRE, quand il differe de celui en vigueur.
+    //
+    // Cette route ne renvoyait que le cablage EN VIGUEUR. Un utilisateur qui
+    // supprimait une affectation, enregistrait, puis rouvrait le menu voyait
+    // donc son affectation revenir -- et concluait, legitimement, que la
+    // suppression ne marchait pas. Elle avait bien marche : elle attendait
+    // simplement un redemarrage.
+    //
+    // On expose donc les deux, et l'interface peut dire laquelle elle montre.
+    {
+        RelayTopology::RelayTopologyConfig stored;
+        RelayTopology::clear(stored);
+        const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+        if (RelayTopologyStore::load(stored, nbZ)) {
+            const bool differe = !RelayTopology::equivalent(stored, topo);
+            doc["enAttente"] = differe;
+            if (differe) {
+                JsonObject att = doc["attente"].to<JsonObject>();
+                JsonArray ab = att["boards"].to<JsonArray>();
+                for (uint8_t b = 0; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
+                    const RelayTopology::RelayBoardConfig& bd = stored.boards[b];
+                    if (!bd.enabled) continue;
+                    JsonObject o = ab.add<JsonObject>();
+                    o["i"] = b; o["controller"] = bd.controller;
+                    o["name"] = RelayTopology::controllerName(bd.controller);
+                    o["addr"] = bd.i2cAddress; o["channels"] = bd.channelCount;
+                    o["logic"] = bd.logic; o["transport"] = bd.transport;
+                    o["node"] = bd.node;
+                }
+                JsonArray aa = att["assignments"].to<JsonArray>();
+                for (uint8_t a = 0; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
+                    const RelayTopology::RelayAssignment& as = stored.assignments[a];
+                    if (!as.enabled) continue;
+                    JsonObject o = aa.add<JsonObject>();
+                    o["i"] = a; o["role"] = as.role;
+                    o["roleName"] = RelayTopology::roleName(as.role);
+                    o["target"] = as.targetIndex; o["board"] = as.boardIndex;
+                    o["channel"] = as.channelIndex;
+                    o["direction"] = as.direction; o["input"] = as.isInput();
+                    o["flags"] = as.flags; o["id"] = as.id;
+                }
+            }
+        } else {
+            doc["enAttente"] = false;
+        }
+    }
+
     JsonArray asg = doc["assignments"].to<JsonArray>();
     for (uint8_t a = 0; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
         const RelayTopology::RelayAssignment& as = topo.assignments[a];
