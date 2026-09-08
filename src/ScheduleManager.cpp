@@ -1,5 +1,7 @@
 #include "ScheduleManager.h"
 #include "EventBus.h"
+#include "EventLog.h"
+#include "NotificationManager.h"
 
 // ═══════════════════════════════════════════════════════════════
 //  begin() — initialisation RAM uniquement
@@ -31,6 +33,10 @@ void ScheduleManager::setNbZones(uint8_t nb) {
 // ═══════════════════════════════════════════════════════════════
 void ScheduleManager::update(int hour, int minute, int weekday,
                               uint32_t epochDay, float rainMm) {
+    // Avant toute decision : une suspension expiree ne doit pas peser sur
+    // ce que le planificateur va decider ensuite.
+    expirePauses();
+
     if (hour < 0 || minute < 0) return;
 
     const uint32_t now        = millis();
@@ -232,10 +238,20 @@ void ScheduleManager::checkSlotEnd(uint8_t zone) {
 
 void ScheduleManager::activateZone(uint8_t zone,
                                     uint16_t durationMin, bool manual) {
+    activateZoneMs(zone, (uint32_t)durationMin * 60000UL, manual);
+}
+
+// Meme chose, mais en millisecondes : une reprise ne repart pas d'un nombre
+// rond de minutes, elle repart du reliquat.
+void ScheduleManager::activateZoneMs(uint8_t zone,
+                                     uint32_t durationMs, bool manual) {
+    const uint16_t durationMin = (uint16_t)(durationMs / 60000UL);
     _active[zone].running    = true;
     _active[zone].startMs    = millis();
-    _active[zone].durationMs = (uint32_t)durationMin * 60000UL;
+    _active[zone].durationMs = durationMs;
     _active[zone].isManual   = manual;
+    _active[zone].paused     = false;
+    _active[zone].remainingMs = 0;
     EventBus::displayDirty   = true;
     Serial.printf("[Schedule] Zone %d — START %dmin (%s) reason=%s\n",
                   zone+1, durationMin,
@@ -252,4 +268,87 @@ void ScheduleManager::deactivateZone(uint8_t zone) {
     EventBus::displayDirty   = true;
     Serial.printf("[Schedule] Zone %d — STOP\n", zone+1);
     if (_relayCallback) _relayCallback(zone, false);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Suspension et reprise
+// ═══════════════════════════════════════════════════════════════
+
+bool ScheduleManager::startZoneForSeconds(uint8_t zone, uint32_t seconds) {
+    if (zone >= _nbZones || zone >= MAX_ZONES || seconds == 0U) return false;
+    // Une reprise ou un demarrage decide par un script est traite comme
+    // MANUEL : il ne vient pas du planning, et le confondre avec un
+    // creneau planifie fausserait le journal comme l affichage.
+    activateZoneMs(zone, seconds * 1000UL, true);
+    return true;
+}
+
+bool ScheduleManager::pauseZone(uint8_t zone) {
+    if (zone >= MAX_ZONES) return false;
+    ActiveSlot& slot = _active[zone];
+    if (!slot.running) return false;
+
+    const uint32_t elapsed = millis() - slot.startMs;
+    // Un reliquat nul n'a pas de sens : l'arrosage etait fini de toute facon.
+    // Suspendre ici laisserait une zone en attente d'une reprise sans objet.
+    if (elapsed >= slot.durationMs) {
+        deactivateZone(zone);
+        return false;
+    }
+
+    slot.remainingMs = slot.durationMs - elapsed;
+    slot.running     = false;
+    slot.paused      = true;
+    slot.pausedAtMs  = millis();
+    EventBus::displayDirty = true;
+
+    EventLog::log(LOG_INFO, "Schedule: zone %u suspendue, reste %lus",
+                  (unsigned)(zone + 1U),
+                  (unsigned long)(slot.remainingMs / 1000UL));
+    if (_relayCallback) _relayCallback(zone, false);
+    return true;
+}
+
+bool ScheduleManager::resumeZone(uint8_t zone) {
+    if (zone >= MAX_ZONES) return false;
+    ActiveSlot& slot = _active[zone];
+    if (!slot.paused || slot.remainingMs == 0U) return false;
+
+    const uint32_t remaining = slot.remainingMs;
+    const bool manual = slot.isManual;
+    EventLog::log(LOG_INFO, "Schedule: zone %u reprise pour %lus",
+                  (unsigned)(zone + 1U), (unsigned long)(remaining / 1000UL));
+    activateZoneMs(zone, remaining, manual);
+    return true;
+}
+
+bool ScheduleManager::isZonePaused(uint8_t zone) const {
+    return zone < MAX_ZONES && _active[zone].paused;
+}
+
+uint32_t ScheduleManager::getPausedRemainingMs(uint8_t zone) const {
+    return (zone < MAX_ZONES && _active[zone].paused) ? _active[zone].remainingMs : 0U;
+}
+
+// Une suspension qui s'eternise est abandonnee. Sans cela, une cuve qui ne
+// se remplit jamais tiendrait la zone indefiniment -- et l'arrosage
+// reprendrait au pire moment, des heures plus tard, sans que personne ne
+// l'ait demande.
+void ScheduleManager::expirePauses() {
+    const uint32_t now = millis();
+    for (uint8_t z = 0U; z < _nbZones && z < MAX_ZONES; ++z) {
+        ActiveSlot& slot = _active[z];
+        if (!slot.paused) continue;
+        if ((now - slot.pausedAtMs) < PAUSE_MAX_MS) continue;
+
+        EventLog::log(LOG_WARN,
+                      "Schedule: zone %u abandonnee, suspendue plus de %lu min",
+                      (unsigned)(z + 1U),
+                      (unsigned long)(PAUSE_MAX_MS / 60000UL));
+        slot.paused = false;
+        slot.remainingMs = 0U;
+        slot.running = false;
+        NotificationManager::enqueueZoneEvent(z, false);
+        EventBus::displayDirty = true;
+    }
 }

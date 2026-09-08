@@ -52,7 +52,22 @@ struct ActiveSlot {
     uint32_t startMs   = 0;     // millis() de début
     uint32_t durationMs = 0;    // durée totale en ms
     bool     isManual  = false;
-    ActiveSlot() : running(false), startMs(0), durationMs(0), isManual(false) {}
+
+    // ── Suspension ────────────────────────────────────────────────────
+    // Une regle peut INTERROMPRE un arrosage ou le SUSPENDRE. Les deux
+    // existent parce qu'ils repondent a des besoins differents : couper une
+    // zone parce qu'il pleut n'appelle pas de reprise, couper parce que la
+    // cuve est vide en appelle une.
+    //
+    // Suspendre conserve le reliquat. Sans lui, "on rouvre le temps restant"
+    // ne veut rien dire, et l'utilisateur devrait calculer la reprise
+    // lui-meme dans son script -- c'est-a-dire ecrire la partie fragile.
+    bool     paused    = false;
+    uint32_t remainingMs = 0;   // reliquat conserve pendant la suspension
+    uint32_t pausedAtMs  = 0;
+
+    ActiveSlot() : running(false), startMs(0), durationMs(0), isManual(false),
+                   paused(false), remainingMs(0), pausedAtMs(0) {}
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -91,6 +106,25 @@ public:
     void startManualWatering(uint8_t zone);
     void stopManualWatering(uint8_t zone);
 
+    // ── Suspension et reprise ─────────────────
+    // pauseZone conserve le reliquat et ferme la vanne ; resumeZone rouvre
+    // pour ce reliquat. Une suspension qui dure trop longtemps est ABANDONNEE
+    // et signalee : tenir une zone indefiniment parce qu'une cuve ne se
+    // remplit jamais serait pire que de renoncer.
+    // Demarrage pour une duree EXACTE, en secondes. Un script calcule des
+    // durees ; les arrondir a la minute lui ferait mentir sur ce qu il a
+    // demande.
+    bool startZoneForSeconds(uint8_t zone, uint32_t seconds);
+    bool pauseZone(uint8_t zone);
+    bool resumeZone(uint8_t zone);
+    bool isZonePaused(uint8_t zone) const;
+    uint32_t getPausedRemainingMs(uint8_t zone) const;
+
+    // Au-dela, la suspension est abandonnee. Deux heures : assez pour remplir
+    // une cuve, trop court pour qu'un arrosage oublie reprenne le lendemain
+    // en pleine chaleur.
+    static constexpr uint32_t PAUSE_MAX_MS = 2UL * 3600UL * 1000UL;
+
     // ── Callback relais ───────────────────────
     // Invariant I6 : câblé dans main.cpp uniquement
     using RelayCallback = void(*)(uint8_t zone, bool state);
@@ -111,6 +145,8 @@ private:
     bool       shouldWater(uint8_t zone, int weekday,
                            uint32_t epochDay, float rainMm);
     void       activateZone(uint8_t zone, uint16_t durationMin, bool manual);
+    void       activateZoneMs(uint8_t zone, uint32_t durationMs, bool manual);
+    void       expirePauses();
     void       deactivateZone(uint8_t zone);
     void       checkSlotEnd(uint8_t zone);
 };

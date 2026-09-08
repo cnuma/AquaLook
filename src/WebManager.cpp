@@ -5,6 +5,7 @@
 #include "EventBus.h"
 #include "EventLog.h"
 #include "ScriptVmSelfTest.h"
+#include "ScriptHostRuntime.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
@@ -566,6 +567,93 @@ void WebManager::setupRoutes() {
     _server.on("/api/debug/script-selftest", HTTP_GET, [](AsyncWebServerRequest* req) {
         JsonDocument doc;
         runScriptVmSelfTest(doc);
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // Essai a blanc de la machine a scripts contre le module REEL.
+    //
+    // Le programme ne fait que LIRE : entree stabilisee, etat et reliquat
+    // d'une zone. Aucune action, donc aucune vanne touchee -- c'est ce qui
+    // permet de verifier le pont vers le materiel sans engager d'eau.
+    _server.on("/api/debug/script-dryrun", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        const uint16_t inputId = req->hasParam("input")
+            ? (uint16_t)req->getParam("input")->value().toInt() : 0U;
+        const uint16_t zoneId = req->hasParam("zone")
+            ? (uint16_t)req->getParam("zone")->value().toInt() : 0U;
+
+        // lire entree -> var0 ; zone active -> var1 ; reliquat -> var2
+        const uint8_t code[] = {
+            (uint8_t)AquaLook::Domain::ScriptOp::READ_INPUT,
+            (uint8_t)(inputId & 0xFF), (uint8_t)(inputId >> 8),
+            (uint8_t)AquaLook::Domain::ScriptOp::STORE, 0,
+            (uint8_t)AquaLook::Domain::ScriptOp::ZONE_ACTIVE,
+            (uint8_t)(zoneId & 0xFF), (uint8_t)(zoneId >> 8),
+            (uint8_t)AquaLook::Domain::ScriptOp::STORE, 1,
+            (uint8_t)AquaLook::Domain::ScriptOp::ZONE_REMAIN,
+            (uint8_t)(zoneId & 0xFF), (uint8_t)(zoneId >> 8),
+            (uint8_t)AquaLook::Domain::ScriptOp::STORE, 2,
+            (uint8_t)AquaLook::Domain::ScriptOp::HALT
+        };
+
+        // Variante AGISSANTE, sur demande explicite : le meme chemin, mais le
+        // script suspend ou reprend la zone. Elle sert a eprouver le pont
+        // jusqu'au bout -- script, hote, planificateur, vanne -- ce qu'un
+        // programme en lecture seule ne peut pas montrer.
+        const String act = req->hasParam("action")
+            ? req->getParam("action")->value() : String();
+        uint8_t actCode = 0U;
+        if (act == "pause")  actCode = (uint8_t)AquaLook::Domain::ScriptAction::ZONE_PAUSE;
+        if (act == "resume") actCode = (uint8_t)AquaLook::Domain::ScriptAction::ZONE_RESUME;
+        const uint8_t actionCode[] = {
+            (uint8_t)AquaLook::Domain::ScriptOp::PUSH, 0, 0, 0, 0,
+            (uint8_t)AquaLook::Domain::ScriptOp::ACTION, actCode,
+            (uint8_t)(zoneId & 0xFF), (uint8_t)(zoneId >> 8),
+            (uint8_t)AquaLook::Domain::ScriptOp::ZONE_REMAIN,
+            (uint8_t)(zoneId & 0xFF), (uint8_t)(zoneId >> 8),
+            (uint8_t)AquaLook::Domain::ScriptOp::STORE, 2,
+            (uint8_t)AquaLook::Domain::ScriptOp::HALT
+        };
+
+        ScriptRuntimeContext ctx;
+        ctx.inputs = _inputs;
+        ctx.schedule = _schedule;
+        ctx.config = _config;
+
+        AquaLook::Domain::ScriptVm vm;
+        vm.load(actCode != 0U
+                    ? AquaLook::Domain::ScriptProgram(actionCode, sizeof(actionCode))
+                    : AquaLook::Domain::ScriptProgram(code, sizeof(code)),
+                &scriptHostOps(), &ctx);
+        for (uint8_t i = 0U; i < 8U; ++i) {
+            const AquaLook::Domain::ScriptStatus st = vm.tick();
+            if (st == AquaLook::Domain::ScriptStatus::FINISHED ||
+                st == AquaLook::Domain::ScriptStatus::ABORTED) break;
+        }
+
+        JsonDocument doc;
+        doc["entree"] = inputId;
+        doc["zone"] = zoneId;
+        const bool fini = vm.status() == AquaLook::Domain::ScriptStatus::FINISHED;
+        doc["ok"] = fini;
+        if (!fini) {
+            doc["arret"] = AquaLook::Domain::scriptAbortName(vm.abortReason());
+        } else {
+            doc["entreeActive"] = vm.variable(0) != 0;
+            doc["zoneActive"] = vm.variable(1) != 0;
+            doc["resteSec"] = vm.variable(2);
+        }
+        doc["lectures"] = ctx.reads;
+        doc["actions"] = ctx.actions;
+        doc["refus"] = ctx.refusals;
+        if (_schedule && _config) {
+            const uint8_t z = _config->zoneIndexById(zoneId);
+            if (z < MAX_ZONES) {
+                doc["suspendue"] = _schedule->isZonePaused(z);
+                doc["reliquatSec"] = _schedule->getPausedRemainingMs(z) / 1000UL;
+            }
+        }
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);
