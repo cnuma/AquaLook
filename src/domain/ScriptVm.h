@@ -1,0 +1,189 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+
+// Machine a pile dediee au scripting d'arrosage.
+//
+// POURQUOI UNE MACHINE DEDIEE PLUTOT QU'UN LANGAGE EMBARQUE
+//
+// Un script peut rester EN ATTENTE des minutes -- le temps qu'une cuve se
+// remplisse -- et le module redemarre chaque nuit. Son etat d'execution doit
+// donc etre enregistrable et relisible tel quel. Les interpreteurs
+// generalistes (Lua, Berry) ne savent pas serialiser leur pile ; c'est cette
+// exigence-la, pas la taille, qui a tranche.
+//
+// POURQUOI ELLE NE COURT JAMAIS JUSQU'AU BOUT
+//
+// La boucle principale du module sert le WiFi, le serveur Web, l'ecran et le
+// planificateur. Un script qui s'executerait d'un trait les gelerait tous --
+// avec une vanne ouverte. Ici l'execution consomme un BUDGET d'instructions
+// par tour de boucle puis rend la main. `while` et `for` deviennent alors
+// sans danger : ils peuvent durer, jamais monopoliser.
+//
+// L'attente est une instruction qui rend la main, pas une boucle d'attente
+// active : `tant que cuve_vide { attendre 1s }` ne coute presque rien.
+//
+// LE CHIEN DE GARDE
+//
+// Quatre plafonds, tous menant a un ARRET SIGNALE plutot qu'a un blocage :
+// nombre total d'instructions, nombre de sauts arriere (iterations de
+// boucle), duree d'execution, profondeur de pile. Un script qui les depasse
+// est arrete, sa raison est nommee, et l'hote la remonte a l'utilisateur.
+//
+// LA SECURITE RESTE HORS DE PORTEE DU SCRIPT
+//
+// Aucune instruction ne peut lever la coupure de duree maximale ni toucher
+// au cablage. Le script DEMANDE des actions ; c'est l'hote qui decide de les
+// appliquer, avec ses propres garde-fous.
+
+namespace AquaLook { namespace Domain {
+
+enum class ScriptOp : uint8_t {
+    HALT = 0,        // fin normale
+    PUSH = 1,        // + int32 : empile une constante
+    LOAD = 2,        // + u8    : empile la variable n
+    STORE = 3,       // + u8    : depile vers la variable n
+    DROP = 4,        //           depile et jette
+
+    ADD = 16, SUB = 17, MUL = 18, DIV = 19, MOD = 20, NEG = 21,
+
+    EQ = 32, NE = 33, LT = 34, LE = 35, GT = 36, GE = 37,
+    AND = 38, OR = 39, NOT = 40,
+
+    JMP = 48,        // + u16 : saut inconditionnel
+    JZ = 49,         // + u16 : saut si le sommet vaut 0 (depile)
+    JNZ = 50,        // + u16 : saut si le sommet est non nul (depile)
+
+    READ_INPUT = 64, // + u16 id equipement : empile 0/1
+    ZONE_ACTIVE = 65,// + u16 id zone       : empile 0/1
+    ZONE_REMAIN = 66,// + u16 id zone       : empile les secondes restantes
+
+    ACTION = 80,     // + u8 action, + u16 cible : depile l'argument eventuel
+    NOTIFY = 81,     // + u16 code message
+    WAIT = 82,       // depile des secondes, rend la main jusqu'a echeance
+};
+
+// Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
+enum class ScriptAction : uint8_t {
+    ZONE_START = 1,   // argument : duree en secondes
+    ZONE_STOP = 2,    // arret franc, le reliquat est perdu
+    ZONE_PAUSE = 3,   // met en pause, le reliquat est conserve
+    ZONE_RESUME = 4,  // reprend le reliquat conserve
+    SET_OUTPUT = 5,   // argument : 0/1 -- pompe, eclairage, auxiliaire
+};
+
+enum class ScriptStatus : uint8_t {
+    READY = 0,     // pret a demarrer
+    RUNNING = 1,   // budget du tour epuise, reprendra au tour suivant
+    WAITING = 2,   // en attente d'echeance, ne consomme rien
+    FINISHED = 3,  // HALT atteint
+    ABORTED = 4,   // arrete par le chien de garde ou par un programme invalide
+};
+
+enum class ScriptAbort : uint8_t {
+    NONE = 0,
+    STEP_LIMIT,        // trop d'instructions au total
+    LOOP_LIMIT,        // trop d'iterations : boucle vraisemblablement infinie
+    TIME_LIMIT,        // trop longtemps en execution
+    STACK_OVERFLOW,
+    STACK_UNDERFLOW,
+    BAD_OPCODE,
+    BAD_JUMP,
+    BAD_VARIABLE,
+    DIVIDE_BY_ZERO,
+    HOST_REFUSED,      // l'hote a refuse l'action demandee
+};
+
+const char* scriptAbortName(ScriptAbort reason);
+
+// Plafonds du chien de garde. Valeurs par defaut volontairement basses : un
+// script d'arrosage qui les approche fait probablement autre chose que ce
+// que son auteur croit.
+struct ScriptLimits {
+    uint16_t stepsPerTick;      // instructions par tour de boucle
+    uint32_t maxTotalSteps;     // instructions pour toute l'execution
+    uint32_t maxLoopIterations; // sauts arriere cumules
+    uint32_t maxRunMs;          // duree totale, attentes comprises
+
+    constexpr ScriptLimits()
+        : stepsPerTick(200U), maxTotalSteps(200000UL),
+          maxLoopIterations(100000UL), maxRunMs(6UL * 3600UL * 1000UL) {}
+};
+
+// Interface vers le monde reel. Meme forme que les autres pilotes du projet
+// (BinaryActuatorDriverOps) : des pointeurs de fonction et un contexte, pour
+// que la machine reste testable sans materiel.
+struct ScriptHostOps {
+    bool (*readInput)(void* ctx, uint16_t equipmentId, int32_t& value);
+    bool (*zoneActive)(void* ctx, uint16_t zoneId, int32_t& value);
+    bool (*zoneRemainingSec)(void* ctx, uint16_t zoneId, int32_t& value);
+    bool (*action)(void* ctx, ScriptAction action, uint16_t target, int32_t arg);
+    bool (*notify)(void* ctx, uint16_t messageCode);
+    uint32_t (*nowMs)(void* ctx);
+};
+
+struct ScriptProgram {
+    const uint8_t* code;
+    uint16_t size;
+
+    constexpr ScriptProgram() : code(nullptr), size(0U) {}
+    constexpr ScriptProgram(const uint8_t* bytes, uint16_t length)
+        : code(bytes), size(length) {}
+};
+
+class ScriptVm {
+public:
+    static constexpr uint8_t STACK_CAPACITY = 24U;
+    static constexpr uint8_t VAR_COUNT = 8U;
+
+    ScriptVm() = default;
+
+    void load(const ScriptProgram& program,
+              const ScriptHostOps* host,
+              void* hostContext,
+              const ScriptLimits& limits = ScriptLimits());
+
+    // Execute au plus limits.stepsPerTick instructions puis rend la main.
+    // A appeler a chaque tour de boucle tant que le statut est RUNNING ou
+    // WAITING : c'est cet appel repete, et non une boucle interne, qui fait
+    // avancer le script.
+    ScriptStatus tick();
+
+    ScriptStatus status() const { return _status; }
+    ScriptAbort abortReason() const { return _abort; }
+    uint16_t programCounter() const { return _pc; }
+    uint32_t stepsUsed() const { return _steps; }
+    uint32_t loopsUsed() const { return _loops; }
+    // Lecture des variables : sert aux autotests et au diagnostic d un
+    // script arrete, ou l etat final est la seule trace de ce qui s est passe.
+    int32_t variable(uint8_t i) const { return i < VAR_COUNT ? _vars[i] : 0; }
+
+private:
+    bool push(int32_t v);
+    bool pop(int32_t& v);
+    bool fetch8(uint8_t& v);
+    bool fetch16(uint16_t& v);
+    bool fetch32(int32_t& v);
+    void fail(ScriptAbort reason);
+
+    ScriptProgram _program;
+    const ScriptHostOps* _host = nullptr;
+    void* _hostCtx = nullptr;
+    ScriptLimits _limits;
+
+    int32_t _stack[STACK_CAPACITY] = {};
+    int32_t _vars[VAR_COUNT] = {};
+    uint8_t _sp = 0U;
+    uint16_t _pc = 0U;
+
+    uint32_t _steps = 0U;
+    uint32_t _loops = 0U;
+    uint32_t _startedMs = 0U;
+    uint32_t _wakeAtMs = 0U;
+
+    ScriptStatus _status = ScriptStatus::READY;
+    ScriptAbort _abort = ScriptAbort::NONE;
+};
+
+}} // namespace AquaLook::Domain

@@ -4,6 +4,7 @@
 #include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "ScriptVmSelfTest.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
@@ -557,6 +558,17 @@ void WebManager::setupRoutes() {
         _deployStagingOpen = false;
         if (!ok) { sendError(req, "bascule echouee, ancienne version conservee", 500); return; }
         sendOk(req);
+    });
+
+    // Autotest de la machine a scripts. En lecture seule et sans effet de
+    // bord : il n'instancie que des machines jouets avec un hote simule,
+    // aucune vanne n'est touchee.
+    _server.on("/api/debug/script-selftest", HTTP_GET, [](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        runScriptVmSelfTest(doc);
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
     });
 
     _server.on("/api/debug/sd-selftest", HTTP_POST, [this](AsyncWebServerRequest* req) {
