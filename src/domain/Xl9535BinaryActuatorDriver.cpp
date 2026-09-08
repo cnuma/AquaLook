@@ -36,6 +36,31 @@ bool contextIsUsable(const Xl9535BinaryActuatorContext& context) {
     return context.i2c && hasCompleteXl9535I2cOps(*context.i2c);
 }
 
+// Plan de registres du XL9535, servant de defaut : un contexte construit
+// avant l'arrivee du MCP23017 ne porte pas de plan et doit continuer a se
+// comporter exactement comme avant.
+constexpr I2cExpanderRegisterMap XL9535_MAP = {
+    Xl9535Registers::INPUT_PORT,
+    Xl9535Registers::OUTPUT_PORT,
+    Xl9535Registers::CONFIGURATION
+};
+
+constexpr I2cExpanderRegisterMap MCP23017_MAP = {
+    Mcp23017Registers::GPIO,
+    Mcp23017Registers::OLAT,
+    Mcp23017Registers::IODIR
+};
+
+const I2cExpanderRegisterMap& registersFor(const Xl9535BinaryActuatorContext& context) {
+    return context.registers ? *context.registers : XL9535_MAP;
+}
+
+ControllerTypeId expectedTypeFor(const Xl9535BinaryActuatorContext& context) {
+    return context.expectedControllerType.isValid()
+        ? context.expectedControllerType
+        : ControllerTypeIds::XL9535;
+}
+
 bool isValidChannel(uint16_t channel) {
     return channel < 16U;
 }
@@ -86,7 +111,7 @@ bool writeOutputLatch(Xl9535BinaryActuatorContext& context) {
     return context.i2c->writeRegister16(
         context.platformContext,
         context.address,
-        Xl9535Registers::OUTPUT_PORT,
+        registersFor(context).output,
         context.outputLatch
     );
 }
@@ -95,7 +120,7 @@ bool writeConfiguration(Xl9535BinaryActuatorContext& context) {
     return context.i2c->writeRegister16(
         context.platformContext,
         context.address,
-        Xl9535Registers::CONFIGURATION,
+        registersFor(context).direction,
         context.directionMask
     );
 }
@@ -157,7 +182,7 @@ BinaryActuatorDriverResult configureXl9535(
     if (!context || !contextIsUsable(*context)) {
         return makeFailed(BinaryActuatorDriverError::INVALID_ARGUMENT);
     }
-    if (controller.typeId != ControllerTypeIds::XL9535 ||
+    if (controller.typeId != expectedTypeFor(*context) ||
         port.controllerId != controller.id || !isBinaryOutputPort(port) ||
         !isValidChannel(port.channel)) {
         return makeFailed(BinaryActuatorDriverError::UNSUPPORTED_PORT);
@@ -235,7 +260,7 @@ BinaryActuatorDriverResult readXl9535(
     if (!context->i2c->readRegister16(
             context->platformContext,
             context->address,
-            Xl9535Registers::INPUT_PORT,
+            registersFor(*context).input,
             value)) {
         context->health = BinaryActuatorHealth::FAULTED;
         return makeFailed(BinaryActuatorDriverError::READBACK_ERROR);
@@ -306,8 +331,22 @@ const BinaryActuatorDriverOps& xl9535BinaryActuatorDriverOps() {
 BinaryActuatorDriverBinding makeXl9535BinaryActuatorDriverBinding(
     Xl9535BinaryActuatorContext& context
 ) {
+    context.registers = &XL9535_MAP;
+    context.expectedControllerType = ControllerTypeIds::XL9535;
     BinaryActuatorDriverBinding binding;
     binding.controllerTypeId = ControllerTypeIds::XL9535;
+    binding.operations = &OPERATIONS;
+    binding.context = &context;
+    return binding;
+}
+
+BinaryActuatorDriverBinding makeMcp23017BinaryActuatorDriverBinding(
+    Xl9535BinaryActuatorContext& context
+) {
+    context.registers = &MCP23017_MAP;
+    context.expectedControllerType = ControllerTypeIds::MCP23017;
+    BinaryActuatorDriverBinding binding;
+    binding.controllerTypeId = ControllerTypeIds::MCP23017;
     binding.operations = &OPERATIONS;
     binding.context = &context;
     return binding;

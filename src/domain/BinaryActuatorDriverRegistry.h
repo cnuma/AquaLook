@@ -52,8 +52,21 @@ public:
             );
         }
 
+        // Deux cartes du MEME TYPE a des adresses differentes sont un montage
+        // legitime -- et c'etait meme le but de findByController ci-dessous.
+        // Refuser le doublon sur le TYPE rendait cette recherche inatteignable :
+        // la deuxieme carte etait rejetee a l'enregistrement, donc jamais
+        // pilotee par V4. Le doublon se juge donc sur l'INSTANCE quand elle est
+        // renseignee, et sur le type seulement a defaut -- ce qui preserve la
+        // garantie pour les appelants qui n'attribuent pas d'identifiant.
         for (size_t i = 0U; i < size_; ++i) {
-            if (storage_[i].controllerTypeId == binding.controllerTypeId) {
+            const bool sameInstance =
+                binding.controllerId.isValid() &&
+                storage_[i].controllerId == binding.controllerId;
+            const bool sameTypeWithoutInstance =
+                !binding.controllerId.isValid() &&
+                storage_[i].controllerTypeId == binding.controllerTypeId;
+            if (sameInstance || sameTypeWithoutInstance) {
                 return DriverRegistryResult(
                     DriverRegistryError::DUPLICATE_CONTROLLER_TYPE,
                     static_cast<uint16_t>(i), binding.controllerTypeId

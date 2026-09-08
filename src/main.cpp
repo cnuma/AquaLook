@@ -519,8 +519,9 @@ void setup() {
     );
     if (v4PilotReady) {
         outputAdapter.setPhysicalBackend(&v4PilotRuntime.backend());
-        EventLog::log(LOG_WARN,
-                      "Relais V4: toutes les zones de la carte pilotees par V4");
+        // Le decompte reel est journalise par V4PilotRuntime::begin() : ne
+        // pas affirmer ici une couverture qui n'a jamais ete verifiee.
+        EventLog::log(LOG_INFO, "Relais V4: moteur V4 actif sur les sorties");
     } else {
         outputAdapter.setPhysicalBackend(&relaisBackend);
         EventLog::log(LOG_ERROR,

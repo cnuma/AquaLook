@@ -4,6 +4,7 @@
 
 #include <Wire.h>
 
+#include "EventLog.h"
 #include "domain/HardwareCatalog.h"
 #include "drivers/ArduinoI2cPlatform.h"
 
@@ -37,14 +38,21 @@ bool V4PilotRuntime::begin(
     for (uint8_t b = 0U; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
         const RelayTopology::RelayBoardConfig& src = topology.boards[b];
         if (!src.enabled || !RelayTopology::validateBoard(src)) continue;
-        // Seul le XL9535 dispose d'un pilote V4 a ce jour. Une carte d'un autre
-        // type (MCP23017) reste pilotee par le moteur historique.
-        if (src.controller != RelayTopology::CONTROLLER_XL9535) continue;
         if (nextPort + src.channelCount > PORT_COUNT) break;
+
+        // XL9535 et MCP23017 partagent le meme pilote, a un plan de registres
+        // pres (voir I2cExpanderRegisterMap). Le repli sur le moteur
+        // historique pour les cartes non-XL9535 n'a donc plus lieu d'etre :
+        // TOUTES les cartes declarees sont pilotees par V4, ce qui est la
+        // condition pour que la modularite serve a quelque chose -- un type
+        // de carte de plus ne doit demander qu'une donnee, pas un chemin
+        // d'execution parallele.
+        const bool isMcp = (src.controller == RelayTopology::CONTROLLER_MCP23017);
 
         Domain::ControllerDefinition& controller = _controllers[b];
         controller.id = Domain::ControllerId(static_cast<uint16_t>(b + 1U));
-        controller.typeId = Domain::ControllerTypeIds::XL9535;
+        controller.typeId = isMcp ? Domain::ControllerTypeIds::MCP23017
+                                  : Domain::ControllerTypeIds::XL9535;
         controller.busId = Domain::BusId(1U);
         controller.address = Domain::ControllerAddress(src.i2cAddress);
         controller.capabilities = Domain::CONTROLLER_CAP_DIGITAL_OUTPUT |
@@ -57,7 +65,8 @@ bool V4PilotRuntime::begin(
 
         Domain::BoardDefinition& board = _boards[b];
         board.id = Domain::BoardId(static_cast<uint16_t>(b + 1U));
-        board.typeId = Domain::BoardTypeIds::RELAY_8_XL9535;
+        board.typeId = isMcp ? Domain::BoardTypeIds::IO_16_MCP23017
+                             : Domain::BoardTypeIds::RELAY_8_XL9535;
         board.controllerId = controller.id;
         board.modelVersion = 1U;
         board.firstPortIndex = static_cast<uint16_t>(nextPort);
@@ -97,9 +106,20 @@ bool V4PilotRuntime::begin(
         ctx.directionMask = static_cast<uint16_t>(~outputs);
 
         Domain::BinaryActuatorDriverBinding binding =
-            Domain::makeXl9535BinaryActuatorDriverBinding(ctx);
+            isMcp ? Domain::makeMcp23017BinaryActuatorDriverBinding(ctx)
+                  : Domain::makeXl9535BinaryActuatorDriverBinding(ctx);
         binding.controllerId = controller.id;
-        if (!_driverRegistry.registerDriver(binding).ok()) break;
+        // Ne PAS interrompre la boucle : une carte qui echoue ne doit pas
+        // priver de V4 celles qui la suivent. Et surtout ne pas echouer en
+        // silence -- c'est ce silence qui a laisse croire pendant des
+        // semaines que toutes les cartes etaient pilotees par V4.
+        const Domain::DriverRegistryResult reg = _driverRegistry.registerDriver(binding);
+        if (!reg.ok()) {
+            EventLog::log(LOG_ERROR,
+                          "Relais V4: carte %u refusee par le registre (erreur %u)",
+                          (unsigned)b, (unsigned)reg.error);
+            continue;
+        }
 
         nextPort += src.channelCount;
         managedBoards |= (1UL << b);
@@ -132,6 +152,22 @@ bool V4PilotRuntime::begin(
         }
     }
     _backend.setMigratedZoneMask(migrated);
+
+    // Dire ce qui est REELLEMENT pilote, carte par carte et zone par zone.
+    // Le message de main.cpp affirmait "toutes les zones pilotees par V4"
+    // sans jamais le verifier : il etait faux depuis l'ajout d'une deuxieme
+    // carte, et rien ne le contredisait a l'ecran ni dans le journal.
+    uint8_t managedCount = 0U;
+    for (uint8_t b = 0U; b < RelayTopology::MAX_RELAY_BOARDS; ++b) {
+        if ((managedBoards & (1UL << b)) != 0U) managedCount++;
+    }
+    uint8_t migratedCount = 0U;
+    for (uint8_t z = 0U; z < 32U; ++z) {
+        if ((migrated & (1UL << z)) != 0U) migratedCount++;
+    }
+    EventLog::log(LOG_INFO,
+                  "Relais V4: %u carte(s) pilotee(s), %u zone(s) migree(s)",
+                  (unsigned)managedCount, (unsigned)migratedCount);
 
     _ready = _backend.isReady() && _backend.hasAnyMigratedZone();
     return _ready;
