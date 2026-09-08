@@ -6,6 +6,7 @@
 #include "EventLog.h"
 #include "ScriptVmSelfTest.h"
 #include "ScriptHostRuntime.h"
+#include "ApiAuth.h"
 #include "ScriptStore.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
@@ -417,6 +418,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/ntp",           handleSetNtp);
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
+    POST_JSON("/api/auth-secret",  handleSetApiSecret);
     POST_JSON("/api/script-save",  handleSaveScript);
     POST_JSON("/api/script-erase", handleEraseScript);
     POST_JSON("/api/zoneName",      handleSetZoneName);
@@ -657,6 +659,18 @@ void WebManager::setupRoutes() {
                 doc["reliquatSec"] = _schedule->getPausedRemainingMs(z) / 1000UL;
             }
         }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // Etat de l'authentification. Volontairement lisible sans secret : dire
+    // qu'une porte est verrouillee n'aide personne a l'ouvrir, et le cacher
+    // empecherait l'interface d'expliquer pourquoi elle refuse.
+    _server.on("/api/auth/state", HTTP_GET, [](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        doc["configure"] = ApiAuth::hasSecret();
+        doc["nonce"] = ApiAuth::lastNonce();
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);
@@ -1699,6 +1713,18 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
     sendOk(req);
 }
 
+void WebManager::handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const char* actuel = doc["actuel"] | "";
+    const char* nouveau = doc["nouveau"] | "";
+    if (!ApiAuth::setSecret(actuel, nouveau)) {
+        sendError(req, ApiAuth::hasSecret()
+            ? "secret actuel incorrect, ou nouveau secret trop court (12 caracteres minimum)"
+            : "secret trop court (12 caracteres minimum)");
+        return;
+    }
+    sendOk(req);
+}
+
 // Enregistrement d'un script compile par le navigateur.
 //
 // Le bytecode arrive du dehors : ScriptStore::save le fait valider avant
@@ -1709,6 +1735,30 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
     const uint8_t index = doc["i"] | 255U;
     JsonArrayConst code = doc["code"].as<JsonArrayConst>();
     if (index >= ScriptStore::MAX_SCRIPTS) { sendError(req, "emplacement invalide"); return; }
+
+    // Signature AVANT tout traitement : on ne touche pas au magasin, ni meme
+    // aux tampons, pour une requete dont on ne sait pas d'ou elle vient.
+    //
+    // Le message signe est une forme CANONIQUE reconstruite ici a partir des
+    // valeurs qui comptent -- pas le corps HTTP brut, dont la
+    // re-serialisation ne redonnerait pas les memes octets.
+    {
+        String canonical = "script-save|";
+        canonical += index;
+        canonical += '|';
+        canonical += (uint32_t)(doc["nonce"] | 0U);
+        canonical += '|';
+        for (JsonVariantConst v : code) {
+            const int b = v | 0;
+            char hex[3];
+            snprintf(hex, sizeof(hex), "%02x", b & 0xFF);
+            canonical += hex;
+        }
+        if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+            sendError(req, "signature refusee : script non enregistre", 403);
+            return;
+        }
+    }
     if (code.isNull() || code.size() == 0U) { sendError(req, "programme vide"); return; }
     if (code.size() > ScriptStore::MAX_BYTECODE) {
         sendError(req, "programme trop long");
@@ -1770,6 +1820,16 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
 
 void WebManager::handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc) {
     const uint8_t index = doc["i"] | 255U;
+    {
+        String canonical = "script-erase|";
+        canonical += index;
+        canonical += '|';
+        canonical += (uint32_t)(doc["nonce"] | 0U);
+        if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+            sendError(req, "signature refusee : rien n'a ete efface", 403);
+            return;
+        }
+    }
     if (!ScriptStore::erase(index)) { sendError(req, "effacement impossible"); return; }
     sendOk(req);
 }

@@ -50,6 +50,8 @@ a.back{display:inline-block;margin-top:18px;padding:9px 14px;border:1px solid va
     <button onclick="enregistrer()">Enregistrer</button>
     <button class="sec" onclick="charger()">Recharger</button>
     <button class="danger" onclick="effacer()">Effacer</button>
+    <button class="sec" onclick="definirSecret()">Secret</button>
+    <button class="sec" onclick="oublierSecret()">Oublier le secret ici</button>
   </div>
 
   <div id="msg">Choisissez un emplacement.</div>
@@ -82,10 +84,61 @@ quand une zone est renommée ou déplacée dans la liste.
   <a class="back" href="/index.html">Retour à AquaLook</a>
 </div>
 
+<script src="/hmac.js"></script>
 <script src="/script-lang.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let MAX = 6;
+let NONCE = 0;
+
+// Le secret ne quitte JAMAIS le navigateur : seules les signatures partent
+// sur le reseau. Il est garde localement pour ne pas le retaper a chaque
+// enregistrement -- et effacable d'un bouton.
+function secret() {
+  let s = null;
+  try { s = localStorage.getItem('aqualook-secret'); } catch (e) {}
+  if (!s) {
+    s = prompt("Secret d’authentification du module (12 caractères minimum) :");
+    if (s) { try { localStorage.setItem('aqualook-secret', s); } catch (e) {} }
+  }
+  return s;
+}
+
+function oublierSecret() {
+  try { localStorage.removeItem('aqualook-secret'); } catch (e) {}
+  dire('Secret oublié sur cet appareil. Il reste en place sur le module.', '');
+}
+
+// Le nonce doit progresser strictement, sinon le module refuse -- c'est ce
+// qui empeche de rejouer une requete capturee. On repart du dernier accepte.
+async function prochainNonce() {
+  const d = await (await fetch('/api/auth/state')).json();
+  NONCE = Math.max(NONCE, d.nonce || 0) + 1;
+  return { nonce: NONCE, configure: d.configure };
+}
+
+async function signer(canonique) {
+  const s = secret();
+  if (!s) return null;
+  return AquaHmac.hmacSha256Hex(s, canonique);
+}
+
+async function definirSecret() {
+  const actuel = prompt("Secret ACTUEL (laisser vide si le module n’en a pas encore) :") || "";
+  const nouveau = prompt("NOUVEAU secret (12 caractères minimum) :");
+  if (!nouveau) return;
+  const r = await fetch('/api/auth-secret', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ actuel: actuel, nouveau: nouveau })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    try { localStorage.setItem('aqualook-secret', nouveau); } catch (e) {}
+    dire('Secret enregistré sur le module et retenu sur cet appareil.', 'ok');
+  } else {
+    dire('Refusé : ' + (d.error || ''), 'ko');
+  }
+}
 
 function dire(texte, etat) {
   const m = $('msg');
@@ -121,13 +174,29 @@ function verifier() {
 async function enregistrer() {
   const code = verifier();
   if (!code) return;
+  const i = parseInt($('slot').value, 10);
+  const etat = await prochainNonce();
+  if (!etat.configure) {
+    dire("Le module n’a pas encore de secret : cliquez « Secret » pour en poser un. " +
+         "Sans lui, aucun script ne peut être déposé.", "ko");
+    return;
+  }
+  // Forme canonique : la MEME des deux cotes, reconstruite a partir des
+  // valeurs qui comptent -- pas du corps HTTP, dont les octets exacts ne
+  // survivent pas a l'analyse JSON du module.
+  const hex = code.map((b) => b.toString(16).padStart(2, '0')).join('');
+  const sig = await signer('script-save|' + i + '|' + etat.nonce + '|' + hex);
+  if (!sig) { dire('Secret requis pour enregistrer.', 'ko'); return; }
+
   const payload = {
-    i: parseInt($('slot').value, 10),
+    i: i,
     nom: $('nom').value || 'Sans nom',
     actif: $('actif').value === '1',
     entree: parseInt($('entree').value, 10) || 0,
     code: code,
-    source: $('src').value
+    source: $('src').value,
+    nonce: etat.nonce,
+    sig: sig
   };
   const r = await fetch('/api/script-save', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -165,17 +234,20 @@ async function charger() {
     $('src').value = '';
     // Le programme tourne quand meme : ne pas laisser croire a une perte.
     dire('Chargé : ' + d.code.length + ' octets. Le texte source n\'est pas ' +
-         'sur la carte SD — le script fonctionne, mais il faudra le réécrire ' +
-         'pour le modifier.', 'ko');
+         "sur la carte SD — le script fonctionne, mais il faudra le réécrire " +
+         "pour le modifier.", "ko");
   }
 }
 
 async function effacer() {
   const i = parseInt($('slot').value, 10);
   if (!confirm('Effacer le script ' + (i + 1) + ' ?')) return;
+  const etat = await prochainNonce();
+  const sig = await signer('script-erase|' + i + '|' + etat.nonce);
+  if (!sig) { dire('Secret requis pour effacer.', 'ko'); return; }
   const r = await fetch('/api/script-erase', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ i: i })
+    body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
   });
   const d = await r.json();
   dire(d.ok ? 'Effacé.' : ('Échec : ' + (d.error || '')), d.ok ? 'ok' : 'ko');
