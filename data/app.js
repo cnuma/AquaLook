@@ -1675,14 +1675,22 @@ async function saveCfgIo() {
 // l&rsquo;apostrophe. Aucun echappement fragile.
 
 let topoBoards = [];   // { i, controller, addr, channels, logic }
-let topoAssign = [];   // { i, role, target, board, channel }
+let topoAssign = [];   // { i, role, target, board, channel, id, flags }
 let topoSource = 'legacy';
 let topoPendingReboot = false;
 
 const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
 const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
+// Sorties d'un cote, ENTREES de l'autre. Les entrees manquaient a cette
+// liste : une entree enregistree s'affichait donc comme « Vanne de zone »,
+// et un simple enregistrement l'aurait transformee en sortie -- une broche
+// d'entree passee en sortie, c'est un court-circuit potentiel.
 const TOPO_ROLES = [[1, 'Vanne de zone'], [2, 'Pompe'], [3, 'Auxiliaire'],
-                    [4, 'Ventilation serre'], [5, 'Eclairage']];
+                    [4, 'Ventilation serre'], [5, 'Eclairage'],
+                    [16, 'Entree TOR'], [17, 'Niveau de cuve'],
+                    [18, 'Pluie'], [19, 'Presence']];
+const TOPO_ROLE_INPUT_FIRST = 16;
+const topoIsInput = (role) => Number(role) >= TOPO_ROLE_INPUT_FIRST;
 // Valeurs acceptees par isSupportedChannelCount() : 1, 2, 4, 8. Proposer 16
 // fabriquait un choix que l'API refusait ensuite.
 const TOPO_CHANCOUNT = [1, 2, 4, 8];
@@ -1714,7 +1722,8 @@ async function loadCfgTopo() {
     channels: b.channels, logic: b.logic, transport: b.transport || 0
   }));
   topoAssign = (d.assignments || []).map(a => ({
-    i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel
+    i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel,
+    id: a.id || 0, flags: a.flags || 0
   }));
   renderTopoEditor();
 }
@@ -1805,13 +1814,13 @@ function renderTopoEditor() {
       + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
-  // Le backend V4 ne dispose aujourd'hui que d'un pilote XL9535 : une carte
-  // MCP23017 fonctionne en profil historique mais serait impilotable en V4.
-  // On le dit ici plutot que de laisser decouvrir la panne apres un flash.
+  // Cet avertissement disait que le MCP23017 n'etait pilotable que par le
+  // moteur historique. C'etait vrai jusqu'au 8 septembre 2026 ; les deux
+  // expandeurs partagent desormais le meme pilote V4.
   if (topoBoards.some(b => b.controller === 1)) {
-    h += '<div class="cfg-hint io-ko">Attention : le pilotage MCP23017 '
-       + 'n&rsquo;existe que dans le moteur historique. Le moteur V4 ne sait '
-       + 'piloter que des cartes XL9535.</div>';
+    h += '<div class="cfg-hint">Le moteur V4 pilote les cartes XL9535 <b>et</b> '
+       + 'MCP23017 : elles partagent le meme pilote, a un plan de registres '
+       + 'pres. Une meme carte peut porter des sorties <b>et</b> des entrees.</div>';
   }
 
   h += '<div class="cfg-subsection-title" style="margin-top:12px">Affectations</div>';
@@ -1821,9 +1830,22 @@ function renderTopoEditor() {
   topoAssign.forEach((a, n) => {
     h += '<div class="io-bind">'
       + topoField('Role', '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
-      + topoField('Pilote', '<select data-topo="target" data-n="' + n + '" title="ce que cette voie commande">' + topoTargetOptions(a.role, a.target) + '</select>')
+      + (topoIsInput(a.role)
+          // Une entree ne « pilote » rien : elle porte un IDENTIFIANT, celui
+          // que les scripts citeront. Montrer une cible ici n'aurait aucun
+          // sens, et laisser le champ vide en aurait encore moins.
+          ? topoField('Identifiant (scripts)',
+              '<input type="number" min="1" max="65535" data-topo="id" data-n="' + n
+              + '" value="' + (a.id || '') + '" title="cite par entree(...) dans un script">')
+            + topoField('Signal',
+              '<select data-topo="flags" data-n="' + n + '">'
+              + topoOptions([[3, 'Actif bas + tirage'], [2, 'Actif haut + tirage'],
+                             [1, 'Actif bas, sans tirage'], [0, 'Actif haut, sans tirage']],
+                            a.flags) + '</select>')
+          : topoField('Pilote', '<select data-topo="target" data-n="' + n + '" title="ce que cette voie commande">' + topoTargetOptions(a.role, a.target) + '</select>'))
       + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '" onchange="topoOnBoardChange(' + n + ')">' + topoBoardOptions(a.board) + '</select>')
-      + topoField('Canal (relais)', '<select data-topo="channel" data-n="' + n + '" title="numero du relais sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
+      + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
+          '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
@@ -1843,6 +1865,8 @@ function topoGatherFromDom() {
     else if (topoAssign[n]) {
       if (k === 'role') topoAssign[n].role = val;
       else if (k === 'target') topoAssign[n].target = val;
+      else if (k === 'id') topoAssign[n].id = val;
+      else if (k === 'flags') topoAssign[n].flags = val;
       else if (k === 'board') topoAssign[n].board = val;
       else if (k === 'channel') topoAssign[n].channel = val;
     }
@@ -1868,7 +1892,8 @@ function topoAddAssign() {
   const i = topoNextIndex(topoAssign, 20);
   if (i < 0) { toast('20 affectations au maximum', true); return; }
   const board = topoBoards.length ? topoBoards[0].i : 0;
-  topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0 });
+  topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0,
+                    id: 0, flags: 3 });
   renderTopoEditor();
 }
 function topoRemoveAssign(n) { topoGatherFromDom(); topoAssign.splice(n, 1); renderTopoEditor(); }
@@ -1886,7 +1911,10 @@ async function saveCfgTopo() {
       channels: b.channels, logic: b.logic, transport: b.transport || 0
     })),
     assignments: topoAssign.map(a => ({
-      i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel
+      i: a.i, role: a.role, target: a.target, board: a.board, channel: a.channel,
+      // L'identifiant voyage avec l'affectation : sans lui le module refuse
+      // l'entree, et un script qui la citait pointerait dans le vide.
+      id: a.id || 0, flags: a.flags || 0
     }))
   };
   try {
