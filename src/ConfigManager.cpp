@@ -87,7 +87,7 @@ struct PersistedConfigV3 {
 // suit, donc ferait rejeter le bloc existant -- c'est-a-dire effacerait le
 // planning d'arrosage de quelqu'un. Le tableau parallele est la seule forme
 // sure, comme l'a ete zoneNotificationMasks avant lui.
-struct PersistedConfig {
+struct PersistedConfigV4 {
     uint32_t magic;
     uint16_t schema;
     uint16_t payloadSize;
@@ -106,15 +106,59 @@ struct PersistedConfig {
     uint32_t crc32;
 };
 
+// Schema 5 : un IDENTIFIANT STABLE par zone.
+//
+// Tout designait jusqu'ici une zone par son INDEX. Cela tient tant que rien
+// d'exterieur ne s'y refere. Des qu'un scenario ecrit par l'utilisateur dira
+// "arroser la zone 5", l'index devient un piege : supprimer ou reordonner une
+// zone ferait silencieusement pointer ce scenario sur une autre. Meme famille
+// de faute que le cablage devine -- une reference qui a l'air juste et
+// designe le mauvais objet.
+//
+// L'identifiant est attribue une fois et n'est JAMAIS reutilise apres
+// suppression : reutiliser un numero libere ferait ressusciter les
+// references d'un objet disparu. nextZoneId retient donc le prochain a
+// distribuer, et ne recule pas.
+//
+// L'index reste, mais seulement comme position d'affichage.
+struct PersistedConfig {
+    uint32_t magic;
+    uint16_t schema;
+    uint16_t payloadSize;
+    CfgWifi wifi;
+    CfgTouch touch;
+    CfgManual manual;
+    CfgNtp ntp;
+    CfgOwm owm;
+    CfgSystem system;
+    CfgDisplay display;
+    CfgZone zones[MAX_ZONES];
+    uint8_t zoneNotificationMasks[MAX_ZONES];
+    uint8_t weatherProvider;
+    uint8_t reserved[3];
+    char zoneColors[MAX_ZONES][8];
+    uint16_t zoneIds[MAX_ZONES];
+    uint16_t nextZoneId;
+    uint16_t reserved2;
+    uint32_t crc32;
+};
+
 static_assert(offsetof(PersistedConfigV2, zoneNotificationMasks) ==
                   offsetof(PersistedConfigV1, crc32),
               "Le prefixe NVS schema 1 doit rester strictement identique");
-static_assert(offsetof(PersistedConfig, zoneColors) ==
+static_assert(offsetof(PersistedConfigV4, zoneColors) ==
                   offsetof(PersistedConfigV3, crc32),
               "Le prefixe NVS schema 3 doit rester strictement identique");
-static_assert(sizeof(PersistedConfig) ==
+static_assert(sizeof(PersistedConfigV4) ==
                   sizeof(PersistedConfigV3) + sizeof(char[MAX_ZONES][8]),
               "Le schema 4 doit ajouter exactement une couleur par zone");
+static_assert(offsetof(PersistedConfig, zoneIds) ==
+                  offsetof(PersistedConfigV4, crc32),
+              "Le prefixe NVS schema 4 doit rester strictement identique");
+static_assert(sizeof(PersistedConfig) ==
+                  sizeof(PersistedConfigV4) + sizeof(uint16_t[MAX_ZONES]) + 4U,
+              "Le schema 5 doit ajouter un identifiant par zone, le compteur "
+              "et son bourrage");
 static_assert(sizeof(PersistedConfigV2) ==
                   sizeof(PersistedConfigV1) + MAX_ZONES,
               "Le schema 2 doit ajouter exactement un uint8_t par zone");
@@ -138,6 +182,18 @@ static_assert(sizeof(PersistedConfigV3) == sizeof(PersistedConfigV2) + 4U,
 // zone z portait cZone[z % 4]. Les zones 5 a 8, qui doublonnaient avec les
 // zones 1 a 4, gardent cette couleur -- l'utilisateur pourra les distinguer
 // lui-meme, mais rien ne bouge sans qu'il le demande.
+// Attribution des identifiants a la migration : la zone d'index i recoit
+// i+1. Les references existantes -- il n'y en a pas encore -- resteraient
+// donc lisibles, et l'utilisateur retrouve une numerotation qui correspond a
+// ce qu'il voit. C'est le seul moment ou index et identifiant coincident ;
+// ils divergeront des la premiere suppression, et c'est le but.
+void seedZoneIds(uint16_t ids[], uint16_t& nextId) {
+    for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+        ids[z] = static_cast<uint16_t>(z + 1U);
+    }
+    nextId = static_cast<uint16_t>(MAX_ZONES + 1U);
+}
+
 void seedZoneColorsFromPalette(char dst[][8], const CfgDisplay& display) {
     const char* palette[4] = { display.cZone0, display.cZone1,
                                display.cZone2, display.cZone3 };
@@ -226,6 +282,7 @@ bool ConfigManager::loadNvs() {
     // ajoute la branche schema 2 -> 3 sans toucher a cette ligne a efface le
     // WiFi et le planning du module d'essai.
     if (len != sizeof(PersistedConfig) &&
+        len != sizeof(PersistedConfigV4) &&
         len != sizeof(PersistedConfigV3) &&
         len != sizeof(PersistedConfigV2) &&
         len != sizeof(PersistedConfigV1)) {
@@ -245,6 +302,50 @@ bool ConfigManager::loadNvs() {
 
     const size_t read = prefs.getBytes(CFG_NVS_KEY, raw, len);
     prefs.end();
+
+    // ── Migration schema 4 -> 5 ──────────────────────────────────────────
+    //
+    // Le bloc de schema 4 est un prefixe exact du schema 5 : on le relit tel
+    // quel et on distribue les identifiants.
+    if (len == sizeof(PersistedConfigV4)) {
+        PersistedConfigV4* v4 = reinterpret_cast<PersistedConfigV4*>(raw);
+        bool valid = read == len && v4->magic == NVS_MAGIC &&
+                     v4->schema == 4U && v4->payloadSize == len;
+        if (valid) {
+            valid = crc32Bytes(raw, offsetof(PersistedConfigV4, crc32)) == v4->crc32;
+        }
+        if (!valid) {
+            _nvsRejected = true;
+            EventLog::log(LOG_ERROR, "Config: bloc NVS schema 4 invalide");
+            free(raw);
+            return false;
+        }
+        _wifi = v4->wifi;
+        _touch = v4->touch;
+        _manual = v4->manual;
+        _ntp = v4->ntp;
+        _owm = v4->owm;
+        _system = v4->system;
+        _display = v4->display;
+        memcpy(_zones, v4->zones, sizeof(_zones));
+        memcpy(_zoneNotificationMasks, v4->zoneNotificationMasks,
+               sizeof(_zoneNotificationMasks));
+        memcpy(_zoneColors, v4->zoneColors, sizeof(_zoneColors));
+        _weatherProvider = (v4->weatherProvider <= WEATHER_PROVIDER_OPEN_METEO)
+                           ? v4->weatherProvider : WEATHER_PROVIDER_OWM;
+        free(raw);
+        seedZoneIds(_zoneIds, _nextZoneId);
+        for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+            _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
+        }
+        _system.nbZones = normalizeActiveZones(_system.nbZones);
+        _system.nbRelaisPhysical = _system.nbZones;
+        _loaded = true;
+        save();
+        EventLog::log(LOG_INFO,
+                      "Config: migration NVS schema 4 -> 5, identifiants de zone attribues");
+        return true;
+    }
 
     // ── Migration schema 3 -> 4 ──────────────────────────────────────────
     //
@@ -278,6 +379,7 @@ bool ConfigManager::loadNvs() {
                            ? v3->weatherProvider : WEATHER_PROVIDER_OWM;
         free(raw);
         seedZoneColorsFromPalette(_zoneColors, _display);
+        seedZoneIds(_zoneIds, _nextZoneId);
         for (uint8_t z = 0; z < MAX_ZONES; ++z) {
             _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
         }
@@ -337,6 +439,7 @@ bool ConfigManager::loadNvs() {
                            ? WEATHER_PROVIDER_OWM : WEATHER_PROVIDER_OPEN_METEO;
         free(raw);
         seedZoneColorsFromPalette(_zoneColors, _display);
+        seedZoneIds(_zoneIds, _nextZoneId);
         for (uint8_t z = 0; z < MAX_ZONES; ++z) {
             _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
         }
@@ -384,6 +487,7 @@ bool ConfigManager::loadNvs() {
         memset(_zoneNotificationMasks, 0, sizeof(_zoneNotificationMasks));
         free(raw);
         seedZoneColorsFromPalette(_zoneColors, _display);
+        seedZoneIds(_zoneIds, _nextZoneId);
         _system.relayController = (_system.relayController <= RELAY_CONTROLLER_MCP23017)
                                   ? _system.relayController : RELAY_CONTROLLER_XL9535;
         _system.nbZones = normalizeActiveZones(_system.nbZones);
@@ -435,6 +539,8 @@ bool ConfigManager::loadNvs() {
     _weatherProvider = (blob->weatherProvider <= WEATHER_PROVIDER_OPEN_METEO)
                        ? blob->weatherProvider : WEATHER_PROVIDER_OWM;
     memcpy(_zoneColors, blob->zoneColors, sizeof(_zoneColors));
+    memcpy(_zoneIds, blob->zoneIds, sizeof(_zoneIds));
+    _nextZoneId = blob->nextZoneId;
     for (uint8_t z = 0; z < MAX_ZONES; ++z) {
         _zoneNotificationMasks[z] &= ZONE_NOTIFY_MASK;
         // Une couleur vide viendrait d'un bloc ecrit avant que la zone ne soit
@@ -501,6 +607,7 @@ void ConfigManager::defaults() {
     _system = CfgSystem{};
     _display = CfgDisplay{};
     seedZoneColorsFromPalette(_zoneColors, _display);
+    seedZoneIds(_zoneIds, _nextZoneId);
 
     // Initialiser toutes les zones jusqu'à MAX_ZONES avec des defaults vides
     // Les zones actives sont celles < _system.nbZones
@@ -588,6 +695,8 @@ void ConfigManager::save() {
     memcpy(blob->zoneNotificationMasks, _zoneNotificationMasks,
            sizeof(_zoneNotificationMasks));
     memcpy(blob->zoneColors, _zoneColors, sizeof(_zoneColors));
+    memcpy(blob->zoneIds, _zoneIds, sizeof(_zoneIds));
+    blob->nextZoneId = _nextZoneId;
     blob->crc32 = crc32Bytes(reinterpret_cast<const uint8_t*>(blob),
                              offsetof(PersistedConfig, crc32));
 
@@ -1131,6 +1240,7 @@ void ConfigManager::zoneToJson(uint8_t z, JsonObject& obj) const {
     const CfgZone& cz = _zones[z];
     obj["name"]         = cz.name;
     obj["color"]        = _zoneColors[z];
+    obj["id"]           = _zoneIds[z];
     obj["mode"]         = cz.mode;
     obj["intervalDays"] = cz.intervalDays;
     obj["notificationMask"] = _zoneNotificationMasks[z];

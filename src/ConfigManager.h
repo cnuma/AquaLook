@@ -37,7 +37,7 @@
 // que par le WiFi : figer la source dans le firmware imposerait de le
 // reflasher - donc de le demonter - pour changer de canal de mise a jour.
 #define CFG_NVS_WEBASSETS_URL_KEY "waUrl"
-#define CFG_NVS_SCHEMA    4
+#define CFG_NVS_SCHEMA    5
 
 // Longueur maximale de cette URL, terminateur compris.
 static constexpr size_t WEBASSETS_URL_MAX = 160;
@@ -274,6 +274,26 @@ public:
         return z < MAX_ZONES ? _zoneColors[z] : _display.cZone0;
     }
     void setZoneColor(uint8_t z, const char* hex);
+
+    // Identifiant STABLE d'une zone. Attribue une fois, jamais reutilise
+    // apres suppression. C'est lui que doit citer tout ce qui vit HORS de la
+    // table des zones -- un scenario, une regle, une liaison d'entree -- et
+    // jamais l'index, qui n'est qu'une position d'affichage.
+    //
+    // Retourne 0 pour un index hors bornes : 0 n'est jamais attribue, donc il
+    // ne peut pas se confondre avec une zone reelle.
+    uint16_t zoneId(uint8_t z) const {
+        return z < MAX_ZONES ? _zoneIds[z] : 0U;
+    }
+    // Position d'affichage d'un identifiant, ou MAX_ZONES s'il ne designe
+    // plus rien -- cas d'une zone supprimee dont une regle garde la trace.
+    uint8_t zoneIndexById(uint16_t id) const {
+        if (id == 0U) return MAX_ZONES;
+        for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+            if (_zoneIds[z] == id) return z;
+        }
+        return MAX_ZONES;
+    }
     uint32_t          intervalAnchorDay(uint8_t z) const;
     const CfgDisplay& display() const { return _display; }
     bool weatherVisualsEnabled() const { return _weatherVisualsEnabled; }
@@ -403,6 +423,11 @@ private:
     // un champ decalerait zones[] dans le bloc NVS et ferait rejeter les
     // configurations existantes. Voir PersistedConfig dans le .cpp.
     char      _zoneColors[MAX_ZONES][8] = {};
+    // Voir PersistedConfig (schema 5) : l'identifiant appartient logiquement
+    // a la zone, mais est range en queue du bloc NVS pour ne pas decaler
+    // zones[] -- et donc ne pas faire rejeter les configurations existantes.
+    uint16_t  _zoneIds[MAX_ZONES] = {};
+    uint16_t  _nextZoneId = 1U;
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
     bool      _loaded = false;
     bool      _nvsRejected = false;

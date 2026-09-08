@@ -679,6 +679,7 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         zo["hasOutput"] = mapped;
         if (_config) zo["name"] = _config->zone(z).name;
         if (_config) zo["color"] = _config->zoneColor(z);
+        if (_config) zo["id"] = _config->zoneId(z);
         if (_config) {
             const uint8_t notifyMask = _config->zoneNotificationMask(z);
             zo["notificationMask"] = notifyMask;
