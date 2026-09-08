@@ -652,6 +652,9 @@ void setup() {
     webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
     webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
     webMgr.setIoExpander(&ioExpander);
+    webMgr.setInputReader([](uint16_t id, bool& active) {
+        return v4PilotRuntime.readInputById(id, active);
+    });
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     // N annonce que ce dont ce message est sur. Le perimetre pilote depend

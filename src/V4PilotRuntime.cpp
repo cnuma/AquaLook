@@ -32,6 +32,7 @@ bool V4PilotRuntime::begin(
         _boards[i] = Domain::BoardDefinition();
     }
 
+    _topology = &topology;
     uint32_t managedBoards = 0U;
     size_t nextPort = 0U;
 
@@ -200,6 +201,39 @@ bool V4PilotRuntime::isReady() const {
 
 V4RelayPhysicalBackend& V4PilotRuntime::backend() {
     return _backend;
+}
+
+bool V4PilotRuntime::readInputById(uint16_t inputId, bool& active) const {
+    active = false;
+    if (!_topology) return false;
+
+    const RelayTopology::MappingResolution m =
+        RelayTopology::resolveInputById(*_topology, inputId);
+    if (!m.valid) return false;
+
+    const RelayTopology::RelayBoardConfig& board = _topology->boards[m.boardIndex];
+    const bool isMcp = (board.controller == RelayTopology::CONTROLLER_MCP23017);
+    const Domain::I2cExpanderRegisterMap& regs =
+        isMcp ? Domain::MCP23017_REGISTER_MAP : Domain::XL9535_REGISTER_MAP;
+
+    // Retrouver l'affectation pour ses options : la resolution ne porte que
+    // le chemin physique, pas la maniere de lire la broche.
+    uint8_t flags = 0U;
+    for (uint8_t a = 0U; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
+        const RelayTopology::RelayAssignment& as = _topology->assignments[a];
+        if (as.isInput() && as.id == inputId) { flags = as.flags; break; }
+    }
+
+    return Domain::readI2cExpanderInput(
+        Drivers::arduinoI2cPlatformOps(),
+        &RELAY_WIRE_BUS,
+        regs,
+        board.i2cAddress,
+        m.channelIndex,
+        (flags & RelayTopology::INPUT_FLAG_PULLUP) != 0U,
+        (flags & RelayTopology::INPUT_FLAG_ACTIVE_LOW) != 0U,
+        active
+    );
 }
 
 }} // namespace AquaLook::Runtime

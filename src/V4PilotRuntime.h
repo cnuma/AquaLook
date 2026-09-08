@@ -25,6 +25,14 @@ public:
     bool isReady() const;
     V4RelayPhysicalBackend& backend();
 
+    // Lit une ENTREE tout ou rien par son identifiant stable.
+    //
+    // Passe par le meme pilote et le meme bus que les sorties : une entree
+    // n'est pas un peripherique a part, c'est une voie dans l'autre sens.
+    // Retourne false si l'identifiant ne designe rien, si la carte ne repond
+    // pas, ou si l'option demandee n'existe pas sur ce composant.
+    bool readInputById(uint16_t inputId, bool& active) const;
+
 private:
     // Une entree par carte declarable dans la topologie : le runtime ne doit
     // plus etre le facteur limitant. Chaque carte a SON contexte, donc sa
@@ -42,6 +50,9 @@ private:
     Domain::BinaryActuatorDriverBinding _driverStorage[DRIVER_CAPACITY];
     Domain::BinaryActuatorDriverRegistry _driverRegistry;
     Domain::I2cExpanderActuatorContext _expanderContexts[BOARD_COUNT];
+    // Conserve pour resoudre une entree apres coup : le cablage vit ailleurs,
+    // on ne le recopie pas.
+    const RelayTopology::RelayTopologyConfig* _topology = nullptr;
     size_t _boardCount = 0U;
     size_t _portCount = 0U;
     V4RelayPhysicalBackend _backend;

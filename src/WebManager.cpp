@@ -587,6 +587,24 @@ void WebManager::setupRoutes() {
                [this](AsyncWebServerRequest* req) { handlePersistTopology(req); });
     _server.on("/api/relay/topology/reset", HTTP_POST,
                [this](AsyncWebServerRequest* req) { handleResetTopology(req); });
+    // Lecture d'une entree tout ou rien, par son identifiant stable.
+    // Sert a verifier un cablage sans ecrire de script, et c'est la brique
+    // que READ_INPUT utilisera cote machine a scripts.
+    _server.on("/api/relay/input", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        const uint16_t id = req->hasParam("id")
+            ? static_cast<uint16_t>(req->getParam("id")->value().toInt()) : 0U;
+        JsonDocument doc;
+        doc["id"] = id;
+        bool active = false;
+        const bool ok = _readInput && _readInput(id, active);
+        doc["ok"] = ok;
+        if (ok) doc["active"] = active;
+        else doc["error"] = "entree inconnue, carte muette ou option indisponible";
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
     _server.on("/api/relay/topology", HTTP_GET,
                [this](AsyncWebServerRequest* req) { handleGetTopology(req); });
     addJsonHandler("/api/relay/topology",

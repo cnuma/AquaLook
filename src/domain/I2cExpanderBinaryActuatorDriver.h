@@ -40,7 +40,14 @@ struct I2cExpanderRegisterMap {
     uint8_t input;      // lecture de l'etat reel des broches
     uint8_t output;     // latch de sortie
     uint8_t direction;  // sens des broches (1 = entree)
+    // Resistances de tirage internes. Le MCP23017 en a (GPPU), le XL9535
+    // n'en a PAS : la valeur NO_PULLUP dit l'absence au lieu de la simuler.
+    // Une entree qui reclame un tirage sur un XL9535 doit etre refusee, pas
+    // acceptee puis flottante -- une entree flottante lit n'importe quoi.
+    uint8_t pullup;
 };
+
+constexpr uint8_t I2C_EXPANDER_NO_PULLUP = 0xFFU;
 
 struct I2cExpanderActuatorContext {
     const I2cExpanderOps* i2c;
@@ -85,9 +92,37 @@ constexpr uint8_t CONFIGURATION = 0x06U;
 // deux peuvent differer.
 namespace Mcp23017Registers {
 constexpr uint8_t IODIR = 0x00U;
+constexpr uint8_t GPPU = 0x0CU;   // GPPUA/GPPUB adjacents, acces 16 bits
 constexpr uint8_t GPIO = 0x12U;
 constexpr uint8_t OLAT = 0x14U;
 }
+
+// Lecture d'une ENTREE tout ou rien sur un expandeur.
+//
+// Le pilote d'actionneur configure toute voie en SORTIE : c'est son role.
+// Une entree demande le chemin symetrique -- poser le bit de direction a 1,
+// armer le tirage si la puce en a un, puis lire le registre d'etat reel des
+// broches (et non le latch, qui ne dirait que ce qu'on a demande).
+//
+// La fonction est INDEPENDANTE du pilote d'actionneur : une entree n'est pas
+// un actionneur, et lui faire emprunter des ops taillees pour commander
+// aurait mele deux intentions dans le meme objet.
+//
+// Retourne false si la puce ne repond pas ou si l'option demandee n'existe
+// pas sur ce composant.
+bool readI2cExpanderInput(
+    const I2cExpanderOps& ops,
+    void* platformContext,
+    const I2cExpanderRegisterMap& registers,
+    uint8_t address,
+    uint8_t channel,
+    bool wantPullup,
+    bool activeLow,
+    bool& active
+);
+
+extern const I2cExpanderRegisterMap XL9535_REGISTER_MAP;
+extern const I2cExpanderRegisterMap MCP23017_REGISTER_MAP;
 
 const BinaryActuatorDriverOps& i2cExpanderBinaryActuatorDriverOps();
 

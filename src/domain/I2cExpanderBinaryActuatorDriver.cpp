@@ -42,13 +42,15 @@ bool contextIsUsable(const I2cExpanderActuatorContext& context) {
 constexpr I2cExpanderRegisterMap XL9535_MAP = {
     Xl9535Registers::INPUT_PORT,
     Xl9535Registers::OUTPUT_PORT,
-    Xl9535Registers::CONFIGURATION
+    Xl9535Registers::CONFIGURATION,
+    I2C_EXPANDER_NO_PULLUP   // le XL9535 n'a pas de tirage interne
 };
 
 constexpr I2cExpanderRegisterMap MCP23017_MAP = {
     Mcp23017Registers::GPIO,
     Mcp23017Registers::OLAT,
-    Mcp23017Registers::IODIR
+    Mcp23017Registers::IODIR,
+    Mcp23017Registers::GPPU
 };
 
 const I2cExpanderRegisterMap& registersFor(const I2cExpanderActuatorContext& context) {
@@ -350,6 +352,66 @@ BinaryActuatorDriverBinding makeMcp23017BinaryActuatorDriverBinding(
     binding.operations = &OPERATIONS;
     binding.context = &context;
     return binding;
+}
+
+
+const I2cExpanderRegisterMap XL9535_REGISTER_MAP = XL9535_MAP;
+const I2cExpanderRegisterMap MCP23017_REGISTER_MAP = MCP23017_MAP;
+
+bool readI2cExpanderInput(
+    const I2cExpanderOps& ops,
+    void* platformContext,
+    const I2cExpanderRegisterMap& registers,
+    uint8_t address,
+    uint8_t channel,
+    bool wantPullup,
+    bool activeLow,
+    bool& active
+) {
+    active = false;
+    if (!hasCompleteI2cExpanderOps(ops) || channel >= 16U) return false;
+    if (!ops.probe(platformContext, address)) return false;
+
+    const uint16_t mask = static_cast<uint16_t>(1U << channel);
+
+    // Ne toucher QUE le bit de cette voie : les autres broches de la puce
+    // pilotent peut-etre des vannes. Une ecriture aveugle du registre entier
+    // les remettrait toutes en entree, donc les relacherait.
+    uint16_t direction = 0U;
+    if (!ops.readRegister16(platformContext, address, registers.direction, direction)) {
+        return false;
+    }
+    const uint16_t wantedDirection = static_cast<uint16_t>(direction | mask);
+    if (wantedDirection != direction &&
+        !ops.writeRegister16(platformContext, address, registers.direction, wantedDirection)) {
+        return false;
+    }
+
+    if (wantPullup) {
+        if (registers.pullup == I2C_EXPANDER_NO_PULLUP) {
+            return false;   // dire l'absence plutot que lire du flottant
+        }
+        uint16_t pull = 0U;
+        if (!ops.readRegister16(platformContext, address, registers.pullup, pull)) {
+            return false;
+        }
+        const uint16_t wantedPull = static_cast<uint16_t>(pull | mask);
+        if (wantedPull != pull &&
+            !ops.writeRegister16(platformContext, address, registers.pullup, wantedPull)) {
+            return false;
+        }
+    }
+
+    // Registre d'ETAT REEL des broches, pas le latch : sur une entree le
+    // latch ne dirait que ce qu'on a ecrit, c'est-a-dire rien d'utile.
+    uint16_t levels = 0U;
+    if (!ops.readRegister16(platformContext, address, registers.input, levels)) {
+        return false;
+    }
+
+    const bool high = (levels & mask) != 0U;
+    active = activeLow ? !high : high;
+    return true;
 }
 
 }} // namespace AquaLook::Domain
