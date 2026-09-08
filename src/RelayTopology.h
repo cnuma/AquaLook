@@ -16,7 +16,11 @@
 namespace RelayTopology {
 
 static constexpr uint8_t MAX_RELAY_BOARDS = 8;
-static constexpr uint8_t MAX_CHANNELS_PER_BOARD = 8;
+// Seize, et non huit : le MCP23017 comme le XL9535 exposent DEUX ports de
+// huit broches (A et B). Plafonner a huit rendait la moitie de chaque puce
+// inaccessible -- et rien ne le disait a l'utilisateur, qui voyait
+// simplement une liste de canaux s'arreter a 7.
+static constexpr uint8_t MAX_CHANNELS_PER_BOARD = 16;
 static constexpr uint8_t RESERVED_AUXILIARY_ASSIGNMENTS = 4;
 // Les ENTREES partagent la meme table que les sorties : une voie est une
 // voie, sur la meme carte, au bout du meme transport. Seul son SENS change.

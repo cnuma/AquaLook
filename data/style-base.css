@@ -919,6 +919,11 @@ header {
   #topo-editor .io-bind { display: grid;
              grid-template-columns: repeat(4, 1fr) 26px;
              gap: 10px; align-items: end; }
+  /* Une ENTREE n'a pas les memes colonnes qu'une sortie : identifiant et
+     type de signal remplacent la cible. Elle a donc sa propre grille --
+     sans quoi son cinquieme champ tombait dans la colonne du bouton de
+     suppression, qui se retrouvait rejete a la ligne. */
+  #topo-editor .io-bind.io-bind-in { grid-template-columns: repeat(5, 1fr) 26px; }
   #topo-editor select { max-width: none; width: 100%; }
   #topo-editor .topo-field { width: 100%; }
   #topo-editor .io-lbl, #topo-editor .io-st { align-self: center; }
@@ -935,6 +940,11 @@ header {
      qui compte les balises et non les classes. */
   #topo-editor .io-row ~ .io-row .topo-field > span,
   #topo-editor .io-bind ~ .io-bind .topo-field > span { visibility: hidden; }
+  /* ... SAUF les lignes d'entree. Masquer les etiquettes ne vaut que si
+     toutes les lignes portent les MEMES colonnes : une entree affichait
+     alors son identifiant sous l'en-tete « Pilote », ce qui ne voulait
+     rien dire. */
+  #topo-editor .io-bind.io-bind-in .topo-field > span { visibility: visible; }
 }
 
 /* Reference de zone (Z1, Z2...) rappelee a cote du nom.

@@ -1693,7 +1693,9 @@ const TOPO_ROLE_INPUT_FIRST = 16;
 const topoIsInput = (role) => Number(role) >= TOPO_ROLE_INPUT_FIRST;
 // Valeurs acceptees par isSupportedChannelCount() : 1, 2, 4, 8. Proposer 16
 // fabriquait un choix que l'API refusait ensuite.
-const TOPO_CHANCOUNT = [1, 2, 4, 8];
+// 16 = les deux ports A et B d'un XL9535 ou d'un MCP23017. Il manquait, ce
+// qui rendait la moitie de chaque puce inaccessible.
+const TOPO_CHANCOUNT = [1, 2, 4, 8, 16];
 
 // Seul l'I2C local dispose d'un pilote. Les autres sont montres pour dire ou
 // va l'architecture, mais desactives : mieux vaut une porte visiblement
@@ -1761,12 +1763,21 @@ function topoBoardOptions(sel) {
     ' (0x' + b.addr.toString(16) + ')</option>').join('');
 }
 
+// Le numero seul ne dit rien : sur une puce a deux ports, la voie 9 est la
+// broche B1, et c'est ainsi qu'elle est serigraphiee sur la carte. On montre
+// les deux, pour que le cablage se relise sans table de conversion.
+function topoChannelLabel(c, total) {
+  if (total <= 8) return String(c);
+  return c + ' (' + (c < 8 ? 'A' + c : 'B' + (c - 8)) + ')';
+}
+
 function topoChannelOptions(boardIdx, sel) {
   const b = topoBoards.find(x => x.i === boardIdx);
   const n = b ? b.channels : 8;
   let h = '';
   for (let c = 0; c < n; c++)
-    h += '<option value="' + c + '"' + (c === sel ? ' selected' : '') + '>' + c + '</option>';
+    h += '<option value="' + c + '"' + (c === sel ? ' selected' : '') + '>'
+       + topoChannelLabel(c, n) + '</option>';
   return h;
 }
 
@@ -1828,7 +1839,9 @@ function renderTopoEditor() {
      + 'a une voie physique : carte + canal.</div>';
   if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
   topoAssign.forEach((a, n) => {
-    h += '<div class="io-bind">'
+    // La classe distingue les deux formes de ligne : elles n'ont ni le meme
+    // nombre de colonnes ni les memes etiquettes.
+    h += '<div class="io-bind' + (topoIsInput(a.role) ? ' io-bind-in' : '') + '">'
       + topoField('Role', '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
       + (topoIsInput(a.role)
           // Une entree ne « pilote » rien : elle porte un IDENTIFIANT, celui

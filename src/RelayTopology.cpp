@@ -33,7 +33,8 @@ bool isSupportedController(uint8_t controller) {
 
 bool isSupportedChannelCount(uint8_t channelCount) {
     return channelCount == 1 || channelCount == 2 ||
-           channelCount == 4 || channelCount == 8;
+           channelCount == 4 || channelCount == 8 ||
+           channelCount == 16;
 }
 
 bool isSupportedRole(uint8_t role) {
