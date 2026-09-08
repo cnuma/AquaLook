@@ -306,6 +306,19 @@ bool ScheduleManager::pauseZone(uint8_t zone) {
                   (unsigned)(zone + 1U),
                   (unsigned long)(slot.remainingMs / 1000UL));
     if (_relayCallback) _relayCallback(zone, false);
+    if (_pauseObserver) _pauseObserver();
+    return true;
+}
+
+bool ScheduleManager::restorePause(uint8_t zone, uint32_t remainingMs) {
+    if (zone >= MAX_ZONES || remainingMs == 0U) return false;
+    ActiveSlot& slot = _active[zone];
+    slot.running     = false;
+    slot.paused      = true;
+    slot.remainingMs = remainingMs;
+    slot.pausedAtMs  = millis();
+    slot.isManual    = true;
+    EventBus::displayDirty = true;
     return true;
 }
 
@@ -319,6 +332,7 @@ bool ScheduleManager::resumeZone(uint8_t zone) {
     EventLog::log(LOG_INFO, "Schedule: zone %u reprise pour %lus",
                   (unsigned)(zone + 1U), (unsigned long)(remaining / 1000UL));
     activateZoneMs(zone, remaining, manual);
+    if (_pauseObserver) _pauseObserver();
     return true;
 }
 
@@ -350,5 +364,6 @@ void ScheduleManager::expirePauses() {
         slot.running = false;
         NotificationManager::enqueueZoneEvent(z, false);
         EventBus::displayDirty = true;
+        if (_pauseObserver) _pauseObserver();
     }
 }

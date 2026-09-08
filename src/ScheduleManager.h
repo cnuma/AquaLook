@@ -118,6 +118,15 @@ public:
     bool pauseZone(uint8_t zone);
     bool resumeZone(uint8_t zone);
     bool isZonePaused(uint8_t zone) const;
+    // Restaure une suspension relue au demarrage. Ne rouvre RIEN : la zone
+    // reste fermee jusqu'a ce qu'une reprise soit demandee, exactement comme
+    // avant le redemarrage.
+    bool restorePause(uint8_t zone, uint32_t remainingMs);
+    // Signale tout changement d'etat de suspension. C'est l'appelant qui
+    // decide d'en faire une ecriture NVS : ScheduleManager n'a pas a savoir
+    // qu'il existe un stockage, ni ou.
+    using PauseObserver = void(*)();
+    void setPauseObserver(PauseObserver cb) { _pauseObserver = cb; }
     uint32_t getPausedRemainingMs(uint8_t zone) const;
 
     // Au-dela, la suspension est abandonnee. Deux heures : assez pour remplir
@@ -140,6 +149,7 @@ private:
     uint16_t      _manualDurationMin  = 10;
     uint32_t      _lastCheckedMinute  = 0xFFFFFFFF;
     RelayCallback _relayCallback      = nullptr;
+    PauseObserver _pauseObserver      = nullptr;
 
     static int weekdayToIdx(int tmWday);  // tm_wday → 0=lun..6=dim
     bool       shouldWater(uint8_t zone, int weekday,

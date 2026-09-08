@@ -13,6 +13,7 @@
 #include "NotificationManager.h"
 #include "WeatherManager.h"
 #include "InputSampler.h"
+#include "PausedWateringStore.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
 #include "ScheduleManager.h"
@@ -41,6 +42,7 @@ RelaisManager relaisMgr;
 IoExpanderManager ioExpander;
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 InputSampler inputSampler;
+
 ScheduleManager scheduleMgr;
 WebManager webMgr;
 DisplayManager displayMgr;
@@ -438,6 +440,74 @@ static void splashStep(const char* label) {
     _splashStep++;
 }
 
+// Enregistre l'etat des suspensions a chaque changement. Une suspension
+// perdue au redemarrage laisserait une zone a moitie arrosee sans que rien
+// ne l'explique -- c'est precisement ce que le module ne doit pas faire.
+static void persistPauses() {
+    PausedWateringStore::Entry entries[MAX_ZONES];
+    uint8_t n = 0U;
+    const time_t now = time(nullptr);
+    for (uint8_t z = 0U; z < configMgr.nbZones() && z < MAX_ZONES; ++z) {
+        if (!scheduleMgr.isZonePaused(z)) continue;
+        entries[n].zoneId = configMgr.zoneId(z);
+        entries[n].remainingSec =
+            (uint16_t)(scheduleMgr.getPausedRemainingMs(z) / 1000UL);
+        entries[n].pausedAtEpoch = (now >= 1704067200) ? (uint32_t)now : 0U;
+        n++;
+    }
+    PausedWateringStore::save(entries, n);
+}
+
+// Relit les suspensions au demarrage.
+//
+// Le temps est ici le seul juge : millis() est reparti de zero, donc on ne
+// sait combien la suspension a dure que par une date absolue. Sans horloge
+// credible -- au depart ou au retour -- on ABANDONNE plutot que de reprendre.
+// Rouvrir une vanne sans savoir si l'attente a dure dix minutes ou dix heures
+// est exactement le geste a ne pas faire sur un circuit d'eau.
+static void restorePauses() {
+    PausedWateringStore::Entry entries[MAX_ZONES];
+    const uint8_t n = PausedWateringStore::load(entries, MAX_ZONES);
+    if (n == 0U) return;
+
+    const time_t now = time(nullptr);
+    const bool clockUsable = (now >= 1704067200);
+    uint8_t restored = 0U, abandoned = 0U;
+
+    for (uint8_t i = 0U; i < n; ++i) {
+        const uint8_t z = configMgr.zoneIndexById(entries[i].zoneId);
+        if (z >= MAX_ZONES || entries[i].remainingSec == 0U) { abandoned++; continue; }
+
+        if (!clockUsable || entries[i].pausedAtEpoch == 0U) {
+            EventLog::log(LOG_WARN,
+                          "Pause: zone %u abandonnee, duree d'attente inconnue",
+                          (unsigned)(z + 1U));
+            abandoned++;
+            continue;
+        }
+        const uint32_t waited = (uint32_t)now - entries[i].pausedAtEpoch;
+        if (waited * 1000UL >= ScheduleManager::PAUSE_MAX_MS) {
+            EventLog::log(LOG_WARN,
+                          "Pause: zone %u abandonnee, suspendue depuis %lu min",
+                          (unsigned)(z + 1U), (unsigned long)(waited / 60UL));
+            abandoned++;
+            continue;
+        }
+        if (scheduleMgr.restorePause(z, entries[i].remainingSec * 1000UL)) {
+            EventLog::log(LOG_INFO,
+                          "Pause: zone %u restauree, reste %us apres %lu min d'attente",
+                          (unsigned)(z + 1U), (unsigned)entries[i].remainingSec,
+                          (unsigned long)(waited / 60UL));
+            restored++;
+        } else {
+            abandoned++;
+        }
+    }
+    if (abandoned > 0U) persistPauses();   // effacer ce qui n'a pas ete repris
+    EventLog::log(LOG_INFO, "Pause: %u restauree(s), %u abandonnee(s)",
+                  (unsigned)restored, (unsigned)abandoned);
+}
+
 void setup() {
     Serial.begin(115200);
     delay(300);
@@ -660,6 +730,8 @@ void setup() {
         return v4PilotRuntime.readInputById(id, active);
     });
     webMgr.setInputSampler(&inputSampler);
+    scheduleMgr.setPauseObserver(persistPauses);
+    restorePauses();
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     // N annonce que ce dont ce message est sur. Le perimetre pilote depend
