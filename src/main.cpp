@@ -14,6 +14,7 @@
 #include "WeatherManager.h"
 #include "InputSampler.h"
 #include "PausedWateringStore.h"
+#include "ScriptRunner.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
 #include "ScheduleManager.h"
@@ -42,6 +43,7 @@ RelaisManager relaisMgr;
 IoExpanderManager ioExpander;
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 InputSampler inputSampler;
+ScriptRunner scriptRunner;
 
 ScheduleManager scheduleMgr;
 WebManager webMgr;
@@ -732,6 +734,8 @@ void setup() {
     webMgr.setInputSampler(&inputSampler);
     scheduleMgr.setPauseObserver(persistPauses);
     restorePauses();
+    scriptRunner.begin(&inputSampler, &scheduleMgr, &configMgr);
+    webMgr.setScriptRunner(&scriptRunner);
 
     EventLog::log(LOG_INFO, "Main: setup termine, boucle demarree");
     // N annonce que ce dont ce message est sur. Le perimetre pilote depend
@@ -830,6 +834,9 @@ void loop() {
     // Avant relaisMgr.update() : une entree qui vient de basculer doit etre
     // connue AVANT que quoi que ce soit ne decide sur sa foi.
     inputSampler.update(millis());
+    // Apres l'echantillonneur : un script declenche par une entree doit voir
+    // la valeur qui l'a declenche, pas celle du tour precedent.
+    scriptRunner.update();
 
     relaisMgr.update();
 

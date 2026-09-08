@@ -7,6 +7,7 @@
 #include <LittleFS.h>
 #include "config.h"
 #include "InputSampler.h"
+#include "ScriptRunner.h"
 #include "NTPManager.h"
 #include "WeatherManager.h"
 #include "RelaisManager.h"
@@ -74,6 +75,7 @@ public:
     // n'a pas a connaitre le pilote V4, et le jour ou une entree viendra d'un
     // autre transport, seul l'injecteur changera.
     void setInputSampler(const InputSampler* sampler) { _inputs = sampler; }
+    void setScriptRunner(ScriptRunner* runner) { _scripts = runner; }
 
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
@@ -528,6 +530,7 @@ private:
     CloudSyncScheduler* _cloudSync = nullptr;
     bool _sdStaticHandlerRegistered = false;
     const InputSampler* _inputs = nullptr;
+    ScriptRunner* _scripts = nullptr;
     bool _faultRoutesRegistered = false;
 
     portMUX_TYPE _pendingMux = portMUX_INITIALIZER_UNLOCKED;
@@ -588,6 +591,7 @@ private:
     void handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleRunScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleZoneIdentify(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetWebAssetsUrl(AsyncWebServerRequest* req, JsonDocument& doc);

@@ -50,6 +50,7 @@ a.back{display:inline-block;margin-top:18px;padding:9px 14px;border:1px solid va
     <button onclick="enregistrer()">Enregistrer</button>
     <button class="sec" onclick="charger()">Recharger</button>
     <button class="danger" onclick="effacer()">Effacer</button>
+    <button class="sec" onclick="lancer()">Lancer maintenant</button>
     <button class="sec" onclick="definirSecret()">Secret</button>
     <button class="sec" onclick="oublierSecret()">Oublier le secret ici</button>
   </div>
@@ -237,6 +238,22 @@ async function charger() {
          "sur la carte SD — le script fonctionne, mais il faudra le réécrire " +
          "pour le modifier.", "ko");
   }
+}
+
+// Lancer a la demande : signe comme le reste, parce que lancer un script
+// c'est commander des vannes.
+async function lancer() {
+  const i = parseInt($('slot').value, 10);
+  const etat = await prochainNonce();
+  const sig = await signer('script-run|' + i + '|' + etat.nonce);
+  if (!sig) { dire('Secret requis pour lancer.', 'ko'); return; }
+  const r = await fetch('/api/script-run', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
+  });
+  const d = await r.json();
+  dire(d.ok ? 'Lancé. Le journal du module dira ce qu’il a fait.'
+            : ('Non lancé : ' + (d.error || '')), d.ok ? 'ok' : 'ko');
 }
 
 async function effacer() {

@@ -421,6 +421,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/auth-secret",  handleSetApiSecret);
     POST_JSON("/api/script-save",  handleSaveScript);
     POST_JSON("/api/script-erase", handleEraseScript);
+    POST_JSON("/api/script-run",   handleRunScript);
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
     POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
@@ -685,7 +686,7 @@ void WebManager::setupRoutes() {
     // compter sur l'ordre d'enregistrement, qui se romprait au premier ajout.
     // La liste ne renvoie que les entetes : relire six bytecodes pour
     // afficher une liste couterait cher sans rien apporter.
-    _server.on("/api/scripts", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/api/scripts", HTTP_GET, [this](AsyncWebServerRequest* req) {
         JsonDocument doc;
         doc["max"] = ScriptStore::MAX_SCRIPTS;
         doc["tailleMax"] = ScriptStore::MAX_BYTECODE;
@@ -702,6 +703,10 @@ void WebManager::setupRoutes() {
             o["declencheur"] = metas[i].trigger;
             o["entree"] = metas[i].triggerInputId;
             o["octets"] = metas[i].codeSize;
+            if (_scripts) {
+                o["encours"] = _scripts->isRunning(i);
+                o["dernierArret"] = _scripts->lastAbort(i);
+            }
         }
         String body;
         serializeJson(doc, body);
@@ -1831,6 +1836,29 @@ void WebManager::handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc
         }
     }
     if (!ScriptStore::erase(index)) { sendError(req, "effacement impossible"); return; }
+    sendOk(req);
+}
+
+// Lancement a la demande, pour essayer un script.
+//
+// Signe comme l'enregistrement : lancer un script, c'est commander des
+// vannes. Une route d'essai non protegee serait une porte derobee vers
+// exactement ce que la signature protege.
+void WebManager::handleRunScript(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const uint8_t index = doc["i"] | 255U;
+    {
+        String canonical = "script-run|";
+        canonical += index;
+        canonical += '|';
+        canonical += (uint32_t)(doc["nonce"] | 0U);
+        if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+            sendError(req, "signature refusee : rien n'a ete lance", 403);
+            return;
+        }
+    }
+    if (!_scripts) { sendError(req, "executeur indisponible", 503); return; }
+    const char* reason = "";
+    if (!_scripts->runNow(index, reason)) { sendError(req, reason); return; }
     sendOk(req);
 }
 
