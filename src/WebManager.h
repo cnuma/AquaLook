@@ -585,6 +585,8 @@ private:
     void handleSetIoOutput(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleZoneIdentify(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetWebAssetsUrl(AsyncWebServerRequest* req, JsonDocument& doc);

@@ -19,6 +19,81 @@ const char* scriptAbortName(ScriptAbort reason) {
     return "inconnue";
 }
 
+// Longueur en octets des operandes de chaque instruction. -1 = inconnue.
+static int8_t operandBytes(ScriptOp op) {
+    switch (op) {
+        case ScriptOp::HALT: case ScriptOp::DROP:
+        case ScriptOp::ADD: case ScriptOp::SUB: case ScriptOp::MUL:
+        case ScriptOp::DIV: case ScriptOp::MOD: case ScriptOp::NEG:
+        case ScriptOp::EQ:  case ScriptOp::NE:  case ScriptOp::LT:
+        case ScriptOp::LE:  case ScriptOp::GT:  case ScriptOp::GE:
+        case ScriptOp::AND: case ScriptOp::OR:  case ScriptOp::NOT:
+        case ScriptOp::WAIT:
+            return 0;
+        case ScriptOp::LOAD: case ScriptOp::STORE:
+            return 1;
+        case ScriptOp::JMP: case ScriptOp::JZ: case ScriptOp::JNZ:
+        case ScriptOp::READ_INPUT: case ScriptOp::ZONE_ACTIVE:
+        case ScriptOp::ZONE_REMAIN: case ScriptOp::NOTIFY:
+            return 2;
+        case ScriptOp::PUSH:
+            return 4;
+        case ScriptOp::ACTION:
+            return 3;   // action (1) + cible (2)
+        default:
+            return -1;
+    }
+}
+
+ScriptAbort validateScriptProgram(const ScriptProgram& program) {
+    if (!program.code || program.size == 0U) return ScriptAbort::BAD_OPCODE;
+
+    // Premiere passe : parcourir les instructions et relever leurs debuts.
+    // Un saut ne doit pas seulement tomber DANS le programme, il doit tomber
+    // sur une frontiere d'instruction -- sinon il atterrit au milieu d'une
+    // constante, et la suite est interpretee n'importe comment.
+    bool boundary[512];
+    const uint16_t limit = program.size < 512U ? program.size : 512U;
+    for (uint16_t i = 0U; i < limit; ++i) boundary[i] = false;
+    if (program.size > 512U) return ScriptAbort::BAD_JUMP;   // au-dela, on refuse
+
+    uint16_t pc = 0U;
+    while (pc < program.size) {
+        boundary[pc] = true;
+        const ScriptOp op = static_cast<ScriptOp>(program.code[pc]);
+        const int8_t operands = operandBytes(op);
+        if (operands < 0) return ScriptAbort::BAD_OPCODE;
+        if (static_cast<uint32_t>(pc) + 1U + operands > program.size) {
+            return ScriptAbort::BAD_JUMP;   // operande tronquee
+        }
+        if (op == ScriptOp::LOAD || op == ScriptOp::STORE) {
+            if (program.code[pc + 1U] >= ScriptVm::VAR_COUNT) {
+                return ScriptAbort::BAD_VARIABLE;
+            }
+        }
+        pc = static_cast<uint16_t>(pc + 1U + operands);
+    }
+    if (pc != program.size) return ScriptAbort::BAD_JUMP;   // deborde exactement
+
+    // Seconde passe : les cibles de saut.
+    pc = 0U;
+    while (pc < program.size) {
+        const ScriptOp op = static_cast<ScriptOp>(program.code[pc]);
+        const int8_t operands = operandBytes(op);
+        if (op == ScriptOp::JMP || op == ScriptOp::JZ || op == ScriptOp::JNZ) {
+            const uint16_t target = static_cast<uint16_t>(
+                program.code[pc + 1U] |
+                (static_cast<uint16_t>(program.code[pc + 2U]) << 8));
+            if (target >= program.size || !boundary[target]) {
+                return ScriptAbort::BAD_JUMP;
+            }
+        }
+        pc = static_cast<uint16_t>(pc + 1U + operands);
+    }
+
+    return ScriptAbort::NONE;
+}
+
 void ScriptVm::load(const ScriptProgram& program,
                     const ScriptHostOps* host,
                     void* hostContext,

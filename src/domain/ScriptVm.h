@@ -132,6 +132,20 @@ struct ScriptProgram {
         : code(bytes), size(length) {}
 };
 
+// Verification d un programme AVANT de l accepter.
+//
+// Le bytecode est compile par le navigateur : il arrive donc du dehors, et
+// le module ne doit pas lui faire confiance. Un octet errant suffirait a
+// faire sauter l execution au milieu d une instruction, ou hors du
+// programme.
+//
+// La machine se defend deja a l execution -- opcode inconnu, saut hors
+// bornes -- mais decouvrir cela pendant un arrosage vaut moins bien que
+// le refuser a l enregistrement, ou l utilisateur est devant son ecran.
+//
+// Retourne ScriptAbort::NONE si le programme tient debout.
+ScriptAbort validateScriptProgram(const ScriptProgram& program);
+
 class ScriptVm {
 public:
     static constexpr uint8_t STACK_CAPACITY = 24U;

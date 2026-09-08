@@ -6,6 +6,7 @@
 #include "EventLog.h"
 #include "ScriptVmSelfTest.h"
 #include "ScriptHostRuntime.h"
+#include "ScriptStore.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
@@ -416,6 +417,8 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/ntp",           handleSetNtp);
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
+    POST_JSON("/api/scripts/save",  handleSaveScript);
+    POST_JSON("/api/scripts/erase", handleEraseScript);
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
     POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
@@ -653,6 +656,56 @@ void WebManager::setupRoutes() {
                 doc["suspendue"] = _schedule->isZonePaused(z);
                 doc["reliquatSec"] = _schedule->getPausedRemainingMs(z) / 1000UL;
             }
+        }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // ── Scripts de l'utilisateur ────────────────────────────────────────
+    // La liste ne renvoie que les entetes : relire six bytecodes pour
+    // afficher une liste couterait cher sans rien apporter.
+    _server.on("/api/scripts", HTTP_GET, [](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        doc["max"] = ScriptStore::MAX_SCRIPTS;
+        doc["tailleMax"] = ScriptStore::MAX_BYTECODE;
+        JsonArray arr = doc["scripts"].to<JsonArray>();
+        ScriptStore::Meta metas[ScriptStore::MAX_SCRIPTS];
+        ScriptStore::loadAllMeta(metas, ScriptStore::MAX_SCRIPTS);
+        for (uint8_t i = 0U; i < ScriptStore::MAX_SCRIPTS; ++i) {
+            JsonObject o = arr.add<JsonObject>();
+            o["i"] = i;
+            o["utilise"] = metas[i].used;
+            if (!metas[i].used) continue;
+            o["nom"] = metas[i].name;
+            o["actif"] = metas[i].enabled;
+            o["declencheur"] = metas[i].trigger;
+            o["entree"] = metas[i].triggerInputId;
+            o["octets"] = metas[i].codeSize;
+        }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    _server.on("/api/scripts/one", HTTP_GET, [](AsyncWebServerRequest* req) {
+        const uint8_t i = req->hasParam("i")
+            ? (uint8_t)req->getParam("i")->value().toInt() : 255U;
+        ScriptStore::Meta meta;
+        uint8_t code[ScriptStore::MAX_BYTECODE];
+        JsonDocument doc;
+        if (!ScriptStore::load(i, meta, code, sizeof(code))) {
+            doc["ok"] = false;
+            doc["error"] = "emplacement vide";
+        } else {
+            doc["ok"] = true;
+            doc["i"] = i;
+            doc["nom"] = meta.name;
+            doc["actif"] = meta.enabled;
+            doc["declencheur"] = meta.trigger;
+            doc["entree"] = meta.triggerInputId;
+            JsonArray c = doc["code"].to<JsonArray>();
+            for (uint16_t k = 0U; k < meta.codeSize; ++k) c.add(code[k]);
         }
         String body;
         serializeJson(doc, body);
@@ -1606,6 +1659,57 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
     _systemSavePending = true;
     portEXIT_CRITICAL(&_pendingMux);
 
+    sendOk(req);
+}
+
+// Enregistrement d'un script compile par le navigateur.
+//
+// Le bytecode arrive du dehors : ScriptStore::save le fait valider avant
+// d'ecrire, et un refus laisse INTACT le programme precedent. Refuser sans
+// detruire est la moindre des choses quand quelqu'un vient de taper vingt
+// lignes.
+void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const uint8_t index = doc["i"] | 255U;
+    JsonArrayConst code = doc["code"].as<JsonArrayConst>();
+    if (index >= ScriptStore::MAX_SCRIPTS) { sendError(req, "emplacement invalide"); return; }
+    if (code.isNull() || code.size() == 0U) { sendError(req, "programme vide"); return; }
+    if (code.size() > ScriptStore::MAX_BYTECODE) {
+        sendError(req, "programme trop long");
+        return;
+    }
+
+    uint8_t bytes[ScriptStore::MAX_BYTECODE];
+    uint16_t n = 0U;
+    for (JsonVariantConst v : code) {
+        const int value = v | -1;
+        if (value < 0 || value > 255) { sendError(req, "octet invalide"); return; }
+        bytes[n++] = static_cast<uint8_t>(value);
+    }
+
+    ScriptStore::Meta meta;
+    meta.used = true;
+    meta.enabled = doc["actif"] | true;
+    meta.trigger = doc["declencheur"] | ScriptStore::TRIGGER_INPUT_CHANGE;
+    meta.triggerInputId = doc["entree"] | 0U;
+    meta.codeSize = n;
+    strlcpy(meta.name, doc["nom"] | "sans nom", sizeof(meta.name));
+
+    const char* reason = "";
+    if (!ScriptStore::save(index, meta, bytes, reason)) {
+        sendError(req, reason);
+        return;
+    }
+    JsonDocument out;
+    out["ok"] = true;
+    out["octets"] = n;
+    String body;
+    serializeJson(out, body);
+    req->send(200, "application/json", body);
+}
+
+void WebManager::handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc) {
+    const uint8_t index = doc["i"] | 255U;
+    if (!ScriptStore::erase(index)) { sendError(req, "effacement impossible"); return; }
     sendOk(req);
 }
 
