@@ -39,7 +39,9 @@ NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
 IoExpanderManager ioExpander;
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 AquaLook::Runtime::RelaisManagerBackend relaisBackend;
+#endif
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 ScheduleManager scheduleMgr;
 WebManager webMgr;
@@ -518,7 +520,9 @@ void setup() {
     // Couche E/S TOR (MCP23017 configurables) : inerte tant qu'aucune
     // carte n'est declaree. Apres relaisMgr.begin : le bus I2C est pret.
     ioExpander.begin(&relaisMgr);
+#if AQUALOOK_RELAY_BACKEND_LEGACY
     relaisBackend.bind(&relaisMgr);
+#endif
 
 #if AQUALOOK_RELAY_BACKEND_V4
     const bool v4PilotReady = v4PilotRuntime.begin(
@@ -539,9 +543,13 @@ void setup() {
         // pas affirmer ici une couverture qui n'a jamais ete verifiee.
         EventLog::log(LOG_INFO, "Relais V4: moteur V4 actif sur les sorties");
     } else {
-        outputAdapter.setPhysicalBackend(&relaisBackend);
+        // AUCUNE bascule vers le moteur historique : il n'existe plus dans ce
+        // firmware. Si le pilote V4 ne demarre pas, le module ne pilote rien
+        // et le dit -- un module muet qu'on repare vaut mieux qu'un module qui
+        // marche par un chemin dont personne ne sait qu'il est emprunte.
+        FaultManager::setActive(FaultId::RELAY_I2C, true);
         EventLog::log(LOG_ERROR,
-                      "Relais V4: pilote indisponible, backend legacy force");
+                      "Relais V4: pilote indisponible, aucune sortie pilotable");
     }
 #else
     outputAdapter.setPhysicalBackend(&relaisBackend);

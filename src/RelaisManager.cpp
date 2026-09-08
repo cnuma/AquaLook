@@ -40,7 +40,15 @@ void RelaisManager::begin(ConfigManager* config) {
         }
     }
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
     _hardwareReady = initHardware();
+#else
+    // Le bus appartient a V4. RelaisManager ne touche plus une seule broche :
+    // il ne tient plus que le cablage et l'etat des zones, que l'ecran, le Web
+    // et le planificateur lisent. La sante du materiel est rapportee par le
+    // pilote V4, qui est le seul a lui parler.
+    _hardwareReady = true;
+#endif
 
     // Trois etats a ne pas confondre, parce qu'ils appellent trois gestes
     // differents de la part de l'utilisateur :
@@ -59,10 +67,12 @@ void RelaisManager::begin(ConfigManager* config) {
             "Relais: aucun cablage enregistre, aucune sortie pilotable"
         );
     } else if (_hardwareReady) {
+        // "init OK" laissait croire que cette classe avait initialise le
+        // materiel. Dans le firmware V4 elle n'y touche plus : elle decrit le
+        // cablage, c'est le pilote V4 qui l'initialise et le dit lui-meme.
         EventLog::log(
             LOG_INFO,
-            "Relais: topologie init OK, cartes=%u, canaux=%u",
-            RelayTopology::MAX_RELAY_BOARDS,
+            "Relais: cablage retenu, %u voie(s) declaree(s)",
             RelayTopology::totalEnabledChannels(_topology)
         );
     } else {
@@ -110,6 +120,10 @@ void RelaisManager::buildRuntimeTopology() {
                   "Cablage relais");
 }
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
+// Etage I2C du moteur historique. Compile UNIQUEMENT sous le profil
+// legacy : dans le firmware V4 il ne doit plus rester d appelant, et
+// c est le compilateur qui le prouve -- pas une relecture.
 bool RelaisManager::initHardware() {
     bool anyReady = false;
 
@@ -133,7 +147,9 @@ bool RelaisManager::initHardware() {
 
     return anyReady;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 bool RelaisManager::initBoard(uint8_t boardIndex) {
     if (boardIndex >= RelayTopology::MAX_RELAY_BOARDS) return false;
     const RelayTopology::RelayBoardConfig& board = _topology.boards[boardIndex];
@@ -155,6 +171,7 @@ bool RelaisManager::initBoard(uint8_t boardIndex) {
     return writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P0, _regP0[boardIndex]) &&
            writeReg(board.i2cAddress, XL9535_REG_OUTPUT_P1, _regP1[boardIndex]);
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
 void RelaisManager::update() {
     const uint32_t now = millis();
@@ -204,6 +221,7 @@ bool RelaisManager::zoneHasOutput(uint8_t zone) const {
     return RelayTopology::resolveZoneValve(_topology, zone, nbZ).valid;
 }
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 bool RelaisManager::setRelay(uint8_t relay, bool state) {
     if (relay >= MAX_ZONES) {
         EventLog::log(LOG_ERROR, "Relais: index zone invalide %u", relay);
@@ -234,7 +252,9 @@ bool RelaisManager::setRelay(uint8_t relay, bool state) {
     }
     return applied;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
     const RelayTopology::MappingResolution mapping =
         RelayTopology::resolveAssignment(_topology, assignmentIndex);
@@ -326,6 +346,7 @@ bool RelaisManager::setAssignment(uint8_t assignmentIndex, bool state) {
     if (!ok) EventBus::displayDirty = true;
     return ok;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
 bool RelaisManager::getState(uint8_t relay) const {
     return relay < MAX_ZONES ? _state[relay] : false;
@@ -341,6 +362,7 @@ const RelayTopology::RelayTopologyConfig& RelaisManager::topology() const {
     return _topology;
 }
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 bool RelaisManager::applyBoard(uint8_t boardIndex) {
     if (boardIndex >= RelayTopology::MAX_RELAY_BOARDS) return false;
     const RelayTopology::RelayBoardConfig& board = _topology.boards[boardIndex];
@@ -368,7 +390,9 @@ bool RelaisManager::applyBoard(uint8_t boardIndex) {
 
     return ok;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 bool RelaisManager::writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
     RELAY_WIRE_BUS.beginTransmission(addr);
     RELAY_WIRE_BUS.write(reg);
@@ -386,7 +410,9 @@ bool RelaisManager::writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
 
     return err == 0;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
+#if AQUALOOK_RELAY_BACKEND_LEGACY
 uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
     RELAY_WIRE_BUS.beginTransmission(addr);
     RELAY_WIRE_BUS.write(reg);
@@ -405,6 +431,7 @@ uint8_t RelaisManager::readReg(uint8_t addr, uint8_t reg) {
     RELAY_WIRE_BUS.requestFrom(addr, static_cast<uint8_t>(1));
     return RELAY_WIRE_BUS.available() ? RELAY_WIRE_BUS.read() : 0xFF;
 }
+#endif  // AQUALOOK_RELAY_BACKEND_LEGACY
 
 uint8_t RelaisManager::nbRelaisPhysical() const {
     return _config ? _config->nbRelais() : NB_ZONES;

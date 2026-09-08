@@ -1,3 +1,7 @@
+#include "config.h"
+#if AQUALOOK_RELAY_BACKEND_LEGACY
+// Backend qui delegue au moteur historique. Le firmware V4 ne le
+// contient pas : il n a plus de second moteur derriere lui.
 #include "RelaisManagerBackend.h"
 
 #include "RelaisManager.h"
@@ -44,3 +48,5 @@ bool RelaisManagerBackend::getZoneValveState(
 }
 
 }} // namespace AquaLook::Runtime
+
+#endif

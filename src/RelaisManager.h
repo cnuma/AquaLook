@@ -33,12 +33,14 @@ public:
         _startMs[zone] = state ? nowMs : 0U;
     }
 
-    // API historique conservée : l'index reste un index de zone.
+    // Pilotage direct : etage I2C du moteur historique, absent du firmware V4.
+    // Le declarer sous garde fait echouer la COMPILATION si un appelant
+    // subsiste en V4 -- une preuve, la ou une relecture n'est qu'une opinion.
+#if AQUALOOK_RELAY_BACKEND_LEGACY
     bool setRelay(uint8_t relay, bool state);
-    bool getState(uint8_t relay) const;
-
-    // API matérielle générique : exécute une RelayAssignment validée.
     bool setAssignment(uint8_t assignmentIndex, bool state);
+#endif
+    bool getState(uint8_t relay) const;
     bool getAssignmentState(uint8_t assignmentIndex) const;
     const RelayTopology::RelayTopologyConfig& topology() const;
     // true si le cablage en vigueur vient de la NVS. false signifie qu'AUCUN
@@ -77,11 +79,13 @@ private:
     AquaLook::Domain::Xl9535SharedOutputState* _xl9535SharedOutputState = nullptr;
 
     void buildRuntimeTopology();
+#if AQUALOOK_RELAY_BACKEND_LEGACY
     bool initHardware();
     bool initBoard(uint8_t boardIndex);
     bool applyBoard(uint8_t boardIndex);
     bool writeReg(uint8_t addr, uint8_t reg, uint8_t val);
     uint8_t readReg(uint8_t addr, uint8_t reg);
+#endif
     int16_t findZoneAssignment(uint8_t zone, uint8_t nbZones) const;
     uint8_t nbRelaisPhysical() const;
     uint32_t maxWateringMs() const;
