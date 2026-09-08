@@ -25,6 +25,7 @@ struct FakeHost {
     uint32_t nowMs = 0U;
     int32_t inputValue = 0;
     uint16_t lastNotify = 0U;
+    uint16_t lastAlert = 0U;
     uint8_t actionCount = 0U;
     ScriptAction lastAction = ScriptAction::ZONE_STOP;
     uint16_t lastTarget = 0U;
@@ -55,11 +56,17 @@ bool hostNotify(void* ctx, uint16_t code) {
     static_cast<FakeHost*>(ctx)->lastNotify = code;
     return true;
 }
+// L'hote jouet accepte l'alerte : le refus quand les notifications ne sont
+// pas configurees se teste sur le vrai hote, pas ici.
+bool hostAlert(void* ctx, uint16_t code) {
+    static_cast<FakeHost*>(ctx)->lastAlert = code;
+    return true;
+}
 uint32_t hostNow(void* ctx) { return static_cast<FakeHost*>(ctx)->nowMs; }
 
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
-    hostAction, hostNotify, hostNow
+    hostAction, hostNotify, hostAlert, hostNow
 };
 
 // Petit assembleur, pour que les programmes de test restent lisibles.

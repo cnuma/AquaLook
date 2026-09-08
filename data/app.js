@@ -1678,6 +1678,7 @@ let topoBoards = [];   // { i, controller, addr, channels, logic }
 let topoAssign = [];   // { i, role, target, board, channel, id, flags }
 let topoSource = 'legacy';
 let topoPendingReboot = false;
+let topoRefus = '';   // dernier refus du module, affiche jusqu'a resolution
 
 const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
 const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
@@ -1862,6 +1863,11 @@ function renderTopoEditor() {
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
+  if (topoRefus) {
+    h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
+       + 'currentColor;border-radius:5px;margin:8px 0;font-size:11px;line-height:1.6">'
+       + '&#9888; Le module a refuse le dernier enregistrement.<br>' + topoRefus + '</div>';
+  }
   el.innerHTML = h;
 }
 
@@ -1936,7 +1942,18 @@ async function saveCfgTopo() {
       body: JSON.stringify(body)
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { toast((d && d.error) || ('Erreur ' + r.status), true); return; }
+    if (!r.ok) {
+      const raison = (d && d.error) || ('Erreur ' + r.status);
+      toast(raison, true);
+      // Un bandeau fugace ne suffit pas pour un refus : le temps de le lire il
+      // a disparu, et l'utilisateur conclut que le bouton ne marche pas --
+      // c'est exactement ce qui s'est produit avec « arrosage en cours ».
+      // On l'ecrit AUSSI dans l'editeur, ou il reste jusqu'a resolution.
+      topoRefus = raison;
+      renderTopoEditor();
+      return;
+    }
+    topoRefus = '';
     // Surtout NE PAS relire ici : /api/relay/topology renvoie la topologie
     // EN VIGUEUR, pas celle qu'on vient d'enregistrer -- elle ne s'applique
     // qu'au redemarrage. Relire effacait donc a l'ecran la saisie que l'on

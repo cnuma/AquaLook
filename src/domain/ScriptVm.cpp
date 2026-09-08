@@ -35,6 +35,7 @@ static int8_t operandBytes(ScriptOp op) {
         case ScriptOp::JMP: case ScriptOp::JZ: case ScriptOp::JNZ:
         case ScriptOp::READ_INPUT: case ScriptOp::ZONE_ACTIVE:
         case ScriptOp::ZONE_REMAIN: case ScriptOp::NOTIFY:
+        case ScriptOp::ALERT:
             return 2;
         case ScriptOp::PUSH:
             return 4;
@@ -326,6 +327,14 @@ ScriptStatus ScriptVm::tick() {
             case ScriptOp::NOTIFY:
                 if (!fetch16(u16)) return _status;
                 if (!_host->notify || !_host->notify(_hostCtx, u16)) {
+                    fail(ScriptAbort::HOST_REFUSED);
+                    return _status;
+                }
+                break;
+
+            case ScriptOp::ALERT:
+                if (!fetch16(u16)) return _status;
+                if (!_host->alert || !_host->alert(_hostCtx, u16)) {
                     fail(ScriptAbort::HOST_REFUSED);
                     return _status;
                 }

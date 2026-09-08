@@ -60,6 +60,7 @@ private:
     struct Job {
         bool active = false;
         uint8_t index = 0xFF;
+        char name[ScriptStore::MAX_NAME] = {};
         uint8_t code[ScriptStore::MAX_BYTECODE] = {};
         AquaLook::Domain::ScriptVm vm;
         ScriptRuntimeContext ctx;

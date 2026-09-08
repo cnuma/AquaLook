@@ -97,6 +97,13 @@ struct RemoteConfigEvent {
     char     detail[72] = "";
 };
 RemoteConfigEvent g_remoteConfig;
+
+struct ScriptMessageEvent {
+    uint16_t code = 0U;
+    char     nom[24] = "";
+};
+ScriptMessageEvent g_scriptMessage;
+volatile bool g_scriptMessagePending = false;
 volatile bool g_remoteConfigPending = false;
 MaintenanceResult g_updateResult;
 uint32_t g_attempts = 0U;
@@ -348,6 +355,32 @@ bool NotificationManager::requestTest() {
     return true;
 }
 
+bool NotificationManager::notificationsReady() {
+    begin();
+    portENTER_CRITICAL(&g_mux);
+    const bool ready = g_config.enabled && g_config.server[0] != ' ';
+    portEXIT_CRITICAL(&g_mux);
+    return ready;
+}
+
+bool NotificationManager::enqueueScriptMessage(uint16_t code, const char* scriptName) {
+    // Refuser QUAND ce n'est pas configure, plutot que d'accepter et de ne
+    // rien envoyer : un script qui croit avoir prevenu quelqu'un est pire
+    // qu'un script qui sait qu'il n'a pas pu.
+    if (!notificationsReady()) return false;
+
+    portENTER_CRITICAL(&g_mux);
+    // Une seule alerte en attente : un script qui en emettrait en rafale
+    // saturerait la file et retarderait les evenements du module. La
+    // derniere ecrase la precedente, et le journal garde les deux.
+    g_scriptMessage.code = code;
+    copyText(g_scriptMessage.nom, sizeof(g_scriptMessage.nom),
+             scriptName ? scriptName : "");
+    g_scriptMessagePending = true;
+    portEXIT_CRITICAL(&g_mux);
+    return true;
+}
+
 bool NotificationManager::enqueueRemoteConfig(bool applied, uint8_t champs,
                                               uint32_t revision, const char* detail) {
     begin();
@@ -499,6 +532,8 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
             g_testPending = false;
         } else if (g_work == WorkType::REMOTE_CONFIG) {
             g_remoteConfigPending = false;
+        } else if (g_work == WorkType::SCRIPT_MESSAGE) {
+            g_scriptMessagePending = false;
         } else if (g_work == WorkType::ZONE_EVENT) {
             portENTER_CRITICAL(&g_mux);
             if (g_zoneEventCount > 0U) {
@@ -582,6 +617,7 @@ NotificationManager::WorkType NotificationManager::nextWork() {
     if (g_updatePending) return WorkType::UPDATE_AVAILABLE;
     if (g_webAssetsUpdatePending) return WorkType::WEB_ASSETS_UPDATE_AVAILABLE;
     if (g_remoteConfigPending) return WorkType::REMOTE_CONFIG;
+    if (g_scriptMessagePending) return WorkType::SCRIPT_MESSAGE;
     if (g_zoneEventCount > 0U) return WorkType::ZONE_EVENT;
     return WorkType::NONE;
 }
@@ -742,6 +778,19 @@ bool NotificationManager::sendCurrentWork() {
             priority = "default";
             tags = "arrow_up,globe_with_meridians";
             break;
+        case WorkType::SCRIPT_MESSAGE:
+            title = "AquaLook - message d'un script";
+            message = "Le script « ";
+            message += g_scriptMessage.nom;
+            message += " » a emis le message ";
+            message += String(g_scriptMessage.code);
+            message += ".";
+            message += static_cast<char>(10);   // saut de ligne
+            message += "Le sens de ce code est celui que vous lui avez donne "
+                       "en ecrivant le script.";
+            tags = "memo";
+            break;
+
         case WorkType::REMOTE_CONFIG:
             if (g_remoteConfig.applied) {
                 title = "AquaLook - reglages recus";
@@ -874,6 +923,11 @@ const char* NotificationManager::workCode(WorkType type) {
         case WorkType::ZONE_EVENT: return "zone-event";
         case WorkType::UPDATE_AVAILABLE: return "update-available";
         case WorkType::WEB_ASSETS_UPDATE_AVAILABLE: return "web-assets-update-available";
+        // REMOTE_CONFIG manquait deja : le journal annoncait "type=none" pour
+        // un envoi bien reel, ce qui rend une trace inutilisable au moment ou
+        // l'on cherche justement pourquoi un message n'est pas arrive.
+        case WorkType::REMOTE_CONFIG: return "remote-config";
+        case WorkType::SCRIPT_MESSAGE: return "script-message";
         default: return "none";
     }
 }

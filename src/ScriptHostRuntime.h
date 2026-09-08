@@ -34,6 +34,10 @@ struct ScriptRuntimeContext {
     uint16_t actions = 0U;
     uint16_t refusals = 0U;
     uint16_t lastNotify = 0U;
+    uint16_t lastAlert = 0U;
+    // Nom du script, repris dans la notification : un code seul ne dirait pas
+    // d'ou il vient.
+    const char* name = "";
 };
 
 const AquaLook::Domain::ScriptHostOps& scriptHostOps();

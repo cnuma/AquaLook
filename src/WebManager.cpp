@@ -1993,8 +1993,23 @@ void WebManager::handleGetTopology(AsyncWebServerRequest* req) {
 void WebManager::handleSetTopology(AsyncWebServerRequest* req, JsonDocument& doc) {
     if (!_config || !_relais.relay) { sendError(req, "indisponible"); return; }
 
+    // Recabler pendant un arrosage laisserait un relais colle sur une voie
+    // qui vient de changer de sens : le refus est structurel, pas une
+    // precaution excessive.
+    //
+    // Mais "arrosage en cours" ne disait ni QUELLE zone ni QUOI FAIRE. Un
+    // utilisateur qui clique Enregistrer et voit passer trois mots dans un
+    // bandeau fugace conclut que le bouton ne marche pas -- ce qui est
+    // exactement ce qui s'est produit.
     for (uint8_t z = 0; z < _config->nbZones(); ++z) {
-        if (_relais.relay->getState(z)) { sendError(req, "arrosage en cours"); return; }
+        if (!_relais.relay->getState(z)) continue;
+        char message[128];
+        snprintf(message, sizeof(message),
+                 "La zone %u (%s) arrose en ce moment. Le cablage ne peut pas "
+                 "changer pendant un arrosage : arretez-la, puis reessayez.",
+                 (unsigned)(z + 1U), _config->zone(z).name);
+        sendError(req, message);
+        return;
     }
 
     RelayTopology::RelayTopologyConfig topo;

@@ -56,7 +56,12 @@ public:
         // Reglages recus du serveur et appliques -- ou refuses. L'utilisateur
         // doit savoir qu'un arrosage a change sans qu'il touche au module :
         // c'est le seul evenement ou la configuration bouge a distance.
-        REMOTE_CONFIG
+        REMOTE_CONFIG,
+        // Message emis par un script de l'utilisateur. Distinct des autres :
+        // c'est le seul dont le module ne connait pas le sens -- il transporte
+        // un code choisi par l'auteur du script, pas un evenement qu'il aurait
+        // lui-meme constate.
+        SCRIPT_MESSAGE
     };
 
     enum class WorkerResult : uint8_t {
@@ -90,6 +95,12 @@ public:
      *  serveur en accuse. */
     static bool enqueueRemoteConfig(bool applied, uint8_t champs,
                                     uint32_t revision, const char* detail);
+    /** Message demande par un script. Retourne false si les notifications ne
+     *  sont pas configurees : le script doit pouvoir savoir que son alerte
+     *  n'est PAS partie, plutot que de croire avoir prevenu quelqu'un. */
+    static bool enqueueScriptMessage(uint16_t code, const char* scriptName);
+    /** true si un serveur de notification est configure et actif. */
+    static bool notificationsReady();
 
 private:
     static void loadConfig();

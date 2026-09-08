@@ -60,8 +60,14 @@ enum class ScriptOp : uint8_t {
     ZONE_REMAIN = 66,// + u16 id zone       : empile les secondes restantes
 
     ACTION = 80,     // + u8 action, + u16 cible : depile l'argument eventuel
-    NOTIFY = 81,     // + u16 code message
+    NOTIFY = 81,     // + u16 code message : trace dans le journal
     WAIT = 82,       // depile des secondes, rend la main jusqu'a echeance
+    // + u16 code : NOTIFIE l'utilisateur pour de bon (serveur configure).
+    // Distincte de NOTIFY parce qu'elles ne font pas la meme chose : l'une
+    // ecrit une ligne que personne ne lira peut-etre jamais, l'autre reveille
+    // quelqu'un. Les confondre ferait envoyer une alerte a chaque trace de
+    // mise au point.
+    ALERT = 83,
 };
 
 // Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
@@ -120,6 +126,10 @@ struct ScriptHostOps {
     bool (*zoneRemainingSec)(void* ctx, uint16_t zoneId, int32_t& value);
     bool (*action)(void* ctx, ScriptAction action, uint16_t target, int32_t arg);
     bool (*notify)(void* ctx, uint16_t messageCode);
+    // Retourne false si les notifications ne sont pas configurees : le script
+    // s'arrete alors sur « action refusee » plutot que de croire avoir
+    // prevenu quelqu'un.
+    bool (*alert)(void* ctx, uint16_t messageCode);
     uint32_t (*nowMs)(void* ctx);
 };
 

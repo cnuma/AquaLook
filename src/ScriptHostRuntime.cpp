@@ -1,6 +1,7 @@
 #include "ScriptHostRuntime.h"
 
 #include "EventLog.h"
+#include "NotificationManager.h"
 
 namespace {
 
@@ -103,10 +104,27 @@ bool notify(void* raw, uint16_t code) {
     return true;
 }
 
+bool alert(void* raw, uint16_t code) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    if (ctx) ctx->lastAlert = code;
+    if (!NotificationManager::enqueueScriptMessage(code, ctx ? ctx->name : "")) {
+        // Refuser plutot que d'accepter sans rien envoyer. Un script qui croit
+        // avoir alerte quelqu'un est plus dangereux qu'un script arrete : on
+        // compte dessus pour etre prevenu d'une cuve vide.
+        EventLog::log(LOG_WARN,
+                      "Script: alerte %u NON envoyee, notifications non configurees",
+                      (unsigned)code);
+        if (ctx) ctx->refusals++;
+        return false;
+    }
+    EventLog::log(LOG_INFO, "Script: alerte %u envoyee", (unsigned)code);
+    return true;
+}
+
 uint32_t nowMs(void*) { return millis(); }
 
 const ScriptHostOps OPS = {
-    readInput, zoneActive, zoneRemainingSec, action, notify, nowMs
+    readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs
 };
 
 } // namespace

@@ -62,6 +62,10 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     job.ctx.inputs = _inputs;
     job.ctx.schedule = _schedule;
     job.ctx.config = _config;
+    // Le nom vit dans la structure du magasin, qui est locale a cette
+    // fonction : on le recopie dans le travail, qui, lui, survit au tick.
+    strlcpy(job.name, meta.name, sizeof(job.name));
+    job.ctx.name = job.name;
     job.index = index;
     job.active = true;
     job.vm.load(ScriptProgram(job.code, meta.codeSize), &scriptHostOps(), &job.ctx);

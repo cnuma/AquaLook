@@ -22,7 +22,8 @@
 //   arreter zone <id>
 //   suspendre zone <id>
 //   reprendre zone <id>
-//   message <code>
+//   message <code>                   -- une ligne dans le journal
+//   notifier <code>                  -- une vraie notification, si configuree
 //   <var> = <expr>
 //
 //   Expressions : nombres, variables a..h, entree(<id>), zoneactive(<id>),
@@ -42,7 +43,7 @@
     AND: 38, OR: 39, NOT: 40,
     JMP: 48, JZ: 49, JNZ: 50,
     READ_INPUT: 64, ZONE_ACTIVE: 65, ZONE_REMAIN: 66,
-    ACTION: 80, NOTIFY: 81, WAIT: 82
+    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83
   };
 
   const ACTION = {
@@ -262,6 +263,10 @@
 
       if (word === 'attendre') { next(); expression(); emit(OP.WAIT); return; }
       if (word === 'message') { next(); emit(OP.NOTIFY); emitU16(number()); return; }
+      // « notifier » reveille quelqu'un ; « message » ecrit une ligne. Deux
+      // mots distincts parce que ce sont deux gestes distincts : confondre
+      // les deux ferait envoyer une alerte a chaque trace de mise au point.
+      if (word === 'notifier') { next(); emit(OP.ALERT); emitU16(number()); return; }
 
       if (word === 'demarrer') {
         next();
