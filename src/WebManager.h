@@ -12,6 +12,7 @@
 #include "WeatherManager.h"
 #include "RelaisManager.h"
 #include "ScheduleManager.h"
+#include "RainSchedule.h"
 #include "ConfigManager.h"
 #include "WiFiManager.h"
 #include "EventLog.h"

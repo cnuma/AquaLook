@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "RainSchedule.h"
 #include "EventBus.h"
 #include "BootLoopGuard.h"
 #include "NotificationManager.h"   // marqueur "MAJ DISPO" du bandeau
@@ -207,48 +208,15 @@ static void fillHatchRect(
 }
 
 
-// Indique si une colonne du planning correspond à un jour réellement prévu
-// pour une zone en mode intervalle. Le calcul reprend la logique d'exécution :
-// premier arrosage aujourd'hui si aucun historique, sinon dernier jour + intervalle.
-static bool intervalDayIsPlanned(const ZoneSchedule& zs,
-                                 uint32_t todayEpochDay,
-                                 uint8_t daysAhead) {
-    const uint32_t targetDay = todayEpochDay + daysAhead;
-    const uint32_t interval  = zs.intervalDays > 0 ? zs.intervalDays : 1;
-    const uint32_t anchor    = zs.intervalAnchorDay;
-
-    return anchor > 0 &&
-           targetDay >= anchor &&
-           ((targetDay - anchor) % interval) == 0;
-}
-
-// Arrosage prévu ce jour-là, mais suspendu parce que la pluie annoncée
-// atteint le seuil de la zone.
-//
-// Point de passage unique : la condition était écrite à l'identique dans
-// les trois rendus de planning (LIST, GRID2, GRID4), et le voyant WS2812
-// en aurait ajouté une quatrième copie. Or c'est exactement le travers
-// qui a imposé de corriger trois fois le même défaut avant que
-// HeapMetrics.h n'existe — une règle métier recopiée finit toujours par
-// diverger d'un site à l'autre.
-//
-// Les trois sites étaient déjà subtilement différents : deux gardaient
-// l'appel météo derrière un `col < 5`, le troisième non. Sans effet ici,
-// getForecastDay() bornant lui-même son argument, mais l'écart montre
-// bien la dérive commencée.
-static bool rainBlocksDay(const ZoneSchedule& zs,
-                          const DaySchedule& ds,
-                          uint8_t col,
-                          const WeatherManager* weather) {
-    bool hasAny = false;
-    for (uint8_t s = 0; s < MAX_SLOTS; s++) {
-        if (ds.slots[s].enabled) { hasAny = true; break; }
-    }
-    if (!hasAny) return false;
-
-    const ForecastDay fd = weather ? weather->getForecastDay(col) : ForecastDay{};
-    return fd.valid && fd.rainMm >= zs.rain.thresholdMm;
-}
+// intervalDayIsPlanned() et rainBlocksDay() ont demenage dans RainSchedule.h,
+// PARTAGE avec WebManager.cpp : le voyant WS2812, le LCD et l'API Web
+// doivent dire la MEME chose sur un meme jour et une meme zone. Elles
+// vivaient ici en `static`, ce qui a suffi tant que seul le LCD en avait
+// besoin -- mais un getter web (`rainBlockedToday` sur /api/status) en
+// aurait ete une quatrieme copie, exactement le travers deja identifie une
+// fois ici pour les trois rendus de planning. Voir RainSchedule.h.
+using RainSchedule::intervalDayIsPlanned;
+using RainSchedule::rainBlocksDay;
 
 // SCREEN_W / SCREEN_H sont desormais des constantes publiques de la
 // classe (DisplayManager.h) : elles etaient definies ici en #define, donc
@@ -1915,6 +1883,68 @@ String DisplayManager::nextSlotLabel(uint8_t zone) {
     return next;
 }
 
+// Prochaine occurrence qui ne sera PAS bloquee par la pluie, dans la limite
+// des previsions dont on dispose reellement (5 jours, voir WeatherManager).
+//
+// nextSlotLabel() ci-dessus ignore la pluie : il annoncait donc "auj. 07:00"
+// meme quand ce creneau precis etait deja bloque -- exactement ce que le
+// voyant ambre du ruban savait deja dire correctement (rainBlockedMaskToday).
+// Signale par l'utilisateur : le bouton de zone et le voyant se
+// contredisaient sur le meme fait.
+//
+// Cette fonction avance donc jour par jour et SAUTE tout jour bloque, plutot
+// que de reprendre le premier creneau venu. Au-dela de la fenetre de
+// prevision, elle rend une chaine vide : fabriquer une date que la meteo ne
+// permet pas d'affirmer serait le meme defaut sous une autre forme.
+String DisplayManager::nextRainFreeSlotLabel(uint8_t zone) {
+    String empty;
+    if (!_schedule || !_ntp || !_ntp->isSynced()) return empty;
+
+    ZoneSchedule zs   = _schedule->getZoneSchedule(zone);
+    const int todayEsp = todayEspIdx();
+    const uint32_t epochNow = _ntp->getEpochDay();
+    const int nowMin = _ntp->getHour() * 60 + _ntp->getMinute();
+    const char* JOURS[] = {"lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"};
+
+    auto findEarliestSlot = [](const DaySchedule& ds, int minExclusive,
+                               uint8_t& outHour, uint8_t& outMinute) -> bool {
+        int bestMin = 24 * 60;
+        bool found = false;
+        for (uint8_t s = 0; s < MAX_SLOTS; s++) {
+            const TimeSlot& slot = ds.slots[s];
+            if (!slot.enabled) continue;
+            const int slotMin = slot.hour * 60 + slot.minute;
+            if (slotMin <= minExclusive || slotMin >= bestMin) continue;
+            bestMin = slotMin;
+            outHour = slot.hour;
+            outMinute = slot.minute;
+            found = true;
+        }
+        return found;
+    };
+
+    // 5 jours : la portee reelle de WeatherManager (_forecast[5]), pas une
+    // limite arbitraire choisie ici.
+    for (uint8_t d = 0; d < 5 && d < NB_DAYS; d++) {
+        if (zs.mode != 0 && !intervalDayIsPlanned(zs, epochNow, d)) continue;
+
+        const int dayIdx = (todayEsp + d) % NB_DAYS;
+        const DaySchedule& ds = (zs.mode == 0) ? zs.daySlots[dayIdx] : zs.intervalSlots;
+        if (rainBlocksDay(zs, ds, d, _weather)) continue;
+
+        uint8_t hour = 0, minute = 0;
+        const int minExclusive = (d == 0) ? nowMin : -1;
+        if (!findEarliestSlot(ds, minExclusive, hour, minute)) continue;
+
+        char buf[20];
+        if (d == 0)      snprintf(buf, sizeof(buf), "auj. %02d:%02d", hour, minute);
+        else if (d == 1) snprintf(buf, sizeof(buf), "demain %02d:%02d", hour, minute);
+        else             snprintf(buf, sizeof(buf), "%s %02d:%02d", JOURS[dayIdx], hour, minute);
+        return String(buf);
+    }
+    return empty;
+}
+
 void DisplayManager::renderBtnSprite(uint8_t zone, uint16_t pushY) {
     bool    active   = _relais && _relais->getState(zone);
     // Une zone sans voie physique ne pourra jamais arroser, et le module ne
@@ -2656,10 +2686,32 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     const bool mapped = _relais.relay &&
         RelayTopology::resolveZoneValve(
             _relais.relay->topology(), zone, _nbZones).valid;
+    // Le voyant WS2812 clignote deja en ambre pour dire "prevu, mais reporte
+    // par la pluie" (voir ScreenManager::updateLeds). La tuile annoncait
+    // pourtant "Prochain : auj. 07:00" sans rien en dire -- deux etages de la
+    // meme interface qui se contredisaient sur le meme fait, signale par
+    // l'utilisateur. On lit le meme masque que le ruban, pas un calcul
+    // separe qui finirait par en diverger.
+    //
+    // _rainMaskCache n'existe que sur S3 (le ruban WS2812 -- voir
+    // DisplayManager.h) : la carte historique n'a pas de voyant par zone,
+    // donc rien a corriger sur ce point pour elle.
+#if AQUALOOK_BOARD_S3
+    const bool rainDelayed = !active && mapped && zone < 16 &&
+        ((_rainMaskCache >> zone) & 1U) != 0U;
+#else
+    const bool rainDelayed = false;
+#endif
 
     drawCardBg(_tft, x, y, w, h, Theme::R_MD, bg, border, false);
     if (!mapped) {
         fillHatchRect(_tft, x + 2, y + 2, w - 4, h - 4, bg, Theme::MUTED);
+    } else if (rainDelayed) {
+        // Memes couleurs que le hachurage "jour bloque par la pluie" du
+        // planning (renderPlanSprite*) : un seul vocabulaire visuel pour dire
+        // "la pluie bloque" partout sur l'ecran.
+        fillHatchRect(_tft, x + 2, y + 2, w - 4, h - 4,
+                      Theme::RAIN_BG_SOFT, Theme::RAIN_STRIPE);
     }
     drawAccentBar(_tft, x, y, h, Theme::R_MD, mapped ? zColor : Theme::SURFACE2);
     _tft.setFreeFont(nullptr);
@@ -2676,7 +2728,13 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
     // reduit au seul mot "Appuyer", y paraissait vide.
     {
         constexpr int16_t pad = 10;
-        _tft.setTextColor(Theme::TEXT, bg);
+        // Fond REEL sous le texte : quand la tuile est hachuree en ambre
+        // (rainDelayed), peindre le texte sur "bg" (le fond ordinaire, non
+        // hachure) laisserait un rectangle de la mauvaise couleur derriere
+        // chaque mot -- le meme defaut deja corrige ailleurs sur les
+        // cellules meteo et le bandeau d'entete.
+        const uint16_t tileBg = rainDelayed ? Theme::RAIN_BG_SOFT : bg;
+        _tft.setTextColor(Theme::TEXT, tileBg);
         _tft.setTextDatum(TL_DATUM);
         _tft.drawString(zoneName, x + pad, y + 6);
 
@@ -2701,7 +2759,7 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
             snprintf(buf, sizeof(buf), "%02lu:%02lu",
                      rem / 60000UL, (rem % 60000UL) / 1000UL);
             _tft.setTextSize(roomy ? 2 : 1);
-            _tft.setTextColor(Theme::TEXT, bg);
+            _tft.setTextColor(Theme::TEXT, tileBg);
             _tft.drawString(buf, x + pad, y + 26);
             _tft.setTextSize(1);
 
@@ -2715,15 +2773,29 @@ void DisplayManager::drawZoneBtn(uint8_t zone, uint16_t x, uint16_t y,
             // Annoncer un prochain arrosage sur une zone sans sortie serait
             // faux : ce creneau ne se produira jamais. La tuile est deja
             // hachuree, le texte doit dire la meme chose.
-            _tft.setTextColor(Theme::AMBER, bg);
+            _tft.setTextColor(Theme::AMBER, tileBg);
             _tft.drawString("Non affectee", x + pad, y + 26);
-            _tft.setTextColor(Theme::MUTED, bg);
+            _tft.setTextColor(Theme::MUTED, tileBg);
             _tft.drawString("Cablage relais", x + pad, y + 40);
 
+        } else if (rainDelayed) {
+            // Le voyant dit deja "reporte" en clignotant ambre ; le texte le
+            // dit maintenant aussi, au lieu d'annoncer un horaire qui ne se
+            // produira pas. nextRainFreeSlotLabel() saute les jours bloques
+            // au lieu d'en reprendre le premier venu -- voir sa definition.
+            _tft.setTextColor(Theme::AMBER, tileBg);
+            _tft.drawString("Reporte (pluie)", x + pad, y + 26);
+            _tft.setTextColor(Theme::TEXT, tileBg);
+            _tft.setTextSize(roomy ? 2 : 1);
+            const String freeSlot = nextRainFreeSlotLabel(zone);
+            _tft.drawString(freeSlot.length() ? freeSlot.c_str() : "Indetermine",
+                            x + pad, y + 38);
+            _tft.setTextSize(1);
+
         } else {
-            _tft.setTextColor(Theme::MUTED, bg);
+            _tft.setTextColor(Theme::MUTED, tileBg);
             _tft.drawString("Prochain", x + pad, y + 26);
-            _tft.setTextColor(Theme::TEXT, bg);
+            _tft.setTextColor(Theme::TEXT, tileBg);
             _tft.setTextSize(roomy ? 2 : 1);
             _tft.drawString(nextSlotLabel(zone).c_str(), x + pad, y + 38);
             _tft.setTextSize(1);

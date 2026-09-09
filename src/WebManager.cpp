@@ -935,6 +935,30 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         rain["threshMm"] = zs.rain.thresholdMm;
         rain["hours"]    = zs.rain.forecastHours;
 
+        // Arrosage prevu aujourd'hui pour cette zone, mais suspendu par la
+        // pluie. Meme regle que le voyant WS2812 et le LCD
+        // (RainSchedule::rainBlocksDay, DisplayManager::rainBlockedMaskToday) :
+        // sans ce champ, l'interface web continuait d'annoncer "Prochain :
+        // aujourd'hui HH:MM" pour un creneau que le module lui-meme sait deja
+        // ne pas declencher -- signale par l'utilisateur, qui voyait le voyant
+        // et le bouton se contredire sur le meme fait.
+        {
+            bool rainDelayedToday = false;
+            if (_ntp && _ntp->isSynced()) {
+                const int wday = _ntp->getWeekday();               // 0=dim..6=sam
+                const int todayEsp = (wday == 0) ? 6 : wday - 1;    // 0=lun..6=dim
+                const uint32_t epochDay = _ntp->getEpochDay();
+                if (zs.mode == 0) {
+                    rainDelayedToday = RainSchedule::rainBlocksDay(
+                        zs, zs.daySlots[todayEsp], 0U, _weather);
+                } else if (RainSchedule::intervalDayIsPlanned(zs, epochDay, 0U)) {
+                    rainDelayedToday = RainSchedule::rainBlocksDay(
+                        zs, zs.intervalSlots, 0U, _weather);
+                }
+            }
+            zo["rainDelayedToday"] = rainDelayedToday;
+        }
+
         // daySlots et intervalSlots exclus du status global (trop volumineux pour N zones)
         // Ils sont disponibles via GET /api/zone?z=N
     }

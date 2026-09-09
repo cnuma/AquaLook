@@ -904,6 +904,18 @@ header {
 .zone-unassigned .zt-reason{color:#b8860b}
 .zone-unassigned .btn-run{cursor:not-allowed;filter:grayscale(1)}
 
+/* Meme trame que .zone-unassigned, en ambre : la zone accepterait bien
+   l'arrosage prevu aujourd'hui, mais la pluie annoncee le suspend -- pas la
+   meme situation qu'une zone non cablee, donc pas la meme couleur. Memes
+   couleurs que le hachurage du planning (rainBlk) et du voyant WS2812
+   (clignotement ambre) : un seul vocabulaire visuel pour "pluie" partout
+   sur l'interface. Voir DisplayManager::drawZoneBtn cote LCD. */
+.zone-rain-delayed{
+  background-image:repeating-linear-gradient(45deg,
+      transparent 0 7px, rgba(176,96,0,.20) 7px 14px);
+}
+.zone-rain-delayed .zt-reason{color:var(--amber)}
+
 /* Chaque champ porte son etiquette : les lignes passent a la ligne selon la
    largeur, un en-tete de colonne fixe se desalignerait. */
 .topo-field{display:inline-flex;flex-direction:column;gap:1px;margin:0}

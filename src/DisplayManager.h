@@ -508,6 +508,10 @@ private:
     void renderPlanSpriteCompact(uint16_t sprH, uint16_t destY,
                                   uint16_t planW = 320);              // GRID2 : 2 cols
     String nextSlotLabel(uint8_t zone);
+    // Comme nextSlotLabel(), mais saute les jours bloques par la pluie au
+    // lieu de les ignorer. Chaine vide si aucune occurrence fiable n'existe
+    // dans la fenetre de prevision (5 jours).
+    String nextRainFreeSlotLabel(uint8_t zone);
 #if AQUALOOK_BOARD_S3
     // Encart meteo detaille du jour touche dans le bandeau planning.
     // -1 = ferme. Tant qu'il est ouvert, update() suspend le rafraichissement

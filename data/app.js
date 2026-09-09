@@ -163,12 +163,18 @@ function renderZonesGrid() {
       : 'Jours fixes';
     const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
-    const reason   = z.reason || z.lastReason || 'En attente';
+    // z.reason ne se met a jour qu'A L'HEURE du creneau (ScheduleManager::
+    // shouldWater n'est evalue qu'a la minute exacte) : avant 07:00, il
+    // pouvait encore dire "Planifie" pour un creneau que la pluie va bloquer
+    // -- le module le savait deja (rainDelayedToday, recalcule a chaque
+    // rafraichissement), mais le mot affiche ne le disait pas encore.
+    const rainDelayed = (z.rainDelayedToday === true);
+    const reason   = rainDelayed ? 'Reporté (pluie)' : (z.reason || z.lastReason || 'En attente');
     // Une zone sans voie physique ne pourra jamais arroser : le dire, plutot
     // que d'afficher un motif sans rapport et un bouton qui n'agira pas.
     const noOut = (z.hasOutput === false);
     return `
-    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''} ${noOut ? 'zone-unassigned' : ''}" style="--zc:${zoneHex(z, i)}">
+    <div class="zone-tile zone-color-${color} ${active ? 'zone-card-active' : ''} ${noOut ? 'zone-unassigned' : (rainDelayed ? 'zone-rain-delayed' : '')}" style="--zc:${zoneHex(z, i)}">
       <div class="zt-head">
         <span class="zone-dot zone-dot-${color}"></span>
         <span class="zt-name" title="${name}">${name}</span>
@@ -223,9 +229,12 @@ function renderZonesTable() {
       : 'Jours fixes';
     const threshMm = z.rain?.threshMm ?? z.rainThresh ?? 2;
     const hours    = z.rain?.hours    ?? z.rainHours  ?? 24;
-    const reason   = z.reason || z.lastReason || 'En attente';
+    // Meme raison qu'en vue normale : z.reason ne se met a jour qu'A
+    // L'HEURE du creneau, rainDelayedToday le sait des maintenant.
+    const rainDelayed = (z.rainDelayedToday === true);
+    const reason   = rainDelayed ? 'Reporté (pluie)' : (z.reason || z.lastReason || 'En attente');
     const noOut    = (z.hasOutput === false);
-    return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''} ${noOut ? 'zone-unassigned' : ''}"
+    return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''} ${noOut ? 'zone-unassigned' : (rainDelayed ? 'zone-rain-delayed' : '')}"
                 onclick="openZoneConfigModal(${i})"
                 title="Configurer ${name}">
       <td class="zt-name zt-name-${color}" style="--zc:${zoneHex(z, i)}">
