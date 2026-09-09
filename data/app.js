@@ -1870,7 +1870,11 @@ function renderTopoEditor() {
   // « Cartes relais » etait juste tant qu'elles ne portaient que des sorties.
   // Depuis qu'une meme carte peut porter des entrees, le mot designe un cas
   // particulier pour toute une famille.
-  h += '<div class="cfg-subsection-title">Cartes d'interface</div>';
+  // Apostrophe typographique et non droite : dans une chaine delimitee par
+  // des apostrophes, la droite doit etre echappee -- et un echappement se
+  // perd trop facilement en passant par un script de retouche. Celle-ci ne
+  // peut pas casser la chaine.
+  h += '<div class="cfg-subsection-title">Cartes d’interface</div>';
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
   topoBoards.forEach((b, n) => {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
