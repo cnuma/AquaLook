@@ -152,6 +152,14 @@ bool validateAssignment(
     const RelayBoardConfig& board = topology.boards[assignment.boardIndex];
     if (!validateBoard(board)) return false;
     if (assignment.channelIndex >= board.channelCount) return false;
+    // La carte relais XL9535 retenue par ce projet (la "YellowCard") n'expose
+    // pas ses GPIO sur des points de connexion : chaque broche est cablee en
+    // interne vers son driver de relais. Il n'y a physiquement rien a
+    // brancher en entree dessus. Contrairement au manque de tirage interne
+    // (une limite qu'on peut contourner avec une resistance externe), c'est
+    // une impossibilite de cablage, pas une precaution -- d'ou un rejet et
+    // non un simple avertissement.
+    if (assignment.isInput() && board.controller == CONTROLLER_XL9535) return false;
 
     return true;
 }

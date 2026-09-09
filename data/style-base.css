@@ -444,6 +444,13 @@ header {
 .btn-cfg.danger:hover { background: var(--red); color: #fff; }
 .btn-cfg.warn    { background: #fff3cd; color: var(--amber); border: 1px solid #ffc107; }
 .btn-cfg.warn:hover { background: var(--amber); color: #fff; }
+/* Memes couleurs que le badge SORTIE/ENTREE (.io-sens-out/.io-sens-in) sur
+   les lignes de l'editeur de cablage : "+ Ajouter" doit annoncer d'avance ce
+   que la ligne sera, pas juste apres coup sur le badge de la ligne creee. */
+.btn-cfg.io-out  { background: #e8f0fe; color: #1a56c4; border: 1px solid #b9cffb; }
+.btn-cfg.io-out:hover { background: #1a56c4; color: #fff; }
+.btn-cfg.io-in   { background: #fdeee0; color: #b5560a; border: 1px solid #f3c79c; }
+.btn-cfg.io-in:hover { background: #b5560a; color: #fff; }
 
 .cfg-info {
   font-family: var(--mono); font-size: 10px; color: var(--text2);

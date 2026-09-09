@@ -1933,10 +1933,14 @@ function renderTopoEditor() {
   // Deux boutons plutot qu'un choix a faire APRES coup : l'utilisateur
   // demande explicitement de choisir des la creation si la nouvelle ligne
   // est une entree ou une sortie, plutot que de recevoir une sortie par
-  // defaut et devoir la reconfigurer via le role.
+  // defaut et devoir la reconfigurer via le role. Memes couleurs que le
+  // badge SORTIE/ENTREE des lignes (.io-sens-out/.io-sens-in) : le bouton
+  // annonce d'avance ce que la ligne sera, dans le meme langage visuel.
   h += '<div style="display:flex;gap:8px;margin:6px 0">'
-     + '<button class="btn-cfg" onclick="topoAddAssign(\'out\')" style="margin:0">+ Ajouter une sortie</button>'
-     + '<button class="btn-cfg" onclick="topoAddAssign(\'in\')" style="margin:0">+ Ajouter une entr&eacute;e</button>'
+     + '<button class="btn-cfg io-out" style="width:auto;margin:0" '
+     + 'onclick="topoAddAssign(\'out\')">+ Ajouter une sortie</button>'
+     + '<button class="btn-cfg io-in" style="width:auto;margin:0" '
+     + 'onclick="topoAddAssign(\'in\')">+ Ajouter une entr&eacute;e</button>'
      + '</div>';
 
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
@@ -1982,12 +1986,17 @@ function topoIncoherences() {
       ajouter(ligne + 'voie ' + a.channel + ' sur une carte qui n&rsquo;en a que '
              + b.channels + ' (0 a ' + (b.channels - 1) + ').', [n]);
     }
-    // Le XL9535 n'a pas de resistances de tirage internes. Une entree qui en
-    // demande y lirait une broche flottante, donc n'importe quoi.
-    if (topoIsInput(a.role) && b.controller === 0 && (a.flags & 2)) {
-      ajouter(ligne + 'le XL9535 n&rsquo;a pas de tirage interne. Choisissez '
-             + '&laquo;&nbsp;sans tirage&nbsp;&raquo; et cablez une resistance, '
-             + 'ou utilisez un MCP23017.', [n]);
+    // La carte XL9535 retenue par ce projet (la YellowCard) n'expose pas ses
+    // GPIO sur des points de connexion : chaque broche va directement a son
+    // driver de relais. Il n'y a rien a brancher en entree dessus -- ce
+    // n'est pas une limite qu'une resistance externe contournerait, comme
+    // pour le manque de tirage interne, c'est une impossibilite de cablage.
+    // Le module refuse deja ce cas (validateAssignment) ; le dire ici evite
+    // de le decouvrir seulement au moment d'enregistrer.
+    if (topoIsInput(a.role) && b.controller === 0) {
+      ajouter(ligne + 'la carte XL9535 (YellowCard) n&rsquo;expose pas ses '
+             + 'broches en dehors des relais : elle ne peut pas porter une '
+             + 'entree. Utilisez une carte MCP23017.', [n]);
     }
     if (topoIsInput(a.role) && !a.id) {
       ajouter(ligne + 'une entree sans identifiant ne peut etre citee par aucun script.', [n]);
@@ -2077,12 +2086,19 @@ function topoAddAssign(kind) {
   topoGatherFromDom();
   const i = topoNextIndex(topoAssign, 20);
   if (i < 0) { toast('20 affectations au maximum', true); return; }
-  const board = topoBoards.length ? topoBoards[0].i : 0;
   if (kind === 'in') {
+    // La carte XL9535 (YellowCard) ne peut pas porter d'entree -- voir
+    // topoIncoherences(). Proposer par defaut la premiere carte MCP23017 evite
+    // de faire naitre la ligne deja en erreur quand une carte compatible
+    // existe ; a defaut, on retombe sur la premiere carte tout de meme, pour
+    // que l'absence de carte compatible se voie plutot que de bloquer l'ajout.
+    const mcp = topoBoards.find(b => b.controller === 1);
+    const board = mcp ? mcp.i : (topoBoards.length ? topoBoards[0].i : 0);
     topoAssign.push({ i: i, role: TOPO_ROLE_INPUT_FIRST, target: 0,
                       board: board, channel: 0,
                       id: topoNextFreeInputId(), flags: 3 });
   } else {
+    const board = topoBoards.length ? topoBoards[0].i : 0;
     topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0,
                       id: 0, flags: 3 });
   }
