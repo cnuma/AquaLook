@@ -444,7 +444,11 @@
       <span class="cfg-chevron">&#9654;</span>
     </div>
     <div class="cfg-section-body">
-      <div id="topo-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
+      <!-- onchange delegue : "change" remonte de n'importe quel champ interne
+           (select ou input) jusqu'ici, meme sur des lignes redessinees apres
+           coup. Un seul point d'entree pour tenir le controle de coherence a
+           jour -- voir topoFieldChanged() dans app.js. -->
+      <div id="topo-editor" onchange="topoFieldChanged(event)"><div class="cfg-hint">Chargement&hellip;</div></div>
       <button class="btn-cfg primary" onclick="saveCfgTopo()" style="margin-top:8px">Enregistrer</button>
       <button class="btn-cfg" onclick="topoEraseWiring()" style="margin-top:6px">Effacer le câblage enregistré</button>
       <div class="cfg-hint" style="margin-top:6px">Décrit quelle voie physique (carte + canal) pilote chaque rôle : vanne de zone, pompe, éclairage&hellip; <b>Sans câblage enregistré, le module ne pilote aucune sortie</b> : il ne devine pas comment il est raccordé. Toute modification prend effet au prochain redémarrage.</div>

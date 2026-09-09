@@ -1866,7 +1866,7 @@ function renderTopoEditor() {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
       + topoField('Controleur', '<select data-topo="ctrl" data-n="' + n + '">' + topoOptions(TOPO_CTRL, b.controller) + '</select>')
       + topoField('Adresse I2C', '<select data-topo="addr" data-n="' + n + '">' + topoAddrOptions(b.addr) + '</select>')
-      + topoField('Nb de voies', '<select data-topo="chan" data-n="' + n + '" onchange="topoOnBoardChannelsChange()" title="nombre de voies physiques de la carte, entrees comprises">' + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>')
+      + topoField('Nb de voies', '<select data-topo="chan" data-n="' + n + '" title="nombre de voies physiques de la carte, entrees comprises">' + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>')
       + topoField('Logique', '<select data-topo="logic" data-n="' + n + '" title="directe = 1 ouvre le relais ; inversee = 0 ouvre">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>')
       + topoField('Transport', '<select data-topo="transport" data-n="' + n + '" title="ou vit la carte : bus local, ou lien distant">'
       + TOPO_TRANSPORTS.map(o => '<option value="' + o[0] + '"'
@@ -1911,7 +1911,7 @@ function renderTopoEditor() {
       // le role pour deduire s'il s'agissait d'une entree ou d'une sortie.
       + '<span class="io-sens ' + (topoIsInput(a.role) ? 'io-sens-in' : 'io-sens-out') + '">'
       + (topoIsInput(a.role) ? 'ENTRÉE' : 'SORTIE') + '</span>'
-      + topoField('Role', '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
+      + topoField('Role', '<select data-topo="role" data-n="' + n + '">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
       + (topoIsInput(a.role)
           // Une entree ne « pilote » rien : elle porte un IDENTIFIANT, celui
           // que les scripts citeront. Montrer une cible ici n'aurait aucun
@@ -1925,12 +1925,19 @@ function renderTopoEditor() {
                              [1, 'Actif bas, sans tirage'], [0, 'Actif haut, sans tirage']],
                             a.flags) + '</select>')
           : topoField('Pilote', '<select data-topo="target" data-n="' + n + '" title="ce que cette voie commande">' + topoTargetOptions(a.role, a.target) + '</select>'))
-      + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '" onchange="topoOnBoardChange(' + n + ')">' + topoBoardOptions(a.board) + '</select>')
+      + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '">' + topoBoardOptions(a.board) + '</select>')
       + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
           '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
-  h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
+  // Deux boutons plutot qu'un choix a faire APRES coup : l'utilisateur
+  // demande explicitement de choisir des la creation si la nouvelle ligne
+  // est une entree ou une sortie, plutot que de recevoir une sortie par
+  // defaut et devoir la reconfigurer via le role.
+  h += '<div style="display:flex;gap:8px;margin:6px 0">'
+     + '<button class="btn-cfg" onclick="topoAddAssign(\'out\')" style="margin:0">+ Ajouter une sortie</button>'
+     + '<button class="btn-cfg" onclick="topoAddAssign(\'in\')" style="margin:0">+ Ajouter une entr&eacute;e</button>'
+     + '</div>';
 
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
   // sont : les lignes fautives sont deja surlignees ci-dessus (topoAlertes,
@@ -2062,36 +2069,68 @@ function topoNextFreeInputId() {
   return id;
 }
 
-function topoAddAssign() {
+// kind: 'out' (par defaut, retro-compatible) ou 'in'. Choisi au clic du
+// bouton, pas devine ensuite : une entree nait avec un role d'entree et un
+// identifiant deja pose, une sortie avec une vanne de zone -- l'utilisateur
+// n'a plus a se souvenir de reconfigurer la ligne apres coup.
+function topoAddAssign(kind) {
   topoGatherFromDom();
   const i = topoNextIndex(topoAssign, 20);
   if (i < 0) { toast('20 affectations au maximum', true); return; }
   const board = topoBoards.length ? topoBoards[0].i : 0;
-  topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0,
-                    id: 0, flags: 3 });
+  if (kind === 'in') {
+    topoAssign.push({ i: i, role: TOPO_ROLE_INPUT_FIRST, target: 0,
+                      board: board, channel: 0,
+                      id: topoNextFreeInputId(), flags: 3 });
+  } else {
+    topoAssign.push({ i: i, role: 1, target: 0, board: board, channel: 0,
+                      id: 0, flags: 3 });
+  }
   renderTopoEditor();
 }
 function topoRemoveAssign(n) { topoGatherFromDom(); topoAssign.splice(n, 1); renderTopoEditor(); }
 
-// Changer de role change la nature de la cible ; changer de carte peut rendre
-// le canal hors bornes. Dans les deux cas on repart d'une valeur sure.
-function topoOnRoleChange(n) {
+// Point d'entree UNIQUE pour tout changement dans l'editeur de cablage,
+// pose une fois sur le conteneur (voir index.html) et non sur chaque champ :
+// "change" remonte naturellement jusqu'a lui, meme pour des lignes ajoutees
+// apres coup par un re-rendu.
+//
+// AVANT : seuls "Role", "Sur la carte" et "Nb de voies" redessinaient. Le
+// canal, l'identifiant, le signal et la cible ne le faisaient pas -- changer
+// le canal d'une affectation laissait le controle de coherence et son
+// surlignage decrire l'ETAT PRECEDENT, pas ce qui etait affiche a l'ecran.
+// Signale par l'utilisateur sur un cas concret (deux entrees MCP23017 sur
+// des canaux differents, signalees a tort comme occupant la meme voie).
+//
+// Un seul gestionnaire supprime la classe entiere du defaut : n'importe quel
+// champ ajoute plus tard herite du meme comportement sans y penser.
+function topoFieldChanged(ev) {
+  const el = ev.target;
+  if (!el || !el.dataset || el.dataset.topo === undefined) return;
+  const champ = el.dataset.topo;
+  const n = Number(el.dataset.n);
   topoGatherFromDom();
-  topoAssign[n].target = 0;
-  // Basculer vers une entree sans identifiant est le cas le plus frequent
-  // signale : l'utilisateur ne decouvrait la contrainte qu'au controle de
-  // coherence, apres avoir deja rempli le reste de la ligne. Autant le
-  // proposer tout de suite, avec le premier identifiant encore libre.
-  if (topoIsInput(topoAssign[n].role) && !topoAssign[n].id) {
-    topoAssign[n].id = topoNextFreeInputId();
+
+  // Changer de role change la nature de la cible ; changer de carte peut
+  // rendre le canal hors bornes. Dans les deux cas on repart d'une valeur
+  // sure plutot que de laisser une reference qui ne veut plus rien dire.
+  if (champ === 'role' && topoAssign[n]) {
+    topoAssign[n].target = 0;
+    // Basculer vers une entree sans identifiant est le cas le plus frequent
+    // signale : l'utilisateur ne decouvrait la contrainte qu'au controle de
+    // coherence, apres avoir deja rempli le reste de la ligne. Autant le
+    // proposer tout de suite, avec le premier identifiant encore libre.
+    if (topoIsInput(topoAssign[n].role) && !topoAssign[n].id) {
+      topoAssign[n].id = topoNextFreeInputId();
+    }
+  } else if (champ === 'board' && topoAssign[n]) {
+    topoAssign[n].channel = 0;
   }
+  // "chan" (nb de voies d'une carte) et tous les autres champs n'ont besoin
+  // que du rendu qui suit : recalculer la coherence contre l'etat courant.
+
   renderTopoEditor();
 }
-function topoOnBoardChange(n) { topoGatherFromDom(); topoAssign[n].channel = 0; renderTopoEditor(); }
-// Reduire le nombre de voies d'une carte peut rendre des affectations
-// impossibles : on redessine pour que le controle de coherence les signale
-// tout de suite, plutot qu'au moment d'enregistrer.
-function topoOnBoardChannelsChange() { topoGatherFromDom(); renderTopoEditor(); }
 
 async function saveCfgTopo() {
   topoGatherFromDom();
