@@ -1686,24 +1686,10 @@ let topoRefus = '';   // dernier refus du module, affiche jusqu'a resolution
 async function topoAppliquer() {
   if (!confirm('Redemarrer le module pour appliquer le cablage enregistre ? '
              + 'Il sera injoignable une trentaine de secondes.')) return;
-  let secret = null;
-  try { secret = localStorage.getItem('aqualook-secret'); } catch (e) {}
-  if (!secret) {
-    secret = prompt('Secret du module (le meme que sur la page Scripts) :');
-    if (!secret) return;
-    try { localStorage.setItem('aqualook-secret', secret); } catch (e) {}
-  }
   try {
-    const etat = await (await fetch('/api/auth/state')).json();
-    if (!etat.configure) {
-      toast('Aucun secret sur le module : posez-le depuis la page Scripts.', true);
-      return;
-    }
-    const nonce = (etat.nonce || 0) + 1;
-    const sig = AquaHmac.hmacSha256Hex(secret, 'restart|' + nonce);
     const r = await fetch('/api/restart', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nonce: nonce, sig: sig })
+      body: JSON.stringify({})
     });
     const d = await r.json().catch(() => ({}));
     if (d.ok) {
@@ -1904,10 +1890,27 @@ function renderTopoEditor() {
   h += '<div class="cfg-hint">Chaque affectation relie un role (vanne de zone, pompe&hellip;) '
      + 'a une voie physique : carte + canal.</div>';
   if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
+
+  // Calculee AVANT le rendu des lignes : chaque ligne fautive porte ainsi
+  // elle-meme un surlignage, plutot que de laisser le message du bas seul a
+  // designer un numero qu'il faut ensuite retrouver a l'oeil.
+  const topoAlertes = topoIncoherences();
+  const topoLignesFautives = new Set();
+  topoAlertes.forEach(al => al.lignes.forEach(l => topoLignesFautives.add(l)));
+
   topoAssign.forEach((a, n) => {
     // La classe distingue les deux formes de ligne : elles n'ont ni le meme
     // nombre de colonnes ni les memes etiquettes.
-    h += '<div class="io-bind' + (topoIsInput(a.role) ? ' io-bind-in' : '') + '">'
+    // Le meme libelle que dans les messages de coherence, au mot pres : un
+    // message qui dit « Affectation 5 » doit pouvoir se lire en face d'une
+    // ligne qui dit « Affectation 5 ».
+    h += '<div class="io-bind' + (topoIsInput(a.role) ? ' io-bind-in' : '')
+      + (topoLignesFautives.has(n) ? ' io-bind-err' : '') + '">'
+      + '<span class="io-lbl">Affectation ' + (n + 1) + '</span>'
+      // Le sens en un mot, colore, AVANT le detail : sans lui il fallait lire
+      // le role pour deduire s'il s'agissait d'une entree ou d'une sortie.
+      + '<span class="io-sens ' + (topoIsInput(a.role) ? 'io-sens-in' : 'io-sens-out') + '">'
+      + (topoIsInput(a.role) ? 'ENTRÉE' : 'SORTIE') + '</span>'
       + topoField('Role', '<select data-topo="role" data-n="' + n + '" onchange="topoOnRoleChange(' + n + ')">' + topoOptions(TOPO_ROLES, a.role) + '</select>')
       + (topoIsInput(a.role)
           // Une entree ne « pilote » rien : elle porte un IDENTIFIANT, celui
@@ -1930,14 +1933,14 @@ function renderTopoEditor() {
   h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
 
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
-  // sont. Le module les refuse deja, mais avec un message unique qui ne dit
-  // pas laquelle des vingt lignes est fautive.
-  const alertes = topoIncoherences();
-  if (alertes.length) {
+  // sont : les lignes fautives sont deja surlignees ci-dessus (topoAlertes,
+  // calculee plus haut). Le message ci-dessous nomme en plus le probleme --
+  // le surlignage dit OU, le texte dit QUOI.
+  if (topoAlertes.length) {
     h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
        + 'currentColor;border-radius:5px;margin:8px 0;font-size:11px;line-height:1.7">'
        + '&#9888; <b>A corriger avant d&rsquo;enregistrer :</b><br>'
-       + alertes.join('<br>') + '</div>';
+       + topoAlertes.map(al => al.msg).join('<br>') + '</div>';
   }
   if (topoRefus) {
     h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
@@ -1951,9 +1954,11 @@ function renderTopoEditor() {
 //
 // Le module refuse ces cas, mais son message ne peut pas designer LA ligne
 // fautive : il ne voit qu'une topologie invalide. L'editeur, lui, sait
-// exactement laquelle -- autant le dire ici.
+// exactement laquelle -- d'ou {msg, lignes} plutot qu'un texte seul : lignes
+// sert a surligner les rangees en cause, msg a dire pourquoi.
 function topoIncoherences() {
   const out = [];
+  const ajouter = (msg, lignes) => out.push({ msg: msg, lignes: lignes });
   const carte = (i) => topoBoards.find(b => b.i === i);
 
   topoAssign.forEach((a, n) => {
@@ -1961,24 +1966,39 @@ function topoIncoherences() {
     const ligne = 'Affectation ' + (n + 1) + ' : ';
 
     if (!b) {
-      out.push(ligne + 'elle vise la carte ' + a.board + ', qui n&rsquo;existe pas.');
+      ajouter(ligne + 'elle vise la carte ' + a.board + ', qui n&rsquo;existe pas.', [n]);
       return;
     }
     // Le cas le plus facile a produire : reduire le nombre de voies d'une
     // carte APRES avoir affecte une voie haute.
     if (a.channel >= b.channels) {
-      out.push(ligne + 'voie ' + a.channel + ' sur une carte qui n&rsquo;en a que '
-             + b.channels + ' (0 a ' + (b.channels - 1) + ').');
+      ajouter(ligne + 'voie ' + a.channel + ' sur une carte qui n&rsquo;en a que '
+             + b.channels + ' (0 a ' + (b.channels - 1) + ').', [n]);
     }
     // Le XL9535 n'a pas de resistances de tirage internes. Une entree qui en
     // demande y lirait une broche flottante, donc n'importe quoi.
     if (topoIsInput(a.role) && b.controller === 0 && (a.flags & 2)) {
-      out.push(ligne + 'le XL9535 n&rsquo;a pas de tirage interne. Choisissez '
+      ajouter(ligne + 'le XL9535 n&rsquo;a pas de tirage interne. Choisissez '
              + '&laquo;&nbsp;sans tirage&nbsp;&raquo; et cablez une resistance, '
-             + 'ou utilisez un MCP23017.');
+             + 'ou utilisez un MCP23017.', [n]);
     }
     if (topoIsInput(a.role) && !a.id) {
-      out.push(ligne + 'une entree sans identifiant ne peut etre citee par aucun script.');
+      ajouter(ligne + 'une entree sans identifiant ne peut etre citee par aucun script.', [n]);
+    }
+  });
+
+  // Deux entrees avec le meme identifiant : un script qui cite cet
+  // identifiant lirait la mauvaise, sans qu'aucune erreur ne le signale au
+  // moment ou ca compte.
+  const idsVus = {};
+  topoAssign.forEach((a, n) => {
+    if (!topoIsInput(a.role) || !a.id) return;
+    if (idsVus[a.id] !== undefined) {
+      ajouter('Affectations ' + (idsVus[a.id] + 1) + ' et ' + (n + 1)
+             + ' : meme identifiant ' + a.id + '. Un script qui le cite '
+             + 'lirait l&rsquo;une des deux au hasard.', [idsVus[a.id], n]);
+    } else {
+      idsVus[a.id] = n;
     }
   });
 
@@ -1988,9 +2008,9 @@ function topoIncoherences() {
   topoAssign.forEach((a, n) => {
     const cle = a.board + ':' + a.channel;
     if (vues[cle] !== undefined) {
-      out.push('Affectations ' + (vues[cle] + 1) + ' et ' + (n + 1)
+      ajouter('Affectations ' + (vues[cle] + 1) + ' et ' + (n + 1)
              + ' : elles occupent la meme voie (carte ' + a.board
-             + ', voie ' + a.channel + ').');
+             + ', voie ' + a.channel + ').', [vues[cle], n]);
     } else {
       vues[cle] = n;
     }
@@ -2033,6 +2053,15 @@ function topoAddBoard() {
 }
 function topoRemoveBoard(n) { topoGatherFromDom(); topoBoards.splice(n, 1); renderTopoEditor(); }
 
+// Plus petit identifiant d'entree encore libre : proposer 0 laisserait
+// l'utilisateur decouvrir la contrainte seulement au controle de coherence.
+function topoNextFreeInputId() {
+  const pris = new Set(topoAssign.filter(a => topoIsInput(a.role)).map(a => a.id));
+  let id = 1;
+  while (pris.has(id)) id++;
+  return id;
+}
+
 function topoAddAssign() {
   topoGatherFromDom();
   const i = topoNextIndex(topoAssign, 20);
@@ -2046,7 +2075,18 @@ function topoRemoveAssign(n) { topoGatherFromDom(); topoAssign.splice(n, 1); ren
 
 // Changer de role change la nature de la cible ; changer de carte peut rendre
 // le canal hors bornes. Dans les deux cas on repart d'une valeur sure.
-function topoOnRoleChange(n) { topoGatherFromDom(); topoAssign[n].target = 0; renderTopoEditor(); }
+function topoOnRoleChange(n) {
+  topoGatherFromDom();
+  topoAssign[n].target = 0;
+  // Basculer vers une entree sans identifiant est le cas le plus frequent
+  // signale : l'utilisateur ne decouvrait la contrainte qu'au controle de
+  // coherence, apres avoir deja rempli le reste de la ligne. Autant le
+  // proposer tout de suite, avec le premier identifiant encore libre.
+  if (topoIsInput(topoAssign[n].role) && !topoAssign[n].id) {
+    topoAssign[n].id = topoNextFreeInputId();
+  }
+  renderTopoEditor();
+}
 function topoOnBoardChange(n) { topoGatherFromDom(); topoAssign[n].channel = 0; renderTopoEditor(); }
 // Reduire le nombre de voies d'une carte peut rendre des affectations
 // impossibles : on redessine pour que le controle de coherence les signale

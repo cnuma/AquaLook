@@ -245,6 +245,21 @@ bool hasDuplicateAssignments(const RelayTopologyConfig& topology) {
     return false;
 }
 
+bool hasDuplicateInputIds(const RelayTopologyConfig& topology) {
+    for (uint8_t a = 0; a < MAX_RELAY_ASSIGNMENTS; a++) {
+        if (!validateAssignment(topology, a)) continue;
+        const RelayAssignment& aa = topology.assignments[a];
+        if (!aa.isInput()) continue;
+
+        for (uint8_t b = a + 1; b < MAX_RELAY_ASSIGNMENTS; b++) {
+            if (!validateAssignment(topology, b)) continue;
+            const RelayAssignment& ab = topology.assignments[b];
+            if (ab.isInput() && aa.id == ab.id) return true;
+        }
+    }
+    return false;
+}
+
 bool validateMapping(
     const RelayTopologyConfig& topology,
     uint8_t zone,

@@ -195,6 +195,11 @@ MappingResolution resolveZoneValve(
 
 uint8_t totalEnabledChannels(const RelayTopologyConfig& topology);
 bool hasDuplicateAssignments(const RelayTopologyConfig& topology);
+// Deux entrees ne peuvent pas partager un identifiant : un script qui le
+// cite lirait l'une des deux au hasard, sans qu'aucune erreur ne le
+// signale au moment ou ca compte. Les sorties ne portent pas cette
+// contrainte -- elles se resolvent par role et cible, pas par id.
+bool hasDuplicateInputIds(const RelayTopologyConfig& topology);
 
 // Compatibilité avec les appels du run précédent.
 bool validateMapping(

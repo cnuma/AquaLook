@@ -89,6 +89,7 @@ bool coherent(const RelayTopology::RelayTopologyConfig& topology, uint8_t nbZone
     if (validBoards == 0U) return false;
     if (RelayTopology::hasDuplicateAssignments(topology)) return false;
     if (RelayTopology::hasDuplicateMappings(topology, nbZones)) return false;
+    if (RelayTopology::hasDuplicateInputIds(topology)) return false;
     return true;
 }
 
