@@ -1729,17 +1729,25 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
 // l'alimentation. Lui faire debrancher son module pour appliquer un reglage
 // qu'il vient de saisir n'est pas une interface, c'est un aveu.
 //
-// Signe comme les autres ecritures, et refuse pendant un arrosage -- couper
-// le courant a une vanne ouverte la laisse ouverte.
+// PAS de signature, et c'est un choix corrige.
+//
+// Je l'avais d'abord signe par reflexe. L'incoherence saute aux yeux des
+// qu'on liste ce qui est protege : deposer un script l'est, redemarrer
+// l'etait -- mais OUVRIR UNE VANNE ne l'est pas, ni changer le cablage, ni
+// modifier les creneaux. Proteger le geste le moins dangereux de la liste
+// tout en laissant les autres ouverts ne protege rien : cela ajoute une
+// friction, pas une garantie.
+//
+// Le raisonnement qui tient reste celui du code EXECUTABLE : deposer un
+// script est une classe de risque a part, et reste signe. Le redemarrage
+// suit desormais les autres ecritures de configuration, en attendant une
+// passe d'authentification qui les couvrira TOUTES d'un bloc -- route par
+// route, on ne fabrique que des incoherences.
+//
+// Refuse pendant un arrosage : couper le courant a une vanne ouverte la
+// laisse ouverte.
 void WebManager::handleRestart(AsyncWebServerRequest* req, JsonDocument& doc) {
-    {
-        String canonical = "restart|";
-        canonical += (uint32_t)(doc["nonce"] | 0U);
-        if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
-            sendError(req, "signature refusee : aucun redemarrage", 403);
-            return;
-        }
-    }
+    (void)doc;
     if (_config && _relais.relay) {
         for (uint8_t z = 0; z < _config->nbZones(); ++z) {
             if (!_relais.relay->getState(z)) continue;
