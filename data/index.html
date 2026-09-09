@@ -440,7 +440,7 @@
   </div>
   <div class="cfg-section" id="sec-topo">
     <div class="cfg-section-header" onclick="toggleSection('sec-topo')">
-      <span class="cfg-section-title"><span class="sec-icon">&#9889;</span>Câblage relais (topologie)</span>
+      <span class="cfg-section-title"><span class="sec-icon">&#9889;</span>Câblage entrées / sorties</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
     <div class="cfg-section-body">
@@ -595,6 +595,9 @@ function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.styl
 function adminToggle(){let v=sessionStorage.getItem(K)==="1";if(v){sessionStorage.removeItem(K);adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem(K,"1");adminApply(1)}
 document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem(K)==="1"));
 </script>
+<!-- Signature des ecritures sensibles. crypto.subtle n'existe pas en HTTP
+     simple : voir l'entete de hmac.js. -->
+<script src="/hmac.js"></script>
 <script src="/app.js"></script>
 <script src="/alarm.js?v=4"></script>
 </body>

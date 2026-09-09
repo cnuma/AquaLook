@@ -588,6 +588,7 @@ private:
     void handleSetIoOutput(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleRestart(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc);

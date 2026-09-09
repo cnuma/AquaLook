@@ -419,6 +419,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/owm",           handleSetOwm);
     POST_JSON("/api/system",        handleSetSystem);
     POST_JSON("/api/auth-secret",  handleSetApiSecret);
+    POST_JSON("/api/restart",      handleRestart);
     POST_JSON("/api/script-save",  handleSaveScript);
     POST_JSON("/api/script-erase", handleEraseScript);
     POST_JSON("/api/script-run",   handleRunScript);
@@ -1719,6 +1720,46 @@ void WebManager::handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc) 
     portEXIT_CRITICAL(&_pendingMux);
 
     sendOk(req);
+}
+
+// Redemarrage demande depuis l'interface.
+//
+// Une modification de cablage n'est appliquee qu'au demarrage : sans ce
+// bouton, l'utilisateur devait attendre la maintenance de nuit ou couper
+// l'alimentation. Lui faire debrancher son module pour appliquer un reglage
+// qu'il vient de saisir n'est pas une interface, c'est un aveu.
+//
+// Signe comme les autres ecritures, et refuse pendant un arrosage -- couper
+// le courant a une vanne ouverte la laisse ouverte.
+void WebManager::handleRestart(AsyncWebServerRequest* req, JsonDocument& doc) {
+    {
+        String canonical = "restart|";
+        canonical += (uint32_t)(doc["nonce"] | 0U);
+        if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+            sendError(req, "signature refusee : aucun redemarrage", 403);
+            return;
+        }
+    }
+    if (_config && _relais.relay) {
+        for (uint8_t z = 0; z < _config->nbZones(); ++z) {
+            if (!_relais.relay->getState(z)) continue;
+            char message[128];
+            snprintf(message, sizeof(message),
+                     "La zone %u (%s) arrose. Un redemarrage la laisserait "
+                     "dans un etat inconnu : arretez-la d'abord.",
+                     (unsigned)(z + 1U), _config->zone(z).name);
+            sendError(req, message);
+            return;
+        }
+    }
+
+    EventLog::log(LOG_INFO, "Redemarrage demande depuis l'interface");
+    sendOk(req);
+    // Meme mecanisme differe que les autres redemarrages de cette classe :
+    // laisser la reponse partir avant de couper, sinon le navigateur voit une
+    // connexion perdue et affiche une erreur pour un redemarrage reussi.
+    _restartPending = true;
+    _restartAtMs = millis() + 750U;
 }
 
 void WebManager::handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc) {

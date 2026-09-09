@@ -752,7 +752,7 @@ const CFG_GROUPS = [
     sections: ['sec-system'] },
   { id: 'g-io',      icon: '&#128268;', label: 'Entrées / Sorties',
     sections: ['sec-io'] },
-  { id: 'g-relais',  icon: '&#9889;',   label: 'Câblage relais',
+  { id: 'g-relais',  icon: '&#9889;',   label: 'Câblage entrées / sorties',
     sections: ['sec-topo'] },
 ];
 
@@ -1680,6 +1680,42 @@ let topoSource = 'legacy';
 let topoPendingReboot = false;
 let topoRefus = '';   // dernier refus du module, affiche jusqu'a resolution
 
+// Redemarrer applique le cablage enregistre. Signe comme les autres
+// ecritures : un redemarrage a distance non authentifie serait un deni de
+// service a portee de main.
+async function topoAppliquer() {
+  if (!confirm('Redemarrer le module pour appliquer le cablage enregistre ? '
+             + 'Il sera injoignable une trentaine de secondes.')) return;
+  let secret = null;
+  try { secret = localStorage.getItem('aqualook-secret'); } catch (e) {}
+  if (!secret) {
+    secret = prompt('Secret du module (le meme que sur la page Scripts) :');
+    if (!secret) return;
+    try { localStorage.setItem('aqualook-secret', secret); } catch (e) {}
+  }
+  try {
+    const etat = await (await fetch('/api/auth/state')).json();
+    if (!etat.configure) {
+      toast('Aucun secret sur le module : posez-le depuis la page Scripts.', true);
+      return;
+    }
+    const nonce = (etat.nonce || 0) + 1;
+    const sig = AquaHmac.hmacSha256Hex(secret, 'restart|' + nonce);
+    const r = await fetch('/api/restart', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nonce: nonce, sig: sig })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.ok) {
+      toast('Redemarrage en cours - rechargez dans une minute.');
+    } else {
+      topoRefus = (d && d.error) || ('Erreur ' + r.status);
+      toast(topoRefus, true);
+      renderTopoEditor();
+    }
+  } catch (e) { toast('Erreur reseau', true); }
+}
+
 const TOPO_CTRL  = [[0, 'XL9535'], [1, 'MCP23017']];
 const TOPO_LOGIC = [[1, 'directe'], [0, 'inversee']];
 // Sorties d'un cote, ENTREES de l'autre. Les entrees manquaient a cette
@@ -1815,22 +1851,32 @@ function renderTopoEditor() {
   let h = '<div class="cfg-hint">Source en vigueur : ' + src +
           '. Toute modification s&rsquo;applique au prochain redemarrage.</div>';
   if (topoPendingReboot) {
-    h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
-       + 'currentColor;border-radius:5px;margin:6px 0;font-size:11px;line-height:1.6">'
+    h += '<div class="cfg-hint io-ko" style="padding:10px 12px;border:1px solid '
+       + 'currentColor;border-radius:5px;margin:6px 0;font-size:11px;line-height:1.7">'
        + '&#9888; <b>Ce c&acirc;blage est enregistr&eacute; mais pas encore appliqu&eacute;.</b><br>'
-       + 'Ce que vous voyez ici est votre derni&egrave;re saisie. Le module, lui, '
-       + 'pilote encore l&rsquo;ancien c&acirc;blage et continuera jusqu&rsquo;au '
-       + 'prochain red&eacute;marrage &mdash; recharger cette page n&rsquo;y '
-       + 'changera rien, c&rsquo;est normal.</div>';
+       + '<b>Pourquoi.</b> Changer le c&acirc;blage change quelle voie physique '
+       + 'commande quelle zone. L&rsquo;appliquer en marche laisserait un relais '
+       + 'coll&eacute; sur une voie qui vient de changer de r&ocirc;le, sans que rien '
+       + 'ne puisse le refermer. Le module continue donc avec l&rsquo;ancien '
+       + 'c&acirc;blage jusqu&rsquo;a son prochain d&eacute;marrage, ou il repart '
+       + 'sur des voies dont il conna&icirc;t l&rsquo;&eacute;tat.<br>'
+       + '<b>Ce que vous voyez ici</b> est votre saisie enregistr&eacute;e, pas ce '
+       + 'que le module applique &mdash; c&rsquo;est pour cela qu&rsquo;elle survit '
+       + 'a un rechargement de page.'
+       + '<button class="btn-cfg" onclick="topoAppliquer()" style="margin-top:9px">'
+       + 'Red&eacute;marrer maintenant pour appliquer</button></div>';
   }
 
-  h += '<div class="cfg-subsection-title">Cartes relais</div>';
+  // « Cartes relais » etait juste tant qu'elles ne portaient que des sorties.
+  // Depuis qu'une meme carte peut porter des entrees, le mot designe un cas
+  // particulier pour toute une famille.
+  h += '<div class="cfg-subsection-title">Cartes d'interface</div>';
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
   topoBoards.forEach((b, n) => {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
       + topoField('Controleur', '<select data-topo="ctrl" data-n="' + n + '">' + topoOptions(TOPO_CTRL, b.controller) + '</select>')
       + topoField('Adresse I2C', '<select data-topo="addr" data-n="' + n + '">' + topoAddrOptions(b.addr) + '</select>')
-      + topoField('Nb de voies', '<select data-topo="chan" data-n="' + n + '" title="nombre de relais physiques sur la carte">' + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>')
+      + topoField('Nb de voies', '<select data-topo="chan" data-n="' + n + '" onchange="topoOnBoardChannelsChange()" title="nombre de voies physiques de la carte, entrees comprises">' + topoNumOptions(TOPO_CHANCOUNT, b.channels) + '</select>')
       + topoField('Logique', '<select data-topo="logic" data-n="' + n + '" title="directe = 1 ouvre le relais ; inversee = 0 ouvre">' + topoOptions(TOPO_LOGIC, b.logic) + '</select>')
       + topoField('Transport', '<select data-topo="transport" data-n="' + n + '" title="ou vit la carte : bus local, ou lien distant">'
       + TOPO_TRANSPORTS.map(o => '<option value="' + o[0] + '"'
@@ -1878,12 +1924,74 @@ function renderTopoEditor() {
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
   h += '<button class="btn-cfg" onclick="topoAddAssign()" style="margin:6px 0">+ Ajouter une affectation</button>';
+
+  // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
+  // sont. Le module les refuse deja, mais avec un message unique qui ne dit
+  // pas laquelle des vingt lignes est fautive.
+  const alertes = topoIncoherences();
+  if (alertes.length) {
+    h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
+       + 'currentColor;border-radius:5px;margin:8px 0;font-size:11px;line-height:1.7">'
+       + '&#9888; <b>A corriger avant d&rsquo;enregistrer :</b><br>'
+       + alertes.join('<br>') + '</div>';
+  }
   if (topoRefus) {
     h += '<div class="cfg-hint io-ko" style="padding:9px 11px;border:1px solid '
        + 'currentColor;border-radius:5px;margin:8px 0;font-size:11px;line-height:1.6">'
        + '&#9888; Le module a refuse le dernier enregistrement.<br>' + topoRefus + '</div>';
   }
   el.innerHTML = h;
+}
+
+// Ce que l'utilisateur peut construire et qui ne tient pas debout.
+//
+// Le module refuse ces cas, mais son message ne peut pas designer LA ligne
+// fautive : il ne voit qu'une topologie invalide. L'editeur, lui, sait
+// exactement laquelle -- autant le dire ici.
+function topoIncoherences() {
+  const out = [];
+  const carte = (i) => topoBoards.find(b => b.i === i);
+
+  topoAssign.forEach((a, n) => {
+    const b = carte(a.board);
+    const ligne = 'Affectation ' + (n + 1) + ' : ';
+
+    if (!b) {
+      out.push(ligne + 'elle vise la carte ' + a.board + ', qui n&rsquo;existe pas.');
+      return;
+    }
+    // Le cas le plus facile a produire : reduire le nombre de voies d'une
+    // carte APRES avoir affecte une voie haute.
+    if (a.channel >= b.channels) {
+      out.push(ligne + 'voie ' + a.channel + ' sur une carte qui n&rsquo;en a que '
+             + b.channels + ' (0 a ' + (b.channels - 1) + ').');
+    }
+    // Le XL9535 n'a pas de resistances de tirage internes. Une entree qui en
+    // demande y lirait une broche flottante, donc n'importe quoi.
+    if (topoIsInput(a.role) && b.controller === 0 && (a.flags & 2)) {
+      out.push(ligne + 'le XL9535 n&rsquo;a pas de tirage interne. Choisissez '
+             + '&laquo;&nbsp;sans tirage&nbsp;&raquo; et cablez une resistance, '
+             + 'ou utilisez un MCP23017.');
+    }
+    if (topoIsInput(a.role) && !a.id) {
+      out.push(ligne + 'une entree sans identifiant ne peut etre citee par aucun script.');
+    }
+  });
+
+  // Deux affectations sur la meme voie physique : l'une des deux ne servira
+  // jamais, et laquelle depend de l'ordre du tableau.
+  const vues = {};
+  topoAssign.forEach((a, n) => {
+    const cle = a.board + ':' + a.channel;
+    if (vues[cle] !== undefined) {
+      out.push('Affectations ' + (vues[cle] + 1) + ' et ' + (n + 1)
+             + ' : elles occupent la meme voie (carte ' + a.board
+             + ', voie ' + a.channel + ').');
+    } else {
+      vues[cle] = n;
+    }
+  });
+  return out;
 }
 
 // Recopie l'etat des selects dans les tableaux avant tout re-render.
@@ -1936,6 +2044,10 @@ function topoRemoveAssign(n) { topoGatherFromDom(); topoAssign.splice(n, 1); ren
 // le canal hors bornes. Dans les deux cas on repart d'une valeur sure.
 function topoOnRoleChange(n) { topoGatherFromDom(); topoAssign[n].target = 0; renderTopoEditor(); }
 function topoOnBoardChange(n) { topoGatherFromDom(); topoAssign[n].channel = 0; renderTopoEditor(); }
+// Reduire le nombre de voies d'une carte peut rendre des affectations
+// impossibles : on redessine pour que le controle de coherence les signale
+// tout de suite, plutot qu'au moment d'enregistrer.
+function topoOnBoardChannelsChange() { topoGatherFromDom(); renderTopoEditor(); }
 
 async function saveCfgTopo() {
   topoGatherFromDom();
