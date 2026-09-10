@@ -8,6 +8,7 @@
 #include "ScriptHostRuntime.h"
 #include "ApiAuth.h"
 #include "ScriptStore.h"
+#include "ScriptMessageCatalogue.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
@@ -423,6 +424,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/script-save",  handleSaveScript);
     POST_JSON("/api/script-erase", handleEraseScript);
     POST_JSON("/api/script-run",   handleRunScript);
+    POST_JSON("/api/script-messages", handleSaveScriptMessages);
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
     POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
@@ -710,6 +712,21 @@ void WebManager::setupRoutes() {
                 o["encours"] = _scripts->isRunning(i);
                 o["dernierArret"] = _scripts->lastAbort(i);
             }
+        }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // Bibliotheque de phrases : { entries:[{code,texte}], max, lenMax }.
+    // Lecture libre, comme /api/scripts -- l'ecriture, elle, est signee
+    // (POST /api/script-messages, handleSaveScriptMessages). Le fichier vit
+    // sur la carte SD, hors de /www.
+    _server.on("/api/script-messages", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        if (!ScriptMessageCatalogue::load(doc)) {
+            sendError(req, "carte SD illisible", 503);
+            return;
         }
         String body;
         serializeJson(doc, body);
@@ -1909,6 +1926,79 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
     String body;
     serializeJson(out, body);
     req->send(200, "application/json", body);
+}
+
+// Enregistrement de la bibliotheque de phrases (/scripts/messages.tsv).
+//
+// Signee comme script-save : le catalogue est de la donnee d'exploitant,
+// et « notifier <code> » ira chercher son texte dedans. Forme canonique
+// = les octets TSV EXACTS qui seront ecrits, reconstruits ici a partir des
+// valeurs -- le corps HTTP re-serialise ne redonnerait pas les memes
+// octets. Un refus laisse le fichier en place intact.
+void WebManager::handleSaveScriptMessages(AsyncWebServerRequest* req, JsonDocument& doc) {
+    JsonArrayConst entries = doc["entries"].as<JsonArrayConst>();
+    if (entries.isNull()) { sendError(req, "liste manquante"); return; }
+    if (entries.size() > ScriptMessageCatalogue::MAX_ENTRIES) {
+        sendError(req, "trop d'entrees dans le catalogue");
+        return;
+    }
+
+    String corpus;
+    uint16_t seen[ScriptMessageCatalogue::MAX_ENTRIES];
+    uint8_t nSeen = 0U;
+    for (JsonObjectConst e : entries) {
+        const long code = e["code"] | 0;
+        const char* texte = e["texte"] | "";
+        if (code < 1 || code > 65535) {
+            sendError(req, "code hors bornes (1 a 65535)");
+            return;
+        }
+        const size_t tlen = strlen(texte);
+        if (tlen == 0U) { sendError(req, "phrase vide"); return; }
+        if (tlen > ScriptMessageCatalogue::MAX_PHRASE) {
+            sendError(req, "phrase trop longue");
+            return;
+        }
+        for (size_t k = 0U; k < tlen; ++k) {
+            const unsigned char c = static_cast<unsigned char>(texte[k]);
+            // TAB et fin de ligne casseraient le format ; les autres
+            // caracteres de controle n'ont rien a faire dans une phrase.
+            if (c == '\t' || c == '\n' || c == '\r' || c < 0x20) {
+                sendError(req, "caractere de controle interdit dans une phrase");
+                return;
+            }
+        }
+        for (uint8_t k = 0U; k < nSeen; ++k) {
+            if (seen[k] == static_cast<uint16_t>(code)) {
+                sendError(req, "code en double dans le catalogue");
+                return;
+            }
+        }
+        seen[nSeen++] = static_cast<uint16_t>(code);
+        corpus += String(static_cast<uint16_t>(code));
+        corpus += '\t';
+        corpus += texte;
+        corpus += '\n';
+    }
+
+    String canonical = "script-messages|";
+    canonical += static_cast<uint32_t>(doc["nonce"] | 0U);
+    canonical += '|';
+    canonical += corpus;
+    if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+        sendError(req, "signature refusee : catalogue non enregistre", 403);
+        return;
+    }
+
+    if (!ScriptMessageCatalogue::store(corpus)) {
+        sendError(req, "ecriture SD echouee : catalogue inchange", 500);
+        return;
+    }
+
+    JsonDocument out;
+    out["ok"] = true;
+    out["entrees"] = nSeen;
+    sendJson(req, out, 200);
 }
 
 void WebManager::handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc) {

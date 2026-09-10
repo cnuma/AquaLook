@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 class StorageManager;
 
@@ -36,5 +37,16 @@ void begin(StorageManager* storage);
 // storage non lie, SD indisponible, fichier absent, memoire insuffisante,
 // code introuvable ou ligne illisible -- l'appelant envoie alors le code nu.
 bool phrase(uint16_t code, char* out, size_t n);
+
+// Remplit `out` : { entries:[{code,texte}...], max, lenMax }. Pour la route
+// GET et l'editeur. Rend false si storage non lie ou carte illisible ; le
+// tableau `entries` est vide si le fichier n'existe pas encore.
+bool load(JsonDocument& out);
+
+// Ecrit `body` (deja valide en amont : octets TSV exacts, chaque ligne
+// terminee par \n) de facon atomique -- fichier .tmp puis renommage. Rend
+// false si carte non montee ou ecriture en echec ; dans ce cas le fichier
+// en place reste intact.
+bool store(const String& body);
 
 }  // namespace ScriptMessageCatalogue
