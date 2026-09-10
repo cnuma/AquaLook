@@ -242,12 +242,28 @@ function rendreCommandes() {
     groupe[1].forEach(function (c) {
       h += '<button class="cmd" data-ins="' + c[0].replace(/"/g, '&quot;') + '">'
          + c[1] + '<span class="desc">' + c[2] + '</span></button>';
+      // Sous « notifier <code> », une entree par phrase du catalogue : le
+      // clic insere « notifier <code> » avec le bon numero, et la phrase
+      // reelle reste sous les yeux pendant l'ecriture.
+      if (c[1] === 'notifier <code>') h += sousListeNotifier();
     });
   });
   $('commandes').innerHTML = h;
   $('commandes').querySelectorAll('.cmd').forEach(function (b) {
     b.addEventListener('click', function () { inserer(b.dataset.ins); });
   });
+}
+
+function sousListeNotifier() {
+  if (!BIBLIO.length) {
+    return '<div class="vide" style="padding:2px 6px 7px">Aucune phrase — '
+      + 'définissez-en dans « Bibliothèque de phrases », plus bas.</div>';
+  }
+  return BIBLIO.map(function (o) {
+    return '<button class="cmd" data-ins="notifier ' + o.code
+      + '">notifier ' + o.code + '<span class="desc">'
+      + echapAttr(o.texte) + '</span></button>';
+  }).join('');
 }
 
 // Ce que CE module offre : ses zones et ses entrees, avec leurs identifiants
@@ -522,24 +538,23 @@ async function chargerBiblio() {
     const r = await fetch('/api/script-messages');
     if (!r.ok) {
       BIBLIO = [];
-      rendreBiblio();
       direBiblio(r.status === 404
         ? 'Nécessite le firmware à jour : la bibliothèque n’est pas encore servie par ce module.'
         : 'Carte SD illisible : bibliothèque indisponible pour le moment.', 'ko');
-      return;
+    } else {
+      const d = await r.json();
+      BIBLIO = (d.entries || []).map(function (o) {
+        return { code: o.code, texte: o.texte };
+      });
+      BIBLIO_MAX = d.max || 48;
+      BIBLIO_LEN = d.lenMax || 80;
     }
-    const d = await r.json();
-    BIBLIO = (d.entries || []).map(function (o) {
-      return { code: o.code, texte: o.texte };
-    });
-    BIBLIO_MAX = d.max || 48;
-    BIBLIO_LEN = d.lenMax || 80;
-    rendreBiblio();
   } catch (e) {
     BIBLIO = [];
-    rendreBiblio();
     direBiblio('Bibliothèque injoignable (réseau).', 'ko');
   }
+  rendreBiblio();
+  rendreCommandes();   // la sous-liste « notifier » suit le catalogue
 }
 
 function rendreBiblio() {
@@ -643,6 +658,7 @@ async function enregistrerBiblio() {
   const d = await r.json().catch(function () { return {}; });
   if (d.ok) {
     direBiblio('Enregistré : ' + d.entrees + ' phrase(s) sur la carte SD.', 'ok');
+    rendreCommandes();   // la sous-liste « notifier » suit les phrases enregistrees
   } else {
     direBiblio('Refusé par le module : ' + (d.error || 'raison inconnue')
       + '. Le catalogue précédent est intact.', 'ko');
