@@ -71,6 +71,20 @@ table.champs td:first-child{font-family:var(--mono);color:var(--text);
 a.back{display:inline-block;margin-top:16px;padding:9px 14px;
  border:1px solid var(--border2);border-radius:5px;color:var(--text2);
  text-decoration:none;font-size:13px;font-family:var(--mono)}
+table.biblio{border-collapse:collapse;width:100%;margin:8px 0 4px}
+table.biblio td{padding:4px 6px 4px 0;vertical-align:top}
+table.biblio input[type=number]{width:88px}
+table.biblio input[type=text]{width:100%;box-sizing:border-box}
+table.biblio td.sup{width:1%;white-space:nowrap}
+table.biblio button.x{width:auto;padding:6px 10px;border-radius:5px;cursor:pointer;
+ background:#f8d7da;color:var(--red);border:1px solid #f5c6cb;font-family:var(--mono);
+ font-size:11px}
+#msgbiblio{margin-top:8px;padding:8px 10px;border-radius:6px;font-size:12px;
+ font-family:var(--mono);line-height:1.6;border:1px solid var(--border2);
+ background:var(--bg2);color:var(--text);overflow-wrap:anywhere}
+#msgbiblio:empty{display:none}
+#msgbiblio.ok{border-color:var(--green);color:#1d6b34;background:#e9f5ec}
+#msgbiblio.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
 </style></head><body>
 <div class="wrap">
   <h1>Scripts</h1>
@@ -138,6 +152,22 @@ a.back{display:inline-block;margin-top:16px;padding:9px 14px;
       <b>Lancer maintenant</b> l'exécute sans attendre l'entrée.
       Deux scripts au plus tournent en même temps ; un déclenchement qui n'a pas
       pu partir est écrit dans le journal du module.</p>
+      </details>
+
+      <details id="dbiblio">
+      <summary>Bibliothèque de phrases — ce que « notifier » enverra sur le téléphone</summary>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6">
+        Un script écrit <code>notifier 900</code> ; sur le téléphone, l'utilisateur
+        lit la phrase associée au code 900. Le code n'est qu'un renvoi : corrigez
+        la phrase ici une fois, tous les scripts qui la citent en profitent.
+        Rangée sur la carte SD du module ; en cas de panne SD, le script envoie
+        le code nu.</p>
+      <table class="biblio"><tbody id="biblio"></tbody></table>
+      <div class="bar">
+        <button onclick="ajouterPhrase()">Ajouter une phrase</button>
+        <button class="principal" onclick="enregistrerBiblio()">Enregistrer la bibliothèque</button>
+      </div>
+      <div id="msgbiblio"></div>
       </details>
 
       <a class="back" href="/index.html">Retour à AquaLook</a>
@@ -470,8 +500,158 @@ async function effacer() {
   await listeSlots();
 }
 
+// ── Bibliotheque de phrases (catalogue « notifier ») ───────────────────
+// Le script ne porte qu'un code ; la phrase vit sur la carte SD du module
+// et n'est resolue qu'a l'envoi de la notification. Ici on l'edite.
+let BIBLIO = [];
+let BIBLIO_MAX = 48, BIBLIO_LEN = 80;
+
+function direBiblio(t, e) {
+  const m = $('msgbiblio');
+  m.textContent = t || '';
+  m.className = e || '';
+}
+
+function echapAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                  .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function chargerBiblio() {
+  try {
+    const r = await fetch('/api/script-messages');
+    if (!r.ok) {
+      BIBLIO = [];
+      rendreBiblio();
+      direBiblio(r.status === 404
+        ? 'Nécessite le firmware à jour : la bibliothèque n’est pas encore servie par ce module.'
+        : 'Carte SD illisible : bibliothèque indisponible pour le moment.', 'ko');
+      return;
+    }
+    const d = await r.json();
+    BIBLIO = (d.entries || []).map(function (o) {
+      return { code: o.code, texte: o.texte };
+    });
+    BIBLIO_MAX = d.max || 48;
+    BIBLIO_LEN = d.lenMax || 80;
+    rendreBiblio();
+  } catch (e) {
+    BIBLIO = [];
+    rendreBiblio();
+    direBiblio('Bibliothèque injoignable (réseau).', 'ko');
+  }
+}
+
+function rendreBiblio() {
+  const tb = $('biblio');
+  if (!BIBLIO.length) {
+    tb.innerHTML = '<tr><td colspan="3" class="vide">Aucune phrase. '
+      + '« Ajouter une phrase » pour commencer.</td></tr>';
+    return;
+  }
+  tb.innerHTML = BIBLIO.map(function (o, i) {
+    return '<tr>'
+      + '<td><input type="number" min="1" max="65535" value="' + (o.code || '')
+      + '" data-b="code" data-i="' + i + '"></td>'
+      + '<td><input type="text" maxlength="' + BIBLIO_LEN + '" value="'
+      + echapAttr(o.texte || '') + '" data-b="texte" data-i="' + i
+      + '" placeholder="phrase envoyée"></td>'
+      + '<td class="sup"><button class="x" onclick="supprimerPhrase(' + i
+      + ')">&#10007;</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+// Recopie l'etat des champs dans BIBLIO avant tout re-rendu ou envoi.
+function lireBiblio() {
+  const lignes = {};
+  $('biblio').querySelectorAll('input[data-b]').forEach(function (el) {
+    const i = Number(el.dataset.i);
+    lignes[i] = lignes[i] || { code: 0, texte: '' };
+    if (el.dataset.b === 'code') lignes[i].code = parseInt(el.value, 10) || 0;
+    else lignes[i].texte = el.value;
+  });
+  BIBLIO = Object.keys(lignes)
+    .sort(function (a, b) { return a - b; })
+    .map(function (k) { return lignes[k]; });
+}
+
+// Premier code libre a partir de 900 : la centaine des alertes de script,
+// pour ne pas se marcher dessus avec d'eventuels codes bas deja en usage.
+function prochainCodeLibre() {
+  const pris = new Set(BIBLIO.map(function (o) { return o.code; }));
+  let c = 900;
+  while (pris.has(c) && c < 65535) c++;
+  return c;
+}
+
+function ajouterPhrase() {
+  lireBiblio();
+  if (BIBLIO.length >= BIBLIO_MAX) {
+    direBiblio(BIBLIO_MAX + ' phrases au maximum.', 'ko');
+    return;
+  }
+  BIBLIO.push({ code: prochainCodeLibre(), texte: '' });
+  rendreBiblio();
+  direBiblio('', '');
+}
+
+function supprimerPhrase(i) {
+  lireBiblio();
+  BIBLIO.splice(i, 1);
+  rendreBiblio();
+}
+
+async function enregistrerBiblio() {
+  lireBiblio();
+  // Memes regles que le module, dites ici plutot qu'au refus.
+  const vus = new Set();
+  for (let k = 0; k < BIBLIO.length; k++) {
+    const o = BIBLIO[k];
+    if (!(o.code >= 1 && o.code <= 65535)) {
+      direBiblio('Ligne ' + (k + 1) + ' : code hors 1–65535.', 'ko'); return;
+    }
+    if (vus.has(o.code)) {
+      direBiblio('Code ' + o.code + ' en double.', 'ko'); return;
+    }
+    vus.add(o.code);
+    const t = (o.texte || '').trim();
+    if (!t) { direBiblio('Ligne ' + (k + 1) + ' : phrase vide.', 'ko'); return; }
+    if (t.length > BIBLIO_LEN) {
+      direBiblio('Ligne ' + (k + 1) + ' : plus de ' + BIBLIO_LEN + ' caractères.', 'ko'); return;
+    }
+    if (/[\t\r\n]/.test(t)) {
+      direBiblio('Ligne ' + (k + 1) + ' : tabulation ou saut de ligne interdit.', 'ko'); return;
+    }
+    o.texte = t;
+  }
+
+  const etat = await prochainNonce();
+  if (!etat.configure) {
+    direBiblio('Le module n’a pas de secret : posez-en un (bouton « Secret ») avant d’enregistrer.', 'ko');
+    return;
+  }
+  // Forme canonique = les octets TSV exacts que le module ecrira.
+  const corpus = BIBLIO.map(function (o) { return o.code + '\t' + o.texte + '\n'; }).join('');
+  const sig = await signer('script-messages|' + etat.nonce + '|' + corpus);
+  if (!sig) { direBiblio('Secret requis pour enregistrer.', 'ko'); return; }
+
+  const r = await fetch('/api/script-messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: BIBLIO, nonce: etat.nonce, sig: sig })
+  });
+  const d = await r.json().catch(function () { return {}; });
+  if (d.ok) {
+    direBiblio('Enregistré : ' + d.entrees + ' phrase(s) sur la carte SD.', 'ok');
+  } else {
+    direBiblio('Refusé par le module : ' + (d.error || 'raison inconnue')
+      + '. Le catalogue précédent est intact.', 'ko');
+  }
+}
+
 $('slot').addEventListener('change', charger);
 rendreCommandes();
+chargerBiblio();
 // Les listes de cibles viennent des memes donnees que le panneau de droite :
 // il faut donc les avoir lues AVANT de remplir le formulaire.
 rendreReferences().then(function () {
