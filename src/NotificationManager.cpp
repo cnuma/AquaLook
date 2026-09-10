@@ -12,6 +12,7 @@
 #include "ConfigManager.h"
 #include "MaintenanceResult.h"
 #include "OtaTlsTrust.h"
+#include "ScriptMessageCatalogue.h"
 
 namespace {
 constexpr char NVS_NAMESPACE[] = "aq_notify";
@@ -778,18 +779,33 @@ bool NotificationManager::sendCurrentWork() {
             priority = "default";
             tags = "arrow_up,globe_with_meridians";
             break;
-        case WorkType::SCRIPT_MESSAGE:
+        case WorkType::SCRIPT_MESSAGE: {
             title = "AquaLook - message d'un script";
-            message = "Le script « ";
-            message += g_scriptMessage.nom;
-            message += " » a emis le message ";
-            message += String(g_scriptMessage.code);
-            message += ".";
-            message += static_cast<char>(10);   // saut de ligne
-            message += "Le sens de ce code est celui que vous lui avez donne "
-                       "en ecrivant le script.";
+            char resolved[ScriptMessageCatalogue::MAX_PHRASE + 4];
+            if (ScriptMessageCatalogue::phrase(g_scriptMessage.code,
+                                               resolved, sizeof(resolved))) {
+                message = "Le script « ";
+                message += g_scriptMessage.nom;
+                message += " » : ";
+                message += resolved;
+            } else {
+                // Code non resolu (catalogue absent, SD en panne, code non
+                // liste) : le numero nu, comme avant. Une panne SD porte sa
+                // propre notification -- les deux ensemble disent quoi.
+                message = "Le script « ";
+                message += g_scriptMessage.nom;
+                message += " » a emis le message ";
+                message += String(g_scriptMessage.code);
+                message += ".";
+                message += static_cast<char>(10);   // saut de ligne
+                message += "Le sens de ce code est celui que vous lui avez donne "
+                           "en ecrivant le script.";
+                EventLog::log(LOG_WARN, "Script: phrase %u absente du catalogue",
+                              static_cast<unsigned>(g_scriptMessage.code));
+            }
             tags = "memo";
             break;
+        }
 
         case WorkType::REMOTE_CONFIG:
             if (g_remoteConfig.applied) {

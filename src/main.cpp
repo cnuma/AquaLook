@@ -15,6 +15,7 @@
 #include "InputSampler.h"
 #include "PausedWateringStore.h"
 #include "ScriptRunner.h"
+#include "ScriptMessageCatalogue.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
 #include "ScheduleManager.h"
@@ -577,6 +578,10 @@ void setup() {
 
     storageMgr.begin();
     splashStep(storageMgr.isSdAvailable() ? "Carte SD" : "SD indisponible");
+    // Le catalogue de phrases des scripts vit sur la SD : lui donner l'acces
+    // des que la carte est montee. Resolu seulement a l'envoi d'une
+    // notification, jamais dans la boucle d'arrosage.
+    ScriptMessageCatalogue::begin(&storageMgr);
 
     EventLog::log(LOG_INFO,
                   "Config: SSID='%s', mot de passe present=%s",
