@@ -1799,11 +1799,29 @@ function topoAddrOptions(sel) {
   return h;
 }
 
-function topoBoardOptions(sel) {
+function topoBoardOptions(sel, forInput) {
   if (!topoBoards.length) return '<option value="0">(aucune carte)</option>';
-  return topoBoards.map(b => '<option value="' + b.i + '"' +
+  // Une entree ne se cable que sur un expandeur dont les broches sortent
+  // hors des drivers de relais (MCP23017). Une carte XL9535 (YellowCard)
+  // n'a donc rien a faire dans ce choix : plutot que de la proposer puis
+  // de refuser la ligne au controle de coherence, on ne l'offre pas.
+  const ok = forInput ? topoBoards.filter(b => b.controller === 1) : topoBoards;
+  let h = '';
+  // La carte deja retenue mais devenue interdite -- role bascule vers une
+  // entree, ou cablage charge avec une entree sur XL9535 -- reste montree,
+  // desactivee : le select ne ment pas, et le message de coherence en face
+  // garde un numero de carte a designer.
+  if (forInput && !ok.some(b => b.i === sel)) {
+    const off = topoBoards.find(b => b.i === sel);
+    h += off
+      ? '<option value="' + sel + '" selected disabled>Carte ' + off.i
+        + ' (0x' + off.addr.toString(16) + ') — incompatible</option>'
+      : '<option value="' + sel + '" selected disabled>(aucune carte compatible)</option>';
+  }
+  h += ok.map(b => '<option value="' + b.i + '"' +
     (b.i === sel ? ' selected' : '') + '>Carte ' + b.i +
     ' (0x' + b.addr.toString(16) + ')</option>').join('');
+  return h;
 }
 
 // Le numero seul ne dit rien : sur une puce a deux ports, la voie 9 est la
@@ -1934,7 +1952,7 @@ function renderTopoEditor() {
                              [1, 'Actif bas, sans tirage'], [0, 'Actif haut, sans tirage']],
                             a.flags) + '</select>')
           : topoField('Pilote', '<select data-topo="target" data-n="' + n + '" title="ce que cette voie commande">' + topoTargetOptions(a.role, a.target) + '</select>'))
-      + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '">' + topoBoardOptions(a.board) + '</select>')
+      + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '">' + topoBoardOptions(a.board, topoIsInput(a.role)) + '</select>')
       + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
           '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
@@ -2000,8 +2018,10 @@ function topoIncoherences() {
     // driver de relais. Il n'y a rien a brancher en entree dessus -- ce
     // n'est pas une limite qu'une resistance externe contournerait, comme
     // pour le manque de tirage interne, c'est une impossibilite de cablage.
-    // Le module refuse deja ce cas (validateAssignment) ; le dire ici evite
-    // de le decouvrir seulement au moment d'enregistrer.
+    // Le module refuse deja ce cas (validateAssignment), et la liste « Sur la
+    // carte » ne propose plus de XL9535 pour une entree. Ce controle reste le
+    // filet du cas ou AUCUNE carte MCP23017 n'existe : la ligne garde alors sa
+    // carte interdite, faute de mieux, et ce message dit pourquoi.
     if (topoIsInput(a.role) && b.controller === 0) {
       ajouter(ligne + 'la carte XL9535 (YellowCard) n&rsquo;expose pas ses '
              + 'broches en dehors des relais : elle ne peut pas porter une '
@@ -2141,12 +2161,21 @@ function topoFieldChanged(ev) {
   // sure plutot que de laisser une reference qui ne veut plus rien dire.
   if (champ === 'role' && topoAssign[n]) {
     topoAssign[n].target = 0;
-    // Basculer vers une entree sans identifiant est le cas le plus frequent
-    // signale : l'utilisateur ne decouvrait la contrainte qu'au controle de
-    // coherence, apres avoir deja rempli le reste de la ligne. Autant le
-    // proposer tout de suite, avec le premier identifiant encore libre.
-    if (topoIsInput(topoAssign[n].role) && !topoAssign[n].id) {
-      topoAssign[n].id = topoNextFreeInputId();
+    if (topoIsInput(topoAssign[n].role)) {
+      // La liste « Sur la carte » ne propose plus les cartes XL9535 pour une
+      // entree. Aligner la carte retenue sur une carte compatible evite que
+      // le select affiche une carte MCP23017 pendant que l'affectation en
+      // vise encore une autre, tant que l'utilisateur n'y touche pas.
+      const b = topoBoards.find(x => x.i === topoAssign[n].board);
+      if (!b || b.controller !== 1) {
+        const mcp = topoBoards.find(x => x.controller === 1);
+        if (mcp) { topoAssign[n].board = mcp.i; topoAssign[n].channel = 0; }
+      }
+      // Basculer vers une entree sans identifiant est le cas le plus frequent
+      // signale : l'utilisateur ne decouvrait la contrainte qu'au controle de
+      // coherence, apres avoir deja rempli le reste de la ligne. Autant le
+      // proposer tout de suite, avec le premier identifiant encore libre.
+      if (!topoAssign[n].id) topoAssign[n].id = topoNextFreeInputId();
     }
   } else if (champ === 'board' && topoAssign[n]) {
     topoAssign[n].channel = 0;
