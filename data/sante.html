@@ -1,0 +1,150 @@
+<!doctype html><html lang=fr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>AquaLook - Sante</title><link rel=stylesheet href=/style-base.css>
+<style>
+/* Meme contenu, meme ordre, memes libelles que la page Sante de l'ecran
+   du module (DisplayManager::drawHealthFull) -- les deux lisent
+   /api/health et ne doivent jamais raconter deux histoires differentes. */
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
+.wrap{max-width:640px;margin:0 auto}
+h1{font-size:21px;margin:0 0 4px;color:var(--text)}
+.sub{color:var(--text2);font-size:13px;margin:0 0 16px;line-height:1.6}
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px;margin-bottom:12px}
+.card h2{font-size:11px;margin:0 0 6px;color:var(--muted);font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.06em}
+.row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13.5px}
+.row:last-child{border-bottom:none}
+.k{color:var(--text2)}
+.v{font-family:var(--mono);text-align:right}
+.v.ok{color:#1d6b34}
+.v.warn{color:#8a5a00}
+.v.bad{color:var(--red)}
+.faults{margin:0;padding:0;list-style:none}
+.faults li{padding:5px 0;font-size:13px;color:var(--red);border-bottom:1px solid var(--border2)}
+.faults li:last-child{border-bottom:none}
+.vide{font-size:13px;color:var(--muted);padding:4px 0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px}
+.bar button{width:auto;padding:9px 14px;border-radius:5px;font-family:var(--mono);font-size:11px;
+  font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;
+  background:var(--bg2);color:var(--text);border:1px solid var(--border2)}
+.bar button.principal{background:var(--amber);color:#3a2a00;border-color:var(--amber)}
+a.back{display:inline-block;margin-top:4px;padding:9px 14px;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+#msg{margin:0 0 12px;padding:9px 12px;border-radius:6px;font-size:12.5px;font-family:var(--mono);
+  line-height:1.6;border:1px solid var(--border2);background:var(--bg2);color:var(--text)}
+#msg:empty{display:none}
+#msg.ok{border-color:var(--green);color:#1d6b34;background:#e9f5ec}
+#msg.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
+</style></head><body><div class=wrap>
+
+<h1>Sante du module</h1>
+<p class=sub>Ce que montre l'ecran du module, page « Sante » -- accessible
+la aussi sans passer par ici, en tapant le bandeau des qu'il change de
+couleur.</p>
+
+<div id=msg></div>
+
+<div class=card>
+  <div class=row><span class=k>Etat general</span><span class="v" id=overall>&hellip;</span></div>
+  <div class=row><span class=k>Demarrages sans periode stable</span><span class="v" id=boots>&hellip;</span></div>
+  <div class=row><span class=k>Carte SD</span><span class="v" id=sd>&hellip;</span></div>
+  <div class=row><span class=k>Notifications</span><span class="v" id=notif>&hellip;</span></div>
+</div>
+
+<div class=card>
+  <h2>Defauts actifs</h2>
+  <ul class=faults id=faults></ul>
+</div>
+
+<div class=bar id=actions></div>
+
+<a class=back href=/index.html>Retour a AquaLook</a>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function dire(t, e) {
+  const m = $('msg');
+  m.textContent = t || '';
+  m.className = e || '';
+}
+
+async function poster(url) {
+  const r = await fetch(url, { method: 'POST' });
+  const d = await r.json().catch(function () { return {}; });
+  return { ok: r.ok && d.ok !== false, data: d };
+}
+
+async function leverDegrade() {
+  const { ok, data } = await poster('/api/bootguard/clear');
+  dire(ok ? 'Mode degrade leve : les fonctions suspendues reprennent immediatement.'
+          : ('Echec : ' + (data.error || 'raison inconnue')), ok ? 'ok' : 'ko');
+  charger();
+}
+
+async function acquitter(sdNeedsAck) {
+  const { ok, data } = await poster('/api/logs/ack');
+  if (ok && sdNeedsAck) await poster('/api/incidents/storage-sd/ack');
+  dire(ok ? 'Acquitte.' : ('Echec : ' + (data.error || 'raison inconnue')), ok ? 'ok' : 'ko');
+  charger();
+}
+
+function rendreActions(d) {
+  const sdNeedsAck = d.storageSd && d.storageSd.state === 'recovered-unacknowledged';
+  let h = '';
+  if (d.overall === 'degrade') {
+    h += '<button class="principal" onclick="leverDegrade()">Lever le mode degrade</button>';
+  } else if (d.unacknowledged || sdNeedsAck) {
+    h += '<button onclick="acquitter(' + (sdNeedsAck ? 'true' : 'false') + ')">Acquitter</button>';
+  }
+  $('actions').innerHTML = h;
+}
+
+function rendre(d) {
+  const ov = $('overall');
+  const overallLabel = { degrade: 'DEGRADE', essai: 'A l’essai', normal: 'Normal' }[d.overall] || d.overall;
+  const overallClass = { degrade: 'bad', essai: 'warn', normal: 'ok' }[d.overall] || '';
+  ov.textContent = overallLabel;
+  ov.className = 'v ' + overallClass;
+
+  const bl = d.bootLoop || {};
+  $('boots').textContent = (bl.suspectBoots || 0) + ' / ' + (bl.threshold || 4);
+
+  const sd = d.storageSd || {};
+  const sdEl = $('sd');
+  if (!sd.state || sd.state === 'none') {
+    sdEl.textContent = 'Aucun incident'; sdEl.className = 'v ok';
+  } else if (sd.state === 'active') {
+    sdEl.textContent = 'En panne'; sdEl.className = 'v bad';
+  } else if (sd.state === 'recovered-unacknowledged') {
+    sdEl.textContent = 'Retablie (a acquitter)'; sdEl.className = 'v warn';
+  } else {
+    sdEl.textContent = 'OK'; sdEl.className = 'v ok';
+  }
+
+  const no = $('notif');
+  no.textContent = (d.notifications && d.notifications.enabled) ? 'Actives' : 'Coupees';
+  no.className = 'v ' + ((d.notifications && d.notifications.enabled) ? 'ok' : '');
+
+  const faults = (d.faults || []);
+  $('faults').innerHTML = faults.length
+    ? faults.map(function (f) { return '<li>' + f.label + '</li>'; }).join('')
+    : '<li class="vide" style="color:var(--muted)">Aucun</li>';
+
+  rendreActions(d);
+}
+
+async function charger() {
+  try {
+    const r = await fetch('/api/health', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    rendre(await r.json());
+  } catch (e) {
+    dire('Sante injoignable (' + e.message + ').', 'ko');
+  }
+}
+
+charger();
+setInterval(charger, 4000);
+</script>
+</body></html>
