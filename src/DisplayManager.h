@@ -45,7 +45,7 @@
 
 // ── Écrans disponibles ─────────────────────────
 enum class Screen : uint8_t {
-    HOME, ZONE, STATUS, SYSTEM, ADMIN
+    HOME, ZONE, STATUS, SYSTEM, ADMIN, HEALTH
 };
 
 // ── Mode layout HOME selon nb zones ───────────
@@ -486,6 +486,10 @@ private:
     void drawStatusFull();
     void drawSystemFull();
     void drawAdminFull();
+    // Page Sante : meme contenu que /api/health, meme ordre, memes
+    // libelles (FaultManager::label) -- voir data/sante.html, le web doit
+    // rester lisible en face de cet ecran sans traduire mentalement.
+    void drawHealthFull();
 
     // ── Mise à jour dynamique (périodique) ────
     void updateHomeDynamic();
@@ -496,6 +500,7 @@ private:
     void updateStatusDynamic();
     void updateSystemDynamic();
     void updateAdminDynamic();
+    void updateHealthDynamic();
 
     // ── Sprites HOME ──────────────────────────
     void createSprites();
@@ -549,6 +554,11 @@ private:
     void handleTouchStatus(uint16_t tx, uint16_t ty);
     void handleTouchSystem(uint16_t tx, uint16_t ty);
     void handleTouchAdmin(uint16_t tx, uint16_t ty);
+    void handleTouchHealth(uint16_t tx, uint16_t ty);
+    // Zone tactile du bandeau (a droite, la ou vivent les pictogrammes),
+    // commune a tous les ecrans sauf ADMIN (qui y met deja sa fleche
+    // retour) et HEALTH lui-meme. Rend vrai si le tap y a ete consomme.
+    bool handleHeaderTouch(uint16_t tx, uint16_t ty);
     bool getTouchPoint(uint16_t& tx, uint16_t& ty);
 
     // ── Helpers UI ────────────────────────────

@@ -153,6 +153,22 @@ const char* FaultManager::label(FaultId id) {
     }
 }
 
+char FaultManager::badgeLetter(FaultId id) {
+    switch (id) {
+        case FaultId::RELAY_I2C:      return 'R';
+        case FaultId::WIFI:           return 'W';
+        case FaultId::FILESYSTEM:     return 'F';
+        case FaultId::SOFTWARE:       return 'L';
+        case FaultId::STORAGE_SD:     return 'S';
+        case FaultId::CONFIG_PERSIST: return 'C';
+        case FaultId::DISPLAY_ALLOC:  return 'E';
+        case FaultId::MEMORY_LOW:     return 'M';
+        case FaultId::TIME_UNSYNCED:  return 'H';
+        case FaultId::BOOT_LOOP:      return 'B';
+        default:                      return '?';
+    }
+}
+
 void FaultManager::resolveColor(uint8_t normalRed,
                                 uint8_t normalGreen,
                                 uint8_t normalBlue,

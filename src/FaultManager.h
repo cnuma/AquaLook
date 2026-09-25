@@ -63,6 +63,11 @@ public:
     // facon : les dupliquer aurait fini par diverger.
     static const char* label(FaultId id);
 
+    // Une lettre, pour le pictogramme compact du bandeau LCD (16 px de
+    // cote, pas la place pour un mot). Le libelle complet est sur la
+    // page Sante, que taper le pictogramme ouvre.
+    static char badgeLetter(FaultId id);
+
     static void resolveColor(uint8_t normalRed,
                              uint8_t normalGreen,
                              uint8_t normalBlue,

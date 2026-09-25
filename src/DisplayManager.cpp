@@ -3,6 +3,7 @@
 #include "EventBus.h"
 #include "BootLoopGuard.h"
 #include "NotificationManager.h"   // marqueur "MAJ DISPO" du bandeau
+#include "IncidentManager.h"       // page Sante : etat incident SD
 #include "EventLog.h"
 #include "esp_log.h"
 #include <WiFi.h>
@@ -694,6 +695,7 @@ void DisplayManager::update() {
             case Screen::STATUS: drawStatusFull();            break;
             case Screen::SYSTEM: drawSystemFull();            break;
             case Screen::ADMIN:  drawAdminFull();             break;
+            case Screen::HEALTH: drawHealthFull();            break;
         }
         // Le rendu complet contient déjà toutes les informations dynamiques.
         // Repartir du temps courant évite un second refresh immédiat au boot,
@@ -718,6 +720,7 @@ void DisplayManager::update() {
             case Screen::STATUS: updateStatusDynamic();            break;
             case Screen::SYSTEM: updateSystemDynamic();            break;
             case Screen::ADMIN:  updateAdminDynamic();             break;
+            case Screen::HEALTH: updateHealthDynamic();            break;
         }
     }
 }
@@ -787,9 +790,16 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
     //   permanent dirait "ne touche a rien" en permanence — exactement le
     //   contraire du message. Le violet plein reste reserve a l'operation en
     //   cours, qui, elle, dure quelques minutes.
+    // « A l'essai » (Theme::CYAN) : les fonctions suspendues viennent d'etre
+    // relancees pour de vrai et sont sous surveillance (voir BootLoopGuard,
+    // resilience du 25 septembre) -- ni la panne franche de l'ambre, ni le
+    // gris du nominal. Priorite juste sous le degrade : les deux ne sont
+    // jamais vrais en meme temps, mais l'essai reste plus important a voir
+    // qu'une mise a jour en cours.
     uint16_t headerBg = Theme::SURFACE;
-    if (BootLoopGuard::isDegraded())      headerBg = Theme::AMBER;
-    else if (EventBus::updateInProgress)  headerBg = Theme::PURPLE;
+    if (BootLoopGuard::isDegraded())         headerBg = Theme::AMBER;
+    else if (BootLoopGuard::isOnProbation()) headerBg = Theme::CYAN;
+    else if (EventBus::updateInProgress)     headerBg = Theme::PURPLE;
     const bool updateReady =
         (headerBg == Theme::SURFACE) && NotificationManager::updateAvailable();
     _tft.fillRect(0, 0, SCREEN_W, 28, headerBg);
@@ -813,22 +823,78 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
     _tft.setFreeFont(nullptr);
 
     // Marqueur a droite : la couleur seule ne dit pas POURQUOI. Deux mots
-    // suffisent a orienter vers l'interface Web, qui porte l'explication
-    // complete et le bouton de reactivation.
-    if (headerBg != Theme::SURFACE) {
+    // suffisent a orienter vers la page Sante (un tap sur le bandeau y mene
+    // des que quelque chose sort du nominal, voir handleHeaderTouch()).
+    uint16_t rightEdge = SCREEN_W - 8;
+    if (headerBg == Theme::AMBER || headerBg == Theme::CYAN || headerBg == Theme::PURPLE) {
+        const char* marker = BootLoopGuard::isDegraded()   ? "DEGRADE"
+                            : BootLoopGuard::isOnProbation() ? "A L'ESSAI"
+                            :                                  "MAJ...";
         _tft.setTextColor(Theme::BG, headerBg);   // sombre sur fond vif
         _tft.setTextDatum(MR_DATUM);
-        _tft.drawString(BootLoopGuard::isDegraded() ? "DEGRADE" : "MAJ...",
-                        SCREEN_W - 8, 14);
+        _tft.drawString(marker, rightEdge, 14);
+        rightEdge -= (_tft.textWidth(marker) + 10);
     } else if (updateReady) {
         // Violet sur le gris du bandeau : meme teinte que le clignotement du
         // voyant et que la pastille de l'interface Web, pour que les trois
         // surfaces disent la meme chose avec la meme couleur.
         _tft.setTextColor(Theme::PURPLE, headerBg);
         _tft.setTextDatum(MR_DATUM);
-        _tft.drawString("MAJ DISPO", SCREEN_W - 8, 14);
+        _tft.drawString("MAJ DISPO", rightEdge, 14);
+        rightEdge -= (_tft.textWidth("MAJ DISPO") + 10);
+    }
+
+    // Pictogrammes des defauts actifs (hors BOOT_LOOP, deja porte par la
+    // couleur et le marqueur ci-dessus) : un badge rond, une lettre. Le
+    // detail (libelle en clair) est sur la page Sante -- pas la place ici
+    // pour plus qu'un aiguillage. Plafonne a 3, sinon "+N" pour ne pas
+    // deborder sur le titre.
+    const uint32_t faultMask = FaultManager::activeMask() &
+                               ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
+    if (faultMask != 0U) {
+        uint8_t total = 0U;
+        for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+            if (faultMask & (1UL << id)) total++;
+        }
+        _tft.setTextDatum(MC_DATUM);
+        uint8_t shown = 0U;
+        for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP) && shown < 3U; ++id) {
+            if ((faultMask & (1UL << id)) == 0U) continue;
+            rightEdge -= 20;
+            _tft.fillCircle(rightEdge, 14, 9, Theme::RED);
+            char s[2] = { FaultManager::badgeLetter(static_cast<FaultId>(id)), '\0' };
+            _tft.setTextColor(TFT_WHITE, Theme::RED);
+            _tft.drawString(s, rightEdge, 14);
+            shown++;
+        }
+        if (total > shown) {
+            rightEdge -= 20;
+            char more[4];
+            snprintf(more, sizeof(more), "+%u", static_cast<unsigned>(total - shown));
+            _tft.fillCircle(rightEdge, 14, 9, Theme::RED);
+            _tft.setTextColor(TFT_WHITE, Theme::RED);
+            _tft.drawString(more, rightEdge, 14);
+        }
     }
     _tft.setTextDatum(TL_DATUM);
+}
+
+// Tap n'importe ou dans le bandeau (hors fleche retour, geree par l'appelant
+// pour ADMIN) : mene a la page Sante des que quelque chose sort du nominal.
+// Aucune zone precise a retenir -- plus simple, et une cible plus genereuse
+// qu'un pictogramme de 16 px vaut mieux pour un ecran arrose du bout du
+// doigt dans un jardin.
+bool DisplayManager::handleHeaderTouch(uint16_t tx, uint16_t ty) {
+    (void)tx;
+    if (ty >= 28) return false;
+    const uint32_t faultMask = FaultManager::activeMask() &
+                               ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
+    const bool abnormal = BootLoopGuard::isDegraded() ||
+                          BootLoopGuard::isOnProbation() ||
+                          faultMask != 0U;
+    if (!abnormal) return false;
+    goTo(Screen::HEALTH);
+    return true;
 }
 
 void DisplayManager::drawButton(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
@@ -928,12 +994,22 @@ void DisplayManager::handleTouch() {
     // Tout tap réinitialise le timer de veille
     _screenMgr.wakeUp();
 
+    // Zone commune AVANT le dispatch par écran : les pictogrammes du
+    // bandeau doivent mener à la page Santé depuis n'importe quel écran,
+    // pas seulement depuis SYSTEM. ADMIN et HEALTH gèrent leur bandeau
+    // eux-mêmes (flèche retour, pas de sortie vers soi-même).
+    if (_screen != Screen::ADMIN && _screen != Screen::HEALTH &&
+        handleHeaderTouch(tx, ty)) {
+        return;
+    }
+
     switch (_screen) {
         case Screen::HOME:   handleTouchHome(tx, ty);   break;
         case Screen::ZONE:   handleTouchZone(tx, ty);   break;
         case Screen::STATUS: handleTouchStatus(tx, ty); break;
         case Screen::SYSTEM: handleTouchSystem(tx, ty); break;
         case Screen::ADMIN:  handleTouchAdmin(tx, ty);  break;
+        case Screen::HEALTH: handleTouchHealth(tx, ty); break;
     }
 }
 
@@ -3391,6 +3467,109 @@ void DisplayManager::drawSystemFull() {
 }
 
 void DisplayManager::updateSystemDynamic() { drawSystemFull(); }
+
+// ═══════════════════════════════════════════════════════════════
+//  SANTE — meme contenu, meme ordre, memes libelles que /api/health et
+//  data/sante.html. Atteinte en tapant le bandeau des qu'il montre autre
+//  chose que le gris nominal (voir handleHeaderTouch()) : sur un module
+//  arrose dans un jardin, "il faut le telephone pour comprendre" est
+//  precisement ce que cette page evite.
+// ═══════════════════════════════════════════════════════════════
+void DisplayManager::drawHealthFull() {
+    drawHeader("Sante");
+    drawCardBg(_tft, 6, 32, SCREEN_W - 12, 164, Theme::R_MD, Theme::SURFACE, Theme::BORDER, false);
+    _tft.setTextSize(1);
+
+    int y = 36;
+    auto row = [&](const char* label, const String& val, uint16_t valColor) {
+        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        _tft.drawString(label, 10, y);
+        _tft.setTextColor(valColor, Theme::SURFACE);
+        _tft.drawString(val.c_str(), 130, y);
+        y += 17;
+    };
+
+    const bool degraded   = BootLoopGuard::isDegraded();
+    const bool onProbation = BootLoopGuard::isOnProbation();
+    row("Etat general :",
+        degraded ? "DEGRADE" : onProbation ? "A l'essai" : "Normal",
+        degraded ? Theme::AMBER : onProbation ? Theme::CYAN : Theme::GREEN);
+
+    if (degraded || onProbation || BootLoopGuard::suspectBootCount() > 0U) {
+        row("Demarrages sans stabilite :",
+            String(BootLoopGuard::suspectBootCount()) + "/" +
+                String(static_cast<unsigned>(BootLoopGuard::DEGRADED_THRESHOLD)),
+            Theme::TEXT);
+    }
+
+    const uint32_t faultMask = FaultManager::activeMask() &
+                               ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
+    uint8_t faultsShown = 0U;
+    for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP) && y < 190; ++id) {
+        if ((faultMask & (1UL << id)) == 0U) continue;
+        row("Defaut :", FaultManager::label(static_cast<FaultId>(id)), Theme::RED);
+        faultsShown++;
+    }
+    if (faultMask == 0U && !degraded && !onProbation) {
+        row("Defauts :", "Aucun", Theme::GREEN);
+    }
+
+    const PersistentIncidentSnapshot sd = IncidentManager::storageSd();
+    if (sd.state != IncidentState::NONE) {
+        const bool sdOk = sd.state == IncidentState::ACKNOWLEDGED;
+        row("Carte SD :",
+            sd.state == IncidentState::ACTIVE ? "En panne"
+                : sd.state == IncidentState::RECOVERED_UNACKNOWLEDGED ? "Retablie"
+                : "OK (acquittee)",
+            sdOk ? Theme::GREEN : Theme::RED);
+    }
+
+    row("Notifications :",
+        NotificationManager::notificationsReady() ? "Actives" : "Coupees",
+        NotificationManager::notificationsReady() ? Theme::GREEN : Theme::MUTED);
+
+    // Actions, contextuelles -- une rangee, comme les autres pages. Le
+    // dégradé passe avant l'acquittement : lever le mode dégradé, quand il
+    // est actif, est le geste qui compte le plus.
+    const bool sdNeedsAck = sd.state == IncidentState::RECOVERED_UNACKNOWLEDGED;
+    if (degraded) {
+        drawButton(2,   200, 220, 36, "Lever le mode degrade", Theme::AMBER, Theme::BG);
+        drawButton(228, 200, 90,  36, "Retour", Theme::SURFACE, Theme::TEXT);
+    } else if (FaultManager::hasUnacknowledgedErrors() || sdNeedsAck) {
+        drawButton(2,   200, 152, 36, "Acquitter", Theme::SURFACE, Theme::TEXT);
+        drawButton(162, 200, 156, 36, "Retour",    Theme::SURFACE, Theme::TEXT);
+    } else {
+        drawButton(110, 200, 100, 36, "Retour", Theme::SURFACE, Theme::TEXT);
+    }
+    (void)faultsShown;
+}
+
+void DisplayManager::updateHealthDynamic() { drawHealthFull(); }
+
+void DisplayManager::handleTouchHealth(uint16_t tx, uint16_t ty) {
+    const bool degraded = BootLoopGuard::isDegraded();
+    const PersistentIncidentSnapshot sd = IncidentManager::storageSd();
+    const bool sdNeedsAck = sd.state == IncidentState::RECOVERED_UNACKNOWLEDGED;
+
+    if (degraded) {
+        if (hitTest(2, 200, 220, 36, tx, ty)) {
+            BootLoopGuard::clearDegraded();
+            goTo(Screen::HEALTH);   // redessine avec l'etat a jour
+            return;
+        }
+        if (hitTest(228, 200, 90, 36, tx, ty)) { goTo(Screen::HOME); return; }
+    } else if (FaultManager::hasUnacknowledgedErrors() || sdNeedsAck) {
+        if (hitTest(2, 200, 152, 36, tx, ty)) {
+            FaultManager::acknowledge();
+            if (sdNeedsAck) IncidentManager::acknowledgeStorageSd();
+            goTo(Screen::HEALTH);
+            return;
+        }
+        if (hitTest(162, 200, 156, 36, tx, ty)) { goTo(Screen::HOME); return; }
+    } else {
+        if (hitTest(110, 200, 100, 36, tx, ty)) { goTo(Screen::HOME); return; }
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  ADMIN — structure commune
