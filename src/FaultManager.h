@@ -57,6 +57,12 @@ public:
     static bool isAcknowledged();
     static uint32_t activeMask();
 
+    // Libelle court, en francais, pour un defaut donne -- SOURCE UNIQUE,
+    // reprise telle quelle par la route /api/health, la page Sante web et
+    // la page Sante LCD. Les trois doivent nommer la meme chose de la meme
+    // facon : les dupliquer aurait fini par diverger.
+    static const char* label(FaultId id);
+
     static void resolveColor(uint8_t normalRed,
                              uint8_t normalGreen,
                              uint8_t normalBlue,

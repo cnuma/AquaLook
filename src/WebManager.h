@@ -17,6 +17,7 @@
 #include "WiFiManager.h"
 #include "EventLog.h"
 #include "FaultManager.h"
+#include "BootLoopGuard.h"
 #include "IncidentManager.h"
 #include "NotificationManager.h"
 #include "SdStaticHandler.h"
@@ -160,6 +161,55 @@ public:
                 }
                 IncidentManager::acknowledgeStorageSd();
                 req->send(200, "application/json", "{\"ok\":true}");
+            }
+        );
+
+        // Vue de sante consolidee : source unique pour la page Sante web ET
+        // la page Sante LCD (voir DisplayManager). Les deux affichent la
+        // MEME chose -- ce point n'agrege rien de neuf (FaultManager,
+        // BootLoopGuard, IncidentManager, NotificationManager existaient
+        // deja, chacun avec sa propre route), il donne juste une lecture
+        // unique plutot que quatre a recouper a la main.
+        _server.on("/api/health", HTTP_GET,
+            [](AsyncWebServerRequest* req) {
+                JsonDocument doc;
+                doc["overall"] = BootLoopGuard::isDegraded() ? "degrade"
+                                : BootLoopGuard::isOnProbation() ? "essai"
+                                : "normal";
+
+                JsonObject bl = doc["bootLoop"].to<JsonObject>();
+                bl["degraded"] = BootLoopGuard::isDegraded();
+                bl["onProbation"] = BootLoopGuard::isOnProbation();
+                bl["suspectBoots"] = BootLoopGuard::suspectBootCount();
+                bl["threshold"] = BootLoopGuard::DEGRADED_THRESHOLD;
+
+                JsonArray faults = doc["faults"].to<JsonArray>();
+                const uint32_t mask = FaultManager::activeMask();
+                for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+                    if ((mask & (1UL << id)) == 0U) continue;
+                    JsonObject f = faults.add<JsonObject>();
+                    f["id"] = id;
+                    f["label"] = FaultManager::label(static_cast<FaultId>(id));
+                }
+                doc["unacknowledged"] = FaultManager::hasUnacknowledgedErrors();
+
+                const PersistentIncidentSnapshot sd = IncidentManager::storageSd();
+                JsonObject sdo = doc["storageSd"].to<JsonObject>();
+                sdo["state"] = IncidentManager::stateCode(sd.state);
+                sdo["active"] = sd.state == IncidentState::ACTIVE;
+                sdo["lastReason"] = sd.lastReason;
+
+                const NotificationStatus ns = NotificationManager::status();
+                JsonObject no = doc["notifications"].to<JsonObject>();
+                no["enabled"] = ns.enabled;
+                no["configured"] = ns.configured;
+
+                String body;
+                serializeJson(doc, body);
+                AsyncWebServerResponse* response =
+                    req->beginResponse(200, "application/json", body);
+                response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                req->send(response);
             }
         );
 

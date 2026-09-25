@@ -137,6 +137,22 @@ uint32_t FaultManager::activeMask() {
     return _activeMask;
 }
 
+const char* FaultManager::label(FaultId id) {
+    switch (id) {
+        case FaultId::RELAY_I2C:      return "Etage relais (I2C)";
+        case FaultId::WIFI:           return "WiFi";
+        case FaultId::FILESYSTEM:     return "Systeme de fichiers";
+        case FaultId::SOFTWARE:       return "Logiciel";
+        case FaultId::STORAGE_SD:     return "Stockage SD";
+        case FaultId::CONFIG_PERSIST: return "Sauvegarde reglages";
+        case FaultId::DISPLAY_ALLOC:  return "Memoire ecran";
+        case FaultId::MEMORY_LOW:     return "Memoire libre basse";
+        case FaultId::TIME_UNSYNCED:  return "Heure non synchronisee";
+        case FaultId::BOOT_LOOP:      return "Redemarrages repetes";
+        default:                      return "Defaut inconnu";
+    }
+}
+
 void FaultManager::resolveColor(uint8_t normalRed,
                                 uint8_t normalGreen,
                                 uint8_t normalBlue,
