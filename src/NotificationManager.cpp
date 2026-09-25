@@ -105,6 +105,8 @@ struct ScriptMessageEvent {
 };
 ScriptMessageEvent g_scriptMessage;
 volatile bool g_scriptMessagePending = false;
+volatile uint8_t g_autoHealSuspectBoots = 0U;
+volatile bool g_autoHealPending = false;
 volatile bool g_remoteConfigPending = false;
 MaintenanceResult g_updateResult;
 uint32_t g_attempts = 0U;
@@ -395,6 +397,15 @@ bool NotificationManager::enqueueRemoteConfig(bool applied, uint8_t champs,
     return true;
 }
 
+bool NotificationManager::enqueueAutoHeal(uint8_t triggeringSuspectBoots) {
+    begin();
+    portENTER_CRITICAL(&g_mux);
+    g_autoHealSuspectBoots = triggeringSuspectBoots;
+    g_autoHealPending = true;
+    portEXIT_CRITICAL(&g_mux);
+    return true;
+}
+
 bool NotificationManager::enqueueZoneEvent(uint8_t zone, bool active) {
     if (!g_zoneConfig || zone >= g_zoneConfig->nbZones()) return false;
     const uint8_t required = active ? ZONE_NOTIFY_START : ZONE_NOTIFY_STOP;
@@ -535,6 +546,8 @@ void NotificationManager::processWorkerResult(uint32_t nowMs) {
             g_remoteConfigPending = false;
         } else if (g_work == WorkType::SCRIPT_MESSAGE) {
             g_scriptMessagePending = false;
+        } else if (g_work == WorkType::BOOT_LOOP_RECOVERED) {
+            g_autoHealPending = false;
         } else if (g_work == WorkType::ZONE_EVENT) {
             portENTER_CRITICAL(&g_mux);
             if (g_zoneEventCount > 0U) {
@@ -614,6 +627,10 @@ NotificationManager::WorkType NotificationManager::nextWork() {
     if (IncidentManager::storageSdNotificationPending(IncidentNotification::RECOVERY)) {
         return WorkType::INCIDENT_RECOVERY;
     }
+    // Meme rang que les incidents SD : c'est aussi une nouvelle de sante du
+    // module, et elle ne peut de toute facon survenir qu'une fois l'episode
+    // reellement termine.
+    if (g_autoHealPending) return WorkType::BOOT_LOOP_RECOVERED;
     if (g_testPending) return WorkType::MANUAL_TEST;
     if (g_updatePending) return WorkType::UPDATE_AVAILABLE;
     if (g_webAssetsUpdatePending) return WorkType::WEB_ASSETS_UPDATE_AVAILABLE;
@@ -807,6 +824,22 @@ bool NotificationManager::sendCurrentWork() {
             break;
         }
 
+        case WorkType::BOOT_LOOP_RECOVERED:
+            title = "AquaLook - retour a la normale";
+            message = "Le module avait redemarre ";
+            message += String(static_cast<unsigned>(g_autoHealSuspectBoots));
+            message += " fois sans tenir une periode stable, et s'etait mis "
+                       "en securite (mode degrade).\n"
+                       "Il a verifie tout seul que la meteo, les mises a jour "
+                       "et les notifications fonctionnent de nouveau "
+                       "normalement, et a repris un fonctionnement complet.\n"
+                       "Si ce n'etait pas attendu, ca vaut le coup de "
+                       "regarder ce qui a change recemment -- alimentation, "
+                       "reseau, carte SD.";
+            priority = "default";
+            tags = "white_check_mark";
+            break;
+
         case WorkType::REMOTE_CONFIG:
             if (g_remoteConfig.applied) {
                 title = "AquaLook - reglages recus";
@@ -944,6 +977,7 @@ const char* NotificationManager::workCode(WorkType type) {
         // l'on cherche justement pourquoi un message n'est pas arrive.
         case WorkType::REMOTE_CONFIG: return "remote-config";
         case WorkType::SCRIPT_MESSAGE: return "script-message";
+        case WorkType::BOOT_LOOP_RECOVERED: return "boot-loop-recovered";
         default: return "none";
     }
 }

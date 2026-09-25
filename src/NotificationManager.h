@@ -61,7 +61,14 @@ public:
         // c'est le seul dont le module ne connait pas le sens -- il transporte
         // un code choisi par l'auteur du script, pas un evenement qu'il aurait
         // lui-meme constate.
-        SCRIPT_MESSAGE
+        SCRIPT_MESSAGE,
+        // Le garde anti-boucle est sorti seul du mode degrade, apres avoir mis
+        // a l'epreuve les fonctions qu'il avait suspendues (voir
+        // BootLoopGuard.h). Volontairement le SEUL evenement de ce garde qui
+        // notifie : il ne peut le faire qu'une fois l'essai confirme, jamais
+        // pendant -- sans quoi la notification elle-meme pourrait relancer la
+        // boucle qu'elle raconte.
+        BOOT_LOOP_RECOVERED
     };
 
     enum class WorkerResult : uint8_t {
@@ -99,6 +106,12 @@ public:
      *  sont pas configurees : le script doit pouvoir savoir que son alerte
      *  n'est PAS partie, plutot que de croire avoir prevenu quelqu'un. */
     static bool enqueueScriptMessage(uint16_t code, const char* scriptName);
+    /** Le garde anti-boucle vient de confirmer un essai : demarrages sans
+     *  stabilite qui avaient declenche l'episode, repris dans le message
+     *  pour orienter l'utilisateur vers une cause probable. A appeler
+     *  uniquement une fois l'essai reussi (module deja en fonctionnement
+     *  normal). */
+    static bool enqueueAutoHeal(uint8_t triggeringSuspectBoots);
     /** true si un serveur de notification est configure et actif. */
     static bool notificationsReady();
 

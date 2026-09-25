@@ -40,12 +40,40 @@
 //  ce mode existe pour arrêter. L'état est donc signalé par les moyens locaux,
 //  qui ne peuvent rien relancer : voyant de défaut, écran, page Web, journal.
 //
-//  ── Sortie du mode dégradé ──────────────────────────────────────────────
+//  ── Sortie du mode dégradé — à L'ESSAI, pas en aveugle ──────────────────
 //
-//  Le mode dégradé ne s'éteint jamais tout seul. Survivre une heure avec la
-//  météo coupée ne prouve rien sur la météo : un retour automatique
-//  relancerait la boucle au premier cycle suivant. Il faut donc une action
-//  explicite de l'utilisateur, une fois qu'il a vu ce qui se passait.
+//  Ajouté le 25 septembre 2026. Rester dégradé pour toujours a son propre
+//  coût : plus personne ne regarde un voyant ambre qui dure depuis des
+//  jours, et le module tourne alors durablement sans météo ni mise à jour
+//  sans que qui que ce soit s'en avise. Mais l'avertissement d'origine
+//  reste vrai mot pour mot : « survivre une heure avec la météo coupée ne
+//  prouve rien sur la météo ». Rester passif ne le contredit pas — le
+//  résoudre, si.
+//
+//  Le mécanisme, en deux temps, sur le MÊME principe que le compteur de
+//  démarrages suspects : ne jamais se croire stable sans avoir mis le
+//  suspect à l'épreuve.
+//
+//   1. Après STABLE_UPTIME_MS en mode dégradé sans incident, les fonctions
+//      suspendues sont RÉELLEMENT relancées (isDegraded() passe à faux —
+//      WeatherManager, UpdateCheckScheduler et NotificationManager le
+//      vérifient en direct, pas seulement au démarrage) — mais le module
+//      reste SOUS SURVEILLANCE : un marqueur « à l'essai » est posé en NVS.
+//   2. Si un redémarrage NON PLANIFIÉ survient avant que ce même démarrage
+//      n'ait à son tour tenu STABLE_UPTIME_MS de plus, c'est la preuve
+//      qu'une fonction relancée est bien en cause : re-dégradation
+//      IMMÉDIATE, sans repasser par les quatre coups du compteur normal —
+//      la preuve directe vaut mieux que l'heuristique. Aucun nouvel essai
+//      automatique n'est retenté pour cet épisode : il faut alors un geste
+//      explicite (clearDegraded()), comme avant. Un redémarrage VOULU
+//      pendant l'essai (mise à jour, etc.) n'est ni une preuve ni une
+//      réfutation : l'essai s'arrête sans jugement, la surveillance
+//      normale reprend sur le démarrage suivant.
+//      Si aucun redémarrage non planifié ne survient, l'essai est
+//      confirmé : le module envoie UNE notification — désormais sûre,
+//      puisque les notifications viennent justement d'être revalidées —
+//      pour que l'utilisateur sache que l'épisode a eu lieu et se pose la
+//      question de sa cause (alimentation, réseau, carte SD...).
 //
 //  ── Pas de faux positif ─────────────────────────────────────────────────
 //
@@ -74,8 +102,16 @@ public:
     // démarrage. Exposé pour le diagnostic.
     static uint8_t suspectBootCount();
 
-    // Sortie du mode dégradé, sur action explicite de l'utilisateur.
+    // Sortie du mode dégradé, sur action explicite de l'utilisateur. Efface
+    // aussi le drapeau « essai déjà tenté et raté » : un geste manuel rouvre
+    // le droit à un futur essai automatique.
     static bool clearDegraded();
+
+    // Vrai entre le moment où les fonctions suspendues sont relancées à
+    // l'essai et leur confirmation (ou leur échec). Les indicateurs visuels
+    // (bandeau LCD, pastille Web) s'en servent pour distinguer « dégradé »,
+    // « à l'essai » et « normal ».
+    static bool isOnProbation();
 
     // Seul chemin autorisé pour un redémarrage voulu. Marque le redémarrage
     // comme attendu, journalise sa raison, puis redémarre.
@@ -94,9 +130,26 @@ public:
 
 private:
     static void persistCount(uint8_t count);
+    // Relance reellement les fonctions suspendues (isDegraded() -> false) et
+    // pose la surveillance NVS. `triggeringCount` est repris tel quel dans
+    // la notification eventuelle : le nombre de demarrages sans stabilite
+    // qui avaient declenche l'episode.
+    static void beginProbation(uint8_t triggeringCount);
+    // L'essai a tenu STABLE_UPTIME_MS de plus sans incident : confirme,
+    // notifie, referme l'episode.
+    static void confirmHealed();
+    // Un redemarrage NON PLANIFIE est survenu pendant l'essai : preuve
+    // directe, re-degradation immediate, plus de nouvel essai automatique
+    // pour cet episode.
+    static void relapse();
 
     static uint8_t _suspectCount;
     static bool _degraded;
     static bool _cleared;
     static bool _started;
+
+    // Essai en cours (fonctions relancees, sous surveillance) et instant de
+    // depart, pour mesurer la seconde fenetre de stabilite.
+    static bool _onProbation;
+    static uint32_t _probationStartMs;
 };
