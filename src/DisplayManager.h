@@ -64,7 +64,12 @@ enum class AdminPage : uint8_t {
     ZONES  = 3,   // noms Z1/Z2 + durée max
     SYSTEM = 4,   // IP, RAM, uptime, reset
     LOGS   = 5,   // journal d'événements EventLog (session courante)
-    _COUNT = 6
+    // Résumé + bouton vers Screen::HEALTH (page complète, avec les actions
+    // de correction) -- reprise ici pour que la page Santé soit joignable
+    // même quand le bandeau reste gris nominal, et pas seulement en tapant
+    // dessus quand il signale déjà un problème.
+    SANTE  = 6,
+    _COUNT = 7
 };
 
 class DisplayManager {
@@ -255,6 +260,10 @@ private:
     Screen    _screen          = Screen::HOME;
     uint8_t   _selectedZone    = 0;
     AdminPage _adminPage       = AdminPage::WIFI;
+    // Index (0 = plus recent) de la premiere entree affichee sur la page
+    // Logs -- sans lui, le journal ne montrait jamais que les entrees les
+    // plus recentes, le reste comptabilise en "+N" mais inatteignable.
+    uint8_t _logsScrollOffset  = 0;
     HomeMode  _homeMode        = HomeMode::LIST;   // calculé dans begin()
     uint8_t   _nbZones         = 2;               // copie locale depuis config
     uint8_t   _listScrollOff   = 0;               // offset scroll liste (mode LIST)
@@ -444,6 +453,21 @@ private:
     static constexpr uint16_t ADM_NAV_Y     = SCREEN_H - ADM_NAV_H;
     static constexpr uint16_t ADM_CONTENT_H = ADM_NAV_Y - ADM_CONTENT_Y;
 
+    // Rangee de boutons de la page Sante -- constantes partagees entre
+    // drawHealthFull() et handleTouchHealth() pour que dessin et zone
+    // tactile ne puissent pas diverger (meme piege que ADM_NAV_Y avant
+    // sa mise en relatif : x codes en dur pour la largeur historique de
+    // 320 px, boutons hors champ ou dans le texte sur les 480 px du S3).
+    static constexpr uint16_t HEALTH_BTN_Y      = SCREEN_H - 40;
+    static constexpr uint16_t HEALTH_BTN_H      = 36;
+    static constexpr uint16_t HEALTH_BTN_MARGIN = 6;
+
+    // Barre de defilement du journal (page Logs), meme raison d'etre que
+    // les constantes ci-dessus : dessin et zone tactile partagent ces
+    // valeurs pour ne jamais diverger.
+    static constexpr uint16_t LOGS_NAV_H  = 20;
+    static constexpr uint16_t LOGS_BTN_W  = 36;
+
     // ── Timing et layout runtime ────────────────────────────────
     // Valeurs par défaut — surchargées par CfgDisplay dans begin()
     // puis à chaque EventBus::displayDirty via applyDisplayConfig().
@@ -538,6 +562,7 @@ private:
     void drawAdminPageZones();
     void drawAdminPageSystem();
     void drawAdminPageLogs();    // journal EventLog — liste scrollable
+    void drawAdminPageSante();   // resume + bouton vers Screen::HEALTH
 
     // ── Icônes météo vectorielles ──────────────
     void drawWeatherIcon(TFT_eSprite& spr, uint16_t x, uint16_t y,

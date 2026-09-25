@@ -737,6 +737,7 @@ void DisplayManager::adminNext() {
     uint8_t p = (uint8_t)_adminPage;
     p = (p + 1) % (uint8_t)AdminPage::_COUNT;
     _adminPage = (AdminPage)p;
+    _logsScrollOffset = 0;   // on ne garde pas un defilement d'une visite a l'autre
     _needsFullRedraw = true;
 }
 
@@ -744,6 +745,7 @@ void DisplayManager::adminPrev() {
     uint8_t p = (uint8_t)_adminPage;
     p = (p == 0) ? (uint8_t)AdminPage::_COUNT - 1 : p - 1;
     _adminPage = (AdminPage)p;
+    _logsScrollOffset = 0;
     _needsFullRedraw = true;
 }
 
@@ -760,6 +762,7 @@ const char* DisplayManager::adminPageName(AdminPage p) {
         case AdminPage::ZONES:  return "Zones";
         case AdminPage::SYSTEM: return "Systeme";
         case AdminPage::LOGS:   return "Logs";
+        case AdminPage::SANTE:  return "Sante";
         default:                return "?";
     }
 }
@@ -1291,13 +1294,36 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
     // [←] retour HOME
     if (hitTest(0, 0, 40, 28, tx, ty)) { goTo(Screen::HOME); return; }
     // Navigation bas : [<] | centre | [>]
-    if (hitTest(0, ADM_NAV_Y, 60, ADM_NAV_H, tx, ty))   { adminPrev(); return; }
-    if (hitTest(260, ADM_NAV_Y, 60, ADM_NAV_H, tx, ty)) { adminNext(); return; }
+    if (hitTest(0, ADM_NAV_Y, 60, ADM_NAV_H, tx, ty))            { adminPrev(); return; }
+    if (hitTest(SCREEN_W - 60, ADM_NAV_Y, 60, ADM_NAV_H, tx, ty)) { adminNext(); return; }
     // Page WiFi — bouton portail captif
     if (_adminPage == AdminPage::WIFI) {
-        if (hitTest(10, 130, 300, 36, tx, ty)) {
+        if (hitTest(10, 130, SCREEN_W - 20, 36, tx, ty)) {
             EventBus::captiveRequested = true;
             goTo(Screen::HOME);
+        }
+    }
+    // Page Logs — defilement (memes coordonnees que drawAdminPageLogs()).
+    // Un pas de 3 entrees : assez pour avancer sans egrener un tap par
+    // ligne sur un journal qui peut en compter des dizaines.
+    if (_adminPage == AdminPage::LOGS) {
+        const uint8_t n = EventLog::count();
+        const uint16_t navY = ADM_CONTENT_Y + ADM_CONTENT_H - LOGS_NAV_H;
+        const uint16_t olderX = SCREEN_W - LOGS_BTN_W - 3;
+        const uint16_t newerX = olderX - LOGS_BTN_W - 4;
+        if (hitTest(newerX, navY + 1, LOGS_BTN_W, LOGS_NAV_H - 2, tx, ty)) {
+            _logsScrollOffset = (_logsScrollOffset > 3U) ? _logsScrollOffset - 3U : 0U;
+            _needsFullRedraw = true;
+        } else if (hitTest(olderX, navY + 1, LOGS_BTN_W, LOGS_NAV_H - 2, tx, ty)) {
+            if (n > 0U && _logsScrollOffset + 3U < n) _logsScrollOffset += 3U;
+            _needsFullRedraw = true;
+        }
+    }
+    // Page Sante — resume seulement, le detail (et les actions) vivent sur
+    // Screen::HEALTH, source unique partagee avec le tap sur le bandeau.
+    if (_adminPage == AdminPage::SANTE) {
+        if (hitTest((SCREEN_W - 200) / 2, ADM_CONTENT_Y + 76, 200, 40, tx, ty)) {
+            goTo(Screen::HEALTH);
         }
     }
 }
@@ -3532,14 +3558,27 @@ void DisplayManager::drawHealthFull() {
     // dégradé passe avant l'acquittement : lever le mode dégradé, quand il
     // est actif, est le geste qui compte le plus.
     const bool sdNeedsAck = sd.state == IncidentState::RECOVERED_UNACKNOWLEDGED;
+    // Largeurs relatives a SCREEN_W : des x codes en dur pour les 320 px de
+    // l'ecran historique laissaient les boutons ecrases a gauche des 480 px
+    // du S3, parfois sous le titre (voir handleTouchHealth(), meme calcul).
+    const uint16_t fullW = SCREEN_W - 2 * HEALTH_BTN_MARGIN;
     if (degraded) {
-        drawButton(2,   200, 220, 36, "Lever le mode degrade", Theme::AMBER, Theme::BG);
-        drawButton(228, 200, 90,  36, "Retour", Theme::SURFACE, Theme::TEXT);
+        const uint16_t retourW = 90;
+        const uint16_t primaryW = fullW - HEALTH_BTN_MARGIN - retourW;
+        drawButton(HEALTH_BTN_MARGIN, HEALTH_BTN_Y, primaryW, HEALTH_BTN_H,
+                   "Lever le mode degrade", Theme::AMBER, Theme::BG);
+        drawButton(HEALTH_BTN_MARGIN + primaryW + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
+                   retourW, HEALTH_BTN_H, "Retour", Theme::SURFACE, Theme::TEXT);
     } else if (FaultManager::hasUnacknowledgedErrors() || sdNeedsAck) {
-        drawButton(2,   200, 152, 36, "Acquitter", Theme::SURFACE, Theme::TEXT);
-        drawButton(162, 200, 156, 36, "Retour",    Theme::SURFACE, Theme::TEXT);
+        const uint16_t half = (fullW - HEALTH_BTN_MARGIN) / 2;
+        drawButton(HEALTH_BTN_MARGIN, HEALTH_BTN_Y, half, HEALTH_BTN_H,
+                   "Acquitter", Theme::SURFACE, Theme::TEXT);
+        drawButton(HEALTH_BTN_MARGIN + half + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
+                   half, HEALTH_BTN_H, "Retour", Theme::SURFACE, Theme::TEXT);
     } else {
-        drawButton(110, 200, 100, 36, "Retour", Theme::SURFACE, Theme::TEXT);
+        const uint16_t w = 120;
+        drawButton((SCREEN_W - w) / 2, HEALTH_BTN_Y, w, HEALTH_BTN_H,
+                   "Retour", Theme::SURFACE, Theme::TEXT);
     }
     (void)faultsShown;
 }
@@ -3551,23 +3590,34 @@ void DisplayManager::handleTouchHealth(uint16_t tx, uint16_t ty) {
     const PersistentIncidentSnapshot sd = IncidentManager::storageSd();
     const bool sdNeedsAck = sd.state == IncidentState::RECOVERED_UNACKNOWLEDGED;
 
+    // Meme calcul que drawHealthFull() -- doit rester identique, sans quoi
+    // la zone tactile et ce qui est dessine divergent.
+    const uint16_t fullW = SCREEN_W - 2 * HEALTH_BTN_MARGIN;
     if (degraded) {
-        if (hitTest(2, 200, 220, 36, tx, ty)) {
+        const uint16_t retourW = 90;
+        const uint16_t primaryW = fullW - HEALTH_BTN_MARGIN - retourW;
+        if (hitTest(HEALTH_BTN_MARGIN, HEALTH_BTN_Y, primaryW, HEALTH_BTN_H, tx, ty)) {
             BootLoopGuard::clearDegraded();
             goTo(Screen::HEALTH);   // redessine avec l'etat a jour
             return;
         }
-        if (hitTest(228, 200, 90, 36, tx, ty)) { goTo(Screen::HOME); return; }
+        if (hitTest(HEALTH_BTN_MARGIN + primaryW + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
+                    retourW, HEALTH_BTN_H, tx, ty)) { goTo(Screen::HOME); return; }
     } else if (FaultManager::hasUnacknowledgedErrors() || sdNeedsAck) {
-        if (hitTest(2, 200, 152, 36, tx, ty)) {
+        const uint16_t half = (fullW - HEALTH_BTN_MARGIN) / 2;
+        if (hitTest(HEALTH_BTN_MARGIN, HEALTH_BTN_Y, half, HEALTH_BTN_H, tx, ty)) {
             FaultManager::acknowledge();
             if (sdNeedsAck) IncidentManager::acknowledgeStorageSd();
             goTo(Screen::HEALTH);
             return;
         }
-        if (hitTest(162, 200, 156, 36, tx, ty)) { goTo(Screen::HOME); return; }
+        if (hitTest(HEALTH_BTN_MARGIN + half + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
+                    half, HEALTH_BTN_H, tx, ty)) { goTo(Screen::HOME); return; }
     } else {
-        if (hitTest(110, 200, 100, 36, tx, ty)) { goTo(Screen::HOME); return; }
+        const uint16_t w = 120;
+        if (hitTest((SCREEN_W - w) / 2, HEALTH_BTN_Y, w, HEALTH_BTN_H, tx, ty)) {
+            goTo(Screen::HOME); return;
+        }
     }
 }
 
@@ -3621,6 +3671,7 @@ void DisplayManager::drawAdminPageContent() {
         case AdminPage::ZONES:  drawAdminPageZones();  break;
         case AdminPage::SYSTEM: drawAdminPageSystem(); break;
         case AdminPage::LOGS:   drawAdminPageLogs();   break;
+        case AdminPage::SANTE:  drawAdminPageSante();  break;
         default: break;
     }
 }
@@ -3661,7 +3712,7 @@ void DisplayManager::drawAdminPageWifi() {
       y += 24; }
 
     // Bouton portail captif
-    drawButton(10, 130, 300, 36, "Lancer portail captif", Theme::AMBER, 0x0000);
+    drawButton(10, 130, SCREEN_W - 20, 36, "Lancer portail captif", Theme::AMBER, 0x0000);
 }
 
 void DisplayManager::drawAdminPageNtp() {
@@ -3803,6 +3854,11 @@ void DisplayManager::drawAdminPageLogs() {
         _tft.drawString("Aucun evenement", 10, ADM_CONTENT_Y + 80);
         return;
     }
+    // get(0) est le plus RECENT (voir EventLog::get()) : sans defilement,
+    // seules les entrees les plus fraiches tenaient sur l'ecran, le reste
+    // compte en "+N" mais restait inatteignable -- signale par
+    // l'utilisateur. _logsScrollOffset avance vers les plus anciennes.
+    if (_logsScrollOffset >= n) _logsScrollOffset = n - 1;
 
     // Géométrie :
     //   Préfixe  x=2      : "MM:SS" (5 chars × 6px = 30px)
@@ -3824,8 +3880,9 @@ void DisplayManager::drawAdminPageLogs() {
 
     int curY = ADM_CONTENT_Y + 2;
     uint8_t shown = 0;
+    const int contentBottom = ADM_CONTENT_Y + ADM_CONTENT_H - LOGS_NAV_H - 2;
 
-    for (uint8_t i = 0; i < n; i++) {
+    for (uint8_t i = _logsScrollOffset; i < n; i++) {
         const LogEntry& e = EventLog::get(i);
         uint16_t col  = EventLog::levelColor(e.level);
 
@@ -3835,7 +3892,7 @@ void DisplayManager::drawAdminPageLogs() {
         uint8_t rowH    = doWrap ? ROW_2LINE : ROW_1LINE;
 
         // Vérifier qu'on a encore de la place
-        if (curY + rowH > ADM_CONTENT_Y + ADM_CONTENT_H - 10) break;
+        if (curY + rowH > contentBottom) break;
 
         // ── Fond coloré sur toute la largeur pour WARN/ERROR ──────
         if (e.level >= LOG_WARN) {
@@ -3875,13 +3932,62 @@ void DisplayManager::drawAdminPageLogs() {
         shown++;
     }
 
-    // ── Indicateur si entrées non affichées ────────────────────────
-    if (shown < n) {
-        char more[24];
-        snprintf(more, sizeof(more), "+%d", n - shown);
-        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
-        _tft.drawString(more, SCREEN_W - 20, ADM_CONTENT_Y + ADM_CONTENT_H - 12);
+    // ── Barre de defilement : position + deux boutons ──────────────
+    // "^" vers les plus recentes (offset diminue), "v" vers les plus
+    // anciennes (offset augmente). Grises et inertes en butee plutot que
+    // masquees : un bouton qui disparait selon le contexte se re-cherche
+    // a chaque fois, un bouton grise se comprend d'un coup d'oeil.
+    const uint16_t navY = ADM_CONTENT_Y + ADM_CONTENT_H - LOGS_NAV_H;
+    _tft.fillRect(0, navY, SCREEN_W, LOGS_NAV_H, Theme::SURFACE);
+    _tft.drawFastHLine(0, navY, SCREEN_W, Theme::BORDER);
+
+    const uint8_t first = _logsScrollOffset + 1U;
+    const uint8_t last  = _logsScrollOffset + shown;
+    char pos[24];
+    snprintf(pos, sizeof(pos), "%u-%u / %u",
+             (unsigned)first, (unsigned)last, (unsigned)n);
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    _tft.drawString(pos, 6, navY + 6);
+
+    const bool canNewer = _logsScrollOffset > 0U;
+    const bool canOlder = last < n;
+    const uint16_t olderX = SCREEN_W - LOGS_BTN_W - 3;
+    const uint16_t newerX = olderX - LOGS_BTN_W - 4;
+    drawButton(newerX, navY + 1, LOGS_BTN_W, LOGS_NAV_H - 2, "^",
+              canNewer ? Theme::SURFACE : Theme::BG, canNewer ? Theme::TEXT : Theme::MUTED);
+    drawButton(olderX, navY + 1, LOGS_BTN_W, LOGS_NAV_H - 2, "v",
+              canOlder ? Theme::SURFACE : Theme::BG, canOlder ? Theme::TEXT : Theme::MUTED);
+}
+
+// Resume seulement : etat general + nombre de defauts actifs, et un
+// bouton vers Screen::HEALTH pour le detail et les actions de correction.
+// Rendre le detail ICI SECOND FOIS aurait fait deux versions de la meme
+// information a tenir a jour -- voir la note sur FaultManager::label().
+void DisplayManager::drawAdminPageSante() {
+    _tft.setTextSize(1);
+
+    const bool degraded    = BootLoopGuard::isDegraded();
+    const bool onProbation = BootLoopGuard::isOnProbation();
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    _tft.drawString("Etat general :", 10, ADM_CONTENT_Y + 14);
+    _tft.setTextColor(degraded ? Theme::AMBER : onProbation ? Theme::CYAN : Theme::GREEN,
+                      Theme::SURFACE);
+    _tft.drawString(degraded ? "DEGRADE" : onProbation ? "A l'essai" : "Normal",
+                    150, ADM_CONTENT_Y + 14);
+
+    const uint32_t faultMask = FaultManager::activeMask() &
+                               ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
+    uint8_t nFaults = 0U;
+    for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+        if (faultMask & (1UL << id)) nFaults++;
     }
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    _tft.drawString("Defauts actifs :", 10, ADM_CONTENT_Y + 34);
+    _tft.setTextColor(nFaults ? Theme::RED : Theme::GREEN, Theme::SURFACE);
+    _tft.drawString(nFaults ? String(nFaults).c_str() : "Aucun", 150, ADM_CONTENT_Y + 34);
+
+    drawButton((SCREEN_W - 200) / 2, ADM_CONTENT_Y + 76, 200, 40,
+              "Voir le detail", Theme::SURFACE, Theme::TEXT);
 }
 
 // ═══════════════════════════════════════════════════════════════
