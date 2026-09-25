@@ -610,3 +610,39 @@ La version installee est deja lisible par le firmware :
 `/www/assets-version.json`. Il ne manque que son affichage.
 
 Demande utilisateur du 7 septembre 2026, explicitement differee.
+
+### Éditeur de scripts : contextualiser les commandes proposées
+
+Le panneau « Commandes » de `scripts.html` (`COMMANDES` dans le script inline)
+montre aujourd'hui la liste complète, toujours la même, quel que soit le
+script en cours d'édition. Certaines entrées n'ont pourtant de sens que dans
+un contexte donné :
+
+- `entree(<id>)` n'est utile que si des entrées sont réellement déclarées
+  dans le câblage — sur un module sans entrée, la proposer revient à faire
+  deviner un identifiant qui ne mènera nulle part ;
+- les identifiants d'exemple (`zone 1`, `entree(100)`) sont des valeurs
+  fixes, pas ceux du module — le panneau « Ce module offre » les corrige déjà
+  à côté, mais les commandes elles-mêmes ne s'en servent pas ;
+- selon le déclencheur choisi pour le script (`si … entrée`, `démarrage
+  zone`, `arrêt zone`, `rien`), certaines commandes sont redondantes ou sans
+  objet — un script déclenché par l'arrêt d'une zone n'a par exemple aucune
+  raison de retester l'état de cette même zone juste après.
+
+Precedent direct deja en place : la sous-liste de `notifier` (commit
+"l'instruction « notifier » propose les phrases du catalogue") construit deja
+ses entrees a partir de donnees reelles chargees en JS (`BIBLIO`), au lieu
+d'un texte fixe. La meme methode s'appliquerait aux zones/entrees reelles
+(deja recuperees dans `rendreReferences()`, via `/api/status`) et,
+potentiellement, au filtrage par declencheur (`$('declencheur').value`,
+deja lu par `majCible()`).
+
+Portee a etudier avant de coder : remplacer purement les exemples numeriques
+par les vrais identifiants est peu risque et vaut le coup seul ; filtrer/
+griser des commandes selon le declencheur est plus subjectif (une commande
+« sans objet » reste parfois volontairement utilisee) et merite d'etre
+cadre avec l'utilisateur avant d'ecrire quoi que ce soit.
+
+Demande utilisateur du 25 septembre 2026 ("voir si c'est possible"),
+explicitement differee -- reponse : oui, avec le precedent notifier comme
+point de depart.
