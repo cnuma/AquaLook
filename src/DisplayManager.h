@@ -260,6 +260,11 @@ private:
     Screen    _screen          = Screen::HOME;
     uint8_t   _selectedZone    = 0;
     AdminPage _adminPage       = AdminPage::WIFI;
+    // Ecran a retrouver en quittant Screen::HEALTH -- "Retour" y ramenait
+    // toujours a HOME, quel que soit le point de depart (bandeau tape
+    // depuis HOME/ZONE/STATUS/SYSTEM, ou page Sante du menu ADMIN) :
+    // signale par l'utilisateur comme "ne remonte pas d'un cran".
+    Screen _healthReturnScreen = Screen::HOME;
     // Index (0 = plus recent) de la premiere entree affichee sur la page
     // Logs -- sans lui, le journal ne montrait jamais que les entrees les
     // plus recentes, le reste comptabilise en "+N" mais inatteignable.
@@ -464,9 +469,11 @@ private:
 
     // Barre de defilement du journal (page Logs), meme raison d'etre que
     // les constantes ci-dessus : dessin et zone tactile partagent ces
-    // valeurs pour ne jamais diverger.
-    static constexpr uint16_t LOGS_NAV_H  = 20;
-    static constexpr uint16_t LOGS_BTN_W  = 36;
+    // valeurs pour ne jamais diverger. 20 px de haut (boutons 18 px)
+    // etait trop fin pour un doigt -- signale par l'utilisateur, porte
+    // a 34 (boutons 32 px), plus large aussi (54 au lieu de 36).
+    static constexpr uint16_t LOGS_NAV_H  = 34;
+    static constexpr uint16_t LOGS_BTN_W  = 54;
 
     // ── Timing et layout runtime ────────────────────────────────
     // Valeurs par défaut — surchargées par CfgDisplay dans begin()

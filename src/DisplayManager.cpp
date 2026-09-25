@@ -896,6 +896,7 @@ bool DisplayManager::handleHeaderTouch(uint16_t tx, uint16_t ty) {
                           BootLoopGuard::isOnProbation() ||
                           faultMask != 0U;
     if (!abnormal) return false;
+    _healthReturnScreen = _screen;   // "Retour" ramenera ici, pas toujours HOME
     goTo(Screen::HEALTH);
     return true;
 }
@@ -1323,6 +1324,7 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
     // Screen::HEALTH, source unique partagee avec le tap sur le bandeau.
     if (_adminPage == AdminPage::SANTE) {
         if (hitTest((SCREEN_W - 200) / 2, ADM_CONTENT_Y + 76, 200, 40, tx, ty)) {
+            _healthReturnScreen = Screen::ADMIN;   // "Retour" revient ici, page Sante
             goTo(Screen::HEALTH);
         }
     }
@@ -3602,7 +3604,7 @@ void DisplayManager::handleTouchHealth(uint16_t tx, uint16_t ty) {
             return;
         }
         if (hitTest(HEALTH_BTN_MARGIN + primaryW + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
-                    retourW, HEALTH_BTN_H, tx, ty)) { goTo(Screen::HOME); return; }
+                    retourW, HEALTH_BTN_H, tx, ty)) { goTo(_healthReturnScreen); return; }
     } else if (FaultManager::hasUnacknowledgedErrors() || sdNeedsAck) {
         const uint16_t half = (fullW - HEALTH_BTN_MARGIN) / 2;
         if (hitTest(HEALTH_BTN_MARGIN, HEALTH_BTN_Y, half, HEALTH_BTN_H, tx, ty)) {
@@ -3612,11 +3614,11 @@ void DisplayManager::handleTouchHealth(uint16_t tx, uint16_t ty) {
             return;
         }
         if (hitTest(HEALTH_BTN_MARGIN + half + HEALTH_BTN_MARGIN, HEALTH_BTN_Y,
-                    half, HEALTH_BTN_H, tx, ty)) { goTo(Screen::HOME); return; }
+                    half, HEALTH_BTN_H, tx, ty)) { goTo(_healthReturnScreen); return; }
     } else {
         const uint16_t w = 120;
         if (hitTest((SCREEN_W - w) / 2, HEALTH_BTN_Y, w, HEALTH_BTN_H, tx, ty)) {
-            goTo(Screen::HOME); return;
+            goTo(_healthReturnScreen); return;
         }
     }
 }
@@ -3650,8 +3652,8 @@ void DisplayManager::drawAdminHeader() {
 void DisplayManager::drawAdminNav() {
     _tft.fillRect(0, ADM_NAV_Y, SCREEN_W, ADM_NAV_H, Theme::SURFACE2);
     _tft.drawFastHLine(0, ADM_NAV_Y, SCREEN_W, Theme::BORDER);
-    drawButton(0,   ADM_NAV_Y, 60, ADM_NAV_H, "<",  Theme::SURFACE, Theme::TEXT);
-    drawButton(260, ADM_NAV_Y, 60, ADM_NAV_H, ">",  Theme::SURFACE, Theme::TEXT);
+    drawButton(0,            ADM_NAV_Y, 60, ADM_NAV_H, "<", Theme::SURFACE, Theme::TEXT);
+    drawButton(SCREEN_W - 60, ADM_NAV_Y, 60, ADM_NAV_H, ">", Theme::SURFACE, Theme::TEXT);
     _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
     _tft.setTextDatum(MC_DATUM);
     _tft.setFreeFont(THEME_FONT_TITLE);
