@@ -184,17 +184,40 @@ void WebManager::begin(NTPManager* ntp, WeatherManager* weather,
     _config   = config;
     _wifi     = wifi;
 
-    // ESPAsyncWebServer garde les connexions HTTP ouvertes (keep-alive) par
-    // defaut. Symptome observe sur le terrain : apres une periode sans appel
-    // de page, le premier rechargement affiche la page sans donnees (la
-    // requete /api/status tente de reutiliser une connexion TCP devenue
-    // silencieusement morte cote ESP32 et reste bloquee jusqu'a un timeout
-    // navigateur) ; un second rechargement force une connexion neuve et
-    // fonctionne. "Connection: close" sur chaque reponse force le navigateur
-    // a ouvrir une connexion neuve a chaque requete : cout negligeable ici
-    // (page peu sollicitee, interrogee toutes les 8s), mais elimine cette
-    // classe de blocage. S'applique a toutes les reponses (copie dans
-    // AsyncWebServerResponse a la construction), fichiers statiques inclus.
+    // Historique (16 aout 2026) : un "Connection: close" a ete pose ici pour
+    // parer une connexion keep-alive devenue silencieusement morte cote ESP32
+    // apres une longue inactivite (symptome : page rechargee sans donnees, un
+    // second rechargement forcait une connexion neuve et corrigeait).
+    //
+    // Enquete du 26 septembre 2026 (lenteur > 900 o a l'ouverture de la page,
+    // 270-450 ms systematiques par requete) : cet en-tete n'a en realite
+    // jamais rien change. D'une part AsyncAbstractResponse::_respond()
+    // (WebResponses.cpp, bibliotheque stock, deja ainsi en 3.3.0 des le 16
+    // aout) pose lui-meme "Connection: close" par defaut des qu'aucun en-tete
+    // Connection n'est deja fourni. D'autre part, plus fondamental : cette
+    // version d'ESPAsyncWebServer ne supporte pas les connexions persistantes
+    // du tout -- AsyncWebServerRequest::_onAck()/_onPoll() (WebRequest.cpp,
+    // lignes ~200 et ~215) appellent `_client->close()` de facon
+    // INCONDITIONNELLE des qu'une reponse est terminee, quel que soit l'en-
+    // tete envoye ; _parseState (meme fichier) ne revient jamais non plus a
+    // PARSE_REQ_START pour accepter une seconde requete sur le meme socket.
+    // Verifie sur le banc .141 : en posant "Connection: keep-alive", chaque
+    // requete curl rouvre quand meme une vraie connexion TCP neuve (temps de
+    // connexion non nul a chaque fois, aucun gain de vitesse) -- le serveur
+    // ferme de toute facon, header ou pas.
+    //
+    // Donc "close" est la valeur honnete : elle correspond a ce que le
+    // serveur fait reellement. Annoncer "keep-alive" serait pire que neutre,
+    // puisque le navigateur croirait pouvoir reutiliser la connexion alors
+    // que le serveur la ferme systematiquement -- risque de requetes
+    // echouees necessitant une nouvelle tentative, latence ajoutee plutot
+    // qu'economisee. Vraie piste pour la lenteur mesuree : reduire la taille
+    // des reponses les plus grosses (/api/status, /api/diagnostics) sous le
+    // seuil d'~900 o, ou accepter un jour de reecrire le cycle de vie
+    // requete/reponse de la bibliotheque pour un vrai keep-alive -- risque
+    // eleve, meme zone de code qu'un correctif deja abandonne le 17 aout 2026
+    // car il degradait le comportement (voir ROADMAP.md, section "Pages HTML
+    // servies tronquees").
     DefaultHeaders::Instance().addHeader("Connection", "close");
 
     // Invariant I1 : LittleFS déjà monté par ConfigManager
