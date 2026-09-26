@@ -646,3 +646,86 @@ cadre avec l'utilisateur avant d'ecrire quoi que ce soit.
 Demande utilisateur du 25 septembre 2026 ("voir si c'est possible"),
 explicitement differee -- reponse : oui, avec le precedent notifier comme
 point de depart.
+
+### Page Journal (`/logs`) : le bouton "Acquitter" n'indique pas ce qu'il acquitte
+
+Constat utilisateur (capture d'ecran du 26 septembre 2026) : le bandeau
+d'etat au-dessus du bouton "Acquitter les erreurs" (`logs.html:9,50`,
+`refreshFaults()`) affiche seulement une phrase generique -- "Erreur
+memorisee non acquittee" -- sans dire QUELLE erreur. Le journal technique en
+dessous (`#journal`, alimente par `/api/logs.txt`) defile et peut avoir
+avance tres loin depuis l'evenement en cause au moment ou l'utilisateur
+revient sur la page : il clique donc "Acquitter" sans savoir ce qu'il vient
+de valider.
+
+Donnee deja disponible cote firmware, juste non exposee ici :
+`/api/faults` (`WebManager.h:116-132`) renvoie `active`, `unacknowledged` et
+un `mask` brut, mais aucun libelle. `FaultManager::label(FaultId)`
+(`FaultManager.h:64`) existe deja et sert ailleurs (page Sante, LCD) a
+traduire un identifiant de defaut en texte lisible -- la meme fonction
+permettrait de lister, sous le bouton, le ou les libelles correspondant aux
+bits actifs du masque, au lieu de la phrase generique actuelle. Le bloc
+"Incident carte SD" juste au-dessus (`#incident`, `refreshIncident()`) fait
+deja quelque chose de similaire avec son champ "Derniere cause" -- meme
+principe a etendre au bloc erreurs.
+
+Portee a etudier avant de coder : decomposer le masque en libelles cote
+firmware (nouveau champ dans `/api/faults`, ex. `labels: [...]`) plutot que
+cote JS, pour rester coherent avec le principe deja en place ailleurs (le
+firmware est la seule source de verite sur le sens de chaque bit).
+
+Demande utilisateur du 26 septembre 2026, explicitement differee.
+
+### Journal technique : messages pas assez parlants pour decider
+
+Constat utilisateur (deuxieme capture d'ecran du 26 septembre 2026, section
+"Journal technique" de `/logs`) : une serie de lignes `[WARN]`/`[INFO]`
+illisibles pour qui n'a pas ecrit le code -- "Shadow engine: desactive,
+aucune zone", "Orchestrator shadow: status=unavailable source=runtime_model
+authority=no zones=5", "Shadow pump: desactive par configuration NVS",
+"Equipment: modele indisponible, fallback adaptateur direct". L'utilisateur
+ne peut pas dire si c'est normal ou s'il faut agir -- exactement le meme
+probleme de fond que la section precedente (acquitter sans savoir), mais qui
+deborde largement du seul flux d'acquittement : n'importe quel `[WARN]` du
+journal technique est concerne.
+
+Exemple concret de ce qui rend ces lignes trompeuses en l'etat :
+`EquipmentExecutionShadowRuntime.cpp:33-34`, `main.cpp:291,317,644,667-670,680`
+-- le mot "Shadow" designe ici un moteur d'execution parallele en cours de
+validation (`passive=yes`, `authority=no` : il calcule mais ne pilote aucune
+sortie reelle), donc ces lignes ne signalent en general PAS un defaut, juste
+de l'instrumentation d'un chantier en cours. Rien dans le texte actuel ne le
+dit -- un `[WARN]` a cote d'un `[INFO]` sans distinction de gravite reelle
+invite a s'inquieter a tort, ou au contraire a ignorer un vrai probleme noye
+dans le meme bruit.
+
+Demande explicite : reformuler pour que chaque message dise, en plus du
+fait technique, ce qu'il faut en penser et/ou faire -- piste de correction,
+ou au moins de reflexion, pas seulement un constat brut. Marge disponible
+signalee par l'utilisateur : la carte SD a de la place, donc la contrainte
+habituelle de flash/PROGMEM sur la longueur des chaines ne s'applique pas
+forcement ici -- un texte plus long, voire un renvoi vers une explication
+detaillee stockee sur SD, est envisageable (precedent architectural le plus
+proche dans le code : `ScriptMessageCatalogue`, mais celui-la vit en flash et
+sert un besoin different -- a ne pas copier telle quelle, juste s'en inspirer
+pour le principe de catalogue externalise).
+
+Portee a etudier avant de coder, chantier consequent -- pas a improviser
+message par message :
+- inventorier les niveaux de gravite reels attendus par site d'appel
+  (`EventLog::log(LOG_WARN/LOG_INFO, ...)`) et si `[WARN]` est justifie pour
+  les messages "Shadow"/"Orchestrator shadow" du chantier en cours, ou s'ils
+  devraient etre `[INFO]` tant que ce moteur reste passif ;
+- decider du format cible : texte enrichi inline vs. code court + catalogue
+  externe (SD) consulte a la demande depuis la page `/logs` ;
+- si catalogue SD, meme question de robustesse que pour les ressources Web
+  deja sur SD (voir plus haut) : que devient le message si la carte est
+  absente ou le fichier introuvable -- ne jamais rendre un message d'erreur
+  moins lisible que le brut actuel par manque de repli ;
+- cadrer avec l'utilisateur, avant d'ecrire quoi que ce soit, une poignee de
+  messages representatifs (dont les quatre ci-dessus) pour valider le ton et
+  le niveau de detail avant de generaliser a tout le journal.
+
+Demande utilisateur du 26 septembre 2026, explicitement differee -- a
+traiter avec la section precedente (bouton "Acquitter" sans resume), meme
+racine : le journal ne donne pas assez d'elements pour decider vite.
