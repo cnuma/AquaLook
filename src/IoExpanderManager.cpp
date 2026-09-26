@@ -90,8 +90,11 @@ void IoExpanderManager::configureBoard(uint8_t boardIndex) {
     ok &= wr(addr, REG_OLATB,  (uint8_t)(olat >> 8));
 
     _boardReady[boardIndex] = ok;
+    // [IOEXP-BOARD] : "iodir" est le registre de direction (1 bit par
+    // broche, 1=entree) -- confirmation de config, pas un defaut en soi ;
+    // seul "absente" l'est. Voir /logs/messages.tsv.
     EventLog::log(ok ? LOG_INFO : LOG_WARN,
-                  "IoExpander: carte %u @0x%02X %s (iodir=0x%04X)",
+                  "[IOEXP-BOARD] carte=%u @0x%02X %s iodir=0x%04X",
                   (unsigned)boardIndex, addr, ok ? "prete" : "absente",
                   (unsigned)iodir);
 }

@@ -87,7 +87,9 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
             // Pas encore implemente : le dire par un refus vaut mieux que de
             // retourner "fait" sans rien faire. Un script qui croit avoir
             // lance la pompe attendrait un remplissage qui n'arrive jamais.
-            EventLog::log(LOG_WARN, "Script: action %u non implementee",
+            // [SCRIPT-ACTION] : code interne ScriptAction, pas un identifiant
+            // choisi par l'utilisateur. Voir /logs/messages.tsv.
+            EventLog::log(LOG_WARN, "[SCRIPT-ACTION] %u non_implementee",
                           (unsigned)act);
             ok = false;
             break;
@@ -100,7 +102,9 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
 bool notify(void* raw, uint16_t code) {
     ScriptRuntimeContext* ctx = ctxOf(raw);
     if (ctx) ctx->lastNotify = code;
-    EventLog::log(LOG_INFO, "Script: message %u", (unsigned)code);
+    // [SCRIPT-NOTIFY] : code choisi par l'utilisateur dans l'editeur de
+    // scripts (commande "message"), pas resolu ici. Voir /logs/messages.tsv.
+    EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u", (unsigned)code);
     return true;
 }
 
@@ -111,13 +115,15 @@ bool alert(void* raw, uint16_t code) {
         // Refuser plutot que d'accepter sans rien envoyer. Un script qui croit
         // avoir alerte quelqu'un est plus dangereux qu'un script arrete : on
         // compte dessus pour etre prevenu d'une cuve vide.
+        // [SCRIPT-ALERT] : code choisi par l'utilisateur (commande
+        // "alerte"), pas resolu ici. Voir /logs/messages.tsv.
         EventLog::log(LOG_WARN,
-                      "Script: alerte %u NON envoyee, notifications non configurees",
+                      "[SCRIPT-ALERT] code=%u non_envoyee",
                       (unsigned)code);
         if (ctx) ctx->refusals++;
         return false;
     }
-    EventLog::log(LOG_INFO, "Script: alerte %u envoyee", (unsigned)code);
+    EventLog::log(LOG_INFO, "[SCRIPT-ALERT] code=%u envoyee", (unsigned)code);
     return true;
 }
 

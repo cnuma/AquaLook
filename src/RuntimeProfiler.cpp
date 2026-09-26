@@ -75,14 +75,18 @@ void RuntimeProfiler::stop(
     portEXIT_CRITICAL(&_mux);
 
     if (shouldLog && EventLog::timingLogsEnabled()) {
+        // [PERF-TIMING] : diagnostic de lenteur de boucle, actif seulement
+        // si la case "Journaliser les warnings de lenteur" est cochee sur
+        // /logs -- "wallUs" est la duree mesuree, "schedSuspect" signale un
+        // decrochage probablement du a l'ordonnanceur FreeRTOS plutot qu'au
+        // composant lui-meme. Voir /logs/messages.tsv.
         EventLog::log(
             LOG_WARN,
-            "Timing: n=%s wallUs=%lu count=%lu schedSuspect=%s schedCount=%lu core=%d",
+            "[PERF-TIMING] %s wallUs=%lu count=%lu schedSuspect=%s core=%d",
             componentName(component),
             static_cast<unsigned long>(durationUs),
             static_cast<unsigned long>(slowCount),
             schedulerSuspect ? "yes" : "no",
-            static_cast<unsigned long>(schedulerSuspectCount),
             xPortGetCoreID()
         );
     }

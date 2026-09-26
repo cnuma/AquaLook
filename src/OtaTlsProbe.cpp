@@ -21,10 +21,14 @@ constexpr BaseType_t TASK_CORE = 0;
 
 bool g_started = false;
 
+// [OTA-TLS-PROBE] : qualification ponctuelle de la connectivite HTTPS vers
+// GitHub au demarrage (une seule fois, feature flag AQUALOOK_OTA_TLS_PROBE)
+// -- ne pilote rien, ne fait pas d'OTA reelle (voir "otaWrite=no"). Voir
+// /logs/messages.tsv.
 void logMemory(const char* stage) {
     EventLog::log(
         LOG_INFO,
-        "OTA-1.1: memory stage=%s heapFree=%lu heapMin=%lu largestBlock=%lu stackFree=%u",
+        "[OTA-TLS-PROBE] memory stage=%s heapFree=%lu heapMin=%lu largestBlock=%lu stackFree=%u",
         stage,
         static_cast<unsigned long>(ESP.getFreeHeap()),
         static_cast<unsigned long>(ESP.getMinFreeHeap()),
@@ -40,7 +44,7 @@ void probeTask(void*) {
 
     EventLog::log(
         LOG_WARN,
-        "OTA-1.1: probe start target=api.github.com method=HEAD insecure=yes otaWrite=no"
+        "[OTA-TLS-PROBE] probe start target=api.github.com method=HEAD insecure=yes otaWrite=no"
     );
     logMemory("before-client");
 
@@ -56,7 +60,7 @@ void probeTask(void*) {
 
     EventLog::log(
         connected ? LOG_INFO : LOG_ERROR,
-        "OTA-1.1: tls connected=%s durationMs=%lu",
+        "[OTA-TLS-PROBE] tls connected=%s durationMs=%lu",
         connected ? "yes" : "no",
         static_cast<unsigned long>(durationMs)
     );
@@ -67,7 +71,7 @@ void probeTask(void*) {
         const int errorCode = client.lastError(errorBuffer, sizeof(errorBuffer));
         EventLog::log(
             LOG_ERROR,
-            "OTA-1.1: result=failed phase=tls error=%d detail=%s",
+            "[OTA-TLS-PROBE] result=failed phase=tls error=%d detail=%s",
             errorCode,
             errorBuffer[0] ? errorBuffer : "unknown"
         );
@@ -94,7 +98,7 @@ void probeTask(void*) {
     if (!client.available()) {
         EventLog::log(
             LOG_ERROR,
-            "OTA-1.1: result=failed phase=response connected=%s",
+            "[OTA-TLS-PROBE] result=failed phase=response connected=%s",
             client.connected() ? "yes" : "no"
         );
         client.stop();
@@ -105,7 +109,7 @@ void probeTask(void*) {
 
     String statusLine = client.readStringUntil('\n');
     statusLine.trim();
-    EventLog::log(LOG_INFO, "OTA-1.1: http statusLine=%s", statusLine.c_str());
+    EventLog::log(LOG_INFO, "[OTA-TLS-PROBE] http statusLine=%s", statusLine.c_str());
 
     while (client.available()) client.read();
     client.stop();
@@ -114,7 +118,7 @@ void probeTask(void*) {
     logMemory("after-close");
     EventLog::log(
         LOG_INFO,
-        "OTA-1.1: result=success tls=yes request=yes otaWrite=no"
+        "[OTA-TLS-PROBE] result=success tls=yes request=yes otaWrite=no"
     );
     vTaskDelete(nullptr);
 }
@@ -141,7 +145,7 @@ void OtaTlsProbe::onWifiConnected() {
     );
 
     if (created != pdPASS) {
-        EventLog::log(LOG_ERROR, "OTA-1.1: task creation failed");
+        EventLog::log(LOG_ERROR, "[OTA-TLS-PROBE] task creation failed");
     }
 }
 

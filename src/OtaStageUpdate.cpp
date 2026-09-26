@@ -223,6 +223,10 @@ MaintenanceResult stageUrl(const MaintenanceResult& manifest,
     result.success = true;
     snprintf(result.detail, sizeof(result.detail),
              "firmware-staged-inactive-%s", stage.partitionLabel);
+    // Meme famille que les autres lignes "Maintenance: ..._TEST" de
+    // MaintenanceBoot.cpp (test de diagnostic, "otaActivate=no" = rien
+    // n'est active) -- partition/address identifient juste la partition
+    // OTA inactive ciblee par ce test.
     EventLog::log(
         LOG_INFO,
         "Maintenance: STAGE_UPDATE_TEST bytes=%lu durationMs=%lu sha256=ok partition=%s address=0x%06lX otaActivate=no",
