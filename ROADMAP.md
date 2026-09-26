@@ -348,24 +348,39 @@ Validé sur matériel : **8 démarrages consécutifs, aucun plantage**, contre 3
 
 Ces deux correctifs restent des **atténuations d'une contrainte structurelle**, pas des guérisons : cette carte ne dispose que d'environ 32 Kio de tas libre écran allumé. Ils étalent les pics, ils ne créent pas de mémoire. C'est le troisième sujet de la semaine à converger vers le même constat, avec la page qui ne se chargeait pas et l'échec de poignée de main TLS.
 
-### 🌙 Portage vers Guition JC4827W543C (ESP32-S3) — chantier en sommeil
+### 🌙 Portage vers Guition JC4827W543C (ESP32-S3) — réalisé, en service
 
-**Statut : en sommeil depuis le 16 août 2026, en attente de livraison des cartes.**
+**Statut corrigé le 26 septembre 2026 : cette section restait décrite comme
+"en sommeil, en attente de livraison des cartes" depuis le 16 août alors que
+le portage a réussi et tourne en production de développement depuis. Les
+cartes sont arrivées le 25 août 2026 ; le profil de compilation
+`ProgrammeArrosage_s3_v4` existe depuis le 4 septembre 2026 (commit
+`d331817`) ; `.141`, le banc utilisé quotidiennement depuis (V4, 5 zones,
+relais réels sur 4 d'entre elles), EST cette carte. Ce n'est plus un
+chantier futur mais le socle matériel courant du projet, conformément à la
+décision « jamais de code gérant deux cartes » — l'environnement
+`ProgrammeArrosage` (legacy ST77xx/esp32dev) ne subsiste que pour la
+carte de production `.156`, pas comme cible de développement actif.**
 
-Nouvelles cartes commandées le 16 août 2026 : ESP32-S3, 8 Mo de PSRAM, 4 Mo de flash, dalle IPS 4,3" 480×272, tactile capacitif. Elles deviendront le **socle matériel unique** du projet, conformément à la décision « jamais de code gérant deux cartes ».
+Ce que l'analyse d'impact initiale avait établi reste la référence
+d'architecture (**`docs/architecture/HW_JC4827W543_PORT_IMPACT.md`**) :
+contrôleur NV3041A en QSPI (pas ST77xx), affichage porté sur `Arduino_GFX`,
+coût concentré dans le texte et la mise en page 480×272. Le repli sur PSRAM
+plein écran envisagé pour éliminer la classe de bugs « RAM interne
+saturée » n'a pas été retenu depuis (aucune occurrence de ce bug sur `.141`
+à ce jour) ; à réévaluer seulement si le symptôme reapparaît.
 
-Analyse d'impact complète : **`docs/architecture/HW_JC4827W543_PORT_IMPACT.md`**, sur la branche **`hw/jc4827w543-esp32s3-port`**. Le firmware en service n'est pas impacté — cette branche ne contient aucune modification de code.
-
-Ce que l'analyse a établi, et qui contredit l'hypothèse initiale d'un simple changement cosmétique :
-
-- le contrôleur n'est pas un ST77xx mais un **NV3041A en QSPI**, que `TFT_eSPI` ne sait pas piloter — la couche d'affichage doit passer à `Arduino_GFX` ;
-- surface concernée mesurée : 3 625 lignes, 431 appels, dont ~423 portables mécaniquement via un adaptateur et **8 seulement** demandant une décision individuelle ;
-- le coût est concentré dans le **texte** (pas d'équivalent au `drawString` aligné par datum), et dans la **refonte de la mise en page** en 480×272 ;
-- bonnes surprises : les polices du thème sont déjà au format Adafruit `GFXfont` attendu par `Arduino_GFX`, et les couleurs déjà en RGB565 — ces deux postes ne coûtent rien.
-
-Opportunité à arbitrer une fois le matériel disponible : avec 8 Mo de PSRAM, un framebuffer plein écran coûte 261 Ko (3 % de la PSRAM) et permettrait de retirer les sprites partiels, la libération des sprites en veille ajoutée le 16 août 2026, et avec eux toute la classe de bugs « RAM interne saturée ». Conditionné à la mesure du coût d'un rafraîchissement depuis la PSRAM.
-
-Reprise : dérouler les validations par sous-système du document (§8) dès réception, en commençant par les deux mesures décisives — coût du rafraîchissement plein écran, et disponibilité du bus I2C pour le bloc relais. Aucune estimation de charge n'est donnée avant ces mesures, qui peuvent remettre en cause la stratégie.
+**Reste ouvert (périmètre "phase B", demandé le 29 août 2026) :**
+- LED d'état WS2812 externe (pas de voyant RGB embarqué sur cette carte) —
+  **fait** : câblée, pilotée par `StatusLed.cpp`/`ScreenManager.cpp`,
+  plusieurs environnements de test dédiés (`test_ws2812_*_s3`).
+- **Refonte de l'interface LCD pour le 480×272** — PAS faite : mise en page
+  reprise telle quelle de l'écran 320×240 (le bandeau planning n'occupe que
+  320 px sur 480 de large), boutons jugés "très sommaires". Demande
+  utilisateur réitérée le 26 septembre 2026 ("pas très fun", "impression
+  d'être sur la même page") — toujours en attente de cadrage (couleurs ?
+  disposition ? identité par page ?) avant tout code, personne n'ayant les
+  yeux sur l'écran physique pendant les sessions à distance.
 
 ### Mode autonome sans Internet avec point d’accès Wi-Fi
 
