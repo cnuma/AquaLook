@@ -766,14 +766,27 @@ marquee "equipement absent/desactive" dans le modele transitoire plutot que
 de faire echouer le modele entier -- differe le 26 septembre 2026 (choix
 utilisateur explicite), a cadrer separement de la lisibilite du journal.
 
-**Reste ouvert pour generaliser au reste du journal** (332 autres sites) :
-- 9 autres appels dans `EquipmentExecutionShadowRuntime.cpp` (transitions de
-  l'arbitre de pompe, `logProgress`, accept/reject d'activite) meme famille,
-  meme moteur, laisses dans l'ancien format cette session -- prochaine cible
-  naturelle si le principe convient a l'usage ;
-- inventaire des niveaux de gravite reels des 330+ sites restants, hors
-  famille shadow/orchestrateur, non fait -- ne pas improviser message par
-  message, cadrer par lots comme cette session.
+**Inventaire complet fait le 26 septembre 2026 (soiree)** des 328 sites
+`EventLog::log` restants (voir
+`docs/roadmap/ROADMAP_EVENTLOG_MESSAGES_INVENTORY.md` pour le detail
+fichier par fichier). Resultat notable, qui recadre la portee : **seuls 52
+sites sont juges reellement obscurs** (jargon interne, code brut sans
+explication, meme grille que celle qui a converti les 8 premiers messages)
+-- les 276 autres sont deja clairs et n'ont pas besoin du traitement
+code+catalogue. Convertir les 276 quand meme serait de la sur-ingenierie
+sur des messages deja comprehensibles ; **la generalisation ne concerne
+donc que les 52 obscurs**, decoupes en 4 lots independants dans le
+document d'inventaire :
+
+1. finir la famille shadow/orchestrateur (11 sites, meme regle qu'aujourd'hui) ;
+2. parite V4 / chemin d'execution equipement (14 sites -- **attention**,
+   ce sont de VRAIES sorties relais, pas un moteur passif : traduire le
+   jargon sans toucher a la gravite comme pour le lot 1) ;
+3. codes de diagnostic bas niveau (15 sites -- OTA-1.1, scripts, IoExpander) ;
+4. divers isoles (13 sites).
+
+Chaque lot se traite et se valide independamment (build, flash, verification
+materielle, commit) -- pas un chantier a boucler en une seule session.
 
 Demande utilisateur du 26 septembre 2026, partiellement traitee -- le reste
 a traiter avec la section precedente (bouton "Acquitter" sans resume), meme
