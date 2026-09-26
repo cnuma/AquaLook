@@ -50,6 +50,21 @@ async function fetchStatus() {
     _fetching = false;
   }
 }
+// Previsions J+0..J+4 : route separee de /api/status (26 sept. 2026). Le
+// contenu ne change qu'a chaque cycle meteo cote firmware (OWM_CHECK_INTERVAL_MS,
+// 2h) -- inutile de le redemander a chaque fetchStatus() (8s). Fusionne dans
+// status.forecast pour ne rien changer au code de rendu existant.
+async function fetchForecast() {
+  try {
+    const r = await fetch('/api/forecast');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (status) status.forecast = data.forecast || [];
+    renderAll();
+  } catch(e) {
+    console.log('[fetch] forecast error', e);
+  }
+}
 async function fetchAdminStatus(isRetry) {
   try {
     const r = await fetch('/api/adminStatus');
@@ -1356,6 +1371,7 @@ function toggleActivity() {
   _applyZonesViewBtn();
 })();
 fetchStatus();
+fetchForecast();     // previsions -- rarement redemandees ensuite, voir plus bas
 fetchAdminStatus();  // charge ville + config systeme au demarrage
 fetchDisplayConfig(); // charge les tokens de design LCD et applique les couleurs de zone web
 fetchAssetsVersion(); // pied de page : date/heure de la derniere synchro SD (voir tools/sync-sd-assets.ps1)
@@ -1372,6 +1388,7 @@ async function fetchAssetsVersion() {
   }
 }
 setInterval(fetchStatus, 8000);        // 8s -- moins agressif pour l'ESP32
+setInterval(fetchForecast, 300000);    // 5min -- la meteo ne change que toutes les 2h cote firmware
 setInterval(fetchAdminStatus, 60000);  // 1min -- rarement necessaire
 let displayConfig = null;
 // cZone0..3 ne figurent plus ici : leurs champs ont quitte le menu Zones,

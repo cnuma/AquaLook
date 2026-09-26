@@ -364,6 +364,9 @@ void WebManager::setupRoutes() {
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleStatus(req);
     });
+    _server.on("/api/forecast", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleForecast(req);
+    });
     _server.on("/api/io", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleGetIo(req);
     });
@@ -912,26 +915,13 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
     weather["status"]       = _weather->getStatusStr();
     weather["fetched"]      = _weather->hasFetched();
 
-    // Prévisions J+0..J+4
-    JsonArray forecast = doc["forecast"].to<JsonArray>();
-    for (uint8_t i = 0; i < 5; i++) {
-        ForecastDay fd = _weather->getForecastDay(i);
-        JsonObject fo  = forecast.add<JsonObject>();
-        fo["rainMm"]          = fd.rainMm;
-        fo["tempMax"]         = fd.tempMax;
-        fo["tempMin"]         = fd.tempMin;
-        fo["feelsLikeMax"]    = fd.feelsLikeMax;
-        fo["rainProbability"] = fd.rainProbability;
-        fo["humidityMax"]     = fd.humidityMax;
-        fo["windMaxKmh"]      = fd.windMaxKmh;
-        fo["windDeg"]         = fd.windDeg;
-        fo["gustMaxKmh"]      = fd.gustMaxKmh;
-        fo["cloudsMax"]       = fd.cloudsMax;
-        fo["pressureAvg"]     = fd.pressureAvg;
-        fo["description"]     = fd.description;
-        fo["icon"]            = fd.icon;
-        fo["valid"]           = fd.valid;
-    }
+    // Prevet J+0..J+4 : route separee /api/forecast (voir handleForecast),
+    // pas incluses ici. Le contenu ne change qu'a chaque cycle meteo (2h,
+    // OWM_CHECK_INTERVAL_MS) alors que /api/status est interroge toutes les
+    // 8s par app.js -- le reexpedier a chaque fois etait la principale cause
+    // des reponses > 900 o mesurees lentes (270-450 ms, connexion neuve a
+    // chaque requete, cf. commentaire dans WebManager::begin()). Retire le
+    // 26 septembre 2026.
 
     // Zones
     JsonArray zones = doc["zones"].to<JsonArray>();
@@ -1005,6 +995,37 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
 
     doc["manualDurationMin"] = _schedule->getManualDurationMin();
 
+    sendJson(req, doc);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GET /api/forecast — prevet J+0..J+4, separe de /api/status
+// ═══════════════════════════════════════════════════════════════
+// Extrait de /api/status le 26 septembre 2026 : le contenu ne change qu'a
+// chaque cycle meteo (OWM_CHECK_INTERVAL_MS, 2h) alors que /api/status est
+// interroge toutes les 8s par app.js -- app.js n'a besoin d'appeler cette
+// route que rarement (voir fetchForecast()).
+void WebManager::handleForecast(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    JsonArray forecast = doc["forecast"].to<JsonArray>();
+    for (uint8_t i = 0; i < 5; i++) {
+        ForecastDay fd = _weather->getForecastDay(i);
+        JsonObject fo  = forecast.add<JsonObject>();
+        fo["rainMm"]          = fd.rainMm;
+        fo["tempMax"]         = fd.tempMax;
+        fo["tempMin"]         = fd.tempMin;
+        fo["feelsLikeMax"]    = fd.feelsLikeMax;
+        fo["rainProbability"] = fd.rainProbability;
+        fo["humidityMax"]     = fd.humidityMax;
+        fo["windMaxKmh"]      = fd.windMaxKmh;
+        fo["windDeg"]         = fd.windDeg;
+        fo["gustMaxKmh"]      = fd.gustMaxKmh;
+        fo["cloudsMax"]       = fd.cloudsMax;
+        fo["pressureAvg"]     = fd.pressureAvg;
+        fo["description"]     = fd.description;
+        fo["icon"]            = fd.icon;
+        fo["valid"]           = fd.valid;
+    }
     sendJson(req, doc);
 }
 
