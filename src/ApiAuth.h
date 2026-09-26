@@ -34,8 +34,15 @@
 //
 // Il ne peut etre pose que si aucun n'existe, ou en presentant l'actuel.
 // C'est la confiance au premier usage : la fenetre d'exposition se limite a
-// l'instant de la mise en service, sur son propre reseau. L'effacer demande
-// une remise a zero de la configuration -- volontairement peu commode.
+// l'instant de la mise en service, sur son propre reseau.
+//
+// L'OUBLI DU SECRET
+//
+// Aucune route reseau ne sait l'effacer : ce serait rendre la signature
+// contournable par quiconque est sur le LAN, exactement ce qu'elle protege.
+// Seul un appui sur l'ecran du module (page ADMIN > Systeme, deux appuis de
+// confirmation, voir DisplayManager::handleTouchAdmin) peut le faire --
+// forgetSecret() n'est appele que depuis la, jamais depuis une requete HTTP.
 
 namespace ApiAuth {
 
@@ -54,5 +61,11 @@ bool verify(const String& canonicalMessage, uint32_t nonce, const String& hexSig
 
 // Dernier nonce accepte, pour que le client sache ou reprendre.
 uint32_t lastNonce();
+
+// Efface le secret (et lui seul -- jamais les autres cles du namespace
+// partage). A n'appeler QUE depuis un geste physique sur l'ecran du module :
+// voir le commentaire plus haut. Le nonce n'est pas touche, une fois un
+// nouveau secret pose il continue de progresser sans revenir a 0.
+void forgetSecret();
 
 } // namespace ApiAuth

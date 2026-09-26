@@ -145,4 +145,12 @@ uint32_t lastNonce() {
     return g_lastNonce;
 }
 
+void forgetSecret() {
+    Preferences prefs;
+    if (!prefs.begin(NVS_NAMESPACE, false)) return;
+    prefs.remove(KEY_SECRET);
+    prefs.end();
+    EventLog::log(LOG_WARN, "API: secret efface depuis l'ecran du module (secret oublie)");
+}
+
 } // namespace ApiAuth

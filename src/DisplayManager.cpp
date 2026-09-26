@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "ApiAuth.h"                // page Systeme : oublier le secret API
 #include "RainSchedule.h"
 #include "EventBus.h"
 #include "BootLoopGuard.h"
@@ -1317,6 +1318,23 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
             _needsFullRedraw = true;
         } else if (hitTest(olderX, navY + 1, LOGS_BTN_W, LOGS_NAV_H - 2, tx, ty)) {
             if (n > 0U && _logsScrollOffset + 3U < n) _logsScrollOffset += 3U;
+            _needsFullRedraw = true;
+        }
+    }
+    // Page Systeme — "Oublier le secret API", deux appuis. Accessible
+    // uniquement en touchant CET ecran : aucune route reseau ne l'expose
+    // (voir ApiAuth::forgetSecret()), donc pas d'affaiblissement du modele
+    // de securite existant, juste un filet pour un secret oublie.
+    if (_adminPage == AdminPage::SYSTEM) {
+        if (hitTest(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34, tx, ty)) {
+            const uint32_t now = millis();
+            if (_forgetSecretArmedAt != 0 &&
+                now - _forgetSecretArmedAt <= FORGET_SECRET_CONFIRM_MS) {
+                ApiAuth::forgetSecret();
+                _forgetSecretArmedAt = 0;
+            } else {
+                _forgetSecretArmedAt = now;
+            }
             _needsFullRedraw = true;
         }
     }
@@ -3838,6 +3856,19 @@ void DisplayManager::drawAdminPageSystem() {
     _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
     _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
     _tft.drawString("Reset config : voir navigateur", 10, y);
+
+    // "Oublier le secret API" -- deux appuis, coordonnees partagees avec
+    // handleTouchAdmin() (meme convention que le bouton de la page Sante).
+    // Fenetre passee sans second appui : redevient un premier appui.
+    if (_forgetSecretArmedAt != 0 &&
+        millis() - _forgetSecretArmedAt > FORGET_SECRET_CONFIRM_MS) {
+        _forgetSecretArmedAt = 0;
+    }
+    const bool armed = _forgetSecretArmedAt != 0;
+    drawButton(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34,
+               armed ? "Confirmer ? (retaper ici)" : "Oublier le secret API",
+               armed ? Theme::AMBER : Theme::SURFACE,
+               armed ? 0x0000 : Theme::TEXT);
 }
 
 // ─────────────────────────────────────────────

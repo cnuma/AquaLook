@@ -284,6 +284,13 @@ private:
     uint32_t  _lastTouch       = 0;
     uint32_t  _lastTap         = 0;   // debounce action touch
 
+    // Page ADMIN > Systeme : "Oublier le secret API" exige deux appuis --
+    // 0 = non arme, sinon horodatage du 1er appui. Fenetre passee, un
+    // nouvel appui recompte comme un premier (pas de piege a distance : voir
+    // ApiAuth.h, seul un doigt sur CET ecran peut declencher l'action).
+    uint32_t  _forgetSecretArmedAt = 0;
+    static constexpr uint32_t FORGET_SECRET_CONFIRM_MS = 5000UL;
+
     // ── Cache HOME (invariant I16 — redraw boutons seuil 2%) ──
     struct HomeCache {
         String  hhMM       = "";
