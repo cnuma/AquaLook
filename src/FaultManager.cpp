@@ -8,6 +8,7 @@ extern TFT_eSPI* g_tftPtr;
 uint32_t FaultManager::_activeMask = 0;
 bool FaultManager::_unacknowledged = false;
 bool FaultManager::_started = false;
+char FaultManager::_lastErrorMsg[96] = {0};
 
 namespace {
 constexpr uint32_t ERROR_DARK_BEFORE_MS = 500;
@@ -113,8 +114,11 @@ void FaultManager::setActive(FaultId id, bool active) {
     }
 }
 
-void FaultManager::notifyError() {
+void FaultManager::notifyError(const char* message) {
     _unacknowledged = true;
+    if (message && message[0] != '\0') {
+        strlcpy(_lastErrorMsg, message, sizeof(_lastErrorMsg));
+    }
 }
 
 void FaultManager::acknowledge() {
@@ -135,6 +139,10 @@ bool FaultManager::isAcknowledged() {
 
 uint32_t FaultManager::activeMask() {
     return _activeMask;
+}
+
+const char* FaultManager::lastErrorMessage() {
+    return _lastErrorMsg;
 }
 
 const char* FaultManager::label(FaultId id) {

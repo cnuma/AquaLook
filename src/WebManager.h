@@ -114,21 +114,7 @@ public:
         );
 
         _server.on("/api/faults", HTTP_GET,
-            [](AsyncWebServerRequest* req) {
-                String body;
-                body.reserve(96);
-                body += F("{\"active\":");
-                body += FaultManager::hasActiveFaults() ? F("true") : F("false");
-                body += F(",\"unacknowledged\":");
-                body += FaultManager::hasUnacknowledgedErrors() ? F("true") : F("false");
-                body += F(",\"mask\":");
-                body += FaultManager::activeMask();
-                body += '}';
-                AsyncWebServerResponse* response =
-                    req->beginResponse(200, "application/json", body);
-                response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-                req->send(response);
-            }
+            [this](AsyncWebServerRequest* req) { handleFaults(req); }
         );
 
         _server.on("/api/incidents/storage-sd", HTTP_GET,
@@ -620,6 +606,7 @@ private:
     void handleStatus(AsyncWebServerRequest* request);
     void handleForecast(AsyncWebServerRequest* request);
     void handleZonesConfig(AsyncWebServerRequest* request);
+    void handleFaults(AsyncWebServerRequest* request);
     void handleAdminStatus(AsyncWebServerRequest* request);
     void handleDiagnostics(AsyncWebServerRequest* request);
     void handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc);

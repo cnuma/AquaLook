@@ -40,7 +40,11 @@ enum class FaultId : uint8_t {
     // fonctionnement stable, et s'est mis en mode degrade. Ajoute le 17 aout
     // 2026, apres deux boucles de redemarrages que rien dans le module n'a
     // arretees : le seul rempart avait ete un utilisateur debranchant la prise.
-    BOOT_LOOP = 9
+    BOOT_LOOP = 9,
+    // Sentinelle : nombre de valeurs ci-dessus, PAS un defaut valide.
+    // Garde la boucle de decomposition du masque (WebManager::handleFaults)
+    // a jour automatiquement si un FaultId est ajoute plus tard.
+    COUNT_
 };
 
 class FaultManager {
@@ -49,13 +53,26 @@ public:
     static void update();
 
     static void setActive(FaultId id, bool active);
-    static void notifyError();
+    // message : texte de la ligne de journal LOG_ERROR a l'origine de cet
+    // appel, conserve tel quel (voir lastErrorMessage()) -- pour qu'un
+    // defaut sans FaultId dedie (n'importe lequel des autres appels
+    // EventLog::log(LOG_ERROR, ...) du projet) reste identifiable depuis
+    // /api/faults sans avoir a faire defiler le journal. nullptr pour les
+    // appelants qui n'ont pas de message associe (ex. garde anti-boucle) --
+    // ne touche alors pas au dernier message retenu.
+    static void notifyError(const char* message = nullptr);
     static void acknowledge();
 
     static bool hasActiveFaults();
     static bool hasUnacknowledgedErrors();
     static bool isAcknowledged();
     static uint32_t activeMask();
+
+    // Dernier message LOG_ERROR recu par notifyError(), ou chaine vide si
+    // aucun jusqu'ici. Persiste apres acquittement (comme le champ
+    // "Derniere cause" de l'incident SD) -- utile pour confirmer ce qu'on
+    // vient d'acquitter, pas seulement ce qui est encore actif.
+    static const char* lastErrorMessage();
 
     // Libelle court, en francais, pour un defaut donne -- SOURCE UNIQUE,
     // reprise telle quelle par la route /api/health, la page Sante web et
@@ -79,4 +96,5 @@ private:
     static uint32_t _activeMask;
     static bool _unacknowledged;
     static bool _started;
+    static char _lastErrorMsg[96];
 };

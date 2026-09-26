@@ -664,6 +664,28 @@ point de depart.
 
 ### Page Journal (`/logs`) : le bouton "Acquitter" n'indique pas ce qu'il acquitte
 
+**Traite le 26 septembre 2026 (soiree).** La portee initiale ("decomposer
+le masque en libelles") s'est averee insuffisante une fois le code lu de
+pres : `_unacknowledged` (le booleen derriere `unacknowledged`) est mis a
+vrai par DEUX chemins distincts -- `FaultManager::setActive()` (les 10
+`FaultId` structures, bien couverts par `activeMask()`/`label()`) ET
+`FaultManager::notifyError()`, appele par `EventLog::log()` a CHAQUE ligne
+`LOG_ERROR` du projet (339 sites), qui ne touche jamais `activeMask()`.
+Preuve concrete rencontree dans la meme session : le "[ERR] Script 5
+ARRETE : action refusee" declenche par un test manuel de zone aurait ete
+invisible dans une decomposition du seul masque (`mask` valait 0 a ce
+moment-la).
+
+Correctif retenu : `FaultManager::notifyError(const char* message =
+nullptr)` retient desormais aussi le texte brut de la derniere ligne
+`LOG_ERROR` (`lastErrorMessage()`, persiste apres acquittement -- meme
+principe que "Derniere cause" sur le bloc Incident SD). `/api/faults`
+expose maintenant `labels` (les `FaultId` structures actifs, comme prevu
+initialement) ET `lastErrorMessage` (le texte brut, qui couvre tout le
+reste) -- les deux sont complementaires, aucun seul n'aurait suffi.
+Applique a `/logs` (bandeau du bouton) et au bandeau discret `alarm.js`
+present sur les autres pages, meme constat sur les deux.
+
 Constat utilisateur (capture d'ecran du 26 septembre 2026) : le bandeau
 d'etat au-dessus du bouton "Acquitter les erreurs" (`logs.html:9,50`,
 `refreshFaults()`) affiche seulement une phrase generique -- "Erreur

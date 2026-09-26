@@ -30,8 +30,13 @@ void FaultManager::setActive(FaultId id, bool active) {
     }
 }
 
-void FaultManager::notifyError() {
+void FaultManager::notifyError(const char* message) {
+    (void)message;
     _unacknowledged = true;
+}
+
+const char* FaultManager::lastErrorMessage() {
+    return "";
 }
 
 void FaultManager::acknowledge() {

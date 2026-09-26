@@ -1104,6 +1104,39 @@ void WebManager::handleZonesConfig(AsyncWebServerRequest* req) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  GET /api/faults — etat des defauts, pour le bandeau /logs et alarm.js
+// ═══════════════════════════════════════════════════════════════
+// active/unacknowledged/mask : inchanges, compatibilite avec alarm.js qui
+// ne lit que active/unacknowledged.
+//
+// labels/lastErrorMessage ajoutes le 26 septembre 2026 : le masque brut ne
+// suffisait pas a dire QUEL defaut on acquitte -- decompose desormais les
+// FaultId structures en libelles (FaultManager::label(), meme source que
+// la page Sante). Mais la plupart des lignes LOG_ERROR du projet (script,
+// meteo, etc.) ne passent PAS par un FaultId structure -- seul
+// lastErrorMessage (texte brut de la derniere ligne LOG_ERROR, voir
+// FaultManager::notifyError()) les couvre. Les deux sont complementaires,
+// aucun des deux seul n'aurait suffi.
+void WebManager::handleFaults(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    doc["active"] = FaultManager::hasActiveFaults();
+    doc["unacknowledged"] = FaultManager::hasUnacknowledgedErrors();
+    const uint32_t mask = FaultManager::activeMask();
+    doc["mask"] = mask;
+
+    JsonArray labels = doc["labels"].to<JsonArray>();
+    for (uint8_t bit = 0; bit < static_cast<uint8_t>(FaultId::COUNT_); ++bit) {
+        if ((mask & (1UL << bit)) != 0U) {
+            labels.add(FaultManager::label(static_cast<FaultId>(bit)));
+        }
+    }
+
+    doc["lastErrorMessage"] = FaultManager::lastErrorMessage();
+
+    sendJson(req, doc);
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  GET /api/adminStatus — état système pour page ADMIN web
 // ═══════════════════════════════════════════════════════════════
 void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {

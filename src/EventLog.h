@@ -94,7 +94,7 @@ public:
 
         if (level >= LOG_ERROR) {
             _hasErrors = true;
-            FaultManager::notifyError();
+            FaultManager::notifyError(buf);
         }
 
         const char* prefix = (level == LOG_ERROR) ? "[ERR] " :

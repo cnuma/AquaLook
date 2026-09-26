@@ -36,10 +36,17 @@
 
         if (fault.unacknowledged) {
           panel.classList.add('fault-unacknowledged');
+          // lastErrorMessage : texte brut de la derniere ligne LOG_ERROR
+          // (voir FaultManager::notifyError()), ajoute le 26 septembre 2026
+          // pour que ce bandeau dise QUOI, pas seulement QU'IL Y A quelque
+          // chose -- meme constat que pour le bouton "Acquitter" de /logs.
+          const detail = fault.lastErrorMessage
+            ? ' : ' + fault.lastErrorMessage
+            : '';
           text.textContent =
-            fault.active
+            (fault.active
               ? 'Erreur active — consulter et acquitter'
-              : 'Erreur mémorisée — consulter et acquitter';
+              : 'Erreur mémorisée — consulter et acquitter') + detail;
           return;
         }
 
