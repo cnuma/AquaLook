@@ -129,14 +129,14 @@ bool EquipmentRuntimeConfigStore::load() {
     _safeDefaults = false;
     _lastStatus = "loaded";
 
+    // [EQUIP-CONFIG] : meme code que main.cpp (config pompe chargee depuis
+    // la NVS). Voir /logs/messages.tsv.
     EventLog::log(
         LOG_INFO,
-        "Equipment config: chargee mode=%s enabled=%s assignment=%u delays=%u/%u",
+        "[EQUIP-CONFIG] status=loaded mode=%s enabled=%s assignment=%u",
         equipmentControlModeName(_config.pump.mode),
         _config.pump.enabled ? "yes" : "no",
-        static_cast<unsigned>(_config.pump.relayAssignmentIndex),
-        static_cast<unsigned>(_config.pump.startupDelayMs),
-        static_cast<unsigned>(_config.pump.shutdownDelayMs)
+        static_cast<unsigned>(_config.pump.relayAssignmentIndex)
     );
     return true;
 }

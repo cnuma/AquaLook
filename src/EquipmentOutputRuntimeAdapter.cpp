@@ -117,9 +117,12 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     if (zoneIndex >= MAX_ZONES) {
         recordExecutionPath(ExecutionPath::FAILED);
+        // [EQUIP-OUTPUT] : vrai pilotage de vanne (pas un moteur passif).
+        // Cible hors bornes = bug interne (index invalide transmis), pas
+        // un etat de configuration. Voir /logs/messages.tsv.
         EventLog::log(
             LOG_ERROR,
-            "Equipment: zone %u %s path=failed error=invalid_target",
+            "[EQUIP-OUTPUT] zone=%u %s echec cible_invalide",
             zoneIndex + 1U,
             active ? "ON" : "OFF"
         );
@@ -166,10 +169,13 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
         // une panne. Les confondre noyait les pannes sous un flot de lignes
         // ERR repetees a chaque creneau.
         const bool unmapped = _relayManager && !_relayManager->zoneHasOutput(zoneIndex);
+        // [EQUIP-OUTPUT] : WARN = zone sans relais assigne (configuration
+        // normale, ex. zone de test) ; ERROR = une sortie assignee refuse de
+        // repondre (panne reelle). Voir /logs/messages.tsv.
         EventLog::log(
             unmapped ? LOG_WARN : LOG_ERROR,
-            unmapped ? "Equipment: zone %u %s ignore, aucune sortie affectee"
-                     : "Equipment: zone %u %s path=failed error=dependency_unavailable",
+            unmapped ? "[EQUIP-OUTPUT] zone=%u %s sans_sortie"
+                     : "[EQUIP-OUTPUT] zone=%u %s echec_pilote",
             zoneIndex + 1U,
             active ? "ON" : "OFF"
         );
@@ -194,11 +200,10 @@ Domain::OperationResult EquipmentOutputRuntimeAdapter::setZoneValve(
 
     EventLog::log(
         LOG_INFO,
-        "Equipment: zone %u %s path=%s exec=%u ok=%lu ko=%lu",
+        "[EQUIP-OUTPUT] zone=%u %s path=%s ok=%lu ko=%lu",
         zoneIndex + 1U,
         active ? "ON" : "OFF",
         executionPathName(_lastExecutionPath),
-        static_cast<unsigned>(result.executionId.value),
         static_cast<unsigned long>(_executionCounters.physicalBackend),
         static_cast<unsigned long>(_executionCounters.failed)
     );

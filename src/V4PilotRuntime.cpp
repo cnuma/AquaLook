@@ -116,8 +116,11 @@ bool V4PilotRuntime::begin(
         // semaines que toutes les cartes etaient pilotees par V4.
         const Domain::DriverRegistryResult reg = _driverRegistry.registerDriver(binding);
         if (!reg.ok()) {
+            // [RELAY-V4-BOARD] : vrai probleme de cablage/registre au
+            // demarrage -- ne pas interrompre la boucle (voir commentaire
+            // ci-dessus) mais rester visible. Voir /logs/messages.tsv.
             EventLog::log(LOG_ERROR,
-                          "Relais V4: carte %u refusee par le registre (erreur %u)",
+                          "[RELAY-V4-BOARD] carte=%u refusee err=%u",
                           (unsigned)b, (unsigned)reg.error);
             continue;
         }

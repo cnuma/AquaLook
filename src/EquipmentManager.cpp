@@ -272,11 +272,15 @@ EquipmentManager::ActionResult EquipmentManager::dryRunZonePlan(
     uint8_t zone,
     bool starting
 ) const {
+    // [EQUIP-PLAN] : previsualisation du plan juste avant l'action REELLE
+    // (executeZone(), appele juste apres par startZone()/stopZone()) --
+    // "dry_run" designe la construction du plan, pas l'action elle-meme.
+    // Voir /logs/messages.tsv.
     const ZoneExecutionPlan plan = buildZonePlan(zone, starting);
     if (!plan.valid()) {
         EventLog::log(
             LOG_WARN,
-            "Equipment plan: zone %u %s dry_run=yes error=%u",
+            "[EQUIP-PLAN] zone=%u %s invalide err=%u",
             zone + 1U,
             starting ? "START" : "STOP",
             static_cast<unsigned>(plan.result)
@@ -286,7 +290,7 @@ EquipmentManager::ActionResult EquipmentManager::dryRunZonePlan(
 
     EventLog::log(
         LOG_INFO,
-        "Equipment plan: zone %u %s steps=%u pump=%s dry_run=yes",
+        "[EQUIP-PLAN] zone=%u %s etapes=%u pompe=%s",
         zone + 1U,
         starting ? "START" : "STOP",
         plan.stepCount,
@@ -298,7 +302,7 @@ EquipmentManager::ActionResult EquipmentManager::dryRunZonePlan(
         if (step.action == PLAN_ACTION_WAIT) {
             EventLog::log(
                 LOG_INFO,
-                "Equipment plan: zone %u step=%u action=%s delay=%lu dry_run=yes",
+                "[EQUIP-PLAN] zone=%u etape=%u %s attente=%lu",
                 zone + 1U,
                 index + 1U,
                 planActionName(step.action),
@@ -309,7 +313,7 @@ EquipmentManager::ActionResult EquipmentManager::dryRunZonePlan(
 
         EventLog::log(
             LOG_INFO,
-            "Equipment plan: zone %u step=%u action=%s equipment=%u dry_run=yes",
+            "[EQUIP-PLAN] zone=%u etape=%u %s equip=%u",
             zone + 1U,
             index + 1U,
             planActionName(step.action),

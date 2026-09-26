@@ -287,16 +287,12 @@ static bool buildShadowPumpScenario(
         nullptr
     );
 
+    // [SHDW-PUMP-CFG] : meme code que le reglage de la pompe partagee
+    // (main.cpp, plus bas) -- moteur en validation, ne pilote rien.
     EventLog::log(
         LOG_INFO,
-        "Shadow pump: scenario pret equipment=%u assignment=%u board=%u channel=%u source=%s delays=%u/%u passive=yes",
-        static_cast<unsigned>(equipmentIndex),
-        static_cast<unsigned>(assignmentIndex),
-        static_cast<unsigned>(boardIndex),
-        static_cast<unsigned>(channelIndex),
-        syntheticBoard ? "synthetic_board" : "free_channel",
-        static_cast<unsigned>(runtimeConfig.pump.startupDelayMs),
-        static_cast<unsigned>(runtimeConfig.pump.shutdownDelayMs)
+        "[SHDW-PUMP-CFG] scenario pret source=%s",
+        syntheticBoard ? "synthetic_board" : "free_channel"
     );
     return shadowEquipmentMgr.isInitialized();
 }
@@ -387,13 +383,17 @@ static void onRelayRequest(uint8_t zone, bool state) {
         const bool accord = cZone && cOne && cState && cEquip && cChan;
         if (accord) g_parityAgree++; else g_parityDisagree++;
 
-        // Ligne compacte (< LOG_MSG_LEN=72) : le niveau porte le verdict
-        // (INFO=accord, WARN=desaccord), donc `grep WARN PARITE` debusque
-        // instantanement toute divergence. Le detail des criteres n'est
-        // journalise qu'en cas de desaccord, pour comprendre lequel a lache.
+        // [PARITY-CHECK] : controle de securite reel (vraies sorties relais),
+        // PAS un moteur passif -- ne pas recalibrer la gravite comme pour
+        // les codes SHDW-*/ORCH-*. Ligne compacte (< LOG_MSG_LEN) : le
+        // niveau porte le verdict (INFO=accord, WARN=desaccord), donc
+        // `grep PARITY-CHECK` puis `grep WARN` debusque instantanement toute
+        // divergence. Le detail des criteres n'est journalise qu'en cas de
+        // desaccord (PARITE-KO ci-dessous), pour comprendre lequel a lache.
+        // Explication complete du DESACCORD dans /logs/messages.tsv.
         EventLog::log(
             accord ? LOG_INFO : LOG_WARN,
-            "PARITE z%u %s L=%u.%u/%s V=%u.%u/%s ok=%lu ko=%lu %s",
+            "[PARITY-CHECK] PARITE z%u %s L=%u.%u/%s V=%u.%u/%s ok=%lu ko=%lu %s",
             zone + 1U, state ? "OUVRE" : "FERME",
             static_cast<unsigned>(tableValve.boardIndex),
             static_cast<unsigned>(tableValve.channelIndex), state ? "ON" : "OFF",
@@ -405,7 +405,7 @@ static void onRelayRequest(uint8_t zone, bool state) {
         );
         if (!accord) {
             EventLog::log(LOG_WARN,
-                "PARITE-KO z%u crit zone=%u une=%u etat=%u equip=%u voie=%u",
+                "[PARITY-CHECK] PARITE-KO z%u crit zone=%u une=%u etat=%u equip=%u voie=%u",
                 zone + 1U, static_cast<unsigned>(cZone), static_cast<unsigned>(cOne),
                 static_cast<unsigned>(cState), static_cast<unsigned>(cEquip),
                 static_cast<unsigned>(cChan));
@@ -418,9 +418,13 @@ static void onRelayRequest(uint8_t zone, bool state) {
             displayMgr.requestDynamicRefresh();
             return;
         }
+        // [EQUIP-FALLBACK] : cette commande precise a echoue cote modele
+        // equipement (vrai chemin d'execution, pas le moteur shadow) --
+        // repli sur outputAdapter juste apres, qui pilote reellement la
+        // vanne. Voir /logs/messages.tsv.
         EventLog::log(
             LOG_WARN,
-            "Equipment: zone %u echec=%u, fallback adaptateur",
+            "[EQUIP-FALLBACK] zone=%u echec=%u",
             zone + 1U,
             static_cast<unsigned>(result)
         );
@@ -555,15 +559,16 @@ void setup() {
     const bool equipmentConfigStoreReady = equipmentConfigStore.begin();
     const AquaLook::Runtime::EquipmentRuntimeConfig& equipmentConfig =
         equipmentConfigStore.config();
+    // [EQUIP-CONFIG] : chargement de la config pompe persistee (meme code
+    // que EquipmentRuntimeConfigStore) -- "status" different de "ok" means
+    // les defauts surs ont ete appliques. Voir /logs/messages.tsv.
     EventLog::log(
         equipmentConfigStoreReady ? LOG_INFO : LOG_WARN,
-        "Equipment config runtime: status=%s enabled=%s mode=%s assignment=%u delays=%u/%u",
+        "[EQUIP-CONFIG] status=%s enabled=%s mode=%s assignment=%u",
         equipmentConfigStore.lastStatus(),
         equipmentConfig.pump.enabled ? "yes" : "no",
         AquaLook::Runtime::equipmentControlModeName(equipmentConfig.pump.mode),
-        static_cast<unsigned>(equipmentConfig.pump.relayAssignmentIndex),
-        static_cast<unsigned>(equipmentConfig.pump.startupDelayMs),
-        static_cast<unsigned>(equipmentConfig.pump.shutdownDelayMs)
+        static_cast<unsigned>(equipmentConfig.pump.relayAssignmentIndex)
     );
 
     displayMgr.initTft();
@@ -651,9 +656,13 @@ void setup() {
         equipmentConfig.pump.mode == AquaLook::Runtime::EquipmentControlMode::MODE_PHYSICAL;
 
     if (physicalModeRequested) {
+        // [SHDW-PUMP-CFG] : contrairement aux autres lignes de ce code, ceci
+        // reste WARN -- pas un simple etat "pas encore pret", mais un
+        // reglage explicitement demande par l'utilisateur (mode physique)
+        // qui n'est pas honore. Voir /logs/messages.tsv.
         EventLog::log(
             LOG_WARN,
-            "Equipment config runtime: mode physical demande mais bloque, execution shadow forcee"
+            "[SHDW-PUMP-CFG] mode physical bloque, shadow force"
         );
     }
 
@@ -755,7 +764,7 @@ void setup() {
     // a la fois "toutes les zones" et "la zone 1 seule"). Le perimetre
     // exact est journalise par V4PilotRuntime, qui, lui, le connait.
     EventLog::log(LOG_INFO,
-                  "Parite: plan V4 vs table de cablage a chaque decision");
+                  "[PARITY-CHECK] verification a chaque decision (plan V4 vs cablage)");
     EventLog::log(LOG_INFO, "HW: PSRAM %u octets", AquaLook::Heap::totalPsramBytes());
 }
 

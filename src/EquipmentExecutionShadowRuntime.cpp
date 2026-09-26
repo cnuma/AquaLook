@@ -51,9 +51,12 @@ bool EquipmentExecutionShadowRuntime::submit(
     ZoneSlot& slot = _slots[zone];
     if (slot.engine.isActive()) {
         const ExecutionContext& previous = slot.engine.context();
+        // [SHDW-ACTIVITY] : supersession normale (nouvelle commande pour une
+        // zone dont la simulation precedente tournait encore). Voir
+        // /logs/messages.tsv.
         EventLog::log(
-            LOG_WARN,
-            "[Activity#%u][Exec#%u] Shadow: zone %u plan remplace passive=yes",
+            LOG_INFO,
+            "[SHDW-ACTIVITY] A%u/E%u zone=%u plan remplace",
             previous.activityId.value,
             previous.executionId.value,
             zone + 1U
@@ -89,15 +92,16 @@ bool EquipmentExecutionShadowRuntime::submit(
             }
         }
 
+        // [SHDW-PUMP] : transition normale de l'arbitre (meme code que les
+        // incoherences ci-dessous -- moteur en validation, ne pilote rien).
         EventLog::log(
             LOG_INFO,
-            "Shadow pump arbiter: zone %u %s users=%u->%u transition=%s consistent=%s passive=yes",
+            "[SHDW-PUMP] zone=%u %s users=%u->%u %s",
             zone + 1U,
             starting ? "ACQUIRE" : "RELEASE",
             usersBefore,
             _sharedPumpUsers,
-            transition,
-            isConsistent() ? "yes" : "no"
+            transition
         );
     }
 
@@ -127,19 +131,17 @@ bool EquipmentExecutionShadowRuntime::submit(
     slot.observedState = slot.engine.context().state;
     slot.observedStep = slot.engine.context().currentStep;
 
+    // [SHDW-ACTIVITY] : "accepte=non" signale un plan que le simulateur n'a
+    // pas reussi a charger -- ne pilote rien de reel, mais merite un coup
+    // d'oeil si ca se repete. Voir /logs/messages.tsv.
     EventLog::log(
         loaded ? LOG_INFO : LOG_WARN,
-        "[Activity#%u][Exec#%u] Shadow: zone %u %s accepted=%s steps=%u source_steps=%u pump=%s users=%u consistent=%s passive=yes",
+        "[SHDW-ACTIVITY] A%u/E%u zone=%u %s accepte=%s",
         activityValue,
         executionValue,
         zone + 1U,
         starting ? "START" : "STOP",
-        loaded ? "yes" : "no",
-        effectivePlan.stepCount,
-        plan.stepCount,
-        effectivePlan.requiresPump ? "yes" : "no",
-        _sharedPumpUsers,
-        isConsistent() ? "yes" : "no"
+        loaded ? "oui" : "non"
     );
     return loaded;
 }
@@ -260,9 +262,11 @@ void EquipmentExecutionShadowRuntime::logProgress(
         slot.observedStep < context.plan.stepCount) {
         const EquipmentManager::PlanStep& consumed =
             context.plan.steps[slot.observedStep];
+        // [SHDW-ACTIVITY] : progression normale de la simulation. Voir
+        // /logs/messages.tsv.
         EventLog::log(
             LOG_INFO,
-            "[Activity#%u][Exec#%u] Shadow: zone %u step=%u/%u action=%s consumed passive=yes",
+            "[SHDW-ACTIVITY] A%u/E%u zone=%u etape %u/%u %s",
             context.activityId.value,
             context.executionId.value,
             zone + 1U,
@@ -275,29 +279,31 @@ void EquipmentExecutionShadowRuntime::logProgress(
     if (context.state != slot.observedState) {
         if (context.state == PassiveExecutionState::RUNNING) {
             EventLog::log(LOG_INFO,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=RUNNING passive=yes",
+                "[SHDW-ACTIVITY] A%u/E%u zone=%u en_cours",
                 context.activityId.value, context.executionId.value, zone + 1U);
         } else if (context.state == PassiveExecutionState::WAITING) {
             const EquipmentManager::PlanStep& waitStep =
                 context.plan.steps[context.currentStep];
             EventLog::log(LOG_INFO,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=WAITING delay=%lu passive=yes",
+                "[SHDW-ACTIVITY] A%u/E%u zone=%u attente %lums",
                 context.activityId.value, context.executionId.value, zone + 1U,
                 (unsigned long)waitStep.delayMs);
         } else if (context.state == PassiveExecutionState::SUCCEEDED) {
             EventLog::log(LOG_INFO,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=SUCCEEDED duration=%lu users=%u consistent=%s passive=yes",
+                "[SHDW-ACTIVITY] A%u/E%u zone=%u succes %lums",
                 context.activityId.value, context.executionId.value, zone + 1U,
-                (unsigned long)(nowMs - context.startedAtMs), _sharedPumpUsers,
-                isConsistent() ? "yes" : "no");
+                (unsigned long)(nowMs - context.startedAtMs));
         } else if (context.state == PassiveExecutionState::FAILED) {
+            // [SHDW-ACTIVITY] : la simulation elle-meme a echoue -- ne
+            // pilote rien de reel, mais merite un coup d'oeil si ca se
+            // repete (bug potentiel du simulateur).
             EventLog::log(LOG_WARN,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=FAILED error=%u passive=yes",
+                "[SHDW-ACTIVITY] A%u/E%u zone=%u echec err=%u",
                 context.activityId.value, context.executionId.value, zone + 1U,
                 (unsigned)context.error);
         } else if (context.state == PassiveExecutionState::CANCELLED) {
             EventLog::log(LOG_WARN,
-                "[Activity#%u][Exec#%u] Shadow: zone %u state=CANCELLED passive=yes",
+                "[SHDW-ACTIVITY] A%u/E%u zone=%u annule",
                 context.activityId.value, context.executionId.value, zone + 1U);
         }
     }
