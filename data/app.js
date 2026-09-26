@@ -28,6 +28,25 @@ async function ensureAllZoneSlots() {
 }
 let _fetching = false;
 let _fetchTimer = null;
+// forecast et zonesConfig vivent dans des routes separees, rafraichies bien
+// moins souvent que /api/status (8s) -- voir fetchForecast()/fetchZonesConfig().
+// fetchStatus() REMPLACE status en entier a chaque poll (status = await
+// r.json()), donc sans ce cache et sans le reappliquer ici, les deux
+// disparaissaient de l'affichage 8s apres chaque rafraichissement (bug
+// constate le 26 septembre 2026 en revisitant ce code : le clignotement
+// n'avait pas ete vu lors de la validation initiale, faite via curl sur la
+// taille/le temps de reponse, pas sur plusieurs minutes d'affichage reel).
+let forecastCache = null;
+let zonesConfigCache = null;
+function applyCachedExtras() {
+  if (!status) return;
+  if (forecastCache) status.forecast = forecastCache;
+  if (zonesConfigCache && status.zones) {
+    status.zones.forEach((z, i) => {
+      if (zonesConfigCache[i]) Object.assign(z, zonesConfigCache[i]);
+    });
+  }
+}
 async function fetchStatus() {
   if (_fetching) { console.log('[fetch] skipped -- already fetching'); return; }
   _fetching = true;
@@ -40,6 +59,7 @@ async function fetchStatus() {
     const r = await fetch('/api/status');
     console.log('[fetch] response', r.status);
     status = await r.json();
+    applyCachedExtras();
     console.log('[fetch] ok, zones=', status?.zones?.length);
     renderAll();
   } catch(e) {
@@ -59,10 +79,28 @@ async function fetchForecast() {
     const r = await fetch('/api/forecast');
     if (!r.ok) return;
     const data = await r.json();
-    if (status) status.forecast = data.forecast || [];
+    forecastCache = data.forecast || [];
+    applyCachedExtras();
     renderAll();
   } catch(e) {
     console.log('[fetch] forecast error', e);
+  }
+}
+// Identite/reglages des zones (nom, couleur, notifications, mode, pluie...) :
+// route separee de /api/status (26 sept. 2026), meme principe que
+// fetchForecast() -- ne change que sur une sauvegarde de reglages
+// (saveZoneConfig), rechargee une fois au demarrage puis apres chaque
+// sauvegarde, jamais dans le poll rapide.
+async function fetchZonesConfig() {
+  try {
+    const r = await fetch('/api/zonesConfig');
+    if (!r.ok) return;
+    const data = await r.json();
+    zonesConfigCache = data.zones || [];
+    applyCachedExtras();
+    renderAll();
+  } catch(e) {
+    console.log('[fetch] zonesConfig error', e);
   }
 }
 async function fetchAdminStatus(isRetry) {
@@ -377,6 +415,7 @@ async function saveZoneConfig(zoneIdx) {
   addLog(`Zone ${zoneIdx+1} config sauvegardee`);
   closeModal();
   fetchStatus();
+  fetchZonesConfig();
 }
 function renderPlanning() {
   const todayEsp = getTodayEspIdx();
@@ -1372,6 +1411,7 @@ function toggleActivity() {
 })();
 fetchStatus();
 fetchForecast();     // previsions -- rarement redemandees ensuite, voir plus bas
+fetchZonesConfig();  // nom/couleur/notifs/mode/pluie -- idem, voir plus bas
 fetchAdminStatus();  // charge ville + config systeme au demarrage
 fetchDisplayConfig(); // charge les tokens de design LCD et applique les couleurs de zone web
 fetchAssetsVersion(); // pied de page : date/heure de la derniere synchro SD (voir tools/sync-sd-assets.ps1)

@@ -273,7 +273,10 @@ function sousListeNotifier() {
 async function rendreReferences() {
   let h = '';
   try {
-    const st = await (await fetch('/api/status')).json();
+    // id/name/hasOutput vivent dans /api/zonesConfig depuis le 26 sept.
+    // 2026 (separes de /api/status, qui ne porte plus que l'etat vivant) --
+    // cette page n'a besoin que de l'identite des zones, pas de leur etat.
+    const st = await (await fetch('/api/zonesConfig')).json();
     const zones = st.zones || [];
     h += '<h3>Zones</h3>';
     if (!zones.length) h += '<div class="vide">Aucune zone.</div>';

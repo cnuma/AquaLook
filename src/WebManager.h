@@ -619,6 +619,7 @@ private:
     void setupCaptiveRoutes();
     void handleStatus(AsyncWebServerRequest* request);
     void handleForecast(AsyncWebServerRequest* request);
+    void handleZonesConfig(AsyncWebServerRequest* request);
     void handleAdminStatus(AsyncWebServerRequest* request);
     void handleDiagnostics(AsyncWebServerRequest* request);
     void handleSetMode(AsyncWebServerRequest* req, JsonDocument& doc);

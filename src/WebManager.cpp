@@ -365,6 +365,9 @@ void WebManager::setupRoutes() {
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleStatus(req);
     });
+    _server.on("/api/zonesConfig", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleZonesConfig(req);
+    });
     _server.on("/api/forecast", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleForecast(req);
     });
@@ -978,37 +981,18 @@ void WebManager::handleStatus(AsyncWebServerRequest* req) {
         zo["remaining"]= _schedule ? _schedule->getRemainingMs(z): 0;
         zo["schedActive"] = _schedule ? _schedule->isZoneActive(z) : false;
         zo["reason"]   = _schedule ? _schedule->getLastReason(z).c_str() : "";
-        // Une zone sans voie physique ne peut pas arroser, et le moteur le
-        // sait -- mais l utilisateur, lui, ne voyait qu une zone qui refuse
-        // de demarrer, sans explication. Le cas est reel : une carte 2 voies
-        // pour 8 zones declarees. On expose donc l affectation, pour que
-        // l ecran comme le web puissent la faire ressortir.
-        const bool mapped = _relais.relay &&
-            RelayTopology::resolveZoneValve(
-                _relais.relay->topology(), z,
-                _config ? _config->nbZones() : z + 1U).valid;
-        zo["hasOutput"] = mapped;
-        if (_config) zo["name"] = _config->zone(z).name;
-        if (_config) zo["color"] = _config->zoneColor(z);
-        if (_config) zo["id"] = _config->zoneId(z);
-        if (_config) {
-            const uint8_t notifyMask = _config->zoneNotificationMask(z);
-            zo["notificationMask"] = notifyMask;
-            zo["notifyStart"] = (notifyMask & ZONE_NOTIFY_START) != 0U;
-            zo["notifyStop"] = (notifyMask & ZONE_NOTIFY_STOP) != 0U;
-        }
+        // name/color/id/notificationMask/notifyStart/notifyStop/mode/
+        // intervalDays/rain/hasOutput : deplaces vers /api/zonesConfig
+        // (voir handleZonesConfig) le 26 septembre 2026 -- ne changent que
+        // sur une sauvegarde de reglages, pas a chaque poll (8s) de cette
+        // route. intervalAnchorDay RESTE ici : contrairement aux champs
+        // ci-dessus, un arrosage en mode intervalle le fait avancer sans
+        // action utilisateur -- le figer dans un cache rarement rafraichi
+        // afficherait une date perimee.
 
         ZoneSchedule zs = _schedule->getZoneSchedule(z);
 
-        zo["mode"]               = zs.mode;
-        zo["intervalDays"]       = zs.intervalDays;
         zo["intervalAnchorDay"]  = zs.intervalAnchorDay;
-        // Compatibilité avec le JavaScript existant pendant la transition.
-        zo["lastWateredDay"]     = zs.intervalAnchorDay;
-
-        JsonObject rain = zo["rain"].to<JsonObject>();
-        rain["threshMm"] = zs.rain.thresholdMm;
-        rain["hours"]    = zs.rain.forecastHours;
 
         // Arrosage prevu aujourd'hui pour cette zone, mais suspendu par la
         // pluie. Meme regle que le voyant WS2812 et le LCD
@@ -1070,6 +1054,51 @@ void WebManager::handleForecast(AsyncWebServerRequest* req) {
         fo["description"]     = fd.description;
         fo["icon"]            = fd.icon;
         fo["valid"]           = fd.valid;
+    }
+    sendJson(req, doc);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  GET /api/zonesConfig — identite/reglages des zones, separe de /api/status
+// ═══════════════════════════════════════════════════════════════
+// Extrait de /api/status le 26 septembre 2026, meme logique que
+// /api/forecast : name/color/id/notifications/mode/intervalDays/rain/
+// hasOutput ne changent que sur une sauvegarde de reglages (saveZoneConfig
+// cote app.js), jamais entre deux polls de /api/status (8s). app.js les
+// recharge une fois au demarrage puis apres chaque sauvegarde -- voir
+// fetchZonesConfig().
+void WebManager::handleZonesConfig(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    JsonArray zones = doc["zones"].to<JsonArray>();
+    const uint8_t nbZ = _config ? _config->nbZones() : NB_ZONES;
+    for (uint8_t z = 0; z < nbZ; z++) {
+        JsonObject zo = zones.add<JsonObject>();
+
+        // Meme regle que handleStatus : une zone sans voie physique ne peut
+        // pas arroser, et l'utilisateur doit pouvoir le voir plutot que de
+        // constater juste qu'elle refuse de demarrer.
+        const bool mapped = _relais.relay &&
+            RelayTopology::resolveZoneValve(
+                _relais.relay->topology(), z,
+                _config ? _config->nbZones() : z + 1U).valid;
+        zo["hasOutput"] = mapped;
+        if (_config) zo["name"] = _config->zone(z).name;
+        if (_config) zo["color"] = _config->zoneColor(z);
+        if (_config) zo["id"] = _config->zoneId(z);
+        if (_config) {
+            const uint8_t notifyMask = _config->zoneNotificationMask(z);
+            zo["notificationMask"] = notifyMask;
+            zo["notifyStart"] = (notifyMask & ZONE_NOTIFY_START) != 0U;
+            zo["notifyStop"] = (notifyMask & ZONE_NOTIFY_STOP) != 0U;
+        }
+
+        const ZoneSchedule zs = _schedule->getZoneSchedule(z);
+        zo["mode"]         = zs.mode;
+        zo["intervalDays"] = zs.intervalDays;
+
+        JsonObject rain = zo["rain"].to<JsonObject>();
+        rain["threshMm"] = zs.rain.thresholdMm;
+        rain["hours"]    = zs.rain.forecastHours;
     }
     sendJson(req, doc);
 }
