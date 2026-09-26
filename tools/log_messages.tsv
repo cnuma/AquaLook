@@ -1,0 +1,7 @@
+SHDW-ENGINE	Moteur d'execution parallele en cours de validation : calcule mais ne pilote aucune sortie reelle. Normal tant que ce chantier n'est pas termine, aucune action requise.
+SHDW-PUMP	Incoherence interne a l'arbitre de pompe partagee du moteur en validation (ne pilote rien de reel). A signaler si ca se repete souvent : peut indiquer un bug a corriger avant la mise en service.
+ORCH-PREVIEW	Previsualisation du futur orchestrateur (ne pilote rien). "pret=non" est normal tant que la configuration ou le scenario pompe n'est pas complet.
+ORCH-HANDOFF	Transmission du plan previsualise au moteur en validation (ne pilote rien). "valide=non" n'est pas un defaut tant que ce chantier reste passif.
+EQUIP-MODEL	Le nouveau modele d'equipement n'est pas encore pret : le pilotage reel des vannes utilise alors le chemin direct habituel, deja en service partout ailleurs. Aucune perte de fonction.
+SHDW-PUMP-CFG	Reglage de la pompe partagee pour le moteur en validation (authority=no). "incomplet"/"inactif" n'affecte pas l'arrosage reel.
+ORCH-STATUS	Etat de demarrage du moteur d'orchestration en validation (ne pilote rien). "pret=non" est normal tant que la configuration n'est pas complete.

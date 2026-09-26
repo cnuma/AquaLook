@@ -678,54 +678,66 @@ Demande utilisateur du 26 septembre 2026, explicitement differee.
 
 ### Journal technique : messages pas assez parlants pour decider
 
-Constat utilisateur (deuxieme capture d'ecran du 26 septembre 2026, section
-"Journal technique" de `/logs`) : une serie de lignes `[WARN]`/`[INFO]`
-illisibles pour qui n'a pas ecrit le code -- "Shadow engine: desactive,
-aucune zone", "Orchestrator shadow: status=unavailable source=runtime_model
-authority=no zones=5", "Shadow pump: desactive par configuration NVS",
-"Equipment: modele indisponible, fallback adaptateur direct". L'utilisateur
-ne peut pas dire si c'est normal ou s'il faut agir -- exactement le meme
-probleme de fond que la section precedente (acquitter sans savoir), mais qui
-deborde largement du seul flux d'acquittement : n'importe quel `[WARN]` du
-journal technique est concerne.
+**Traite partiellement le 26 septembre 2026 (soiree)** pour les messages du
+moteur shadow/orchestrateur -- voir plus bas. Le probleme de fond identique
+sur le reste du journal (339 sites `EventLog::log` au total, voir plus bas)
+reste entier.
 
-Exemple concret de ce qui rend ces lignes trompeuses en l'etat :
-`EquipmentExecutionShadowRuntime.cpp:33-34`, `main.cpp:291,317,644,667-670,680`
--- le mot "Shadow" designe ici un moteur d'execution parallele en cours de
-validation (`passive=yes`, `authority=no` : il calcule mais ne pilote aucune
-sortie reelle), donc ces lignes ne signalent en general PAS un defaut, juste
-de l'instrumentation d'un chantier en cours. Rien dans le texte actuel ne le
-dit -- un `[WARN]` a cote d'un `[INFO]` sans distinction de gravite reelle
-invite a s'inquieter a tort, ou au contraire a ignorer un vrai probleme noye
-dans le meme bruit.
+Constat utilisateur d'origine (deuxieme capture d'ecran du 26 septembre
+2026, section "Journal technique" de `/logs`) : une serie de lignes
+`[WARN]`/`[INFO]` illisibles pour qui n'a pas ecrit le code -- "Shadow
+engine: desactive, aucune zone", "Orchestrator shadow: status=unavailable
+source=runtime_model authority=no zones=5", "Shadow pump: desactive par
+configuration NVS", "Equipment: modele indisponible, fallback adaptateur
+direct". L'utilisateur ne peut pas dire si c'est normal ou s'il faut agir --
+exactement le meme probleme de fond que la section precedente (acquitter
+sans savoir), mais qui deborde largement du seul flux d'acquittement :
+n'importe quel `[WARN]` du journal technique est concerne.
 
-Demande explicite : reformuler pour que chaque message dise, en plus du
-fait technique, ce qu'il faut en penser et/ou faire -- piste de correction,
-ou au moins de reflexion, pas seulement un constat brut. Marge disponible
-signalee par l'utilisateur : la carte SD a de la place, donc la contrainte
-habituelle de flash/PROGMEM sur la longueur des chaines ne s'applique pas
-forcement ici -- un texte plus long, voire un renvoi vers une explication
-detaillee stockee sur SD, est envisageable (precedent architectural le plus
-proche dans le code : `ScriptMessageCatalogue`, mais celui-la vit en flash et
-sert un besoin different -- a ne pas copier telle quelle, juste s'en inspirer
-pour le principe de catalogue externalise).
+**Ce qui a ete fait** (7 sites, `main.cpp` + `EquipmentExecutionShadowRuntime.cpp`) :
+recalibre en `[INFO]` (les etats "pas encore pret"/"desactive" du moteur
+passif ne sont pas des defauts), raccourci avec un code court en tete de
+ligne (`[ORCH-PREVIEW]`, `[SHDW-ENGINE]`, etc. -- sans agrandir
+`LOG_MSG_LEN`, contrainte explicite de l'utilisateur pour ne pas refaire le
+dimensionnement RAM du journal), et l'explication complete deportee dans un
+nouveau catalogue sur la carte SD (`EventLogCatalogue`, `/logs/messages.tsv`,
+meme principe de robustesse que `ScriptMessageCatalogue` : jamais pire que
+la ligne brute si SD/fichier absent), consultee a la demande (infobulle au
+survol du code dans `/logs`, pas dans le poll rapide). Contenu source du
+catalogue versionne dans `tools/log_messages.tsv` (a redeployer via `POST
+/api/debug/log-messages` si la carte SD est reprovisionnee -- pas
+d'editeur web pour ce catalogue, contrairement a `ScriptMessageCatalogue`).
+`EMERGENCY_STOP`/incoherence de l'arbitre de pompe shadow restent
+volontairement `WARN`/`ERROR` (bug interne potentiel, meme si le moteur ne
+pilote rien de reel).
 
-Portee a etudier avant de coder, chantier consequent -- pas a improviser
-message par message :
-- inventorier les niveaux de gravite reels attendus par site d'appel
-  (`EventLog::log(LOG_WARN/LOG_INFO, ...)`) et si `[WARN]` est justifie pour
-  les messages "Shadow"/"Orchestrator shadow" du chantier en cours, ou s'ils
-  devraient etre `[INFO]` tant que ce moteur reste passif ;
-- decider du format cible : texte enrichi inline vs. code court + catalogue
-  externe (SD) consulte a la demande depuis la page `/logs` ;
-- si catalogue SD, meme question de robustesse que pour les ressources Web
-  deja sur SD (voir plus haut) : que devient le message si la carte est
-  absente ou le fichier introuvable -- ne jamais rendre un message d'erreur
-  moins lisible que le brut actuel par manque de repli ;
-- cadrer avec l'utilisateur, avant d'ecrire quoi que ce soit, une poignee de
-  messages representatifs (dont les quatre ci-dessus) pour valider le ton et
-  le niveau de detail avant de generaliser a tout le journal.
+Verifie sur `.141` : les 4 messages de demarrage (`SHDW-ENGINE`,
+`ORCH-STATUS`, `SHDW-PUMP-CFG`, `EQUIP-MODEL`) confirmes en direct, catalogue
+et infobulle fonctionnels. `ORCH-PREVIEW`/`ORCH-HANDOFF` (qui ne se
+declenchent qu'au demarrage/arret manuel d'une zone) restent verifies par le
+build seulement -- voir la decouverte ci-dessous qui explique pourquoi ils
+ne se sont pas declenches sur ce banc.
 
-Demande utilisateur du 26 septembre 2026, explicitement differee -- a
-traiter avec la section precedente (bouton "Acquitter" sans resume), meme
+**Decouverte au passage, non traitee** : `buildTransientEquipmentModel()`
+(`main.cpp:100-127`) echoue pour TOUTES les zones des qu'une seule zone
+configuree n'a aucune affectation relais -- meme quand c'est voulu. Sur
+`.141`, la zone 5 est deliberement sans sortie cablee (test de la prise en
+charge logicielle d'une zone sans relais physique), ce qui bloque a lui seul
+`equipmentRuntimeReady` pour les 5 zones et route tout vers le chemin direct
+(`EQUIP-MODEL indisponible`). Une zone sans sortie devrait probablement etre
+marquee "equipement absent/desactive" dans le modele transitoire plutot que
+de faire echouer le modele entier -- differe le 26 septembre 2026 (choix
+utilisateur explicite), a cadrer separement de la lisibilite du journal.
+
+**Reste ouvert pour generaliser au reste du journal** (332 autres sites) :
+- 9 autres appels dans `EquipmentExecutionShadowRuntime.cpp` (transitions de
+  l'arbitre de pompe, `logProgress`, accept/reject d'activite) meme famille,
+  meme moteur, laisses dans l'ancien format cette session -- prochaine cible
+  naturelle si le principe convient a l'usage ;
+- inventaire des niveaux de gravite reels des 330+ sites restants, hors
+  famille shadow/orchestrateur, non fait -- ne pas improviser message par
+  message, cadrer par lots comme cette session.
+
+Demande utilisateur du 26 septembre 2026, partiellement traitee -- le reste
+a traiter avec la section precedente (bouton "Acquitter" sans resume), meme
 racine : le journal ne donne pas assez d'elements pour decider vite.

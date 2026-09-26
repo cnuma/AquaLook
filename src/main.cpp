@@ -16,6 +16,7 @@
 #include "PausedWateringStore.h"
 #include "ScriptRunner.h"
 #include "ScriptMessageCatalogue.h"
+#include "EventLogCatalogue.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
 #include "ScheduleManager.h"
@@ -310,24 +311,16 @@ static void onRelayRequest(uint8_t zone, bool state) {
             const AquaLook::Application::EquipmentOrchestrator::Preview orchestratorPreview = state
                 ? equipmentOrchestrator.previewStartZone(zone)
                 : equipmentOrchestrator.previewStopZone(zone);
-            const AquaLook::Application::EquipmentOrchestrator::ObservationStats& orchestratorStats =
-                equipmentOrchestrator.stats();
+            // [ORCH-PREVIEW] : moteur d'orchestration en cours de validation
+            // (authority=no, ne pilote rien) -- "pret=non" est un etat
+            // normal tant que la config n'est pas complete, pas un defaut.
+            // Voir /logs/messages.tsv pour le detail.
             EventLog::log(
-                orchestratorPreview.ready() ? LOG_INFO : LOG_WARN,
-                "Orchestrator shadow: zone=%u intent=%s status=%u plan=%u steps=%u pump=%s authority=no stats=%lu/%lu/%lu ready=%lu rejected=%lu pumpPlans=%lu plannedSteps=%lu",
+                LOG_INFO,
+                "[ORCH-PREVIEW] zone=%u %s pret=%s",
                 zone + 1U,
                 state ? "START" : "STOP",
-                static_cast<unsigned>(orchestratorPreview.status),
-                static_cast<unsigned>(orchestratorPreview.planResult),
-                static_cast<unsigned>(orchestratorPreview.stepCount),
-                orchestratorPreview.requiresPump ? "yes" : "no",
-                static_cast<unsigned long>(orchestratorStats.totalRequests),
-                static_cast<unsigned long>(orchestratorStats.startRequests),
-                static_cast<unsigned long>(orchestratorStats.stopRequests),
-                static_cast<unsigned long>(orchestratorStats.readyPlans),
-                static_cast<unsigned long>(orchestratorStats.rejectedPlans),
-                static_cast<unsigned long>(orchestratorStats.plansWithPump),
-                static_cast<unsigned long>(orchestratorStats.plannedSteps)
+                orchestratorPreview.ready() ? "oui" : "non"
             );
             shadowPlan = orchestratorPreview.plan;
             shadowPlanFromOrchestrator = true;
@@ -339,15 +332,15 @@ static void onRelayRequest(uint8_t zone, bool state) {
                 : shadowPlanManager.buildZoneStopPlan(zone);
         }
 
+        // [ORCH-HANDOFF] : meme moteur en validation, "valide=non" n'est pas
+        // un defaut tant qu'il reste passif. Voir /logs/messages.tsv.
         EventLog::log(
-            shadowPlan.valid() ? LOG_INFO : LOG_WARN,
-            "Orchestrator handoff: zone=%u intent=%s source=%s result=%u steps=%u pump=%s authority=no",
+            LOG_INFO,
+            "[ORCH-HANDOFF] zone=%u %s src=%s valide=%s",
             zone + 1U,
             state ? "START" : "STOP",
             shadowPlanFromOrchestrator ? "orchestrator" : "plan_builder",
-            static_cast<unsigned>(shadowPlan.result),
-            static_cast<unsigned>(shadowPlan.stepCount),
-            shadowPlan.requiresPump ? "yes" : "no"
+            shadowPlan.valid() ? "oui" : "non"
         );
 
         executionShadowRuntime.submit(zone, shadowPlan, state, nowMs);
@@ -582,6 +575,10 @@ void setup() {
     // des que la carte est montee. Resolu seulement a l'envoi d'une
     // notification, jamais dans la boucle d'arrosage.
     ScriptMessageCatalogue::begin(&storageMgr);
+    // Meme principe pour les explications des codes du journal technique
+    // (ex. "[ORCH-PREVIEW]") -- resolu a la demande depuis /logs, jamais
+    // dans la boucle principale.
+    EventLogCatalogue::begin(&storageMgr);
 
     EventLog::log(LOG_INFO,
                   "Config: SSID='%s', mot de passe present=%s",
@@ -637,11 +634,14 @@ void setup() {
         equipmentRuntimeReady = equipmentMgr.isInitialized() && equipmentMgr.hasExecutor();
     }
 
+    // [EQUIP-MODEL] : "indisponible" retombe sur outputAdapter/relaisMgr,
+    // le pilote toujours branche (main.cpp, plus bas) -- pas une perte de
+    // fonction. Voir /logs/messages.tsv.
     EventLog::log(
-        equipmentRuntimeReady ? LOG_INFO : LOG_WARN,
+        LOG_INFO,
         equipmentRuntimeReady
-            ? "Equipment: modele transitoire pret pour %u zone(s)"
-            : "Equipment: modele indisponible, fallback adaptateur direct",
+            ? "[EQUIP-MODEL] pret zones=%u"
+            : "[EQUIP-MODEL] indisponible, pilotage direct",
         nbZones
     );
 
@@ -661,13 +661,16 @@ void setup() {
         pumpConfigured &&
         buildShadowPumpScenario(nbZones, equipmentConfig);
 
+    // [SHDW-PUMP-CFG] : reglage de la pompe partagee pour le moteur en
+    // validation (authority=no) -- "incomplet" ne bloque aucun arrosage
+    // reel. Voir /logs/messages.tsv.
     EventLog::log(
-        shadowPumpScenarioReady ? LOG_INFO : (pumpConfigured ? LOG_WARN : LOG_INFO),
+        LOG_INFO,
         shadowPumpScenarioReady
-            ? "Shadow pump: configuration NVS active mode_effectif=shadow passive=yes"
+            ? "[SHDW-PUMP-CFG] actif"
             : (pumpConfigured
-                ? "Shadow pump: configuration demandee mais scenario indisponible"
-                : "Shadow pump: desactive par configuration NVS")
+                ? "[SHDW-PUMP-CFG] incomplet"
+                : "[SHDW-PUMP-CFG] inactif")
     );
 
     EquipmentManager* orchestratorShadowManager = shadowPumpScenarioReady
@@ -675,10 +678,13 @@ void setup() {
         : &equipmentMgr;
     equipmentOrchestrator.begin(orchestratorShadowManager, nbZones);
     equipmentOrchestratorShadowReady = equipmentOrchestrator.isInitialized();
+    // [ORCH-STATUS] : moteur d'orchestration en validation (authority=no) --
+    // "pret=non" est l'etat normal tant que la config n'est pas complete.
+    // Voir /logs/messages.tsv.
     EventLog::log(
-        equipmentOrchestratorShadowReady ? LOG_INFO : LOG_WARN,
-        "Orchestrator shadow: status=%s source=%s authority=no zones=%u",
-        equipmentOrchestratorShadowReady ? "ready" : "unavailable",
+        LOG_INFO,
+        "[ORCH-STATUS] pret=%s source=%s zones=%u",
+        equipmentOrchestratorShadowReady ? "oui" : "non",
         shadowPumpScenarioReady ? "pump_shadow" : "runtime_model",
         static_cast<unsigned>(nbZones)
     );

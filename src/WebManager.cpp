@@ -9,6 +9,7 @@
 #include "ApiAuth.h"
 #include "ScriptStore.h"
 #include "ScriptMessageCatalogue.h"
+#include "EventLogCatalogue.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
 #include "WebAssetsUpdater.h"
@@ -758,6 +759,50 @@ void WebManager::setupRoutes() {
         serializeJson(doc, body);
         req->send(200, "application/json", body);
     });
+
+    // Meme principe que /api/script-messages, pour les codes courts places
+    // en tete de certaines lignes du journal technique (ex.
+    // "[ORCH-PREVIEW]"). Consultee une fois par chargement de /logs, jamais
+    // dans le poll rapide de /api/logs.txt -- ne doit pas alourdir le
+    // rafraichissement du journal (voir l'enquete lenteur web du 26 sept.).
+    _server.on("/api/log-messages", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        if (!EventLogCatalogue::load(doc)) {
+            sendError(req, "carte SD illisible", 503);
+            return;
+        }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // Ecriture du meme catalogue -- PAS signee, contrairement a
+    // /api/script-messages : pas d'editeur utilisateur derriere, sert au
+    // deploiement ponctuel du contenu (voir tools/) depuis le poste de
+    // developpement. Meme trou assume que /api/debug/deploy-file (voir
+    // ROADMAP.md, securite differee).
+    _server.on(
+        "/api/debug/log-messages", HTTP_POST,
+        [this](AsyncWebServerRequest* req) {
+            String* body = reinterpret_cast<String*>(req->_tempObject);
+            if (!body || !EventLogCatalogue::store(*body)) {
+                sendError(req, "ecriture SD impossible", 503);
+            } else {
+                sendOk(req);
+            }
+            if (body) { delete body; req->_tempObject = nullptr; }
+        },
+        nullptr,
+        [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+            String* body = reinterpret_cast<String*>(req->_tempObject);
+            if (!body) {
+                body = new String();
+                body->reserve(total);
+                req->_tempObject = body;
+            }
+            body->concat(reinterpret_cast<const char*>(data), len);
+        }
+    );
 
     // Texte source d'un script, range sur la carte SD.
     //

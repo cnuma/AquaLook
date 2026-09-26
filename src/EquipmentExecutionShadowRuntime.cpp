@@ -27,11 +27,14 @@ void EquipmentExecutionShadowRuntime::begin(uint8_t nbZones) {
     for (uint8_t zone = 0U; zone < MAX_ZONES; ++zone) {
         _slots[zone] = ZoneSlot();
     }
+    // [SHDW-ENGINE] : moteur d'execution parallele en cours de validation
+    // (ne pilote aucune sortie reelle) -- "inactif" est normal tant que le
+    // chantier n'est pas termine. Voir /logs/messages.tsv.
     EventLog::log(
-        _enabled ? LOG_INFO : LOG_WARN,
+        LOG_INFO,
         _enabled
-            ? "Shadow engine: actif pour %u zone(s), shared_pump=yes hardened=yes passive=yes"
-            : "Shadow engine: desactive, aucune zone",
+            ? "[SHDW-ENGINE] actif zones=%u"
+            : "[SHDW-ENGINE] inactif, aucune zone",
         _nbZones
     );
 }
@@ -168,9 +171,12 @@ void EquipmentExecutionShadowRuntime::emergencyStopAll(uint32_t nowMs) {
         slot.pumpRequested = false;
     }
     _sharedPumpUsers = 0U;
+    // [SHDW-PUMP] : incoherence interne a l'arbitre de pompe du moteur en
+    // validation (ne pilote rien) -- a signaler si ca se repete. Voir
+    // /logs/messages.tsv.
     EventLog::log(
         LOG_WARN,
-        "Shadow pump arbiter: EMERGENCY_STOP users=0 consistent=yes passive=yes"
+        "[SHDW-PUMP] EMERGENCY_STOP inattendu"
     );
 }
 
@@ -194,9 +200,11 @@ uint8_t EquipmentExecutionShadowRuntime::countPumpRequests() const {
 void EquipmentExecutionShadowRuntime::repairConsistency() {
     const uint8_t counted = countPumpRequests();
     if (_sharedPumpUsers == counted && _sharedPumpUsers <= _nbZones) return;
+    // [SHDW-PUMP] : meme code que EMERGENCY_STOP ci-dessus, meme moteur
+    // (ne pilote rien) -- voir /logs/messages.tsv.
     EventLog::log(
         LOG_ERROR,
-        "Shadow pump arbiter: incoherence users=%u counted=%u, repair passive=yes",
+        "[SHDW-PUMP] incoherence users=%u counted=%u",
         _sharedPumpUsers,
         counted
     );
