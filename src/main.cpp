@@ -839,10 +839,15 @@ void loop() {
     // Avant relaisMgr.update() : une entree qui vient de basculer doit etre
     // connue AVANT que quoi que ce soit ne decide sur sa foi.
     inputSampler.update(millis());
+    RuntimeProfiler::stop(RuntimeProfiler::Component::INPUT_SAMPLER, startedUs);
+
+    startedUs = RuntimeProfiler::start();
     // Apres l'echantillonneur : un script declenche par une entree doit voir
     // la valeur qui l'a declenche, pas celle du tour precedent.
     scriptRunner.update();
+    RuntimeProfiler::stop(RuntimeProfiler::Component::SCRIPT_RUNNER, startedUs);
 
+    startedUs = RuntimeProfiler::start();
     relaisMgr.update();
 
     // Coupure de securite : RelaisManager signale les zones qui ont depasse la

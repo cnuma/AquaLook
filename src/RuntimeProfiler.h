@@ -13,6 +13,8 @@ public:
         WEATHER,
         SCHEDULE,
         EQUIPMENT_SHADOW,
+        INPUT_SAMPLER,
+        SCRIPT_RUNNER,
         RELAY,
         WEB,
         DISPLAY_MANAGER,

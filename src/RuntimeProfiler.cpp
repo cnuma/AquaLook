@@ -97,6 +97,8 @@ const char* RuntimeProfiler::componentName(Component component) {
         case Component::WEATHER:          return "weather";
         case Component::SCHEDULE:         return "schedule";
         case Component::EQUIPMENT_SHADOW: return "equipmentShadow";
+        case Component::INPUT_SAMPLER:    return "inputSampler";
+        case Component::SCRIPT_RUNNER:    return "scriptRunner";
         case Component::RELAY:            return "relay";
         case Component::WEB:              return "web";
         case Component::DISPLAY_MANAGER:  return "display";
