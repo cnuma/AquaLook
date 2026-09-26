@@ -94,6 +94,31 @@ bool writeBlob(Persisted& blob) {
     return true;
 }
 
+// Cache RAM des en-tetes, tenu a jour par save()/erase(). loadAllMeta() est
+// appelee a CHAQUE tour de boucle principale (ScriptRunner::update()) pour
+// detecter les declencheurs -- or readBlob() transfere tout le blob NVS, y
+// compris le bytecode des 6 scripts (plusieurs Ko), alors que l'executeur n'a
+// besoin que des en-tetes. Sans ce cache, ce transfert NVS complet a chaque
+// tour a ete mesure a l'origine de decrochages de boucle jusqu'a 350 ms
+// (bien au-dela du seuil de 100 ms), constate le 26 sept. 2026 -- ce que le
+// commentaire de loadAllMeta() dans ScriptStore.h promettait d'eviter sans
+// que l'implementation ne le fasse reellement.
+Meta g_metaCache[MAX_SCRIPTS];
+bool g_metaCacheValid = false;
+
+void refreshMetaCacheFromBlob() {
+    Persisted* blob = static_cast<Persisted*>(malloc(sizeof(Persisted)));
+    if (!blob) return;  // reessaiera au prochain appel, cache pas marque valide
+    if (readBlob(*blob)) {
+        for (uint8_t i = 0U; i < MAX_SCRIPTS; ++i) g_metaCache[i] = blob->slots[i].meta;
+    } else {
+        // Pas de blob (premier demarrage) : magasin vide, pas une erreur.
+        for (uint8_t i = 0U; i < MAX_SCRIPTS; ++i) g_metaCache[i] = Meta();
+    }
+    free(blob);
+    g_metaCacheValid = true;
+}
+
 } // namespace
 
 bool save(uint8_t index, const Meta& meta, const uint8_t* code,
@@ -126,9 +151,15 @@ bool save(uint8_t index, const Meta& meta, const uint8_t* code,
     memset(blob->slots[index].code, 0, MAX_BYTECODE);
     memcpy(blob->slots[index].code, code, meta.codeSize);
 
+    const Meta savedMeta = blob->slots[index].meta;
     const bool ok = writeBlob(*blob);
     free(blob);
     if (ok) {
+        // Ecrit directement le cache plutot que de le marquer invalide : une
+        // relecture NVS ici annulerait l'interet du cache pour le prochain
+        // declenchement, potentiellement dans la meme seconde.
+        g_metaCache[index] = savedMeta;
+        g_metaCacheValid = true;
         EventLog::log(LOG_INFO, "Scripts: programme %u enregistre (%u octets)",
                       (unsigned)index, (unsigned)meta.codeSize);
     } else {
@@ -162,6 +193,10 @@ bool erase(uint8_t index) {
         ok = writeBlob(*blob);
     }
     free(blob);
+    if (ok) {
+        g_metaCache[index] = Meta();
+        g_metaCacheValid = true;
+    }
     return ok;
 }
 
@@ -169,13 +204,9 @@ void loadAllMeta(Meta* metas, uint8_t capacity) {
     if (!metas) return;
     for (uint8_t i = 0U; i < capacity; ++i) metas[i] = Meta();
 
-    Persisted* blob = static_cast<Persisted*>(malloc(sizeof(Persisted)));
-    if (!blob) return;
-    if (readBlob(*blob)) {
-        const uint8_t n = capacity < MAX_SCRIPTS ? capacity : MAX_SCRIPTS;
-        for (uint8_t i = 0U; i < n; ++i) metas[i] = blob->slots[i].meta;
-    }
-    free(blob);
+    if (!g_metaCacheValid) refreshMetaCacheFromBlob();
+    const uint8_t n = capacity < MAX_SCRIPTS ? capacity : MAX_SCRIPTS;
+    for (uint8_t i = 0U; i < n; ++i) metas[i] = g_metaCache[i];
 }
 
 } // namespace ScriptStore
