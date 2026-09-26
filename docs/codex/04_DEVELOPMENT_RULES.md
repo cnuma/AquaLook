@@ -118,6 +118,36 @@ Ne jamais changer silencieusement l’ordre, le type ou la taille d’un champ p
 
 Niveaux : INFO, WARN, ERROR. Le buffer est borné ; les messages doivent être courts et actionnables.
 
+Convention retenue le 26 septembre 2026, applicable à tout nouveau message
+`EventLog::log` (et à toute conversion d'un message existant) :
+
+- ligne courte, technique, **sans agrandir `LOG_MSG_LEN`** (120 octets) —
+  un message qui a besoin de plus tient dans le catalogue, pas dans la ligne ;
+- un code mnémonique entre crochets en tête de ligne pour tout message dont
+  le sens n'est pas évident hors contexte (ex. `[ORCH-PREVIEW]`), et non un
+  entier opaque — doit rester lisible seul dans une capture série sans accès
+  à la carte SD (voir `serial-log-over-http-api` en mémoire de session) ;
+- l'explication complète (ce que le message veut dire, ce qu'il faut en
+  penser ou faire) vit dans le catalogue SD `EventLogCatalogue`
+  (`/logs/messages.tsv`, source versionnée dans `tools/log_messages.tsv`),
+  consultée à la demande depuis `/logs` — jamais dans le poll rapide ;
+  même garantie de repli que `ScriptMessageCatalogue` : SD absente, fichier
+  manquant ou code inconnu ne doivent jamais rendre le journal moins lisible
+  qu'une ligne brute sans catalogue ;
+- `INFO` pour un état normal même inhabituel (ex. un moteur en cours de
+  validation qui ne pilote rien) ; réserver `WARN`/`ERROR` à ce qui mérite
+  une action ou un signalement, même si le sous-système concerné reste
+  passif ;
+- ne pas dupliquer les libellés de défaut structuré : `FaultManager::label
+  (FaultId)` reste la source unique pour tout ce qui a un `FaultId` dédié
+  (voir `/api/faults`, champ `labels`) ; pour tout le reste (la majorité
+  des lignes `LOG_ERROR` du projet, sans `FaultId` dédié),
+  `FaultManager::lastErrorMessage()` porte le texte brut de la dernière
+  erreur, à ne pas recalculer ailleurs.
+
+Voir `ROADMAP.md`, section "Journal technique", pour l'inventaire des
+messages déjà convertis et de ceux qui restent à traiter par lots.
+
 ## Commentaires
 
 Documenter pourquoi une contrainte existe, le risque supprimé et l’invariant concerné. Éviter les commentaires qui répètent le code.
