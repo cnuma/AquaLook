@@ -769,25 +769,34 @@ utilisateur explicite), a cadrer separement de la lisibilite du journal.
 **Inventaire complet fait le 26 septembre 2026 (soiree)** des 328 sites
 `EventLog::log` restants (voir
 `docs/roadmap/ROADMAP_EVENTLOG_MESSAGES_INVENTORY.md` pour le detail
-fichier par fichier). Resultat notable, qui recadre la portee : **seuls 52
-sites sont juges reellement obscurs** (jargon interne, code brut sans
-explication, meme grille que celle qui a converti les 8 premiers messages)
--- les 276 autres sont deja clairs et n'ont pas besoin du traitement
-code+catalogue. Convertir les 276 quand meme serait de la sur-ingenierie
-sur des messages deja comprehensibles ; **la generalisation ne concerne
-donc que les 52 obscurs**, decoupes en 4 lots independants dans le
-document d'inventaire :
+fichier par fichier). Resultat notable, qui a recadre la portee : sur les
+328, **seuls 52 etaient juges reellement obscurs** (jargon interne, code
+brut sans explication) -- les 276 autres etaient deja clairs et n'ont pas
+recu le traitement code+catalogue (les convertir quand meme aurait ete de
+la sur-ingenierie).
 
-1. finir la famille shadow/orchestrateur (11 sites, meme regle qu'aujourd'hui) ;
-2. parite V4 / chemin d'execution equipement (14 sites -- **attention**,
-   ce sont de VRAIES sorties relais, pas un moteur passif : traduire le
-   jargon sans toucher a la gravite comme pour le lot 1) ;
-3. codes de diagnostic bas niveau (15 sites -- OTA-1.1, scripts, IoExpander) ;
-4. divers isoles (13 sites).
+**Les 52 sont traites, en 4 lots, tous commits et verifies sur `.141` le
+26/27 septembre 2026** (voir le document d'inventaire pour le detail
+site par site) :
 
-Chaque lot se traite et se valide independamment (build, flash, verification
-materielle, commit) -- pas un chantier a boucler en une seule session.
+1. Famille shadow/orchestrateur (11 sites) -- meme regle que les 8
+   premiers messages (INFO pour un etat normal du moteur passif).
+2. Parite V4 / chemin d'execution equipement (14 sites) -- **gravite non
+   recalibree** (vraies sorties relais), seul le jargon a ete traduit.
+3. Codes de diagnostic bas niveau (15 sites) -- OTA-1.1 (feature flag,
+   desactivee dans tous les profils actifs), scripts, IoExpander.
+4. Divers isoles (12 sites) -- essentiellement des champs bruts traduits
+   (`wl_status_t`, code erreur SdFat, `esp_err_t`) plutot que du
+   code+catalogue.
 
-Demande utilisateur du 26 septembre 2026, partiellement traitee -- le reste
-a traiter avec la section precedente (bouton "Acquitter" sans resume), meme
-racine : le journal ne donne pas assez d'elements pour decider vite.
+Catalogue final : 21 codes dans `tools/log_messages.tsv`. Nouveau helper
+reutilisable decouvert au passage : `SD_ERROR_CODE_LIST` (bibliotheque
+SdFat, `SdCardInfo.h`) traduit tout code d'erreur SD en texte sans
+jamais diverger de la bibliotheque -- a reutiliser pour tout futur besoin
+similaire plutot que de retablir une table a la main.
+
+Demande utilisateur du 26 septembre 2026, **traitee** -- ainsi que la
+section precedente (bouton "Acquitter" sans resume, traitee le meme jour
+avec un mecanisme complementaire : `FaultManager::lastErrorMessage()`
+couvre les erreurs sans `FaultId` structure, que la decomposition du
+masque seule ne pouvait pas voir).

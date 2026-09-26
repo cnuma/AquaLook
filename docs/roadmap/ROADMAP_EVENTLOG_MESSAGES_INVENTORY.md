@@ -1,14 +1,19 @@
 # Inventaire EventLog::log(...) restants (hors conversion deja faite)
 
 Genere le 26 septembre 2026 en clotant le chantier de lisibilite du journal
-technique (voir `ROADMAP.md`, section "Journal technique"). Sert de base au
-lot suivant de conversions -- **pas un engagement a tout convertir** : sur
-328 sites restants, seuls **52 sont juges "obscur"** (jargon interne, code
-brut sans explication) par la meme grille que celle qui a servi a
+technique (voir `ROADMAP.md`, section "Journal technique"). Sur 328 sites
+restants a l'epoque, seuls **52 etaient juges "obscur"** (jargon interne,
+code brut sans explication) par la meme grille que celle qui a servi a
 convertir les 8 premiers messages (SHDW-*, ORCH-*, EQUIP-MODEL). Les 276
-"clair" restants n'ont pas besoin du traitement code+catalogue -- les
-convertir quand meme serait de la sur-ingenierie sur des messages deja
+"clair" restants n'ont pas recu le traitement code+catalogue -- les
+convertir quand meme aurait ete de la sur-ingenierie sur des messages deja
 comprehensibles.
+
+**Statut : les 4 lots ci-dessous sont traites, commits et verifies sur
+`.141` le 26/27 septembre 2026** (voir `ROADMAP.md` pour le recapitulatif
+et les commits). Le detail ci-dessous reste la reference de ce qui a ete
+fait, site par site -- utile si un futur inventaire des 276 "clair"
+restants est envisage un jour.
 
 ## Plan de lots pour les 52 messages "obscur"
 
