@@ -67,7 +67,7 @@ void NTPManager::update() {
         applyConfig();
         _synced   = false;   // forcer resync avec les nouveaux paramètres
         _lastPoll = 0;
-        EventLog::log(LOG_INFO, "NTP: reconfiguration suite a configDirty");
+        EventLog::log(LOG_INFO, "NTP: reconfiguration suite a un changement de reglages");
         // Ne pas remettre configDirty à false ici —
         // d'autres managers (WeatherManager) doivent aussi le lire
     }

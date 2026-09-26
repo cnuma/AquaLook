@@ -21,6 +21,22 @@ static constexpr const char* CAPTIVE_AP_SSID = "Arrosage-Setup";
 static constexpr const char* KEEPALIVE_NVS_NAMESPACE = "aq_wifi_ka";
 static constexpr const char* KEEPALIVE_NVS_KEY = "host";
 
+// Traduit wl_status_t (WiFiType.h) pour le journal -- "wl_status=4" n'est
+// lisible que pour qui a le header sous les yeux.
+static const char* wlStatusName(wl_status_t s) {
+    switch (s) {
+        case WL_IDLE_STATUS:     return "idle";
+        case WL_NO_SSID_AVAIL:   return "ssid_absent";
+        case WL_SCAN_COMPLETED:  return "scan_termine";
+        case WL_CONNECTED:       return "connecte";
+        case WL_CONNECT_FAILED:  return "echec_connexion";
+        case WL_CONNECTION_LOST: return "connexion_perdue";
+        case WL_DISCONNECTED:    return "deconnecte";
+        case WL_NO_SHIELD:       return "sans_module";
+        default:                 return "inconnu";
+    }
+}
+
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid, sizeof(_ssid));
     strlcpy(_pwd, pwd, sizeof(_pwd));
@@ -232,10 +248,10 @@ void WiFiManager::handleConnecting(uint32_t now) {
         // cru le module bloque alors qu il patientait normalement.
         EventLog::log(
             LOG_WARN,
-            "WiFi: echec #%u, %s, wl_status=%d, prochaine tentative dans %lus",
+            "WiFi: echec #%u, %s, statut=%s, prochaine tentative dans %lus",
             _retryCount + 1,
             cause,
-            static_cast<int>(s),
+            wlStatusName(s),
             retryDelayMs() / 1000UL
         );
 
@@ -270,8 +286,8 @@ void WiFiManager::handleConnected() {
     if (WiFi.status() != WL_CONNECTED) {
         EventLog::log(
             LOG_WARN,
-            "WiFi: connexion perdue, wl_status=%d",
-            static_cast<int>(WiFi.status())
+            "WiFi: connexion perdue, statut=%s",
+            wlStatusName(WiFi.status())
         );
         _state = State::DISCONNECTED;
         _lastActionMs = millis();
@@ -342,12 +358,12 @@ void WiFiManager::checkKeepaliveReachable(uint32_t now) {
     _consecutiveKeepaliveFailures++;
     EventLog::log(
         LOG_WARN,
-        "WiFi: cible keepalive %s (%s) injoignable (%u/%u), wl_status=%d toujours 'connecte'",
+        "WiFi: cible keepalive %s (%s) injoignable (%u/%u), statut=%s toujours 'connecte'",
         _keepaliveHost,
         target.toString().c_str(),
         static_cast<unsigned>(_consecutiveKeepaliveFailures),
         static_cast<unsigned>(KEEPALIVE_FAILURE_THRESHOLD),
-        static_cast<int>(WiFi.status())
+        wlStatusName(WiFi.status())
     );
 
     if (_consecutiveKeepaliveFailures < KEEPALIVE_FAILURE_THRESHOLD) return;

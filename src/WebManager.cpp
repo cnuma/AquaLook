@@ -1296,7 +1296,10 @@ void WebManager::handleSetIntervalAnchor(AsyncWebServerRequest* req, JsonDocumen
 
     _schedule->setIntervalAnchorDay(zone, anchorDay);
     if (_config) _config->setZoneIntervalAnchorDay(zone, anchorDay);
-    EventLog::log(LOG_INFO, "Zone %u: ancre intervalle=%lu",
+    // "anchorDay" est un jour epoch (jours depuis 1970), pas un identifiant
+    // interne -- c'est la date de depart choisie par l'utilisateur pour la
+    // programmation par intervalle de cette zone.
+    EventLog::log(LOG_INFO, "Zone %u: nouvelle date de depart intervalle (jour epoch %lu)",
                   zone + 1, (unsigned long)anchorDay);
     EventBus::displayDirty = true;
     sendOk(req);

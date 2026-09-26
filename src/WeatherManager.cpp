@@ -363,9 +363,11 @@ void WeatherManager::performFetch() {
                 const String contentType = http.header("Content-Type");
                 result.payloadSize = announcedSize;
 
+                // "annonce" = taille donnee par l'en-tete HTTP avant lecture
+                // du corps (lu ensuite en flux, pas d'un bloc).
                 EventLog::log(
                     LOG_INFO,
-                    "Meteo: HTTP 200 annonce=%ld lecture=stream type=%s",
+                    "Meteo: HTTP 200, taille annoncee=%ld octets type=%s",
                     static_cast<long>(announcedSize),
                     contentType.length() ? contentType.c_str() : "inconnu"
                 );

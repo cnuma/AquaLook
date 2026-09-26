@@ -28,6 +28,22 @@ namespace {
 constexpr char HTTPS_HOST[] = "api.github.com";
 constexpr uint16_t HTTPS_PORT = 443U;
 constexpr uint32_t WIFI_TIMEOUT_MS = 30000UL;
+
+// Traduit wl_status_t pour le journal -- "status=4" n'est lisible que pour
+// qui a WiFiType.h sous les yeux (meme besoin que WiFiManager.cpp).
+const char* wlStatusName(wl_status_t s) {
+    switch (s) {
+        case WL_IDLE_STATUS:     return "idle";
+        case WL_NO_SSID_AVAIL:   return "ssid_absent";
+        case WL_SCAN_COMPLETED:  return "scan_termine";
+        case WL_CONNECTED:       return "connecte";
+        case WL_CONNECT_FAILED:  return "echec_connexion";
+        case WL_CONNECTION_LOST: return "connexion_perdue";
+        case WL_DISCONNECTED:    return "deconnecte";
+        case WL_NO_SHIELD:       return "sans_module";
+        default:                 return "inconnu";
+    }
+}
 constexpr uint32_t RESPONSE_TIMEOUT_MS = 10000UL;
 constexpr uint32_t RESTART_DELAY_MS = 1500UL;
 constexpr size_t MANIFEST_MAX_BYTES = 8192U;
@@ -86,8 +102,8 @@ bool connectWifi(const ConfigManager& configManager, char* detail, size_t detail
 
     if (WiFi.status() != WL_CONNECTED) {
         snprintf(detail, detailSize, "wifi-status-%d", static_cast<int>(WiFi.status()));
-        EventLog::log(LOG_ERROR, "Maintenance: WiFi echec ssid='%s' status=%d", ssid,
-                      static_cast<int>(WiFi.status()));
+        EventLog::log(LOG_ERROR, "Maintenance: WiFi echec ssid='%s' statut=%s", ssid,
+                      wlStatusName(WiFi.status()));
         WiFi.disconnect(true);
         return false;
     }
@@ -518,8 +534,8 @@ void handleInstallUpdate() {
                  static_cast<int>(setError));
         MaintenanceResultStore::save(result);
         EventLog::log(LOG_ERROR,
-                      "Maintenance: INSTALL_UPDATE echec esp_ota_set_boot_partition err=%d",
-                      static_cast<int>(setError));
+                      "Maintenance: INSTALL_UPDATE echec activation partition (%s)",
+                      esp_err_to_name(setError));
         restartToNormal();
         return;
     }
@@ -580,7 +596,12 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     // deja ecrite localement par STAGE_UPDATE_TEST. Traite avant la branche
     // WiFi commune aux autres commandes.
     if (request == MaintenanceRequest::INSTALL_UPDATE) {
-        EventLog::log(LOG_WARN, "Maintenance: mode minimal actif command=install_update otaWrite=no");
+        // [MAINT-MINIMAL] : redemarrage volontaire dans la tache FreeRTOS
+        // isolee dediee a l'OTA (sans SD/ecran/serveur Web, voir
+        // ROADMAP.md "canal separe de l'OTA firmware") -- "otaWrite=no" a
+        // ce stade precis signifie que l'ecriture n'a pas encore commence.
+        // Voir /logs/messages.tsv.
+        EventLog::log(LOG_WARN, "[MAINT-MINIMAL] command=install_update otaWrite=no");
         handleInstallUpdate();
         return true;
     }
@@ -596,7 +617,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         return false;
     }
 
-    EventLog::log(LOG_WARN, "Maintenance: mode minimal actif command=%s otaWrite=no",
+    // [MAINT-MINIMAL] : meme code que INSTALL_UPDATE ci-dessus.
+    EventLog::log(LOG_WARN, "[MAINT-MINIMAL] command=%s otaWrite=no",
                   MaintenanceRequestStore::name(request));
     logMemory("start");
 

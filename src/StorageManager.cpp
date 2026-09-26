@@ -6,6 +6,20 @@
 #include <cstring>
 
 namespace {
+
+// Traduit le code d'erreur brut de SdFat (sdErrorCode()) en texte -- reutilise
+// la meme liste que la bibliotheque (SD_ERROR_CODE_LIST, SdCardInfo.h) pour
+// ne jamais diverger d'elle. "code=0x1E" seul ne dit rien sans le header
+// sous les yeux ; "Read data timeout" se comprend seul.
+const char* sdErrorText(uint8_t code) {
+    switch (code) {
+#define SD_CARD_ERROR(e, m) case SD_CARD_ERROR_##e: return m;
+        SD_ERROR_CODE_LIST
+#undef SD_CARD_ERROR
+        default: return "Unknown error";
+    }
+}
+
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
 // Trois confirmations, chacune deja doublee par une seconde lecture : il
 // faut donc six lectures ratees d'affilee sur ~6 s pour demonter. Une
@@ -205,8 +219,8 @@ void StorageManager::update() {
     if (_healthFailureCount < SD_HEALTH_FAILURE_CONFIRMATIONS) {
         EventLog::log(
             LOG_WARN,
-            "Stockage: erreur E/S SD code=0x%02X confirmation=%u/%u",
-            static_cast<unsigned>(sdError),
+            "Stockage: erreur E/S SD (%s) confirmation=%u/%u",
+            sdErrorText(sdError),
             static_cast<unsigned>(_healthFailureCount),
             static_cast<unsigned>(SD_HEALTH_FAILURE_CONFIRMATIONS)
         );

@@ -1,7 +1,21 @@
 SHDW-ENGINE	Moteur d'execution parallele en cours de validation : calcule mais ne pilote aucune sortie reelle. Normal tant que ce chantier n'est pas termine, aucune action requise.
-SHDW-PUMP	Incoherence interne a l'arbitre de pompe partagee du moteur en validation (ne pilote rien de reel). A signaler si ca se repete souvent : peut indiquer un bug a corriger avant la mise en service.
+SHDW-PUMP	Arbitrage de la pompe partagee par le moteur en validation (ne pilote rien de reel). ACQUIRE/RELEASE sont normaux ; EMERGENCY_STOP/incoherence meritent un coup d'oeil si ca se repete.
 ORCH-PREVIEW	Previsualisation du futur orchestrateur (ne pilote rien). "pret=non" est normal tant que la configuration ou le scenario pompe n'est pas complet.
 ORCH-HANDOFF	Transmission du plan previsualise au moteur en validation (ne pilote rien). "valide=non" n'est pas un defaut tant que ce chantier reste passif.
 EQUIP-MODEL	Le nouveau modele d'equipement n'est pas encore pret : le pilotage reel des vannes utilise alors le chemin direct habituel, deja en service partout ailleurs. Aucune perte de fonction.
 SHDW-PUMP-CFG	Reglage de la pompe partagee pour le moteur en validation (authority=no). "incomplet"/"inactif" n'affecte pas l'arrosage reel.
 ORCH-STATUS	Etat de demarrage du moteur d'orchestration en validation (ne pilote rien). "pret=non" est normal tant que la configuration n'est pas complete.
+SHDW-ACTIVITY	Suivi d'une simulation de cycle d'arrosage par le moteur en validation (ne pilote rien de reel). "echec"/"annule" meritent un coup d'oeil si ca se repete (bug potentiel du simulateur).
+PARITY-CHECK	Controle de securite reel : compare a chaque decision le planificateur V4 a la table de cablage. ACCORD=coherent. DESACCORD (PARITE-KO) est anormal, le detail suit sur la ligne suivante.
+EQUIP-FALLBACK	Le modele d'equipement a echoue pour cette commande ; le chemin direct habituel prend le relais, l'action reelle a bien lieu. Signale une regression du modele recent, pas un arrosage manque.
+EQUIP-CONFIG	Chargement de la configuration pompe persistee (NVS). "status" different de "loaded"/"ok" signifie que des valeurs par defaut sures ont ete appliquees a la place du reglage enregistre.
+EQUIP-PLAN	Previsualisation du plan d'actions juste avant l'execution reelle de la zone -- le plan ne pilote rien, l'action reelle suit immediatement. "invalide" bloque l'action et merite attention.
+EQUIP-OUTPUT	Pilotage reel d'une vanne. INFO=commande appliquee. WARN "sans_sortie"=zone sans relais assigne (normal, ex. zone de test). ERROR=une sortie assignee ne repond pas, panne reelle a verifier.
+RELAY-V4-BOARD	Une carte relais a ete refusee par le registre au demarrage (probleme de cablage/config reel). Les autres cartes restent pilotees normalement -- verifier le cablage I2C de celle-ci.
+OTA-TLS-PROBE	Test ponctuel de connectivite HTTPS vers GitHub au demarrage (qualification, feature optionnelle). Ne pilote rien et ne declenche aucune mise a jour reelle (otaWrite=no).
+SCRIPT-ACTION	Un script a demande une action pas encore implementee dans le moteur de scripts. Le code identifie l'action interne, pas un choix utilisateur -- verifier le script concerne dans l'editeur.
+SCRIPT-NOTIFY	Un script a envoye un message numerote (commande "notifier"). Le code correspond a une phrase definie dans la bibliotheque de messages de l'editeur de scripts -- non resolu dans ce journal.
+SCRIPT-ALERT	Un script a declenche une alerte numerotee (commande "alerte"). "non_envoyee" signifie que les notifications ne sont pas configurees -- verifier les reglages si une alerte etait attendue.
+IOEXP-BOARD	Configuration d'une carte d'expansion entrees/sorties (I2C) au demarrage. "iodir" est le registre de direction des broches, informatif -- seul "absente" signale un probleme reel.
+PERF-TIMING	Diagnostic de lenteur de boucle, actif seulement si "Journaliser les warnings de lenteur" est coche sur /logs. "schedSuspect=oui" pointe vers l'ordonnanceur FreeRTOS plutot que le composant mesure.
+MAINT-MINIMAL	Redemarrage volontaire dans une tache isolee dediee aux mises a jour (OTA) -- sans SD/ecran/Web actifs. Normal pendant une verification/installation demandee par l'utilisateur.

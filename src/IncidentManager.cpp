@@ -40,6 +40,9 @@ void IncidentManager::begin() {
     g_loaded = true;
 
     if (g_storageSd.state != IncidentState::NONE) {
+        // "notifications=" est un masque de IncidentNotification restant a
+        // envoyer (bit a bit), pas un code d'erreur -- 0x00 = rien en
+        // attente.
         EventLog::log(
             LOG_INFO,
             "Incident SD: restaure etat=%s occurrences=%lu notifications=0x%02X",
