@@ -30,6 +30,17 @@ public:
         PLANNING_DECOR,
         FAULTS_POST,
         YIELD,
+        // Postes jusque-la JAMAIS mesures dans loop() (main.cpp) alors qu'ils
+        // s'executent a chaque tour, sans exception — poses le 27 septembre
+        // 2026 en cherchant un gel chronique d'environ 450 ms, ~1 fois/seconde,
+        // qui touche tour a tour presque tous les composants DEJA mesures
+        // (signe d'un blocage externe a eux, pas d'un cout qui leur soit
+        // propre). Un cout cache ici expliquerait ce symptome sans jamais
+        // apparaitre nulle part ailleurs dans runtimeComponents.
+        CLOUD_SYNC,     // cloudSyncScheduler.update() — verif timer + apply
+        UPDATE_CHECK,   // updateCheckScheduler.update() — verif timer MAJ
+        PRE_LOOP,       // BootLoopGuard/OtaBootGuard/configMgr.update() en tete de loop()
+        IO_EXPANDER,    // ioExpander.update() — apres relaisMgr, avant webMgr
         COUNT
     };
 

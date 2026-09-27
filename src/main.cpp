@@ -771,11 +771,13 @@ void setup() {
 void loop() {
     SystemDiagnostics::loopEnter();
 
+    uint32_t startedUs = RuntimeProfiler::start();
     BootLoopGuard::update();
     OtaBootGuard::update();
     configMgr.update();  // applique une sauvegarde NVS differee en attente, si echue
+    RuntimeProfiler::stop(RuntimeProfiler::Component::PRE_LOOP, startedUs);
 
-    uint32_t startedUs = RuntimeProfiler::start();
+    startedUs = RuntimeProfiler::start();
     FaultManager::update();
     RuntimeProfiler::stop(RuntimeProfiler::Component::FAULTS_PRE, startedUs);
 
@@ -826,6 +828,7 @@ void loop() {
     // lance et la vanne ouverte fait echouer la condition de declenchement.
     // L'ordre inverse laisserait une fenetre d'un tour de boucle pendant
     // laquelle le module redemarrerait juste avant d'ouvrir la vanne.
+    startedUs = RuntimeProfiler::start();
     updateCheckScheduler.update(
         ntpMgr.isSynced(),
         ntpMgr.getHour(),
@@ -835,9 +838,11 @@ void loop() {
         &relaisMgr,
         &configMgr
     );
+    RuntimeProfiler::stop(RuntimeProfiler::Component::UPDATE_CHECK, startedUs);
 
     // Meme emplacement et meme raison que ci-dessus : apres le planificateur,
     // jamais avant.
+    startedUs = RuntimeProfiler::start();
     cloudSyncScheduler.update(
         ntpMgr.isSynced(),
         static_cast<uint32_t>(time(nullptr)),
@@ -845,6 +850,7 @@ void loop() {
         &relaisMgr,
         &configMgr
     );
+    RuntimeProfiler::stop(RuntimeProfiler::Component::CLOUD_SYNC, startedUs);
 
     startedUs = RuntimeProfiler::start();
     executionShadowRuntime.update(millis());
@@ -883,7 +889,9 @@ void loop() {
     // Couche E/S TOR : scrute les entrees a sa propre periode, pilote les
     // sorties. Non bloquant, inerte si desactivee. Apres relaisMgr.update()
     // pour que l'etat des zones (gating presence-vanne) soit a jour.
+    startedUs = RuntimeProfiler::start();
     ioExpander.update(millis(), configMgr.nbZones());
+    RuntimeProfiler::stop(RuntimeProfiler::Component::IO_EXPANDER, startedUs);
 
     startedUs = RuntimeProfiler::start();
     webMgr.update();

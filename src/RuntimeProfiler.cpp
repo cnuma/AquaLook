@@ -113,6 +113,10 @@ const char* RuntimeProfiler::componentName(Component component) {
         case Component::PLANNING_DECOR:   return "planningDecor";
         case Component::FAULTS_POST:      return "faultsPost";
         case Component::YIELD:            return "yield";
+        case Component::CLOUD_SYNC:       return "cloudSync";
+        case Component::UPDATE_CHECK:     return "updateCheck";
+        case Component::PRE_LOOP:         return "preLoop";
+        case Component::IO_EXPANDER:      return "ioExpander";
         case Component::COUNT:            return "count";
         default:                          return "unknown";
     }
