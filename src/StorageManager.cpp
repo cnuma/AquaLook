@@ -182,7 +182,15 @@ void StorageManager::update() {
     // instant : ne pas bloquer la boucle principale si le bus est occupe,
     // ce controle sera simplement retente au prochain passage.
     if (!lockSd(50U)) return;
+    // Chronometre l'appel : en mode SHARED_SPI (voir mount(), commentaire du
+    // 29 aout 2026), chaque operation SD rouvre sa transaction a froid --
+    // moins de marge qu'un bus dedie face a un ralentissement ponctuel de la
+    // carte elle-meme (maintenance interne des cartes SD grand public,
+    // imprevisible). Journalisee pour transformer un futur "code d'erreur
+    // brut" en donnee exploitable plutot qu'une hypothese (26/27 sept. 2026).
+    const uint32_t existsStartMs = millis();
     const bool indexPresent = _sd.exists("/www/index.html");
+    const uint32_t existsDurationMs = millis() - existsStartMs;
     // SdFat renvoie false pour DEUX causes tres differentes : le fichier est
     // absent, ou la carte n'a pas repondu. Le code d'erreur les distingue --
     // nul, la carte a parfaitement fonctionne et le fichier n'existe pas.
@@ -219,13 +227,25 @@ void StorageManager::update() {
     if (_healthFailureCount < SD_HEALTH_FAILURE_CONFIRMATIONS) {
         EventLog::log(
             LOG_WARN,
-            "Stockage: erreur E/S SD (%s) confirmation=%u/%u",
+            "Stockage: erreur E/S SD (%s) confirmation=%u/%u duree=%lums",
             sdErrorText(sdError),
             static_cast<unsigned>(_healthFailureCount),
-            static_cast<unsigned>(SD_HEALTH_FAILURE_CONFIRMATIONS)
+            static_cast<unsigned>(SD_HEALTH_FAILURE_CONFIRMATIONS),
+            static_cast<unsigned long>(existsDurationMs)
         );
         return;
     }
+
+    // Derniere confirmation avant de declarer la carte indisponible --
+    // markUnavailable() ne porte pas cette duree (appele aussi depuis
+    // d'autres echecs, ou une duree n'aurait pas le meme sens), donc
+    // journalisee ici, juste avant, plutot que d'elargir sa signature.
+    EventLog::log(
+        LOG_WARN,
+        "Stockage: derniere confirmation avant indisponibilite (%s) duree=%lums",
+        sdErrorText(sdError),
+        static_cast<unsigned long>(existsDurationMs)
+    );
 
     markUnavailable(
         StorageStatus::READ_ERROR,
