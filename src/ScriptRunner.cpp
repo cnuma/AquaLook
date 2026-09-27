@@ -17,6 +17,8 @@ void ScriptRunner::begin(const InputSampler* inputs, ScheduleManager* schedule,
         _seenZoneActive[i] = false;
         _lastStartMs[i] = 0U;
         _lastAbort[i] = "";
+        _lastAbortDetail[i][0] = '\0';
+        _lastAbortPc[i] = 0U;
     }
     _primed = false;
 }
@@ -43,6 +45,14 @@ uint8_t ScriptRunner::runningCount() const {
 
 const char* ScriptRunner::lastAbort(uint8_t index) const {
     return index < ScriptStore::MAX_SCRIPTS ? _lastAbort[index] : "";
+}
+
+const char* ScriptRunner::lastAbortDetail(uint8_t index) const {
+    return index < ScriptStore::MAX_SCRIPTS ? _lastAbortDetail[index] : "";
+}
+
+uint16_t ScriptRunner::lastAbortPc(uint8_t index) const {
+    return index < ScriptStore::MAX_SCRIPTS ? _lastAbortPc[index] : 0U;
 }
 
 bool ScriptRunner::start(uint8_t index, const char*& reason) {
@@ -73,6 +83,8 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     job.vm.load(ScriptProgram(job.code, meta.codeSize), &scriptHostOps(), &job.ctx);
 
     _lastAbort[index] = "";
+    _lastAbortDetail[index][0] = '\0';
+    _lastAbortPc[index] = 0U;
     EventLog::log(LOG_INFO, "Script %u (%s) demarre", (unsigned)(index + 1U), meta.name);
     return true;
 }
@@ -163,11 +175,26 @@ void ScriptRunner::update() {
         } else if (st == ScriptStatus::ABORTED) {
             const ScriptAbort why = job.vm.abortReason();
             _lastAbort[job.index] = scriptAbortName(why);
+            _lastAbortPc[job.index] = job.vm.programCounter();
+            // Le detail n'a de sens que pour un refus de l'hote : les autres
+            // categories (limite de pas, pile...) n'en produisent pas, et
+            // job.ctx.refusalReason garderait alors un residu d'un refus
+            // plus ancien s'il n'etait pas efface ici.
+            if (why == ScriptAbort::HOST_REFUSED && job.ctx.refusalReason[0] != '\0') {
+                strlcpy(_lastAbortDetail[job.index], job.ctx.refusalReason,
+                        sizeof(_lastAbortDetail[job.index]));
+            } else {
+                _lastAbortDetail[job.index][0] = '\0';
+            }
             // ERREUR et non avertissement : un script arrete n'a pas fait ce
             // que son auteur attendait, et personne ne le verra autrement.
-            EventLog::log(LOG_ERROR, "Script %u ARRETE : %s (apres %lu instructions)",
+            EventLog::log(LOG_ERROR,
+                          "Script %u ARRETE : %s%s%s (apres %lu instructions, position %u)",
                           (unsigned)(job.index + 1U), scriptAbortName(why),
-                          (unsigned long)job.vm.stepsUsed());
+                          _lastAbortDetail[job.index][0] ? " -- " : "",
+                          _lastAbortDetail[job.index],
+                          (unsigned long)job.vm.stepsUsed(),
+                          (unsigned)job.vm.programCounter());
             job.active = false;
         }
     }

@@ -307,7 +307,15 @@ ScriptStatus ScriptVm::tick() {
                     ok = _host->zoneRemainingSec &&
                          _host->zoneRemainingSec(_hostCtx, u16, value);
                 }
-                if (!ok) { fail(ScriptAbort::HOST_REFUSED); return _status; }
+                if (!ok) {
+                    // here = debut de CETTE instruction, pas la position apres
+                    // les operandes deja consommes par fetch16() ci-dessus --
+                    // sinon programCounter() pointerait sur l'instruction
+                    // SUIVANTE, et l'editeur surlignerait la mauvaise ligne.
+                    _pc = here;
+                    fail(ScriptAbort::HOST_REFUSED);
+                    return _status;
+                }
                 if (!push(value)) return _status;
                 break;
             }
@@ -318,6 +326,7 @@ ScriptStatus ScriptVm::tick() {
                 if (!pop(a)) return _status;
                 const ScriptAction act = static_cast<ScriptAction>(actionRaw);
                 if (!_host->action || !_host->action(_hostCtx, act, u16, a)) {
+                    _pc = here;
                     fail(ScriptAbort::HOST_REFUSED);
                     return _status;
                 }
@@ -327,6 +336,7 @@ ScriptStatus ScriptVm::tick() {
             case ScriptOp::NOTIFY:
                 if (!fetch16(u16)) return _status;
                 if (!_host->notify || !_host->notify(_hostCtx, u16)) {
+                    _pc = here;
                     fail(ScriptAbort::HOST_REFUSED);
                     return _status;
                 }
@@ -335,6 +345,7 @@ ScriptStatus ScriptVm::tick() {
             case ScriptOp::ALERT:
                 if (!fetch16(u16)) return _status;
                 if (!_host->alert || !_host->alert(_hostCtx, u16)) {
+                    _pc = here;
                     fail(ScriptAbort::HOST_REFUSED);
                     return _status;
                 }

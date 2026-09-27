@@ -741,6 +741,12 @@ void WebManager::setupRoutes() {
             if (_scripts) {
                 o["encours"] = _scripts->isRunning(i);
                 o["dernierArret"] = _scripts->lastAbort(i);
+                // Detail (ex. "zone 5 : duree nulle ou negative") et position
+                // dans le bytecode -- l'editeur recompile le MEME source pour
+                // retrouver la ligne et la surligner. Vides si le dernier
+                // passage s'est bien termine.
+                o["dernierArretDetail"] = _scripts->lastAbortDetail(i);
+                o["dernierArretPc"] = _scripts->lastAbortPc(i);
             }
         }
         String body;
@@ -838,7 +844,7 @@ void WebManager::setupRoutes() {
         req->send(200, "text/plain; charset=utf-8", text);
     });
 
-    _server.on("/api/script-one", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/api/script-one", HTTP_GET, [this](AsyncWebServerRequest* req) {
         const uint8_t i = req->hasParam("i")
             ? (uint8_t)req->getParam("i")->value().toInt() : 255U;
         ScriptStore::Meta meta;
@@ -857,6 +863,14 @@ void WebManager::setupRoutes() {
             doc["entree"] = meta.triggerTarget;
             JsonArray c = doc["code"].to<JsonArray>();
             for (uint16_t k = 0U; k < meta.codeSize; ++k) c.add(code[k]);
+            // Meme trio que /api/scripts (dernierArret*) : l'editeur n'a
+            // besoin que d'UN appel pour charger le script ET savoir s'il
+            // s'est deja arrete en erreur.
+            if (_scripts) {
+                doc["dernierArret"] = _scripts->lastAbort(i);
+                doc["dernierArretDetail"] = _scripts->lastAbortDetail(i);
+                doc["dernierArretPc"] = _scripts->lastAbortPc(i);
+            }
         }
         String body;
         serializeJson(doc, body);

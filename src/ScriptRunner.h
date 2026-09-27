@@ -55,6 +55,14 @@ public:
     // Derniere raison d'arret d'un script, pour l'interface. Vide si le
     // dernier passage s'est termine normalement.
     const char* lastAbort(uint8_t index) const;
+    // Detail du refus (ex. "zone 5 : duree nulle ou negative"), vide si
+    // l'arret n'est pas un HOST_REFUSED ou si le dernier passage s'est bien
+    // termine.
+    const char* lastAbortDetail(uint8_t index) const;
+    // Position dans le bytecode au moment de l'arret -- l'editeur, qui
+    // recompile le MEME source, peut la retraduire en ligne pour surligner
+    // l'endroit en cause. 0 si le dernier passage s'est bien termine.
+    uint16_t lastAbortPc(uint8_t index) const;
 
 private:
     struct Job {
@@ -86,5 +94,7 @@ private:
     uint32_t _lastStartMs[ScriptStore::MAX_SCRIPTS] = {};
     static constexpr uint32_t MIN_RESTART_MS = 5000U;
     const char* _lastAbort[ScriptStore::MAX_SCRIPTS] = {};
+    char _lastAbortDetail[ScriptStore::MAX_SCRIPTS][48] = {};
+    uint16_t _lastAbortPc[ScriptStore::MAX_SCRIPTS] = {};
     bool _primed = false;
 };

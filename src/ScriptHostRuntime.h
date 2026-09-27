@@ -38,6 +38,10 @@ struct ScriptRuntimeContext {
     // Nom du script, repris dans la notification : un code seul ne dirait pas
     // d'ou il vient.
     const char* name = "";
+    // Detail du DERNIER refus (ex. "zone 5 : duree nulle ou negative") --
+    // "action refusee" seul ne dit pas QUOI a echoue. Tampon fixe : pas
+    // d'allocation dans le chemin d'execution des scripts.
+    char refusalReason[48] = "";
 };
 
 const AquaLook::Domain::ScriptHostOps& scriptHostOps();

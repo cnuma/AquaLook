@@ -1,5 +1,7 @@
 #include "ScriptHostRuntime.h"
 
+#include <cstdio>
+
 #include "EventLog.h"
 #include "NotificationManager.h"
 
@@ -26,7 +28,20 @@ bool readInput(void* raw, uint16_t inputId, int32_t& value) {
     // read() ne repond QUE si la valeur est stabilisee. Un script ne doit
     // jamais decider sur une lecture qui n'a pas encore tenu : c'est
     // exactement ce que l'anti-rebond existe pour empecher.
-    if (!ctx->inputs->read(inputId, active)) { ctx->refusals++; return false; }
+    if (!ctx->inputs->read(inputId, active)) {
+        ctx->refusals++;
+        // read() confond deux causes tres differentes sous le meme false --
+        // distinguees ici en reparcourant les entrees connues, plutot que de
+        // dire "action refusee" pour un flotteur qui claquette encore.
+        bool connue = false;
+        for (uint8_t k = 0U; k < ctx->inputs->count(); ++k) {
+            if (ctx->inputs->idAt(k) == inputId) { connue = true; break; }
+        }
+        snprintf(ctx->refusalReason, sizeof(ctx->refusalReason),
+                 connue ? "entree %u pas encore stabilisee" : "entree %u inconnue",
+                 (unsigned)inputId);
+        return false;
+    }
     ctx->reads++;
     value = active ? 1 : 0;
     return true;
@@ -35,7 +50,13 @@ bool readInput(void* raw, uint16_t inputId, int32_t& value) {
 bool zoneActive(void* raw, uint16_t zoneId, int32_t& value) {
     ScriptRuntimeContext* ctx = ctxOf(raw);
     const uint8_t z = zoneIndex(ctx, zoneId);
-    if (z >= MAX_ZONES || !ctx->schedule) { if (ctx) ctx->refusals++; return false; }
+    if (z >= MAX_ZONES || !ctx->schedule) {
+        if (ctx) {
+            ctx->refusals++;
+            snprintf(ctx->refusalReason, sizeof(ctx->refusalReason), "zone %u inconnue", (unsigned)zoneId);
+        }
+        return false;
+    }
     ctx->reads++;
     value = ctx->schedule->isZoneActive(z) ? 1 : 0;
     return true;
@@ -44,7 +65,13 @@ bool zoneActive(void* raw, uint16_t zoneId, int32_t& value) {
 bool zoneRemainingSec(void* raw, uint16_t zoneId, int32_t& value) {
     ScriptRuntimeContext* ctx = ctxOf(raw);
     const uint8_t z = zoneIndex(ctx, zoneId);
-    if (z >= MAX_ZONES || !ctx->schedule) { if (ctx) ctx->refusals++; return false; }
+    if (z >= MAX_ZONES || !ctx->schedule) {
+        if (ctx) {
+            ctx->refusals++;
+            snprintf(ctx->refusalReason, sizeof(ctx->refusalReason), "zone %u inconnue", (unsigned)zoneId);
+        }
+        return false;
+    }
     ctx->reads++;
     // Une zone SUSPENDUE a un reliquat, meme si elle n'arrose pas. C'est
     // justement ce reliquat qui interesse un script de reprise.
@@ -63,14 +90,25 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
     if (z >= MAX_ZONES) {
         EventLog::log(LOG_WARN, "Script: zone %u inconnue, action refusee",
                       (unsigned)target);
+        snprintf(ctx->refusalReason, sizeof(ctx->refusalReason), "zone %u inconnue", (unsigned)target);
         ctx->refusals++;
         return false;
     }
 
     bool ok = false;
+    const char* pourquoi = "action refusee";
     switch (act) {
         case ScriptAction::ZONE_START:
-            ok = ctx->schedule->startZoneForSeconds(z, arg > 0 ? (uint32_t)arg : 0U);
+            if (arg <= 0) {
+                // startZoneForSeconds() refuse aussi une duree nulle, mais
+                // sans le dire : distingue ici plutot que de melanger ce cas
+                // avec un refus venu du planificateur lui-meme.
+                pourquoi = "duree nulle ou negative";
+                ok = false;
+            } else {
+                ok = ctx->schedule->startZoneForSeconds(z, (uint32_t)arg);
+                if (!ok) pourquoi = "demarrage refuse par le planificateur";
+            }
             break;
         case ScriptAction::ZONE_STOP:
             ctx->schedule->stopManualWatering(z);
@@ -78,9 +116,11 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
             break;
         case ScriptAction::ZONE_PAUSE:
             ok = ctx->schedule->pauseZone(z);
+            if (!ok) pourquoi = "zone non active, rien a suspendre";
             break;
         case ScriptAction::ZONE_RESUME:
             ok = ctx->schedule->resumeZone(z);
+            if (!ok) pourquoi = "zone non suspendue, rien a reprendre";
             break;
         case ScriptAction::SET_OUTPUT:
         default:
@@ -91,11 +131,17 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
             // choisi par l'utilisateur. Voir /logs/messages.tsv.
             EventLog::log(LOG_WARN, "[SCRIPT-ACTION] %u non_implementee",
                           (unsigned)act);
+            pourquoi = "action non implementee";
             ok = false;
             break;
     }
 
-    if (ok) ctx->actions++; else ctx->refusals++;
+    if (ok) {
+        ctx->actions++;
+    } else {
+        ctx->refusals++;
+        snprintf(ctx->refusalReason, sizeof(ctx->refusalReason), "zone %u : %s", (unsigned)target, pourquoi);
+    }
     return ok;
 }
 
@@ -120,7 +166,11 @@ bool alert(void* raw, uint16_t code) {
         EventLog::log(LOG_WARN,
                       "[SCRIPT-ALERT] code=%u non_envoyee",
                       (unsigned)code);
-        if (ctx) ctx->refusals++;
+        if (ctx) {
+            ctx->refusals++;
+            snprintf(ctx->refusalReason, sizeof(ctx->refusalReason),
+                     "notification %u non envoyee", (unsigned)code);
+        }
         return false;
     }
     EventLog::log(LOG_INFO, "[SCRIPT-ALERT] code=%u envoyee", (unsigned)code);
