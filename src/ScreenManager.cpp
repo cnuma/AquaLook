@@ -269,6 +269,21 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
             break;
 
         case 2: {
+            // Contrairement aux autres modes (1, 4), rien ici ne bornait la
+            // frequence de calcul : "level" varie a chaque appel de update(),
+            // donc setStatus()/g_dirty (StatusLed.cpp) voyait presque
+            // toujours une couleur differente et commit() envoyait le ruban
+            // WS2812 A CHAQUE TOUR DE BOUCLE (~128/s mesures), sans que l'oeil
+            // en beneficie -- une respiration sur 4 s ne se voit pas a moins
+            // de 30 images/s. Trouve le 27 septembre 2026 en cherchant la
+            // cause d'un cout eleve et continu mesure sur le composant
+            // "display" (RuntimeProfiler) alors qu'aucun redessin LCD n'etait
+            // en cause : ScreenManager::update() (et donc ce ruban) est
+            // imbrique dans le meme appel.
+            constexpr uint32_t FRAME_MS = 33UL;   // ~30 img/s
+            if (now - _ledTimer < FRAME_MS) break;
+            _ledTimer = now;
+
             constexpr uint32_t PERIOD_MS = 4000UL;
             constexpr uint32_t HALF_MS = PERIOD_MS / 2UL;
 
@@ -286,6 +301,12 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
         }
 
         case 3: {
+            // Meme garde que le mode 2 ci-dessus, meme raison : sans elle,
+            // chaque appel de update() poussait le ruban WS2812.
+            constexpr uint32_t FRAME_MS = 33UL;   // ~30 img/s
+            if (now - _ledTimer < FRAME_MS) break;
+            _ledTimer = now;
+
             constexpr uint32_t STEP_MS = 2000UL;
             constexpr uint32_t CYCLE_MS = STEP_MS * 6UL;
 
