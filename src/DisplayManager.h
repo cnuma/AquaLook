@@ -298,7 +298,9 @@ private:
         bool    z1Active   = false;
         uint8_t z0Pct      = 255;
         uint8_t z1Pct      = 255;
-        int8_t  rssi       = 0;
+        // Nombre de barres affichees (0-4), pas le dBm brut : voir la note
+        // dans updateHomeDynamic_list() sur le bruit de mesure du RSSI.
+        uint8_t signalBars = 0;
         float   rainMm     = -1.0f;
         bool    ntpSynced  = false;
         int8_t  todayIdx   = -99;  // force re-render planning au premier tick synced

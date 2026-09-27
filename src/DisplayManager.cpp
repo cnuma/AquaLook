@@ -5,6 +5,7 @@
 #include "BootLoopGuard.h"
 #include "NotificationManager.h"   // marqueur "MAJ DISPO" du bandeau
 #include "IncidentManager.h"       // page Sante : etat incident SD
+#include "RuntimeProfiler.h"       // sous-composants de update(), voir la note du 27/09/2026
 #include "EventLog.h"
 #include "esp_log.h"
 #include <WiFi.h>
@@ -591,7 +592,11 @@ void DisplayManager::update() {
 #else
     const uint16_t rainMask = 0U;
 #endif
-    _screenMgr.update(anyActive, isWifiSearching(), activeZoneMask, _nbZones, rainMask);
+    {
+        const uint32_t t0 = RuntimeProfiler::start();
+        _screenMgr.update(anyActive, isWifiSearching(), activeZoneMask, _nbZones, rainMask);
+        RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_SCREENMGR, t0);
+    }
 
     // Mise a jour ENGAGEE : l'ecran violet pose par showUpdateScreen() est le
     // seul contenu legitime a l'ecran.
@@ -669,7 +674,9 @@ void DisplayManager::update() {
     // Poll touch (80ms)
     if (now - _lastTouch >= 80) {
         _lastTouch = now;
+        const uint32_t t0 = RuntimeProfiler::start();
         handleTouch();
+        RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_TOUCH, t0);
     }
 
     // Hot-reload des tokens de design — invariant I31 :
@@ -690,6 +697,7 @@ void DisplayManager::update() {
     if (_needsFullRedraw) {
         _needsFullRedraw = false;
         _tft.fillScreen(Theme::BG);
+        const uint32_t t0 = RuntimeProfiler::start();
         switch (_screen) {
             case Screen::HOME:   drawHomeFull();              break;
             case Screen::ZONE:   drawZoneFull(_selectedZone); break;
@@ -698,6 +706,7 @@ void DisplayManager::update() {
             case Screen::ADMIN:  drawAdminFull();             break;
             case Screen::HEALTH: drawHealthFull();            break;
         }
+        RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_FULLREDRAW, t0);
         // Le rendu complet contient déjà toutes les informations dynamiques.
         // Repartir du temps courant évite un second refresh immédiat au boot,
         // qui pouvait recouvrir le haut des boutons avec le sprite planning.
@@ -715,6 +724,7 @@ void DisplayManager::update() {
 
     if (now - _lastUpdate >= interval) {
         _lastUpdate = now;
+        const uint32_t t0 = RuntimeProfiler::start();
         switch (_screen) {
             case Screen::HOME:   updateHomeDynamic();              break;
             case Screen::ZONE:   updateZoneDynamic(_selectedZone); break;
@@ -723,6 +733,7 @@ void DisplayManager::update() {
             case Screen::ADMIN:  updateAdminDynamic();             break;
             case Screen::HEALTH: updateHealthDynamic();            break;
         }
+        RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_DYNAMIC, t0);
     }
 }
 
@@ -1372,6 +1383,14 @@ bool DisplayManager::isWifiSearching() const {
     return _wifi && !_wifi->isConnected() && !_wifi->isCaptivePortal();
 }
 
+// Meme seuils que le rendu des barres dans renderSignalSprite() -- fonction
+// partagee pour que le nombre de barres AFFICHEES et celui utilise par le
+// controle de redessin (updateHomeDynamic_list) ne puissent jamais diverger.
+static uint8_t wifiSignalBars(bool connected, int8_t rssi) {
+    if (!connected) return 0;
+    return (rssi > -55) ? 4 : (rssi > -70) ? 3 : (rssi > -80) ? 2 : 1;
+}
+
 void DisplayManager::renderSignalSprite() {
     _sprSignal.fillSprite(Theme::SURFACE);
 
@@ -1387,9 +1406,7 @@ void DisplayManager::renderSignalSprite() {
         return;
     }
 
-    int8_t rssi = (int8_t)WiFi.RSSI();
-    uint8_t bars = (rssi > -55) ? 4 : (rssi > -70) ? 3 : (rssi > -80) ? 2 : 1;
-    if (WiFi.status() != WL_CONNECTED) bars = 0;
+    const uint8_t bars = wifiSignalBars(WiFi.status() == WL_CONNECTED, (int8_t)WiFi.RSSI());
     for (uint8_t i = 0; i < 4; i++) {
         uint16_t col = (i < bars) ? Theme::GREEN : Theme::BORDER;
         uint8_t  h   = 4 + i * 3;
@@ -2569,8 +2586,15 @@ void DisplayManager::updateHomeDynamic_list() {
     // Signal — redessine aussi en continu pendant la recherche WiFi pour
     // faire vivre le clignotement (rssi reste fige a 0 tant que non connecte,
     // ce qui ne declencherait sinon jamais de redraw).
-    int8_t rssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : 0;
-    if (rssi != _hc.rssi || isWifiSearching()) { _hc.rssi = rssi; renderSignalSprite(); }
+    //
+    // Comparaison sur le nombre de BARRES affichees, pas le dBm brut : le RSSI
+    // reel varie de +/-1 a 3 dB en continu par simple bruit de mesure, ce qui
+    // redessinait et repoussait le sprite a CHAQUE tour de boucle sans que
+    // l'affichage change visuellement -- un facteur mesure parmi ceux qui
+    // expliquent le cout eleve et frequent du composant "display" au
+    // profileur (RuntimeProfiler), constate le 27 septembre 2026.
+    const uint8_t bars = wifiSignalBars(WiFi.status() == WL_CONNECTED, (int8_t)WiFi.RSSI());
+    if (bars != _hc.signalBars || isWifiSearching()) { _hc.signalBars = bars; renderSignalSprite(); }
 
     // Planning (uniquement si visible)
     if (_nbZones <= 4 || !_listShowForce) {

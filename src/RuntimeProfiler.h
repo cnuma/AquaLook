@@ -18,6 +18,15 @@ public:
         RELAY,
         WEB,
         DISPLAY_MANAGER,
+        // Sous-composants de DISPLAY_MANAGER — poses le 27 septembre 2026
+        // pour localiser le point chaud reel derriere un "display" mesure
+        // tres au-dessus des autres composants (jusqu'a 6+ s/passage),
+        // plutot que de deviner depuis la lecture du code. A retirer une
+        // fois la cause identifiee et corrigee si l'aggregat suffit ensuite.
+        DISPLAY_SCREENMGR,   // _screenMgr.update() — inconditionnel, chaque tour
+        DISPLAY_TOUCH,       // handleTouch()/getTouchPoint() — throttle a 80 ms
+        DISPLAY_FULLREDRAW,  // drawXFull() sur _needsFullRedraw — rare, gros
+        DISPLAY_DYNAMIC,     // updateXDynamic() — throttle a _refreshNomMs/ActMs
         PLANNING_DECOR,
         FAULTS_POST,
         YIELD,
