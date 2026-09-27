@@ -90,6 +90,12 @@
     const toks = tokenize(text);
     let i = 0;
     const out = [];
+    // Un point {pc, line} au debut de CHAQUE instruction (voir statement()
+    // ci-dessous) -- pas une table octet par octet, trop lourde pour rien.
+    // Sert uniquement cote editeur, a retrouver la ligne d'un arret survenu
+    // sur le module (voir majSuggestions()/surlignerLigne() dans
+    // scripts.html) ; le module, lui, ne voit jamais cette table.
+    const stmtLines = [];
 
     const peek = () => toks[i].v;
     const line = () => toks[i].line;
@@ -204,6 +210,7 @@
     }
 
     function statement() {
+      stmtLines.push({ pc: out.length, line: line() });
       const word = lower(peek());
 
       if (word === 'si') {
@@ -309,6 +316,12 @@
 
     block([]);
     emit(OP.HALT);
+    // Propriete ajoutee sur le TABLEAU retourne, pas un second element : tout
+    // appelant qui traite le resultat comme un simple tableau d'octets
+    // (code.length, code.map(...), JSON.stringify...) ne voit aucune
+    // difference. Seul un appelant qui la demande explicitement (out.lineMap)
+    // la voit.
+    out.lineMap = stmtLines;
     return out;
   }
 

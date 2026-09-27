@@ -33,6 +33,9 @@ h1{font-size:21px;margin:0 0 4px;color:var(--text)}
 .cmd:hover{background:#fff;border-color:var(--border2)}
 .cmd .desc{display:block;font-size:10px;color:var(--text2);margin-top:2px;
   font-family:var(--sans,Arial,sans-serif);line-height:1.4}
+.cmd.hors-contexte{opacity:.5}
+.cmd.hors-contexte:hover{opacity:.85}
+.cmd .pourquoi{color:var(--muted);font-style:italic}
 .ref{display:block;width:100%;text-align:left;border:1px solid transparent;
   background:transparent;cursor:pointer;padding:5px 6px;border-radius:4px;margin:1px 0}
 .ref:hover{background:#fff;border-color:var(--border2)}
@@ -48,6 +51,31 @@ select,input[type=text],input[type=number]{padding:8px;border-radius:5px;
 textarea{width:100%;box-sizing:border-box;min-height:360px;padding:12px;border-radius:6px;
  border:1px solid var(--border2);background:#fff;color:var(--text);
  font-family:var(--mono);font-size:13.5px;line-height:1.6;resize:vertical}
+.alerte{margin-top:10px;padding:9px 12px;border-radius:6px;font-size:12.5px;
+ line-height:1.6;border:1px solid var(--amber);color:#8a5a00;background:#fff8e6}
+.alerte-erreur{margin-top:10px;padding:9px 12px;border-radius:6px;font-size:12.5px;
+ line-height:1.6;border:1px solid #f5c6cb;color:var(--red);background:#f8d7da}
+select#actif.inactif{border-color:var(--amber);background:#fff8e6}
+.suggestions{margin-top:6px;padding:6px 8px;border:1px solid var(--border2);
+ border-radius:6px;background:var(--bg2)}
+.suggestions .attendu{font-size:10.5px;color:var(--text2);margin:0 0 5px;line-height:1.4}
+.suggestions .puces{display:flex;flex-wrap:wrap;gap:4px}
+.suggestions .puce{border:1px solid var(--border2);background:#fff;color:var(--text);
+ border-radius:4px;padding:4px 7px;font-family:var(--mono);font-size:11px;cursor:pointer}
+.suggestions .puce:hover{border-color:#1d6b34;color:#1d6b34}
+.suggestions .puce .h{display:block;font-size:9.5px;color:var(--text2);
+ font-family:var(--sans,Arial,sans-serif);margin-top:1px}
+.taille{margin-top:6px;font-size:11px;font-family:var(--mono);color:#1d6b34;
+ text-align:right}
+.taille.proche{color:var(--amber)}
+.taille.hors{color:var(--red);font-weight:600}
+.taille.perime{color:var(--amber);font-style:italic}
+details.sous{margin:1px 0 3px;border:none;border-radius:4px;background:transparent;
+ padding:0}
+details.sous summary{font-size:10px;color:var(--muted);font-family:var(--mono);
+ letter-spacing:.02em;cursor:pointer;padding:3px 6px;list-style:revert}
+details.sous summary:hover{color:var(--text2)}
+details.sous[open] summary{color:var(--text2);margin-bottom:1px}
 .bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .bar button{width:auto;padding:9px 14px;border-radius:5px;
   font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.07em;
@@ -113,7 +141,15 @@ table.biblio button.x{width:auto;padding:6px 10px;border-radius:5px;cursor:point
         <div class="f"><label>Actif</label><select id="actif"><option value="1">oui</option><option value="0">non</option></select></div>
       </div>
 
+      <div id="alerte-inactif" class="alerte" hidden>Script INACTIF : il ne démarre jamais
+        seul, et « Lancer maintenant » le refuse aussi (« script desactive ») — repassez
+        « Actif » à « oui » pour l'utiliser.</div>
+
+      <div id="alerte-dernier-arret" class="alerte-erreur" hidden></div>
+
       <textarea id="src" spellcheck="false" placeholder="# Cliquez une commande a gauche pour commencer"></textarea>
+      <div id="suggestions" class="suggestions" hidden></div>
+      <div id="taille" class="taille"></div>
 
       <div class="bar">
         <button class="principal" onclick="verifier()">Vérifier</button>
@@ -188,6 +224,9 @@ table.biblio button.x{width:auto;padding:6px 10px;border-radius:5px;cursor:point
 const $ = (id) => document.getElementById(id);
 let MAX = 6;
 let NONCE = 0;
+// Valeur de secours identique a ScriptStore::MAX_BYTECODE (firmware) tant
+// que /api/scripts n'a pas encore repondu.
+let TAILLE_MAX = 400;
 
 // ── Insertion a l'endroit du curseur ────────────────────────────────────
 // Ecrire « entree(100) » de memoire, c'est se tromper d'identifiant une fois
@@ -204,6 +243,11 @@ function inserer(texte) {
   const pos = a + saut.length + texte.length;
   ta.focus();
   ta.setSelectionRange(pos, pos);
+  // Affecter .value ne declenche pas l'evenement 'input' : sans cet appel
+  // explicite, le compteur ne bougeait qu'au clavier, jamais au clic sur
+  // une commande -- pourtant le chemin normal pour ecrire un script ici.
+  majTaille();
+  majSuggestions();
 }
 
 const COMMANDES = [
@@ -236,17 +280,128 @@ const COMMANDES = [
   ]]
 ];
 
+// Zero et un exemples fixes ("zone 1", "entree(100)") menent nulle part des
+// que le module n'a pas cette zone ou cette entree precise -- remplaces ici
+// par le premier identifiant REEL, et doubles d'une sous-liste complete
+// (meme methode que sousListeNotifier() plus bas) pour les commandes qui
+// prennent un identifiant.
+function primerZoneId() { return ZONES.length ? ZONES[0].id : 1; }
+function primerEntreeId() { return ENTREES.length ? ENTREES[0].id : 100; }
+
+// Memes valeurs que ScriptStore::TRIGGER_ZONE_START/STOP cote firmware --
+// dupliquees ici faute d'un JSON commun entre le C++ et cette page.
+const TRIG_ZONE_START = 2, TRIG_ZONE_STOP = 3;
+
+function contexteDeclencheur() {
+  return {
+    t: parseInt($('declencheur').value, 10),
+    cible: parseInt($('cible').value, 10) || 0
+  };
+}
+
+// Repliees par defaut (natif <details>, meme principe que l'aide des champs
+// et la bibliotheque de phrases plus bas) : depliees, ces sous-listes sont ce
+// qui a le plus allonge le panneau Commandes une fois les vrais identifiants
+// ajoutes -- masquees tant qu'on n'a pas besoin d'un identifiant PRECIS.
+function plier(etiquette, contenu) {
+  return '<details class="sous"><summary>' + etiquette + '</summary>' + contenu + '</details>';
+}
+
+function sousListeZones(tpl, marquerCible) {
+  if (!ZONES.length) {
+    return '<div class="vide" style="padding:2px 6px 7px">Aucune zone.</div>';
+  }
+  const ctx = contexteDeclencheur();
+  // ScriptRunner::update() ne declenche TRIGGER_ZONE_START/STOP que sur la
+  // transition de LA zone ciblee : juste apres, son propre etat est deja
+  // connu par construction -- le redemander est sans objet, pas faux.
+  const zoneDuDeclencheur = (ctx.t === TRIG_ZONE_START || ctx.t === TRIG_ZONE_STOP) ? ctx.cible : 0;
+  const lignes = ZONES.map(function (z) {
+    const hors = marquerCible && z.id === zoneDuDeclencheur;
+    const ins = tpl(z.id);
+    return '<button class="cmd' + (hors ? ' hors-contexte' : '') + '" data-ins="'
+      + ins.replace(/"/g, '&quot;') + '">' + ins + '<span class="desc">' + z.nom
+      + (hors ? ' <span class="pourquoi">— déjà vrai juste après ce déclencheur</span>' : '')
+      + '</span></button>';
+  }).join('');
+  return plier(ZONES.length + ' zone' + (ZONES.length > 1 ? 's' : ''), lignes);
+}
+
+function sousListeEntrees(tpl) {
+  if (!ENTREES.length) {
+    return '<div class="vide" style="padding:2px 6px 7px">Aucune entrée déclarée — '
+      + 'ajoutez-en une dans « Câblage relais ».</div>';
+  }
+  const lignes = ENTREES.map(function (e) {
+    const ins = tpl(e.id);
+    return '<button class="cmd" data-ins="' + ins.replace(/"/g, '&quot;') + '">' + ins
+      + '<span class="desc">' + e.nom + '</span></button>';
+  }).join('');
+  return plier(ENTREES.length + ' entrée' + (ENTREES.length > 1 ? 's' : ''), lignes);
+}
+
+// Une entree par commande qui prend un identifiant reel : le bouton par
+// defaut (utilise le premier zone/entree connu) et sa sous-liste complete.
+// « notifier » y figure aussi : c'est le precedent dont cette table
+// generalise la methode.
+const IDENTIFIANTS_REELS = {
+  'demarrer zone … pendant …': {
+    defaut: function () { return 'demarrer zone ' + primerZoneId() + ' pendant 300'; },
+    sous: function () { return sousListeZones(function (id) { return 'demarrer zone ' + id + ' pendant 300'; }); }
+  },
+  'arreter zone …': {
+    defaut: function () { return 'arreter zone ' + primerZoneId(); },
+    sous: function () { return sousListeZones(function (id) { return 'arreter zone ' + id; }); }
+  },
+  'suspendre zone …': {
+    defaut: function () { return 'suspendre zone ' + primerZoneId(); },
+    sous: function () { return sousListeZones(function (id) { return 'suspendre zone ' + id; }); }
+  },
+  'reprendre zone …': {
+    defaut: function () { return 'reprendre zone ' + primerZoneId(); },
+    sous: function () { return sousListeZones(function (id) { return 'reprendre zone ' + id; }); }
+  },
+  'zoneactive(<id>)': {
+    defaut: function () { return 'zoneactive(' + primerZoneId() + ')'; },
+    sous: function () { return sousListeZones(function (id) { return 'zoneactive(' + id + ')'; }, true); },
+    horsContexte: function () {
+      const ctx = contexteDeclencheur();
+      return (ctx.t === TRIG_ZONE_START || ctx.t === TRIG_ZONE_STOP) && ctx.cible === primerZoneId();
+    },
+    pourquoi: 'déjà vrai juste après ce déclencheur'
+  },
+  'reste(<id>)': {
+    defaut: function () { return 'reste(' + primerZoneId() + ')'; },
+    sous: function () { return sousListeZones(function (id) { return 'reste(' + id + ')'; }); }
+  },
+  'entree(<id>)': {
+    defaut: function () { return 'entree(' + primerEntreeId() + ')'; },
+    sous: function () { return sousListeEntrees(function (id) { return 'entree(' + id + ')'; }); },
+    horsContexte: function () { return !ENTREES.length; },
+    pourquoi: 'aucune entrée déclarée'
+  },
+  'notifier <code>': {
+    defaut: function () { return 'notifier 900'; },
+    sous: function () { return sousListeNotifier(); }
+  }
+};
+
 function rendreCommandes() {
   let h = '';
   COMMANDES.forEach(function (groupe) {
     h += '<h3>' + groupe[0] + '</h3>';
     groupe[1].forEach(function (c) {
-      h += '<button class="cmd" data-ins="' + c[0].replace(/"/g, '&quot;') + '">'
-         + c[1] + '<span class="desc">' + c[2] + '</span></button>';
-      // Sous « notifier <code> », une entree par phrase du catalogue : le
-      // clic insere « notifier <code> » avec le bon numero, et la phrase
-      // reelle reste sous les yeux pendant l'ecriture.
-      if (c[1] === 'notifier <code>') h += sousListeNotifier();
+      const reel = IDENTIFIANTS_REELS[c[1]];
+      const ins = reel ? reel.defaut() : c[0];
+      const hors = !!(reel && reel.horsContexte && reel.horsContexte());
+      h += '<button class="cmd' + (hors ? ' hors-contexte' : '') + '" data-ins="'
+         + ins.replace(/"/g, '&quot;') + '">' + c[1] + '<span class="desc">' + c[2]
+         + (hors ? ' <span class="pourquoi">— ' + reel.pourquoi + '</span>' : '')
+         + '</span></button>';
+      // Sous chaque commande qui prend un identifiant, une entree par valeur
+      // reelle du module (meme methode que « notifier », precedent direct) :
+      // le clic insere l'identifiant STABLE, pas une position d'affichage.
+      if (reel) h += reel.sous();
     });
   });
   $('commandes').innerHTML = h;
@@ -260,11 +415,12 @@ function sousListeNotifier() {
     return '<div class="vide" style="padding:2px 6px 7px">Aucune phrase — '
       + 'définissez-en dans « Bibliothèque de phrases », plus bas.</div>';
   }
-  return BIBLIO.map(function (o) {
+  const lignes = BIBLIO.map(function (o) {
     return '<button class="cmd" data-ins="notifier ' + o.code
       + '">notifier ' + o.code + '<span class="desc">'
       + echapAttr(o.texte) + '</span></button>';
   }).join('');
+  return plier(BIBLIO.length + ' phrase' + (BIBLIO.length > 1 ? 's' : ''), lignes);
 }
 
 // Ce que CE module offre : ses zones et ses entrees, avec leurs identifiants
@@ -370,19 +526,27 @@ let ZONES = [], ENTREES = [];
 function majCible(garder) {
   const t = parseInt($('declencheur').value, 10);
   const f = $('f-cible'), sel = $('cible');
-  if (t === 0) { f.style.display = 'none'; return; }
-  f.style.display = '';
-  const zone = (t === 2 || t === 3);
-  $('lbl-cible').textContent = zone ? 'Zone' : 'Entrée';
-  const liste = zone ? ZONES : ENTREES;
-  if (!liste.length) {
-    sel.innerHTML = '<option value="0">' + (zone ? 'aucune zone' : 'aucune entrée déclarée') + '</option>';
-    return;
+  if (t === 0) {
+    f.style.display = 'none';
+  } else {
+    f.style.display = '';
+    const zone = (t === TRIG_ZONE_START || t === TRIG_ZONE_STOP);
+    $('lbl-cible').textContent = zone ? 'Zone' : 'Entrée';
+    const liste = zone ? ZONES : ENTREES;
+    if (!liste.length) {
+      sel.innerHTML = '<option value="0">' + (zone ? 'aucune zone' : 'aucune entrée déclarée') + '</option>';
+    } else {
+      sel.innerHTML = liste.map(function (o) {
+        return '<option value="' + o.id + '">' + o.id + ' — ' + o.nom + '</option>';
+      }).join('');
+      if (garder) sel.value = String(garder);
+    }
   }
-  sel.innerHTML = liste.map(function (o) {
-    return '<option value="' + o.id + '">' + o.id + ' — ' + o.nom + '</option>';
-  }).join('');
-  if (garder) sel.value = String(garder);
+  // Le grisage des commandes (ex. zoneactive sur la zone qui vient de
+  // demarrer/s'arreter) depend du declencheur ET de sa cible : refaire ce
+  // rendu ici couvre tous les points d'entree (choix manuel, chargement d'un
+  // script, reinitialisation) sans les dupliquer un par un.
+  rendreCommandes();
 }
 
 function dire(texte, etat) {
@@ -391,12 +555,273 @@ function dire(texte, etat) {
   m.className = etat || '';
 }
 
+// Rendu vu APRES coup, dans #msg, uniquement quand l'utilisateur clique
+// Verifier/Enregistrer. Ici c'est le compte en direct, a chaque frappe --
+// pour repondre a "combien il me reste" sans devoir cliquer.
+function majTaille() {
+  const el = $('taille');
+  try {
+    const code = compiler();
+    const restant = TAILLE_MAX - code.length;
+    const texte = code.length + ' / ' + TAILLE_MAX + ' octets · '
+      + Math.max(restant, 0) + ' restants';
+    el.textContent = texte;
+    el.dataset.dernier = texte;
+    el.classList.remove('perime');
+    el.classList.toggle('hors', code.length > TAILLE_MAX);
+    el.classList.toggle('proche', code.length <= TAILLE_MAX && restant <= TAILLE_MAX * 0.1);
+  } catch (e) {
+    // Un gabarit comme « si <condition> alors » (bouton COMMANDES) ne
+    // compile pas tant que le <condition> n'est pas remplace par du vrai
+    // code : un compte fige SANS EXPLICATION se lit comme "le compteur est
+    // casse", pas comme "la syntaxe est incomplete pour l'instant". Le dire
+    // change visiblement le texte, meme quand le nombre exact est indisponible.
+    el.textContent = (el.dataset.dernier || '0 / ' + TAILLE_MAX + ' octets')
+      + ' — syntaxe actuelle incomplète, compte non à jour';
+    // hors/proche refletaient un compte a jour ; perime seul doit rester --
+    // les deux ensemble donneraient une couleur qui se contredit.
+    el.classList.remove('hors', 'proche');
+    el.classList.add('perime');
+  }
+}
+
+// ── Suggestions : "quoi ecrire ensuite" ─────────────────────────────────
+// Le compilateur (script-lang.js) ne signale une erreur qu'A LA FIN d'une
+// instruction mal formee -- rien ne dit, PENDANT la frappe, ce qui est
+// attendu ensuite. Chaque motif ci-dessous est lu directement dans une
+// branche reelle de statement()/primary() (script-lang.js) : ce ne sont pas
+// des suppositions sur le langage. Quand la ligne ne correspond a aucun
+// motif connu (expression complexe, imbrication...), majSuggestions()
+// n'affiche rien plutot que de risquer un conseil faux.
+// Deux listes, pas une seule : entree(.../zoneactive(... ne valent que 0 ou
+// 1. Les proposer apres « attendre »/« pendant » (qui veulent une DUREE en
+// secondes) inviterait exactement le piege rencontre le 27 sept. 2026 --
+// « attendre entree(101) » compile, mais n'attend alors que 0 ou 1 seconde,
+// jamais "jusqu'a ce que".
+const EXPR_BOOL = [
+  { ins: 'entree(', label: 'entree(', aide: 'Valeur d’une entrée : 0 ou 1' },
+  { ins: 'zoneactive(', label: 'zoneactive(', aide: 'Une zone arrose-t-elle : 0 ou 1' },
+  { ins: 'reste(', label: 'reste(', aide: 'Secondes restantes sur une zone' },
+  { ins: 'non ', label: 'non', aide: 'Inverse ce qui suit' },
+  { ins: '(', label: '(', aide: 'Groupe une expression' }
+];
+
+const EXPR_DUREE = [
+  { ins: 'reste(', label: 'reste(', aide: 'Secondes restantes sur une zone' },
+  { ins: '(', label: '(', aide: 'Groupe une expression' }
+];
+
+const STATEMENT_DEBUT = [
+  { ins: 'si ', label: 'si', aide: 'Test conditionnel' },
+  { ins: 'tantque ', label: 'tantque', aide: 'Répète tant que c’est vrai' },
+  { ins: 'pour ', label: 'pour', aide: 'Répète un nombre de fois connu' },
+  { ins: 'attendre ', label: 'attendre', aide: 'Rend la main, en secondes' },
+  { ins: 'demarrer ', label: 'demarrer', aide: 'Ouvre une zone pour une durée' },
+  { ins: 'arreter ', label: 'arreter', aide: 'Arrêt franc d’une zone' },
+  { ins: 'suspendre ', label: 'suspendre', aide: 'Ferme une zone, garde le temps restant' },
+  { ins: 'reprendre ', label: 'reprendre', aide: 'Reprend une zone suspendue' },
+  { ins: 'message ', label: 'message', aide: 'Trace dans le journal du module' },
+  { ins: 'notifier ', label: 'notifier', aide: 'Notification sur le téléphone' },
+  { ins: 'sinon', label: 'sinon', aide: 'Dans un « si », l’autre cas' },
+  { ins: 'finsi', label: 'finsi', aide: 'Referme un « si »' },
+  { ins: 'fintantque', label: 'fintantque', aide: 'Referme un « tantque »' },
+  { ins: 'finpour', label: 'finpour', aide: 'Referme un « pour »' }
+];
+
+// contexte = tout ce qui precede, sur la ligne courante, le mot en train
+// d'etre tape (donc SANS ce mot). Renvoie { attendu, candidats } ou null si
+// aucun motif connu ne correspond.
+function reglesSuggestion(contexte) {
+  const cl = contexte.toLowerCase();
+
+  if (contexte.trim() === '') return { candidats: STATEMENT_DEBUT };
+
+  if (/^si\b/.test(cl) && !/\balors\b/.test(cl)) {
+    return { attendu: 'une condition, puis « alors »', candidats: EXPR_BOOL };
+  }
+  if (/^tantque\b/.test(cl) && !/\bfaire\b/.test(cl)) {
+    return { attendu: 'une condition, puis « faire »', candidats: EXPR_BOOL };
+  }
+  if (/^pour\s*$/.test(cl)) {
+    return {
+      attendu: 'une variable (a à h)',
+      candidats: 'abcdefgh'.split('').map(function (l) { return { ins: l + ' ', label: l }; })
+    };
+  }
+  if (/^(demarrer)\b/.test(cl) && !/\bzone\b/.test(cl)) {
+    return { attendu: 'zone <numéro>', candidats: [{ ins: 'zone ', label: 'zone' }] };
+  }
+  if (/^(arreter|suspendre|reprendre)\b/.test(cl) && !/\bzone\b/.test(cl)) {
+    return { attendu: 'zone <numéro>', candidats: [{ ins: 'zone ', label: 'zone' }] };
+  }
+  if (/\bzone\s*$/.test(cl)) {
+    if (!ZONES.length) return null;
+    const pourDemarrer = /^demarrer\b/.test(cl);
+    return {
+      attendu: 'le numéro de la zone',
+      candidats: ZONES.map(function (z) {
+        return { ins: z.id + (pourDemarrer ? ' pendant ' : ''), label: String(z.id), aide: z.nom };
+      })
+    };
+  }
+  if (/^demarrer\b.*\bzone\s*\d+\s*$/.test(cl) && !/\bpendant\b/.test(cl)) {
+    return { attendu: 'puis une durée', candidats: [{ ins: 'pendant ', label: 'pendant' }] };
+  }
+  if (/\bpendant\s*$/.test(cl) || /^attendre\s*$/.test(cl)) {
+    return { attendu: 'une durée, en secondes (un nombre, ou reste(<zone>))', candidats: EXPR_DUREE };
+  }
+  if (/^notifier\s*$/.test(cl)) {
+    if (!BIBLIO.length) return { attendu: 'un code (bibliothèque de phrases vide pour l’instant)', candidats: [] };
+    return {
+      attendu: 'un code de la bibliothèque de phrases',
+      candidats: BIBLIO.map(function (o) { return { ins: String(o.code), label: String(o.code), aide: o.texte }; })
+    };
+  }
+  if (/^message\s*$/.test(cl)) {
+    return { attendu: 'un code (voir « Bibliothèque de phrases » pour notifier)', candidats: [] };
+  }
+  if (/=\s*$/.test(cl) || /\b(et|ou)\s*$/.test(cl)) {
+    return { attendu: 'une expression', candidats: EXPR_BOOL };
+  }
+  return null;
+}
+
+function majSuggestions() {
+  const box = $('suggestions');
+  const ta = $('src');
+  const avantCaret = ta.value.slice(0, ta.selectionStart);
+  const debutLigne = avantCaret.lastIndexOf('\n') + 1;
+  const ligne = avantCaret.slice(debutLigne);
+  const motPartiel = (/[A-Za-zÀ-ÿ0-9_]*$/.exec(ligne) || [''])[0];
+  const contexte = ligne.slice(0, ligne.length - motPartiel.length);
+
+  const regle = reglesSuggestion(contexte);
+  let candidats = regle ? regle.candidats : null;
+  if (candidats && motPartiel) {
+    const p = motPartiel.toLowerCase();
+    candidats = candidats.filter(function (o) { return o.label.toLowerCase().indexOf(p) === 0; });
+  }
+  if (!regle || !candidats || !candidats.length) { box.hidden = true; return; }
+
+  box.hidden = false;
+  box.innerHTML = (regle.attendu ? '<p class="attendu">Attendu : ' + regle.attendu + '</p>' : '')
+    + '<div class="puces">' + candidats.map(function (o) {
+        return '<button class="puce" data-ins="' + o.ins.replace(/"/g, '&quot;')
+          + '" data-remplace="' + motPartiel.length + '">' + o.label
+          + (o.aide ? '<span class="h">' + echapAttr(o.aide) + '</span>' : '')
+          + '</button>';
+      }).join('') + '</div>';
+  box.querySelectorAll('.puce').forEach(function (b) {
+    b.addEventListener('click', function () {
+      inscrireSuggestion(b.dataset.ins, parseInt(b.dataset.remplace, 10));
+    });
+  });
+}
+
+// Remplace le mot partiel deja tape (remplaceLen caracteres avant le
+// curseur) par la suggestion choisie, plutot que de l'inserer a cote --
+// cliquer "alors" en ayant deja tape "al" ne doit pas donner "alalors".
+function inscrireSuggestion(texte, remplaceLen) {
+  const ta = $('src');
+  const fin = ta.selectionStart;
+  const debut = fin - remplaceLen;
+  ta.value = ta.value.slice(0, debut) + texte + ta.value.slice(fin);
+  const pos = debut + texte.length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+  majTaille();
+  majSuggestions();
+}
+
+// Un script inactif ne part jamais seul -- ni sur son declencheur, ni via
+// « Lancer maintenant » (ScriptRunner::start() refuse aussi ce chemin,
+// reason="script desactive"). Deja dit dans l'aide repliee plus bas, mais
+// un etat qui se lit seulement dans une phrase d'aide qu'on ne rouvre pas
+// se fait oublier -- d'ou un rappel visible en permanence.
+function majEtatActif() {
+  const inactif = $('actif').value === '0';
+  $('alerte-inactif').hidden = !inactif;
+  $('actif').classList.toggle('inactif', inactif);
+}
+
+// ── Dernier arret : detail + surlignage ─────────────────────────────────
+// Le module connait la RAISON (via ScriptHostRuntime) et la POSITION dans
+// le bytecode (ScriptVm::programCounter()) au moment ou un script s'est
+// arrete -- mais jamais la ligne source, qu'il ne lit jamais. L'editeur, qui
+// recompile le MEME texte, peut retrouver cette ligne lui-meme : le
+// compilateur est deterministe, meme source -> meme bytecode -> memes
+// positions.
+//
+// Le point faible assume : si le texte a change depuis l'arret reel (edite
+// mais pas encore enregistre, ou enregistre depuis), le bytecode recompile
+// n'a plus la meme taille que celui qui a reellement tourne -- code.length
+// vs script.octets le detecte, et on renonce au surlignage plutot que de
+// montrer une ligne fausse avec aplomb.
+function ligneDeLaPosition(pc, tailleAttendue) {
+  let code;
+  try { code = compiler(); } catch (e) { return null; }
+  if (code.length !== tailleAttendue) return null;
+  if (!code.lineMap || !code.lineMap.length) return null;
+  let meilleure = null;
+  code.lineMap.forEach(function (pt) {
+    if (pt.pc <= pc && (!meilleure || pt.pc > meilleure.pc)) meilleure = pt;
+  });
+  return meilleure ? meilleure.line : null;
+}
+
+// Selection native du texte : pas de vrai surlignage de ligne possible sur
+// un <textarea> brut sans reconstruire un editeur complet (mesure de police,
+// synchronisation du defilement...) hors de portee pour ce besoin. La
+// selection suffit a montrer OU regarder, et disparait au premier clic --
+// ce qui est trouve, pas perdu.
+function surlignerLigne(numero) {
+  const ta = $('src');
+  const lignes = ta.value.split('\n');
+  let debut = 0;
+  for (let k = 0; k < numero - 1 && k < lignes.length; k++) debut += lignes[k].length + 1;
+  const fin = debut + (lignes[numero - 1] ? lignes[numero - 1].length : 0);
+  ta.focus();
+  ta.setSelectionRange(debut, fin);
+  if (ta.value.length) ta.scrollTop = (debut / ta.value.length) * ta.scrollHeight;
+}
+
+function afficherDernierArret(script, sourceDisponible) {
+  const el = $('alerte-dernier-arret');
+  if (!script || !script.dernierArret) { el.hidden = true; return; }
+
+  let texte = 'Dernier arrêt : ' + script.dernierArret
+    + (script.dernierArretDetail ? ' — ' + script.dernierArretDetail : '') + '.';
+
+  // Le detail (donc une position exploitable) n'existe que pour un refus de
+  // l'hote -- les autres categories (limite de pas, pile...) n'ont pas de
+  // ScriptRuntimeContext associe et rien de fiable a montrer.
+  if (script.dernierArretDetail) {
+    if (!sourceDisponible) {
+      texte += ' Texte source indisponible sur la carte SD : impossible de localiser la ligne.';
+    } else {
+      const tailleActuelle = script.code ? script.code.length : 0;
+      const ligne = ligneDeLaPosition(script.dernierArretPc, tailleActuelle);
+      if (ligne) {
+        texte += ' Ligne ' + ligne + ' sélectionnée ci-dessous.';
+        surlignerLigne(ligne);
+      } else {
+        texte += ' Le script a changé depuis cet arrêt : la ligne exacte ne peut plus être localisée.';
+      }
+    }
+  }
+  el.textContent = texte;
+  el.hidden = false;
+}
+
 async function listeSlots() {
   const d = await (await fetch('/api/scripts')).json();
   MAX = d.max;
+  TAILLE_MAX = d.tailleMax || TAILLE_MAX;
   $('slot').innerHTML = d.scripts.map(function (s) {
-    return '<option value="' + s.i + '">' + (s.i + 1) + ' — '
-         + (s.utilise ? s.nom : 'vide') + '</option>';
+    const inactif = s.utilise && !s.actif;
+    const nom = !s.utilise ? 'vide' : (s.nom + (inactif ? ' — inactif' : ''));
+    return '<option value="' + s.i + '"' + (inactif ? ' style="color:var(--muted)"' : '') + '>'
+         + (s.i + 1) + ' — ' + nom + '</option>';
   }).join('');
   return d;
 }
@@ -405,15 +830,95 @@ function compiler() {
   return AquaScript.compile($('src').value);
 }
 
+// ── "Vouliez-vous dire ... ?" ────────────────────────────────────────────
+// Meme vocabulaire que STATEMENT_DEBUT/EXPR_BOOL/EXPR_DUREE ci-dessus : un mot-cle
+// mal orthographie ("demarer", "fisi") ne veut rien dire pour le
+// compilateur, mais reste proche d'un mot connu -- le dire vaut mieux que
+// de laisser chercher la faute lettre par lettre.
+const VOCAB_MOTSCLES = ['si', 'alors', 'sinon', 'finsi', 'tantque', 'faire', 'fintantque',
+  'pour', 'de', 'à', 'finpour', 'attendre', 'demarrer', 'arreter', 'suspendre', 'reprendre',
+  'pendant', 'zone', 'message', 'notifier', 'entree', 'zoneactive', 'reste', 'et', 'ou', 'non'];
+
+function distanceLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const d = [];
+  for (let i = 0; i <= m; i++) { d.push(new Array(n + 1).fill(0)); d[i][0] = i; }
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        d[i][j - 1] + 1,
+        d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return d[m][n];
+}
+
+// Le mot fautif est TOUJOURS le dernier segment entre guillemets francais
+// du message -- que ce soit "instruction inconnue « x »", "variable
+// inconnue « x » (a à h)" ou "« attendu » attendu, trouvé « x »" (x est ce
+// que l'utilisateur a reellement ecrit, toujours cite en dernier).
+function dernierMotEntreGuillemets(message) {
+  const tous = message.match(/«\s*([^»]+?)\s*»/g);
+  if (!tous || !tous.length) return null;
+  const mot = tous[tous.length - 1].replace(/«\s*|\s*»/g, '');
+  return mot === 'fin du script' ? null : mot;
+}
+
+function motLePlusProche(mot) {
+  const m = mot.toLowerCase();
+  let meilleur = null, meilleureDistance = Infinity;
+  VOCAB_MOTSCLES.forEach(function (v) {
+    const d = distanceLevenshtein(m, v);
+    if (d < meilleureDistance) { meilleureDistance = d; meilleur = v; }
+  });
+  // Seuil relatif a la longueur : sur un mot de 3 lettres, une distance de 2
+  // est deja plus proche du hasard que d'une vraie coquille.
+  if (meilleur && meilleureDistance > 0 && meilleureDistance <= Math.max(1, Math.ceil(m.length / 2))) {
+    return meilleur;
+  }
+  return null;
+}
+
+// « attendre <expr> » accepte n'importe quelle expression -- meme une qui ne
+// vaut que 0 ou 1 (entree/zoneactive/non). Ca COMPILE (le compilateur n'a pas
+// tort : ce n'est pas une erreur de syntaxe), mais n'attend alors que 0 ou 1
+// SECONDE, jamais "jusqu'a ce que" -- piege reellement rencontre le 27 sept.
+// 2026 avec « attendre entree(101) ». Detecte par motif de ligne, pas par le
+// compilateur : c'est une question d'intention, pas de grammaire.
+function alerteSemantique(texte) {
+  const lignes = texte.split(/\r?\n/);
+  for (let i = 0; i < lignes.length; i++) {
+    const sansCommentaire = lignes[i].replace(/#.*$/, '');
+    if (/^\s*attendre\s+(entree|zoneactive|non)\b/i.test(sansCommentaire)) {
+      return 'Ligne ' + (i + 1) + ' : « attendre entree(...)/zoneactive(...)/non ... » '
+        + 'n’attend que 0 ou 1 seconde, pas "jusqu’à ce que" — pour patienter jusqu’à un '
+        + 'changement, utilisez « tantque ... faire attendre 1 fintantque ».';
+    }
+  }
+  return null;
+}
+
 function verifier() {
   try {
     const code = compiler();
-    dire('Compilé : ' + code.length + ' octets. Le module le vérifiera à son tour.', 'ok');
+    const garde = alerteSemantique($('src').value);
+    if (garde) {
+      dire('Compilé : ' + code.length + ' octets, mais ' + garde, 'ko');
+    } else {
+      dire('Compilé : ' + code.length + ' octets. Le module le vérifiera à son tour.', 'ok');
+    }
     return code;
   } catch (e) {
     // La ligne compte autant que le message : sans elle, il faut relire tout
     // le script pour trouver le mot fautif.
-    dire(e.line ? ('Ligne ' + e.line + ' : ' + e.message) : e.message, 'ko');
+    let msg = e.line ? ('Ligne ' + e.line + ' : ' + e.message) : e.message;
+    const mot = dernierMotEntreGuillemets(e.message);
+    const proche = mot ? motLePlusProche(mot) : null;
+    if (proche) msg += ' — vouliez-vous dire « ' + proche + ' » ?';
+    dire(msg, 'ko');
     return null;
   }
 }
@@ -452,7 +957,9 @@ async function enregistrer() {
   });
   const d = await r.json();
   if (d.ok) {
-    dire('Enregistré : ' + d.octets + ' octets acceptés par le module.', 'ok');
+    const garde = alerteSemantique($('src').value);
+    dire('Enregistré : ' + d.octets + ' octets acceptés par le module.'
+      + (garde ? ' Mais ' + garde : ''), garde ? 'ko' : 'ok');
     await listeSlots();
   } else {
     // Un refus du module laisse INTACT le programme precedent : le dire evite
@@ -468,6 +975,10 @@ async function charger() {
   if (!d.ok) {
     $('nom').value = ''; $('src').value = '';
     $('declencheur').value = '1'; majCible();
+    $('actif').value = '1'; majEtatActif();
+    majTaille();
+    majSuggestions();
+    afficherDernierArret(null);
     dire('Emplacement vide.', '');
     return;
   }
@@ -475,13 +986,20 @@ async function charger() {
   $('declencheur').value = String(d.declencheur);
   majCible(d.cible || d.entree || 0);
   $('actif').value = d.actif ? '1' : '0';
+  majEtatActif();
 
   const r = await fetch('/api/script-source?i=' + i);
   if (r.status === 200) {
     $('src').value = await r.text();
+    majTaille();
+    majSuggestions();
+    afficherDernierArret(d, true);
     dire('Chargé : ' + d.code.length + ' octets, source retrouvée.', 'ok');
   } else {
     $('src').value = '';
+    majTaille();
+    majSuggestions();
+    afficherDernierArret(d, false);
     // Le programme tourne quand meme : ne pas laisser croire a une perte.
     dire("Chargé : " + d.code.length + " octets. Le texte source n’est pas " +
          "sur la carte SD — le script fonctionne, mais il faudra le réécrire " +
@@ -670,6 +1188,14 @@ async function enregistrerBiblio() {
 }
 
 $('slot').addEventListener('change', charger);
+$('cible').addEventListener('change', rendreCommandes);
+$('src').addEventListener('input', function () { majTaille(); majSuggestions(); });
+// keyup/click : le curseur peut bouger sans que le texte change (fleches,
+// clic dans le texte) -- la suggestion doit suivre la position, pas
+// seulement la frappe.
+$('src').addEventListener('keyup', majSuggestions);
+$('src').addEventListener('click', majSuggestions);
+$('actif').addEventListener('change', majEtatActif);
 rendreCommandes();
 chargerBiblio();
 // Les listes de cibles viennent des memes donnees que le panneau de droite :
