@@ -43,6 +43,35 @@ constexpr char KEY_LAST_SYNC[]   = "last";
 portMUX_TYPE g_cloudSyncMux = portMUX_INITIALIZER_UNLOCKED;
 
 constexpr uint32_t RESPONSE_TIMEOUT_MS = 10000UL;
+
+// Timeout socket bas niveau (connexion TCP + handshake TLS), DELIBEREMENT
+// plus court que RESPONSE_TIMEOUT_MS.
+//
+// Constate le 28 septembre 2026 : a trois reprises, client->connect() est
+// reste bloque ~50-60 s avant d'echouer (erreurs mbedTLS "-80 UNKNOWN ERROR
+// CODE" puis "-29312 SSL - The connection indicated an EOF", toutes deux
+// dans mbedtls_ssl_handshake(), ssl_client.cpp:273) alors que
+// handshake_timeout etait deja configure a 10 s. CloudSync partageant le
+// coeur 1 avec loop() (voir startSync() plus bas), la boucle principale a
+// subi des gels de 1,4 a 3,6 s pendant toute la duree de ces blocages.
+//
+// Ce timeout reduit a 4 s (teste en direct le 28 septembre 2026) diminue la
+// duree du blocage mais SEULEMENT MARGINALEMENT (~51 s mesures au lieu de
+// ~59-60 s, un troisieme echec avec la meme erreur -29312) : le plafond
+// reel de ~50-60 s n'est donc PAS gouverne principalement par ce timeout
+// cote client -- hypothese non confirmee, un element externe (NAT/pare-feu
+// avec etat, ou timeout d'inactivite cote serveur) semble determiner
+// l'essentiel de la duree. Garder cette valeur plus basse reste une
+// amelioration reelle (sans regression observee), mais ne pas croire que
+// ca resout la cause : voir la memoire checkpoint-2026-09-28-nuit2-
+// cloudsync-hang-ssl80.md pour la suite a mener (plafond applicatif global
+// cote CloudSyncScheduler, pas encore concu).
+//
+// RESPONSE_TIMEOUT_MS n'est pas touche par ce constat : il reste le delai
+// applicatif (boucles non-bloquantes a delay(1)) pour lire une reponse HTTP
+// une fois la connexion etablie, chemin deja sain.
+constexpr uint32_t CONNECT_TIMEOUT_MS = 4000UL;
+
 constexpr uint32_t BLOCKED_LOG_INTERVAL_MS = 3600000UL;  // 1/h, meme raison qu'UpdateCheckScheduler
 
 void copyText(char* destination, size_t destinationSize, const char* source) {
@@ -510,11 +539,11 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     Client* client = nullptr;
     if (cfg.useHttps) {
         OtaTlsTrust::configure(secureClient);
-        secureClient.setHandshakeTimeout(10U);
-        secureClient.setTimeout(RESPONSE_TIMEOUT_MS / 1000U);
+        secureClient.setHandshakeTimeout(CONNECT_TIMEOUT_MS / 1000U);
+        secureClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
         client = &secureClient;
     } else {
-        plainClient.setTimeout(RESPONSE_TIMEOUT_MS / 1000U);
+        plainClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
         client = &plainClient;
     }
 
