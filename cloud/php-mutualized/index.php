@@ -196,13 +196,24 @@ try {
         if (is_string($correlationId) && strlen($correlationId) > 64) {
             send_json(400, ['detail' => 'correlationId trop long (64 max)']);
         }
-        insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
-
-        // Instantane de configuration, range a part de l'historique : il doit
-        // survivre a l'elagage des messages, sans quoi un module hors ligne
-        // depuis longtemps n'aurait plus de configuration a afficher.
+        // Le rapport 'config' n'est journalise dans l'historique brut QUE s'il
+        // differe du dernier connu (store_module_config le dit). Le firmware
+        // envoie desormais sa configuration seulement quand elle a change
+        // (CloudSyncScheduler::_lastSyncedRevision), mais un module plus ancien
+        // ou le declenchement manuel de secours (MaintenanceBoot.cpp) la
+        // renvoient encore a chaque cycle -- sans cette garde cote serveur,
+        // l'historique grossirait quand meme de deux lignes par cycle pour
+        // decrire un jardin immobile.
+        //
+        // Le miroir module_config est TOUJOURS ecrit par store_module_config,
+        // quel que soit le retour : c'est lui qui porte la fraicheur affichee
+        // a l'utilisateur, pas l'historique brut.
         if ($msgType === 'config') {
-            store_module_config($moduleId, $payload);
+            if (store_module_config($moduleId, $payload)) {
+                insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
+            }
+        } else {
+            insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
         }
 
         // La version est prise dans TOUT message qui en porte une, et non dans
@@ -348,6 +359,7 @@ try {
             send_json(404, ['detail' => 'module inconnu']);
         }
         send_json(200, [
+            'presence' => module_presence($moduleId),
             'config'   => module_config($moduleId),
             'derniers' => list_messages($moduleId, 20),
             'commandes' => list_commands($moduleId, 10),

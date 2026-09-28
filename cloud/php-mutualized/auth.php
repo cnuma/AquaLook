@@ -219,6 +219,28 @@ function user_modules(int $userId): array
     return $stmt->fetchAll();
 }
 
+/**
+ * Presence et fraicheur d'UN module, memes colonnes que user_modules() --
+ * pour que la page de detail montre "vu" (last_seen, tout rapport confondu)
+ * separement de "synchronise" (config_updated, seulement quand le contenu a
+ * change) avec exactement la meme source que la liste "Mes modules". Deux
+ * requetes proches plutot qu'une factorisation : celle-ci filtre par
+ * module_id (deja verifie appartenir a l'appelant), l'autre par
+ * owner_user_id -- les meler aurait exige un IN() ou une jointure inutile
+ * pour un seul module.
+ */
+function module_presence(string $moduleId): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT m.module_id, m.label, m.firmware, m.last_seen, c.revision, c.updated_at AS config_updated '
+        . 'FROM module m LEFT JOIN module_config c ON c.module_id = m.module_id '
+        . 'WHERE m.module_id = ?'
+    );
+    $stmt->execute([$moduleId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
 /** Vrai si ce module appartient bien a ce compte. Toute route de l'espace
  *  utilisateur doit le verifier AVANT de lire ou d'ecrire quoi que ce soit :
  *  sans cela, changer l'identifiant dans l'URL donnerait acces au jardin du
@@ -232,13 +254,24 @@ function user_owns_module(int $userId, string $moduleId): bool
 
 // ── Configuration courante ─────────────────────────────────────────────────
 
-/** Enregistre l'instantane de configuration remonte par un module. */
-function store_module_config(string $moduleId, array $payload): void
+/**
+ * Enregistre l'instantane de configuration remonte par un module.
+ *
+ * Retourne vrai si le contenu differe de la derniere sauvegarde connue
+ * (capture_config_backup) -- l'appelant s'en sert pour decider si ce rapport
+ * merite aussi une ligne dans l'historique brut (module_message), voir la
+ * note sur insert_message() dans index.php.
+ *
+ * Le miroir module_config, lui, est TOUJOURS ecrit : c'est lui qui porte la
+ * fraicheur ("configuration lue sur le module, vu il y a...") affichee a
+ * l'utilisateur, peu importe si le contenu a change depuis le dernier appel.
+ */
+function store_module_config(string $moduleId, array $payload): bool
 {
     $revision = $payload['revision'] ?? null;
     if (!is_int($revision)) {
-        return;   // sans revision, l'instantane ne sert a rien : elle est la
-                  // reference du verrouillage optimiste.
+        return false;   // sans revision, l'instantane ne sert a rien : elle est
+                         // la reference du verrouillage optimiste.
     }
     $stmt = db()->prepare(
         'INSERT INTO module_config (module_id, revision, payload, updated_at) VALUES (?, ?, ?, ?) '
@@ -247,7 +280,7 @@ function store_module_config(string $moduleId, array $payload): void
     );
     $stmt->execute([$moduleId, $revision, json_encode($payload, JSON_UNESCAPED_UNICODE), utc_now()]);
 
-    capture_config_backup($moduleId, $revision, $payload);
+    return capture_config_backup($moduleId, $revision, $payload);
 }
 
 /**
@@ -260,6 +293,9 @@ const BACKUP_KEEP = 20;
 
 /**
  * Enregistre l'etat de la configuration s'il differe du dernier connu.
+ * Retourne vrai si une ligne a ete ecrite (ou si l'etat de la question n'a
+ * pas pu etre determine -- voir plus bas), faux si le contenu etait deja
+ * connu et que rien n'a ete ecrit.
  *
  * Appelee a chaque synchronisation, soit une fois par minute. La quasi-totalite
  * des appels ne doivent RIEN ecrire : sans cela, decrire un jardin qui n'a pas
@@ -269,13 +305,14 @@ const BACKUP_KEEP = 20;
  * synchronisation du module. Elle est journalisee et l'on continue -- le miroir
  * module_config, lui, a deja ete ecrit.
  */
-function capture_config_backup(string $moduleId, int $revision, array $payload): void
+function capture_config_backup(string $moduleId, int $revision, array $payload): bool
 {
     try {
         // Serialisation figee (memes options que le miroir) pour que
         // l'empreinte soit stable d'un appel a l'autre.
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
-        if ($json === false) return;
+        if ($json === false) return true;   // rien de fiable a comparer : ne pas
+                                             // pretendre que c'est identique.
         $hash = hash('sha256', $json);
 
         $stmt = db()->prepare(
@@ -284,7 +321,7 @@ function capture_config_backup(string $moduleId, int $revision, array $payload):
         $stmt->execute([$moduleId]);
         $dernier = $stmt->fetchColumn();
         if ($dernier !== false && hash_equals((string)$dernier, $hash)) {
-            return;   // rien n'a bouge
+            return false;   // rien n'a bouge
         }
 
         $ins = db()->prepare(
@@ -294,8 +331,13 @@ function capture_config_backup(string $moduleId, int $revision, array $payload):
         $ins->execute([$moduleId, $revision, $hash, $json, utc_now()]);
 
         prune_config_backups($moduleId);
+        return true;
     } catch (Throwable $e) {
         error_log('capture_config_backup: ' . $e->getMessage());
+        // Panne de la sauvegarde, pas de l'historique : mieux vaut une ligne
+        // brute en trop dans module_message qu'une ligne perdue par une
+        // deduplication qu'on n'a pas su trancher.
+        return true;
     }
 }
 
