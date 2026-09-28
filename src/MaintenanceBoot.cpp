@@ -747,8 +747,11 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         // Accuse vide : ce chemin ne traite pas les commandes, il ne fait que
         // rapporter. La commande eventuellement recue est donc liberee sans
         // etre appliquee ni acquittee - le mode normal s'en chargera.
+        // sendConfig force a true : un declenchement manuel doit remonter la
+        // configuration quoi qu'il arrive, sans passer par la detection de
+        // changement de CloudSyncScheduler (etat qui n'existe pas ici).
         const CloudSyncResult r =
-            CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager),
+            CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager), true,
                            CloudSyncPendingAck{});
         if (r.commandJson) free(r.commandJson);
         success = r.valid && r.reportSuccess && r.configSuccess;

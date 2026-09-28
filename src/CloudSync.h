@@ -89,12 +89,17 @@ public:
     // requete avant de lancer sa tache.
     static String buildConfigBody(const ConfigManager& configManager);
 
-    // Envoie la telemetrie puis la configuration effective, sonde une
-    // commande en attente, l'accuse sans encore l'appliquer. Bloque plusieurs
-    // secondes : a executer dans une tache dediee (CloudSyncScheduler) ou en
-    // mode maintenance, jamais dans la boucle principale.
+    // Envoie la telemetrie puis, si sendConfig, la configuration effective ;
+    // sonde une commande en attente, l'accuse sans encore l'appliquer. Bloque
+    // plusieurs secondes : a executer dans une tache dediee (CloudSyncScheduler)
+    // ou en mode maintenance, jamais dans la boucle principale.
+    //
+    // sendConfig est faux quand la revision de configuration n'a pas change
+    // depuis le dernier envoi reussi (CloudSyncScheduler::_lastSyncedRevision) :
+    // configBody est alors vide et l'etape config est sautee sans connexion.
     static CloudSyncResult run(const CloudSyncConfig& cfg,
                                const String& configBody,
+                               bool sendConfig,
                                const CloudSyncPendingAck& pendingAck);
 };
 
@@ -125,7 +130,34 @@ public:
     bool set(bool enabled, const char* host, uint16_t port, bool useHttps,
              const char* moduleId, const char* token, uint16_t intervalMinutes);
 
+    // ── Diagnostic du dernier cycle, pour /api/adminStatus ───────────────
+    //
+    // Lus sans verrou depuis le contexte AsyncTCP (WebManager) : memes
+    // scalaires simples que _cfg/_lastSyncedRevision deja aujourd'hui, pas
+    // le CloudSyncResult qui porte un pointeur brut (celui-la reste
+    // protege par g_cloudSyncMux). Un instantane momentanement perime
+    // s'auto-corrige au sondage suivant.
+    bool     lastSyncOk() const { return _lastSyncOk; }
+    uint32_t lastSyncedRevision() const { return _lastSyncedRevision; }
+    // Instant de LANCEMENT de la derniere tentative, pas de sa reussite --
+    // voir saveLastSync(). Distinct de lastSuccessEpochSec().
+    uint32_t lastAttemptEpochSec() const { return _lastSyncEpochSec; }
+    uint32_t lastSuccessEpochSec() const { return _lastSuccessEpochSec; }
+    uint8_t  consecutiveFailures() const { return _consecutiveFailures; }
+
     static constexpr uint32_t WIFI_STABLE_MS = 300000UL;   // 5 min, meme seuil qu'UpdateCheckScheduler
+
+    // Delai reduit quand la configuration a change localement depuis le
+    // dernier envoi confirme : ne pas faire attendre au serveur
+    // l'intervalle nominal (5-15 min) pour un reglage que l'utilisateur
+    // vient de modifier sur l'ecran ou le portail web. Sans effet si la
+    // revision n'a pas bouge -- l'intervalle normal s'applique alors,
+    // comme avant. Ajoute le 27 septembre 2026.
+    static constexpr uint32_t SYNC_SOON_SECONDS = 30UL;
+    // Meme discipline que StorageManager::SD_HEALTH_FAILURE_CONFIRMATIONS :
+    // un blip reseau isole ne merite pas d'exiger un acquittement humain,
+    // seulement une panne qui dure sur plusieurs cycles.
+    static constexpr uint8_t CLOUD_SYNC_FAILURE_CONFIRMATIONS = 3U;
 
     // ── Garde memoire, calquee sur WeatherManager ────────────────────────
     //
@@ -155,7 +187,7 @@ private:
     bool startSync(const ConfigManager& configManager);
     static void syncTaskEntry(void* context);
     void performSync();
-    void applyPendingResult();
+    void applyPendingResult(uint32_t epochSec);
     // Applique une commande de configuration. Appelee UNIQUEMENT depuis la
     // boucle principale : elle ecrit en NVS et touche l'etat partage avec
     // l'affichage, ce que la tache de synchronisation n'a pas le droit de
@@ -173,9 +205,34 @@ private:
     // Etat partage avec la tache de synchronisation.
     CloudSyncConfig  _taskCfg;
     String           _taskConfigBody;
+    // Revision que _taskConfigBody decrit (ou revision courante si
+    // _taskSendConfig est faux) : recopiee dans _lastSyncedRevision par
+    // applyPendingResult() si le cycle reussit, pour que le cycle suivant
+    // sache si la configuration a bouge entre-temps.
+    uint32_t         _taskRevisionAttempted = 0U;
+    bool             _taskSendConfig = true;
     CloudSyncResult  _pendingResult;
     volatile bool    _syncInProgress = false;
     volatile bool    _resultReady    = false;
+
+    // Derniere revision de configuration effectivement remontee avec succes.
+    // Sentinelle a la premiere synchronisation (aucune revision reelle ne
+    // vaut UINT32_MAX) : le tout premier cycle apres redemarrage envoie donc
+    // toujours la configuration, meme si elle n'a pas change depuis l'arret --
+    // ce compteur vit en RAM, pas en NVS, et un redemarrage doit pouvoir
+    // rafraichir un miroir serveur qui aurait diverge pendant l'absence.
+    uint32_t _lastSyncedRevision = 0xFFFFFFFFUL;
+
+    // Issue du dernier cycle complet -- scaffolding pour /api/adminStatus et
+    // FaultId::CLOUD_SYNC (plan en pause le 27 septembre 2026, voir
+    // memoire cloudsync-wip-compile-bug.md). Declares ici pour que les
+    // accesseurs publics ci-dessus compilent ; RIEN dans CloudSync.cpp ne
+    // les ecrit encore -- ils restent a leur valeur par defaut
+    // (false/0/0) tant que applyPendingResult() n'est pas complete pour
+    // les renseigner. Pas dangereux en l'etat : juste inerte.
+    bool     _lastSyncOk = false;
+    uint32_t _lastSuccessEpochSec = 0U;
+    uint8_t  _consecutiveFailures = 0U;
 
     ConfigManager*   _configTarget = nullptr;
     ScheduleManager* _scheduleTarget = nullptr;

@@ -13,6 +13,7 @@
 #include "ScheduleManager.h"
 #include "EventBus.h"
 #include "EventLog.h"
+#include "FaultManager.h"
 #include "NotificationManager.h"
 #include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
@@ -500,6 +501,7 @@ String CloudSync::buildConfigBody(const ConfigManager& configManager) {
 
 CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
                                const String& configBody,
+                               bool sendConfig,
                                const CloudSyncPendingAck& pendingAck) {
     CloudSyncResult result;
 
@@ -569,17 +571,24 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
     // ── 2. Configuration effective (miroir cote serveur) ────────────────
     //
-    // Envoyee a chaque cycle, sans detection de changement. A 1 Ko par
-    // heure le gain d'une empreinte serait negligeable devant la
-    // complexite d'un etat supplementaire a maintenir ; a revoir si
-    // l'intervalle descend nettement ou si le nombre de zones augmente.
+    // Envoyee seulement quand sendConfig est vrai, c'est-a-dire quand la
+    // revision de configuration a change depuis le dernier envoi reussi
+    // (CloudSyncScheduler::_lastSyncedRevision). Auparavant envoyee a chaque
+    // cycle sans detection de changement -- un choix delibere quand
+    // l'intervalle etait de 15 min, revisite le 27 septembre 2026 : a 5 min
+    // d'intervalle pour un module en service, cela grossissait la table
+    // d'historique brute cote serveur (module_message) de deux lignes par
+    // cycle pour decrire un jardin qui n'avait pas bouge.
     client->stop();
-    if (!client->connect(cfg.host, port)) {
-        copyText(result.detail, sizeof(result.detail), "config: connexion impossible");
-        result.valid = true;
-        return result;
-    }
-    {
+    if (!sendConfig) {
+        result.configSuccess = true;   // rien a envoyer n'est pas un echec
+        EventLog::log(LOG_INFO, "CloudSync: config inchangee, non renvoyee");
+    } else {
+        if (!client->connect(cfg.host, port)) {
+            copyText(result.detail, sizeof(result.detail), "config: connexion impossible");
+            result.valid = true;
+            return result;
+        }
         EventLog::log(LOG_INFO, "CloudSync: config serialisee (%u octets)",
                       static_cast<unsigned>(configBody.length()));
 
@@ -791,7 +800,7 @@ void CloudSyncScheduler::update(bool ntpSynced,
                                 const ConfigManager* config) {
     // Recupere d'abord le resultat d'une synchro terminee : c'est la boucle
     // principale qui journalise et libere la memoire, jamais la tache.
-    applyPendingResult();
+    applyPendingResult(epochSec);
 
     if (BootLoopGuard::isDegraded()) return;
     if (!_loaded || _triggered || !_cfg.enabled) return;
@@ -833,7 +842,20 @@ void CloudSyncScheduler::update(bool ntpSynced,
         saveLastSync(epochSec);
         return;
     }
-    if ((epochSec - _lastSyncEpochSec) < static_cast<uint32_t>(_cfg.intervalMinutes) * 60UL) return;
+    // Une modification locale recente merite un delai plus court que
+    // l'intervalle nominal : le miroir serveur ne doit pas dater de 15 min
+    // pour un reglage que l'utilisateur vient de changer sur l'ecran ou le
+    // portail web. SYNC_SOON_SECONDS l'emporte des que la revision courante
+    // differe de la derniere effectivement confirmee au serveur -- meme
+    // condition que sendConfig plus bas dans startSync(). Se debounce tout
+    // seul : des modifications rapprochees ne font toutes reculer
+    // _lastSyncEpochSec qu'une fois, au prochain envoi reel.
+    const bool configChanged =
+        config != nullptr && config->configRevision() != _lastSyncedRevision;
+    const uint32_t requiredWaitSec = configChanged
+        ? SYNC_SOON_SECONDS
+        : static_cast<uint32_t>(_cfg.intervalMinutes) * 60UL;
+    if ((epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
 
     if (_wifiConnectedSinceMs == 0U) {
         logBlocked("pas de connexion WiFi");
@@ -885,8 +907,15 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
         return false;
     }
 
+    // Rien a serialiser si la revision n'a pas bouge depuis le dernier envoi
+    // reussi : configBody restera vide et CloudSync::run() saute l'etape
+    // config sans se connecter. _taskRevisionAttempted garde la revision
+    // jugee ici, pour qu'applyPendingResult() sache quoi memoriser si le
+    // cycle reussit.
+    _taskRevisionAttempted = configManager.configRevision();
+    _taskSendConfig = (_taskRevisionAttempted != _lastSyncedRevision);
     // Serialise ICI, dans la boucle principale : voir CloudSync::buildConfigBody.
-    _taskConfigBody = CloudSync::buildConfigBody(configManager);
+    _taskConfigBody = _taskSendConfig ? CloudSync::buildConfigBody(configManager) : String();
     _taskCfg = _cfg;
 
     portENTER_CRITICAL(&g_cloudSyncMux);
@@ -935,7 +964,8 @@ void CloudSyncScheduler::syncTaskEntry(void* context) {
 }
 
 void CloudSyncScheduler::performSync() {
-    const CloudSyncResult result = CloudSync::run(_taskCfg, _taskConfigBody, _pendingAck);
+    const CloudSyncResult result =
+        CloudSync::run(_taskCfg, _taskConfigBody, _taskSendConfig, _pendingAck);
 
     portENTER_CRITICAL(&g_cloudSyncMux);
     _pendingResult = result;   // POD : copie sure en section critique
@@ -1166,7 +1196,7 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
                                              _configTarget->configRevision(), "");
 }
 
-void CloudSyncScheduler::applyPendingResult() {
+void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
     if (!_resultReady) return;
 
     CloudSyncResult result;
@@ -1196,6 +1226,34 @@ void CloudSyncScheduler::applyPendingResult() {
                       : "aucune");
     if (!ok && result.detail[0]) {
         EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
+    }
+
+    // ── Suivi du dernier cycle, pour /api/adminStatus et FaultId::CLOUD_SYNC
+    //
+    // Seuil de CLOUD_SYNC_FAILURE_CONFIRMATIONS echecs consecutifs avant
+    // l'alarme acquittable : meme raisonnement que StorageManager::
+    // SD_HEALTH_FAILURE_CONFIRMATIONS -- un blip reseau isole ne merite pas
+    // d'exiger un acquittement humain, seulement une panne qui dure.
+    // FaultManager::setActive() est idempotent sur son etat courant (le
+    // bit "non acquitte" ne se relève qu'au front montant), donc rappeler
+    // false a chaque succes ou true a chaque echec ne spamme rien.
+    _lastSyncOk = ok;
+    if (ok) {
+        _lastSuccessEpochSec = epochSec;
+        _consecutiveFailures = 0U;
+        FaultManager::setActive(FaultId::CLOUD_SYNC, false);
+    } else {
+        if (_consecutiveFailures < 0xFFU) _consecutiveFailures++;
+        FaultManager::setActive(FaultId::CLOUD_SYNC,
+                                 _consecutiveFailures >= CLOUD_SYNC_FAILURE_CONFIRMATIONS);
+    }
+
+    // Memorise la revision seulement si le cycle l'a effectivement confirmee
+    // au serveur (envoyee avec succes, ou deja identique donc sautee) : en
+    // cas d'echec, _lastSyncedRevision reste en retard expres, pour que le
+    // cycle suivant retente l'envoi plutot que de croire le serveur a jour.
+    if (result.configSuccess) {
+        _lastSyncedRevision = _taskRevisionAttempted;
     }
 
     // Commande fraichement recue : c'est ICI qu'elle est appliquee, dans la
