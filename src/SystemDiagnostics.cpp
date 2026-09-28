@@ -410,6 +410,23 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     system["resetReason"] = resetReasonStr(esp_reset_reason());
     system["loopCore"] = xPortGetCoreID();
 
+    // Diagnostic temporaire (28 sept. 2026, hypothese "derive thermique du
+    // frontend RF" pour le RSSI qui se degrade avec l'uptime -- voir memoire
+    // checkpoint-2026-09-28-gel-chronique-resolu). temperatureRead()
+    // demarre/arrete le capteur a chaque appel (cout reel) : mis en cache et
+    // rafraichi au plus toutes les 5s pour ne pas ajouter de bruit a
+    // /api/diagnostics, interroge frequemment par le tableau de bord.
+    {
+        static float s_lastTempC = NAN;
+        static uint32_t s_lastTempMs = 0;
+        const uint32_t nowMs = millis();
+        if (s_lastTempMs == 0U || nowMs - s_lastTempMs >= 5000UL) {
+            s_lastTempC = temperatureRead();
+            s_lastTempMs = nowMs;
+        }
+        system["chipTempC"] = s_lastTempC;
+    }
+
     JsonObject build = doc["build"].to<JsonObject>();
     build["version"] = AQUALOOK_VERSION;
     build["number"] = AQUALOOK_BUILD_NUMBER;
