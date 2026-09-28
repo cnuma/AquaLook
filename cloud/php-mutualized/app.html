@@ -57,7 +57,7 @@ label{color:var(--muted);font-size:13px}
      border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .mod:hover{border-color:var(--green);background:var(--green-dim)}
 .mod-t{font-weight:600;display:flex;align-items:center;gap:9px;font-size:16px}
-.mod-s{color:var(--muted);font-family:var(--mono);font-size:12px;margin-top:3px}
+.mod-s{display:block;color:var(--muted);font-family:var(--mono);font-size:12px;margin-top:3px}
 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
 .dot.ok{background:var(--green)}.dot.warn{background:var(--amber)}.dot.ko{background:var(--red)}
 
@@ -123,6 +123,12 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
 .tag.refused,.tag.failed{color:var(--red);border-color:var(--red)}
 .demande{font-size:12.5px;line-height:1.45}
 .demande b{color:var(--text)}
+/* Reference cliquable vers la sauvegarde dont une modification est partie :
+   ouvre directement le meme panneau de detail que la liste des sauvegardes,
+   sans avoir a defiler jusqu'a elle pour retrouver l'etat correspondant. */
+.lien-etat{background:none;border:none;padding:0;margin:0;font:inherit;
+  font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer}
+.lien-etat:hover{color:var(--green)}
 
 #login{max-width:380px;margin:60px auto}
 #login input{width:100%;margin-top:6px}
@@ -216,6 +222,7 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
   .hist td:first-child{color:var(--muted);font-size:11.5px}
   .hist td:nth-child(2){margin:4px 0 6px}
   .hist td:nth-child(4){margin-top:5px;color:var(--muted);font-size:12px}
+  .hist td:nth-child(5){margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--muted)}
 
   .reg{grid-template-columns:1fr;gap:0 0}
   .reg dt{margin-top:8px}
@@ -372,10 +379,11 @@ async function voirListe(){
       '<button class="mod" data-id="' + esc(m.module_id) + '">'
     + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
     + esc(m.label || m.module_id) + '</span>'
-    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue') + ' &middot; vu '
-    + depuis(m.last_seen)
-    + (m.revision ? ' &middot; configuration n&deg;' + esc(m.revision)
-                  : ' &middot; configuration jamais reçue')
+    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue')
+    + ' &middot; présence vue ' + depuis(m.last_seen) + '</span>'
+    + '<span class="mod-s">' + (m.revision
+        ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
+        : 'configuration jamais reçue')
     + '</span></button>').join('') + '</div>';
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
@@ -476,9 +484,16 @@ async function ouvrir(id){
   await recharger();
 }
 
+// Commandes de la derniere reponse /app/module -- conservees pour pouvoir
+// rafraichir "Modifications envoyées" (les references "Sauvegarde :" y
+// pointent vers SAUV par id) sans re-appeler le serveur, notamment apres un
+// renommage de sauvegarde (voir annoterSauvegarde()).
+let CMDS = [];
+
 async function recharger(){
   const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
   CFG = d.config;
+  CMDS = d.commandes || [];
   ATTENTE = indexerCommandes(d.commandes, 'pending');
   REFUS   = indexerCommandes(d.commandes, 'refused');
   const el = $('detail');
@@ -491,24 +506,36 @@ async function recharger(){
       + 'd&rsquo;ici là.</div></div>';
     return;
   }
+  // Presence (ping, tout rapport confondu) et synchro (contenu reellement
+  // change) affichees separement, memes libelles et memes deux temps que la
+  // liste "Mes modules" (voirListe()) -- la meme information doit se
+  // reconnaitre d'une page a l'autre, pas raconter deux histoires.
+  const pr = d.presence || {};
   el.innerHTML =
       '<div class="card"><h2>' + esc(MOD) + '</h2>'
-    + '<div class="row"><label>Configuration lue sur le module</label>'
+    + '<div class="row"><label>Présence</label>'
+    + '<span class="mod-s" style="margin:0">vue ' + esc(depuis(pr.last_seen)) + '</span></div>'
+    + '<div class="row"><label>Synchro</label>'
     + '<span class="mod-s" style="margin:0">n&deg;' + esc(CFG.revision) + ' &middot; '
     + esc(depuis(CFG.updatedAt)) + '</span></div></div>'
     + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div>'
     + '<p class="hint">Cliquez un jour pour voir et modifier ses créneaux, ou le nom '
     + 'd&rsquo;une zone pour ses réglages.</p></div>'
-    + '<div class="card"><h2>Modifications envoyées</h2><div id="cmds"></div></div>'
-    + '<div class="card"><h2>Sauvegarde de l&rsquo;installation</h2>'
-    + '<div id="sauv"></div>'
+    + '<details class="card"><summary><h2 style="display:inline">Modifications envoyées</h2></summary>'
+    + '<div id="cmds" style="margin-top:12px"></div></details>'
+    + '<details class="card"><summary><h2 style="display:inline">Sauvegarde de l&rsquo;installation</h2></summary>'
+    + '<div id="sauv" style="margin-top:12px"></div>'
     + '<p class="hint">Chaque état différent de la configuration est conservé ici, '
     + 'de quoi revenir en arrière ou remonter l&rsquo;installation sur un module '
-    + 'de remplacement.</p></div>';
+    + 'de remplacement.</p></details>';
 
   rendrePlanning();
+  // Sauvegardes chargees AVANT les commandes : rendreCommandes() resout
+  // baseRevision en date lisible via SAUV (etatPourRevision), et a besoin
+  // que la liste soit deja la pour ne pas afficher un numero brut le temps
+  // d'un aller-retour reseau.
+  await chargerSauvegardes();
   rendreCommandes(d.commandes || []);
-  chargerSauvegardes();
 }
 
 // ── Sauvegarde de l'installation ───────────────────────────────────────────
@@ -519,6 +546,44 @@ async function recharger(){
 // pouvoir remonter le temps.
 
 let SAUV = [];
+
+// Nom d'un etat de configuration, partage entre la liste des sauvegardes ET
+// la resolution de baseRevision dans l'historique des commandes -- pour que
+// les deux parties de la page designent le meme etat de la meme facon.
+//
+// La date remplace le numero de revision comme identite visible : celui-ci
+// repart de tres bas a chaque reinitialisation/reflash du module, et deux
+// sauvegardes eloignees dans le temps peuvent donc porter le meme numero
+// (constate le 27 septembre 2026 -- "Configuration n°1" deux fois dans la
+// meme liste). La date, elle, ne ment jamais sur l'ordre reel.
+// Retourne du HTML deja sur (entites statiques + parties dynamiques
+// echappees) : ne PAS re-esc() le resultat au point d'appel, sous peine de
+// transformer "&deg;"/"&middot;" en texte litteral "&amp;deg;"/"&amp;middot;".
+function nomEtat(s, estCourant, zoneCount){
+  if (s.label) return esc(s.label);
+  if (estCourant) return 'État actuel';
+  const d = parseUtc(s.capturedAt);
+  if (!d) return 'n&deg;' + esc(s.revision);
+  const date = esc(d.toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  }));
+  return date + (zoneCount != null ? ' &middot; ' + zoneCount + ' zone(s)' : '');
+}
+
+// Retrouve, pour une baseRevision de commande, l'etat de configuration
+// correspondant dans SAUV -- ce qui permet de dire "cette modification a ete
+// construite a partir de CET etat-la", plutot que de laisser deviner, ET d'y
+// ouvrir directement le panneau de detail (id) sans avoir a le rechercher
+// dans la liste plus bas. Repli sur le numero brut, non cliquable, si la
+// sauvegarde a ete elaguee (BACKUP_KEEP=20) ou jamais capturee (baseRevision
+// anterieure a la premiere synchro cloud).
+function etatPourRevision(rev){
+  if (rev == null) return null;
+  const idx = SAUV.findIndex(s => s.revision === rev);
+  if (idx >= 0) return { label: nomEtat(SAUV[idx], idx === 0, SAUV[idx].zones), id: SAUV[idx].id };
+  if (CFG && CFG.revision === rev) return { label: 'État actuel', id: null };
+  return { label: 'n&deg;' + esc(rev), id: null };
+}
 
 async function chargerSauvegardes(){
   const el = $('sauv');
@@ -537,8 +602,7 @@ async function chargerSauvegardes(){
   // La premiere ligne est l'etat courant : c'est le dernier que le module a
   // envoye, donc ce qu'il porte en ce moment.
   el.innerHTML = SAUV.map((s, k) => {
-    const nom = s.label ? esc(s.label)
-              : (k === 0 ? 'État actuel' : 'Configuration n&deg;' + esc(s.revision));
+    const nom = nomEtat(s, k === 0, s.zones);
     return '<button class="sv' + (k === 0 ? ' cour' : '') + '" data-sv="' + s.id + '">'
          + (s.pinned ? '<span class="ep" title="conservée hors purge">&#9733;</span>' : '')
          + '<span class="nm">' + nom + '</span>'
@@ -582,6 +646,37 @@ function resumeReglage(cle, v){
   return '';
 }
 
+// Resume lisible du contenu d'une sauvegarde -- meme forme que
+// resumeCommande() (nom de zone en gras, jours et horaires a la suite) pour
+// que l'utilisateur reconnaisse un format deja vu dans "Modifications
+// envoyées", plutot que d'inventer une troisieme facon de dire la meme
+// chose. z.days[jour] et z.interval sont des tableaux de [h,m,dur,actif],
+// la forme brute du payload de sauvegarde -- differente de daySlots/
+// intervalSlots (objets) qu'utilisent les commandes.
+function resumeZonesSauvegarde(zones){
+  if (!zones.length) return '<span class="hint" style="margin:0">Aucune zone.</span>';
+  return zones.map((z, i) => {
+    const mode = Number(z.mode) === 1;
+    const nom = z.name || ('Zone ' + (i + 1));
+    const heure = c => hhmm(c[0], c[1]) + ' (' + c[2] + ' min)';
+    const bouts = [];
+    if (mode) {
+      const actifs = (Array.isArray(z.interval) ? z.interval : [])
+        .filter(c => Array.isArray(c) && Number(c[3]) === 1).map(heure);
+      bouts.push('tous les ' + (z.intervalDays || '?') + ' jours'
+        + (actifs.length ? ' : ' + actifs.join(', ') : ' : aucun créneau actif'));
+    } else {
+      (Array.isArray(z.days) ? z.days : []).forEach((slots, d) => {
+        const actifs = (Array.isArray(slots) ? slots : [])
+          .filter(c => Array.isArray(c) && Number(c[3]) === 1).map(heure);
+        if (actifs.length) bouts.push(JOURS[d] + ' : ' + actifs.join(', '));
+      });
+      if (!bouts.length) bouts.push('aucun créneau actif');
+    }
+    return '<b>' + esc(nom) + '</b> &mdash; ' + bouts.join(' &middot; ');
+  }).join('<br>');
+}
+
 async function ouvrirSauvegarde(id){
   let s;
   try {
@@ -601,10 +696,22 @@ async function ouvrirSauvegarde(id){
     }));
   });
 
-  let h = '<h3>' + (s.label ? esc(s.label) : 'Configuration n&deg;' + esc(s.revision)) + '</h3>'
+  const estCourant = SAUV.length > 0 && SAUV[0].id === id;
+  let h = '<h3>' + nomEtat(s, estCourant, zones.length) + '</h3>'
         + '<p class="sous">Enregistrée ' + esc(depuis(s.capturedAt)) + ' &middot; '
         + zones.length + ' zone(s) &middot; ' + actifs + ' créneau(x) actif(s).</p>';
 
+  // Ce que la restauration APPLIQUERAIT, en clair, avant le bouton --
+  // jusqu'ici seul un compte ("37 créneaux actifs") le disait, sans montrer
+  // lesquels. Demande explicite : on doit pouvoir juger une sauvegarde sans
+  // deviner ce qu'elle contient. Meme classe .demande que le tableau des
+  // modifications, pour rester coherent avec un format deja connu.
+  h += '<div class="card" style="padding:12px;margin:0 0 12px;background:var(--green-dim)">'
+     + '<div class="demande">' + resumeZonesSauvegarde(zones) + '</div></div>';
+
+  // Reglages systeme : secondaires pour la decision "je restaure ou pas",
+  // repliés par defaut plutot que juges "inutiles" et supprimés -- ils
+  // restent la seule trace exploitable en cas de remplacement de module.
   if (reg) {
     let lignes = '';
     Object.keys(LIB_REG).forEach(c => {
@@ -613,14 +720,19 @@ async function ouvrirSauvegarde(id){
       if (!d) return;
       lignes += '<dt>' + LIB_REG[c] + '</dt><dd>' + d + '</dd>';
     });
-    if (lignes) h += '<dl class="reg">' + lignes + '</dl>';
+    if (lignes) {
+      h += '<details style="margin:0 0 12px">'
+         + '<summary class="hint" style="cursor:pointer;margin:0">Réglages système enregistrés (facultatif)</summary>'
+         + '<dl class="reg">' + lignes + '</dl></details>';
+    }
   }
 
   // Dire ce que la restauration ne fait pas : une sauvegarde en laquelle on
   // croit a tort est pire qu'une sauvegarde dont on connait les limites.
-  h += '<div class="note warn">La restauration renvoie <b>les créneaux d&rsquo;arrosage</b> '
-     + 'au module. Les réglages ci-dessus sont conservés et consultables, mais le module '
-     + 'ne sait pas encore les recevoir : ils se ressaisissent depuis son interface.</div>'
+  h += '<div class="note warn">Le bouton ci-dessous renvoie <b>exactement les créneaux '
+     + 'listés plus haut</b> au module. Les réglages système repliés au-dessus sont conservés '
+     + 'pour consultation, mais le module ne sait pas encore les recevoir : ils se '
+     + 'ressaisissent depuis son interface.</div>'
      + '<div class="note">Le mot de passe WiFi, la clé météo et le jeton de notification '
      + 'ne sont <b>jamais</b> envoyés au serveur. Ils se ressaisissent une fois sur un '
      + 'module neuf.</div>';
@@ -629,7 +741,7 @@ async function ouvrirSauvegarde(id){
      + '<input id="sv-nom" style="flex:1" maxlength="80" '
      + 'placeholder="Nommer cette sauvegarde" value="' + esc(s.label || '') + '"></div>'
      + '<div class="row" style="margin-top:10px">'
-     + '<button class="primary" id="sv-res">Restaurer les créneaux</button>'
+     + '<button class="primary" id="sv-res">Restaurer ces créneaux</button>'
      + '<button id="sv-enr">Enregistrer le nom</button>'
      + '<button id="sv-ep">' + (s.pinned ? 'Ne plus conserver' : 'Conserver toujours') + '</button>'
      + '<button class="ghost" id="sv-non">Fermer</button></div>';
@@ -648,6 +760,11 @@ async function annoterSauvegarde(id, champs){
       body: JSON.stringify(Object.assign({ moduleId: MOD, id: id }, champs)) });
     fermer();
     await chargerSauvegardes();
+    // "Modifications envoyées" affiche le meme nom via "Sauvegarde : ..."
+    // (etatPourRevision() lit SAUV) -- sans ce second rendu, la nouvelle
+    // etiquette n'apparaissait qu'apres un rechargement complet de la page.
+    // Depuis le cache CMDS, pas un nouvel appel serveur.
+    rendreCommandes(CMDS);
     toast('Sauvegarde mise à jour.');
   } catch (e) { toast(e.message, true); }
 }
@@ -956,9 +1073,22 @@ function detailLisible(c){
   }
   if (d.indexOf('regroupee') >= 0) return 'reprise dans une modification plus récente';
   if (d.indexOf('type-non-supporte') === 0) return 'ce module ne sait pas traiter ce type de commande.';
-  if (d) return d;
+  // Le numero de revision vit dans sa propre colonne (voir revisionAppliquee),
+  // pas noye ici dans une phrase -- retire de ce texte pour ne pas le repeter.
+  if (d) return d.replace(/,?\s*revision=\d+/, '');
   if (c.state === 'pending') return 'le module ne s' + APO + 'est pas encore synchronisé';
   return '';
+}
+
+// Numero de revision que le module a effectivement applique, extrait du
+// texte brut renvoye par CloudSync.cpp (applyCommand(), "%u champ(s)
+// applique(s), revision=%lu"). Seules les commandes reellement appliquees en
+// portent un -- une fusionnee ou refusee n'a jamais ecrit de nouvelle
+// revision, donc null plutot qu'un chiffre inventé.
+function revisionAppliquee(c){
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  const m = d.match(/revision=(\d+)/);
+  return m ? m[1] : null;
 }
 
 function rendreCommandes(cmds){
@@ -969,16 +1099,40 @@ function rendreCommandes(cmds){
     return;
   }
   el.innerHTML = '<table class="hist"><tr><th>Envoyée</th><th>État</th>'
-    + '<th>Ce qui est demandé</th><th>Détail</th></tr>'
+    + '<th>Ce qui est demandé</th><th>Détail</th><th>Révision</th></tr>'
     + cmds.map(c => {
         const d = parseUtc(c.issuedAt);
-        return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + '</td>'
+        // A partir de quel etat cette modification a ete construite : sans
+        // ça, rien ne dit a quelle configuration ces lignes se rapportent,
+        // surtout une fois plusieurs modifications envoyees a la suite.
+        // Cliquable quand la sauvegarde existe encore (base.id) : ouvre son
+        // panneau de detail directement, sans defiler jusqu'a la liste plus
+        // bas pour retrouver l'etat correspondant.
+        const base = (c.command && c.command.baseRevision != null)
+          ? etatPourRevision(c.command.baseRevision) : null;
+        // "Sauvegarde :" : renvoie vers le vocabulaire deja connu de la
+        // section du meme nom plus bas, plutot qu'une tournure ("a partir
+        // de", "basee sur") qui reste abstraite tant qu'on ne sait pas a
+        // quoi elle renvoie. title= explicite le concept pour qui le voit la
+        // premiere fois -- demande explicite du 28 septembre 2026.
+        const baseTitle = 'La configuration du module telle que le serveur la '
+          + 'connaissait au moment où cette modification a été envoyée';
+        const baseHtml = !base ? ''
+          : (base.id != null
+              ? '<br><button class="lien-etat" data-sv-open="' + base.id + '" title="' + esc(baseTitle) + '">Sauvegarde : ' + base.label + '</button>'
+              : '<br><span class="mod-s" style="margin:0" title="' + esc(baseTitle) + '">Sauvegarde : ' + base.label + '</span>');
+        const rev = revisionAppliquee(c);
+        return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + baseHtml + '</td>'
           + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c)) + '</span></td>'
           + '<td class="demande">' + resumeCommande(c) + '</td>'
-          + '<td>' + esc(detailLisible(c)) + '</td></tr>';
+          + '<td>' + esc(detailLisible(c)) + '</td>'
+          + '<td style="font-family:var(--mono)">' + (rev ? 'n&deg;' + esc(rev) : '—') + '</td></tr>';
       }).join('') + '</table>'
     + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore '
     + 'synchronisé. Il prendra la modification tout seul.</p>';
+  el.querySelectorAll('[data-sv-open]').forEach(b => {
+    b.onclick = () => ouvrirSauvegarde(Number(b.dataset.svOpen));
+  });
 }
 
 // ── Demarrage ──────────────────────────────────────────────────────────────
