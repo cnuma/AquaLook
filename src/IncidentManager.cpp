@@ -10,6 +10,48 @@ constexpr char INCIDENT_NVS_NAMESPACE[] = "aq_incidents";
 constexpr char INCIDENT_NVS_KEY[] = "storage_sd";
 constexpr uint8_t INCIDENT_SCHEMA = 1U;
 
+// Fenetre d'escalade (28 sept. 2026) : un health-check SD confirme (3
+// lectures ratees d'affilee, voir StorageManager) EST un vrai defaut
+// materiel constate -- mais sous un gel WiFi/RF marginal deja documente
+// (voir memoire checkpoint-2026-09-28-gel-chronique-resolu), il peut se
+// reproduire par rafales qui se reparent chacune seules en ~2s. Avant
+// cette correction, CHAQUE occurrence, meme isolee et deja reparee au
+// moment ou l'utilisateur la voit, declenchait une notification push et
+// exigeait un acquittement manuel -- d'ou occurrences=70+ constate sur le
+// terrain. Meme principe deja en place pour les cycles WiFi "zombie"
+// (voir WiFiManager::recordZombieEventAndMaybeEscalate, dont le
+// commentaire d'origine supposait a tort que le SD l'avait deja) : un
+// episode isole se referme en silence, seule une recurrence dans la
+// fenetre est signalee. Ne change RIEN a la detection elle-meme (toujours
+// 3 confirmations, toujours remonte automatiquement, toujours journalise
+// en EventLog et visible via FaultManager le temps de l'indisponibilite)
+// -- seulement a ce qui merite une notification et un acquittement.
+constexpr uint8_t SD_ESCALATION_COUNT = 3U;
+constexpr uint32_t SD_ESCALATION_WINDOW_MS = 10UL * 60UL * 1000UL;  // 10 min
+
+uint32_t g_sdEventsMs[SD_ESCALATION_COUNT] = {0};
+uint8_t  g_sdEventIdx = 0;
+uint8_t  g_sdEventCount = 0;
+// Vrai si l'episode SD en cours (depuis la derniere transition vers
+// ACTIVE) fait partie d'une rafale -- decide des la confirmation, relu
+// par recoverStorageSd() pour savoir si la reprise doit rester silencieuse
+// ou exiger un acquittement. Se base sur millis(), pas sur l'epoque NTP :
+// un incident peut survenir avant toute synchronisation horaire.
+bool g_sdEscalatedThisEpisode = false;
+
+bool recordSdEventAndCheckEscalation(uint32_t nowMs) {
+    g_sdEventsMs[g_sdEventIdx] = nowMs;
+    g_sdEventIdx = static_cast<uint8_t>((g_sdEventIdx + 1) % SD_ESCALATION_COUNT);
+    if (g_sdEventCount < SD_ESCALATION_COUNT) g_sdEventCount++;
+
+    if (g_sdEventCount < SD_ESCALATION_COUNT) return false;
+
+    // Apres l'incrementation ci-dessus, cet index pointe sur la case la
+    // plus ancienne des SD_ESCALATION_COUNT dernieres occurrences.
+    const uint32_t oldest = g_sdEventsMs[g_sdEventIdx];
+    return (nowMs - oldest) <= SD_ESCALATION_WINDOW_MS;
+}
+
 struct StoredIncidentRecord {
     uint8_t schema;
     uint8_t state;
@@ -50,6 +92,17 @@ void IncidentManager::begin() {
             static_cast<unsigned long>(g_storageSd.occurrences),
             static_cast<unsigned>(g_storageSd.pendingNotifications)
         );
+
+        // g_sdEscalatedThisEpisode ne survit pas au redemarrage (RAM
+        // seule) : un episode qui etait deja escalade avant reboot (INITIAL
+        // deja marquee, ou deja passe par RECOVERED_UNACKNOWLEDGED) doit le
+        // rester, sinon une reprise juste apres reboot le classerait a tort
+        // comme "isole" et sauterait la notification de reprise attendue.
+        const bool wasEscalated =
+            (g_storageSd.pendingNotifications &
+             notificationMask(IncidentNotification::INITIAL)) != 0U ||
+            g_storageSd.state == IncidentState::RECOVERED_UNACKNOWLEDGED;
+        if (wasEscalated) g_sdEscalatedThisEpisode = true;
     }
 }
 
@@ -68,8 +121,11 @@ void IncidentManager::activateStorageSd(const char* reason) {
         if (g_storageSd.firstEpoch == 0U && nowEpoch != 0U) {
             g_storageSd.firstEpoch = nowEpoch;
         }
-        g_storageSd.pendingNotifications |=
-            notificationMask(IncidentNotification::INITIAL);
+        g_sdEscalatedThisEpisode = recordSdEventAndCheckEscalation(millis());
+        if (g_sdEscalatedThisEpisode) {
+            g_storageSd.pendingNotifications |=
+                notificationMask(IncidentNotification::INITIAL);
+        }
     }
 
     g_storageSd.state = IncidentState::ACTIVE;
@@ -96,6 +152,10 @@ void IncidentManager::escalateStorageSdRecoveryFailure() {
     g_storageSd.state = IncidentState::ACTIVE;
     g_storageSd.pendingNotifications |=
         notificationMask(IncidentNotification::ESCALATION);
+    // Un remontage qui echoue vraiment (5 essais epuises) n'est jamais un
+    // episode isole a taire : force l'acquittement a la reprise, quelle
+    // que soit la fenetre d'escalade ci-dessus.
+    g_sdEscalatedThisEpisode = true;
 
     const uint32_t nowEpoch = currentEpoch();
     if (nowEpoch != 0U) g_storageSd.lastEpoch = nowEpoch;
@@ -118,9 +178,18 @@ void IncidentManager::recoverStorageSd(const char* reason) {
 
     if (g_storageSd.state == IncidentState::NONE) return;
 
-    g_storageSd.state = IncidentState::RECOVERED_UNACKNOWLEDGED;
-    g_storageSd.pendingNotifications |=
-        notificationMask(IncidentNotification::RECOVERY);
+    if (g_sdEscalatedThisEpisode) {
+        g_storageSd.state = IncidentState::RECOVERED_UNACKNOWLEDGED;
+        g_storageSd.pendingNotifications |=
+            notificationMask(IncidentNotification::RECOVERY);
+    } else {
+        // Episode isole, jamais sorti de l'ombre (voir
+        // recordSdEventAndCheckEscalation) : rien n'a ete notifie, rien a
+        // acquitter. Le compteur `occurrences` et le journal EventLog
+        // gardent la trace complete pour qui veut la consulter.
+        g_storageSd.state = IncidentState::ACKNOWLEDGED;
+    }
+    g_sdEscalatedThisEpisode = false;
 
     const uint32_t nowEpoch = currentEpoch();
     if (nowEpoch != 0U) g_storageSd.lastEpoch = nowEpoch;
@@ -134,7 +203,9 @@ void IncidentManager::recoverStorageSd(const char* reason) {
 
     EventLog::log(
         LOG_INFO,
-        "Incident SD: recupere, acquittement utilisateur requis"
+        g_storageSd.state == IncidentState::RECOVERED_UNACKNOWLEDGED
+            ? "Incident SD: recupere, acquittement utilisateur requis"
+            : "Incident SD: recupere (episode isole, sans notification)"
     );
 }
 
