@@ -51,6 +51,13 @@
        ce badge est souvent la premiere chose qui signale une mise a jour. -->
   <a id="update-badge" href="/ota" style="display:none"
      title="Une mise à jour est disponible — ouvrir la page de gestion">⬆ MAJ</a>
+  <!-- Purement informatif : l'alarme d'echec persistant (FaultId::CLOUD_SYNC,
+       3 echecs consecutifs) passe deja par #fault-panel -- ce badge ne fait
+       que dater et numeroter la derniere synchro reussie, jamais de rouge
+       d'alarme ici, pour ne pas dupliquer deux endroits qui pourraient
+       diverger. Lien vers /cloudsync.html pour le detail complet, meme
+       principe que #update-badge vers /ota. -->
+  <a id="cloud-badge" href="/cloudsync.html" style="display:none"></a>
   <button id="btn-menu" onclick="openDrawer()" title="Configuration">
     <span></span><span></span><span></span>
   </button>
@@ -122,6 +129,15 @@
               border:1px solid var(--border2);border-radius:6px;text-align:center;
               background:var(--bg2)">
       📜 Scripts
+    </a>
+  </div>
+  <div id="link-cloudsync" style="margin:0 12px 8px">
+    <a href="/cloudsync.html"
+       style="display:block;padding:8px 10px;font-family:var(--mono);
+              font-size:11px;color:var(--text2);text-decoration:none;
+              border:1px solid var(--border2);border-radius:6px;text-align:center;
+              background:var(--bg2)">
+      ☁ Synchro cloud
     </a>
   </div>
   <div id="link-urls" style="margin:0 12px 8px">
@@ -350,7 +366,7 @@
         <label for="cs-enabled" style="margin:0;cursor:pointer">Synchronisation activée</label>
       </div>
       <div class="cfg-field"><label>Hôte (adresse IP ou nom de domaine)</label>
-        <input type="text" id="cs-host" placeholder="aqualook.alwaysdata.net"></div>
+        <input type="text" id="cs-host" placeholder="mon-serveur-cloud.exemple.net"></div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Port</label>
           <input type="number" id="cs-port" min="1" max="65535"></div>

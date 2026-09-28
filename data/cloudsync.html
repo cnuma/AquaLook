@@ -1,0 +1,147 @@
+<!doctype html><html lang=fr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>AquaLook - Synchro cloud</title><link rel=stylesheet href=/style-base.css>
+<style>
+/* Memes classes que sante.html : meme famille de page de statut, memes
+   conventions (card/row/k/v), pour ne pas reinventer un style par page. */
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
+.wrap{max-width:640px;margin:0 auto}
+h1{font-size:21px;margin:0 0 4px;color:var(--text)}
+.sub{color:var(--text2);font-size:13px;margin:0 0 16px;line-height:1.6}
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px;margin-bottom:12px}
+.card h2{font-size:11px;margin:0 0 6px;color:var(--muted);font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.06em}
+.row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13.5px}
+.row:last-child{border-bottom:none}
+.k{color:var(--text2)}
+.v{font-family:var(--mono);text-align:right}
+.v.ok{color:#1d6b34}
+.v.warn{color:#8a5a00}
+.v.bad{color:var(--red)}
+.vide{font-size:13px;color:var(--muted);padding:4px 0}
+a.back{display:inline-block;margin-top:4px;padding:9px 14px;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+a.ext{display:block;text-align:center;padding:9px 14px;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono);
+  background:var(--bg2);margin-bottom:12px}
+#msg{margin:0 0 12px;padding:9px 12px;border-radius:6px;font-size:12.5px;font-family:var(--mono);
+  line-height:1.6;border:1px solid var(--border2);background:var(--bg2);color:var(--text)}
+#msg:empty{display:none}
+#msg.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
+</style></head><body><div class=wrap>
+
+<h1>Synchro cloud</h1>
+<p class=sub>Ce que le module sait de son dernier echange avec le service de
+synchro cloud -- meme donnees que la pastille &#9729; du bandeau d'accueil,
+en plus detaille.</p>
+
+<div id=msg></div>
+
+<div class=card>
+  <h2>Configuration</h2>
+  <div class=row><span class=k>Etat</span><span class="v" id=enabled>&hellip;</span></div>
+  <div class=row><span class=k>Serveur</span><span class="v" id=host>&hellip;</span></div>
+  <div class=row><span class=k>Module</span><span class="v" id=moduleId>&hellip;</span></div>
+  <div class=row><span class=k>Intervalle</span><span class="v" id=interval>&hellip;</span></div>
+</div>
+
+<div class=card id=cycleCard>
+  <h2>Dernier cycle</h2>
+  <div class=row><span class=k>Resultat</span><span class="v" id=lastOk>&hellip;</span></div>
+  <div class=row><span class=k>Derniere tentative</span><span class="v" id=lastAttempt>&hellip;</span></div>
+  <div class=row><span class=k>Dernier succes</span><span class="v" id=lastSuccess>&hellip;</span></div>
+  <div class=row><span class=k>Revision confirmee au serveur</span><span class="v" id=revision>&hellip;</span></div>
+  <div class=row><span class=k>Miroir serveur</span><span class="v" id=caughtUp>&hellip;</span></div>
+</div>
+
+<a class=ext id=cloudLink href="#" target="_blank" rel="noopener" style="display:none">
+  Ouvrir l'espace de synchro cloud &rarr;
+</a>
+
+<a class=back href=/index.html>Retour a AquaLook</a>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function dire(t, e) {
+  const m = $('msg');
+  m.textContent = t || '';
+  m.className = e || '';
+}
+
+// Meme logique que depuisEpochSec() dans app.js -- page autonome, pas de
+// dependance partagee, mais le meme texte pour ne pas dire deux choses
+// differentes du meme instant selon la page ouverte.
+function depuisEpochSec(epochSec) {
+  if (!epochSec) return 'jamais';
+  const sec = Math.max(0, Date.now() / 1000 - epochSec);
+  if (sec < 90) return 'il y a ' + Math.round(sec) + ' s';
+  if (sec < 5400) return 'il y a ' + Math.round(sec / 60) + ' min';
+  if (sec < 172800) return 'il y a ' + Math.round(sec / 3600) + ' h';
+  return 'il y a ' + Math.round(sec / 86400) + ' j';
+}
+
+function rendre(d) {
+  const c = d.cloudSync;
+  if (!c) {
+    dire('Synchro cloud non configuree sur ce module.', 'ko');
+    $('cycleCard').style.display = 'none';
+    $('enabled').textContent = 'Non configuree';
+    $('enabled').className = 'v';
+    return;
+  }
+
+  const en = $('enabled');
+  en.textContent = c.enabled ? 'Activee' : 'Desactivee';
+  en.className = 'v ' + (c.enabled ? 'ok' : 'warn');
+
+  $('host').textContent = c.host ? (c.host + ':' + c.port) : '—';
+  $('moduleId').textContent = c.moduleId || '—';
+  $('interval').textContent = c.intervalMinutes ? (c.intervalMinutes + ' min') : '—';
+
+  if (!c.enabled) {
+    $('cycleCard').style.display = 'none';
+    $('cloudLink').style.display = 'none';
+    return;
+  }
+  $('cycleCard').style.display = '';
+
+  const ok = $('lastOk');
+  ok.textContent = c.lastSyncOk ? 'OK' : (c.lastAttemptEpochSec ? 'Échec' : 'Aucun cycle encore');
+  ok.className = 'v ' + (c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : ''));
+
+  $('lastAttempt').textContent = depuisEpochSec(c.lastAttemptEpochSec);
+  $('lastSuccess').textContent = depuisEpochSec(c.lastSuccessEpochSec);
+
+  // 4294967295 = sentinelle "jamais confirmee" (CloudSyncScheduler::
+  // _lastSyncedRevision avant le premier envoi reussi) -- ne pas l'afficher
+  // comme un vrai numero de revision.
+  const hasRevision = c.lastSyncedRevision != null && c.lastSyncedRevision !== 4294967295;
+  $('revision').textContent = hasRevision ? ('n°' + c.lastSyncedRevision) : '—';
+
+  const cu = $('caughtUp');
+  cu.textContent = c.serverCaughtUp ? 'À jour' : 'En retard';
+  cu.className = 'v ' + (c.serverCaughtUp ? 'ok' : 'warn');
+
+  const link = $('cloudLink');
+  if (c.host) {
+    link.href = 'https://' + c.host + '/app.html';
+    link.style.display = '';
+  }
+}
+
+async function charger() {
+  try {
+    const r = await fetch('/api/adminStatus', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    dire('');
+    rendre(await r.json());
+  } catch (e) {
+    dire('Etat injoignable (' + e.message + ').', 'ko');
+  }
+}
+
+charger();
+setInterval(charger, 10000);
+</script>
+</body></html>

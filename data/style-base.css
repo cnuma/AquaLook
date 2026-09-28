@@ -107,6 +107,15 @@ header {
   padding: 3px 9px; border-radius: 4px; background: var(--purple);
   animation: blink 2s infinite;
 }
+/* Meme forme que #wifi-badge : purement informatif, l'alarme passe par
+   #fault-panel (FaultId::CLOUD_SYNC). .pending = une modif locale attend
+   encore sa prochaine synchro (SYNC_SOON_SECONDS), pas une panne. */
+#cloud-badge {
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  padding: 3px 8px; border: 1px solid var(--border2); border-radius: 4px;
+  background: var(--bg2); text-decoration: none;
+}
+#cloud-badge.pending { color: var(--amber); border-color: var(--amber); }
 #btn-menu {
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px; background: var(--bg2);

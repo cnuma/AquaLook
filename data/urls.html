@@ -38,10 +38,20 @@ td.desc{color:#ccc}
 <tr><td class="path"><a href="/index.html">/index.html</a></td><td class="desc">Page principale — zones, planning semaine, météo, tiroir de réglages.</td></tr>
 <tr><td class="path"><a href="/sante.html">/sante.html</a></td><td class="desc">État de santé du module — dégradé/essai/normal, défauts actifs, incident SD, notifications, actions de correction.</td></tr>
 <tr><td class="path"><a href="/scripts.html">/scripts.html</a></td><td class="desc">Éditeur de scripts — jusqu'à 6 programmes déclenchés par une entrée ou une zone, avec bibliothèque de phrases pour les notifications.</td></tr>
+<tr><td class="path"><a href="/cloudsync.html">/cloudsync.html</a></td><td class="desc">Détail de la synchro cloud — dernier cycle, révision confirmée au serveur, lien vers l'espace cloud.</td></tr>
 <tr><td class="path"><a href="/setup">/setup</a></td><td class="desc">Portail captif de secours (choix SSID/mot de passe) — servi même sans carte SD.</td></tr>
 <tr><td class="path"><a href="/logs">/logs</a></td><td class="desc">Journal technique, acquittement des alarmes et de l'incident carte SD.</td></tr>
 <tr><td class="path"><a href="/ota">/ota</a></td><td class="desc">Mise à jour firmware (OTA) — vérifier, télécharger, installer une nouvelle version.</td></tr>
 <tr><td class="path"><a href="/urls.html">/urls.html</a></td><td class="desc">Cette page.</td></tr>
+</table>
+</section>
+
+<section class="card">
+<h2>Espace cloud</h2>
+<p class="help">Hébergé à part, sur un service cloud externe — pas servi par ce module. Miroir en lecture des créneaux programmés, alimenté par la synchronisation cloud (CloudSync, /api/cloudSync ci-dessous). L'adresse exacte se règle dans le tiroir de réglages.</p>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path"><a href="/cloudsync.html">/cloudsync.html</a></td><td class="desc">État de la synchro sur ce module, avec un lien « Ouvrir l&rsquo;espace de synchro cloud » vers le planning de la semaine par zone (appliqué / en attente / refusé), l'historique des modifications envoyées et les sauvegardes de l'installation.</td></tr>
 </table>
 </section>
 

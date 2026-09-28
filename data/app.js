@@ -108,6 +108,7 @@ async function fetchAdminStatus(isRetry) {
     const r = await fetch('/api/adminStatus');
     adminStatus = await r.json();
     populateDrawer();
+    renderCloudBadge();
   } catch(e) {
     // Reseau WiFi instable par moments (voir keepalive) : un premier echec
     // silencieux laissait le tiroir de reglages avec des champs vides
@@ -120,6 +121,39 @@ async function fetchAdminStatus(isRetry) {
       addLog('Parametres non rafraichis (reseau)');
     }
   }
+}
+// Porte de cloud/php-mutualized/app.html (depuis()), adapte a un epoch en
+// secondes plutot qu'une chaine de date : les deux champs de adminStatus
+// (lastAttemptEpochSec, lastSuccessEpochSec) sont deja des entiers.
+function depuisEpochSec(epochSec) {
+  if (!epochSec) return 'jamais';
+  const sec = Math.max(0, Date.now() / 1000 - epochSec);
+  if (sec < 90) return 'il y a ' + Math.round(sec) + ' s';
+  if (sec < 5400) return 'il y a ' + Math.round(sec / 60) + ' min';
+  if (sec < 172800) return 'il y a ' + Math.round(sec / 3600) + ' h';
+  return 'il y a ' + Math.round(sec / 86400) + ' j';
+}
+// Badge purement informatif : l'alarme d'echec persistant (FaultId::
+// CLOUD_SYNC, >=3 cycles) passe par #fault-panel (alarm.js) -- ce badge ne
+// fait que dater et numeroter la derniere synchro, jamais de rouge d'alarme
+// ici, pour ne pas dupliquer deux endroits qui pourraient diverger.
+function renderCloudBadge() {
+  const el = document.getElementById('cloud-badge');
+  if (!el || !adminStatus || !adminStatus.cloudSync) return;
+  const c = adminStatus.cloudSync;
+  if (!c.enabled) { el.style.display = 'none'; return; }
+  el.style.display = 'inline-block';
+  const upToDate = c.serverCaughtUp && c.lastSyncOk;
+  el.classList.toggle('pending', !upToDate);
+  // 4294967295 = sentinelle "jamais confirmee" (CloudSyncScheduler::
+  // _lastSyncedRevision avant le tout premier envoi reussi) -- ne pas
+  // l'afficher comme un vrai numero, constate le 28 septembre 2026 sur un
+  // module dont la synchro echouait en boucle (mauvais RSSI).
+  const rev = (c.lastSyncedRevision != null && c.lastSyncedRevision !== 4294967295)
+    ? ('n°' + c.lastSyncedRevision) : 'jamais confirmée';
+  el.textContent = upToDate
+    ? '☁ ' + rev + ' · à jour (' + depuisEpochSec(c.lastSuccessEpochSec) + ')'
+    : '☁ ' + rev + ' · sync… (' + depuisEpochSec(c.lastAttemptEpochSec) + ')';
 }
 function jsToEsp(d) { return d === 0 ? 6 : d - 1; }
 function getTodayEspIdx() { return jsToEsp(new Date().getDay()); }
