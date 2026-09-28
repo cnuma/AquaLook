@@ -97,6 +97,22 @@ private:
     uint32_t _lastKeepaliveCheckMs = 0;
     uint8_t  _consecutiveKeepaliveFailures = 0;
 
+    // La sonde elle-meme (probe.connect(), jusqu'a KEEPALIVE_CHECK_TIMEOUT_MS)
+    // s'execute dans une tache dediee -- jamais dans update(), qui tourne sur
+    // loopTask. Violerait sinon l'invariant "aucun delay() dans le chemin
+    // runtime" enonce en tete de ce fichier : mesure le 28 sept. 2026, ce
+    // blocage (jusqu'a 1s, toutes les 45s) coincidait avec des timeouts SD
+    // et un gel visible du profileur pendant les episodes reseau reels --
+    // exactement le moment ou WiFiManager croyait ce cout negligeable (voir
+    // le commentaire pres de KEEPALIVE_CHECK_INTERVAL_MS). Meme motif de
+    // tache dediee au coeur 1 que WeatherManager/CloudSync.
+    IPAddress _keepaliveProbeTarget;
+    volatile bool _keepaliveProbeRunning = false;
+    volatile bool _keepaliveProbeDone = false;
+    volatile bool _keepaliveProbeResult = false;
+    static void keepaliveProbeTask(void* param);
+    void processKeepaliveResult(bool reachable);
+
     PendingAction _pendingAction = PendingAction::NONE;
     uint32_t _pendingDeadlineMs = 0;
 
@@ -117,14 +133,22 @@ private:
     //
     // Intervalle et timeout resserres (etaient 180000/1500) : le cout reel
     // d'une verification plus frequente est quasi nul en fonctionnement
-    // normal (connect() local reussit en quelques ms), le blocage de la
-    // boucle principale ne survient que pendant une panne reelle — moment
-    // ou un delai de boucle est le cadet des soucis. Sonder toutes les 45s
+    // normal (connect() local reussit en quelques ms). Sonder toutes les 45s
     // ramene la reconnexion forcee de ~9 min a ~2 min15 dans le pire cas.
+    //
+    // Correction du 28 sept. 2026 : la sonde ne bloque plus DU TOUT loopTask
+    // (voir _keepaliveProbeRunning) -- l'hypothese ci-dessus comme quoi "un
+    // delai de boucle est le cadet des soucis pendant une panne reelle"
+    // etait fausse. Mesure sur banc : ce blocage (jusqu'a 1s) coincidait
+    // precisement avec des timeouts SD et un gel visible du profileur,
+    // pendant l'episode reseau reel qu'il etait cense signaler sans cout.
     static constexpr uint32_t KEEPALIVE_CHECK_INTERVAL_MS = 45000;   // 45 s
     static constexpr uint32_t KEEPALIVE_CHECK_TIMEOUT_MS  = 1000;    // 1 s
     static constexpr uint8_t  KEEPALIVE_FAILURE_THRESHOLD = 3;       // ~2 min15 avant reconnexion forcee
     static constexpr uint16_t KEEPALIVE_CHECK_PORT = 80;
+    static constexpr uint32_t KEEPALIVE_PROBE_STACK = 4096U;
+    static constexpr UBaseType_t KEEPALIVE_PROBE_PRIORITY = 1U;
+    static constexpr BaseType_t KEEPALIVE_PROBE_CORE = 1;
 
     // Escalade FaultManager si les cycles zombie se repetent — chacun se
     // resout seul en general (~30s), donc un cycle isole ne doit pas

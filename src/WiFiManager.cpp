@@ -37,11 +37,56 @@ static const char* wlStatusName(wl_status_t s) {
     }
 }
 
+// Diagnostic pur (ajoute le 28 sept. 2026, investigation gel chronique sous
+// RSSI degrade -- voir memoire checkpoint-2026-09-28-gel-chronique-resolu) :
+// le code applicatif ne peut pas voir PLUS vite qu'une association wifi
+// "zombie" que le pilote lui-meme (voir checkKeepaliveReachable() plus bas),
+// mais le pilote CONNAIT deja la raison exacte d'une deconnexion reelle --
+// simplement jamais journalisee jusqu'ici. Beacon timeout (200) confirmerait
+// une perte RF (antenne/materiel) ; auth/assoc expire ou handshake timeout
+// pointerait plutot vers la box. Couvre aussi les deconnexions provoquees
+// par WiFi.disconnect(true) dans checkKeepaliveReachable() -- s'y reperer
+// par l'horodatage, pas par la raison (generique dans ce cas-la).
+static const char* wifiDisconnectReasonName(uint8_t reason) {
+    switch (reason) {
+        case WIFI_REASON_UNSPECIFIED:            return "non_precisee";
+        case WIFI_REASON_AUTH_EXPIRE:            return "auth_expiree";
+        case WIFI_REASON_AUTH_LEAVE:             return "auth_quittee";
+        case WIFI_REASON_ASSOC_EXPIRE:           return "assoc_expiree";
+        case WIFI_REASON_NOT_AUTHED:             return "non_authentifie";
+        case WIFI_REASON_NOT_ASSOCED:            return "non_associe";
+        case WIFI_REASON_ASSOC_LEAVE:            return "assoc_quittee_par_nous";
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "handshake_wpa_timeout";
+        case WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT: return "renouvellement_cle_timeout";
+        case WIFI_REASON_STA_LEAVING:             return "station_quitte";
+        case WIFI_REASON_TIMEOUT:                 return "timeout_generique";
+        case WIFI_REASON_BEACON_TIMEOUT:          return "beacon_timeout_RF";
+        case WIFI_REASON_NO_AP_FOUND:             return "ap_introuvable";
+        case WIFI_REASON_AUTH_FAIL:               return "echec_auth";
+        case WIFI_REASON_ASSOC_FAIL:              return "echec_association";
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:       return "handshake_timeout";
+        case WIFI_REASON_CONNECTION_FAIL:         return "echec_connexion_generique";
+        default:                                  return "autre";
+    }
+}
+
+static void onWifiDisconnectedEvent(WiFiEvent_t, WiFiEventInfo_t info) {
+    EventLog::log(
+        LOG_WARN,
+        "WiFi: deconnecte par le pilote, raison=%u (%s) rssi_avant=%ddBm",
+        static_cast<unsigned>(info.wifi_sta_disconnected.reason),
+        wifiDisconnectReasonName(info.wifi_sta_disconnected.reason),
+        WiFi.RSSI()
+    );
+}
+
 void WiFiManager::begin(const char* ssid, const char* pwd) {
     strlcpy(_ssid, ssid, sizeof(_ssid));
     strlcpy(_pwd, pwd, sizeof(_pwd));
 
     loadKeepaliveHost();
+
+    WiFi.onEvent(onWifiDisconnectedEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
@@ -327,6 +372,16 @@ void WiFiManager::handleConnected() {
 // groupe WPA2) : une surveillance purement passive ne peut jamais
 // detecter ce cas plus vite que le pilote lui-meme ne s'en apercoit.
 void WiFiManager::checkKeepaliveReachable(uint32_t now) {
+    // Ne jamais bloquer ici : si une sonde precedente est encore en vol,
+    // se contenter de regarder si elle a fini (voir keepaliveProbeTask()).
+    if (_keepaliveProbeRunning) {
+        if (_keepaliveProbeDone) {
+            _keepaliveProbeRunning = false;
+            processKeepaliveResult(_keepaliveProbeResult);
+        }
+        return;
+    }
+
     if (now - _lastKeepaliveCheckMs < KEEPALIVE_CHECK_INTERVAL_MS) return;
     _lastKeepaliveCheckMs = now;
 
@@ -335,7 +390,9 @@ void WiFiManager::checkKeepaliveReachable(uint32_t now) {
     IPAddress target;
     if (!target.fromString(_keepaliveHost)) {
         // Pas une IP litterale : tenter une resolution DNS (utile le jour
-        // ou la cible pointe vers un hote/service cloud).
+        // ou la cible pointe vers un hote/service cloud). hostByName() reste
+        // bloquant lui aussi, mais ce chemin n'est emprunte que si la cible
+        // est un nom -- jamais le cas pour la passerelle auto-remplie.
         if (WiFi.hostByName(_keepaliveHost, target) != 1) {
             EventLog::log(
                 LOG_WARN,
@@ -346,21 +403,45 @@ void WiFiManager::checkKeepaliveReachable(uint32_t now) {
         }
     }
 
-    WiFiClient probe;
-    const bool reachable = probe.connect(target, KEEPALIVE_CHECK_PORT, KEEPALIVE_CHECK_TIMEOUT_MS);
-    probe.stop();
+    _keepaliveProbeTarget = target;
+    _keepaliveProbeDone = false;
+    _keepaliveProbeRunning = true;
 
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        keepaliveProbeTask, "wifi-keepalive", KEEPALIVE_PROBE_STACK, this,
+        KEEPALIVE_PROBE_PRIORITY, nullptr, KEEPALIVE_PROBE_CORE
+    );
+    if (created != pdPASS) {
+        _keepaliveProbeRunning = false;
+        EventLog::log(LOG_WARN, "WiFi: sonde keepalive indisponible (creation tache)");
+    }
+}
+
+void WiFiManager::keepaliveProbeTask(void* param) {
+    WiFiManager* self = static_cast<WiFiManager*>(param);
+    WiFiClient probe;
+    const bool reachable = probe.connect(
+        self->_keepaliveProbeTarget, KEEPALIVE_CHECK_PORT, KEEPALIVE_CHECK_TIMEOUT_MS
+    );
+    probe.stop();
+    self->_keepaliveProbeResult = reachable;
+    self->_keepaliveProbeDone = true;
+    vTaskDelete(nullptr);
+}
+
+void WiFiManager::processKeepaliveResult(bool reachable) {
     if (reachable) {
         _consecutiveKeepaliveFailures = 0;
         return;
     }
 
+    const uint32_t now = millis();
     _consecutiveKeepaliveFailures++;
     EventLog::log(
         LOG_WARN,
         "WiFi: cible keepalive %s (%s) injoignable (%u/%u), statut=%s toujours 'connecte'",
         _keepaliveHost,
-        target.toString().c_str(),
+        _keepaliveProbeTarget.toString().c_str(),
         static_cast<unsigned>(_consecutiveKeepaliveFailures),
         static_cast<unsigned>(KEEPALIVE_FAILURE_THRESHOLD),
         wlStatusName(WiFi.status())
