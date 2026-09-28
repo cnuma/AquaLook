@@ -734,6 +734,7 @@ void setup() {
     delay(800);
 
     displayMgr.setOutputAdapter(&outputAdapter);
+    displayMgr.setCloudSync(&cloudSyncScheduler);
     displayMgr.begin(
         &ntpMgr,
         &weatherMgr,

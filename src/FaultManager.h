@@ -41,6 +41,14 @@ enum class FaultId : uint8_t {
     // 2026, apres deux boucles de redemarrages que rien dans le module n'a
     // arretees : le seul rempart avait ete un utilisateur debranchant la prise.
     BOOT_LOOP = 9,
+    // Echec de synchronisation cloud confirme sur plusieurs cycles
+    // consecutifs (CloudSyncScheduler::CLOUD_SYNC_FAILURE_CONFIRMATIONS,
+    // meme discipline que STORAGE_SD) : un blip reseau isole n'alarme pas,
+    // seulement une panne qui persiste au fil de l'intervalle de synchro.
+    // Ajoute le 27 septembre 2026 : jusqu'ici, un serveur AlwaysData
+    // injoignable pendant des heures ne laissait de trace que dans le
+    // journal.
+    CLOUD_SYNC = 10,
     // Sentinelle : nombre de valeurs ci-dessus, PAS un defaut valide.
     // Garde la boucle de decomposition du masque (WebManager::handleFaults)
     // a jour automatiquement si un FaultId est ajoute plus tard.

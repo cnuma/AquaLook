@@ -1220,6 +1220,19 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         // 4 premiers, ce qui reduisait sans raison l'espace de recherche
         // (docs/ROBUSTESSE_RESEAU_2026-09-04.md, defaut n°6).
         cloud["tokenMasked"] = cs.token[0] ? "****" : "";
+
+        // Etat du dernier cycle, pour le badge d'en-tete de index.html : voir
+        // CloudSync.h pour ce que chaque champ garantit
+        // (lastAttemptEpochSec est l'instant de LANCEMENT, pas de reussite).
+        cloud["lastSyncOk"]          = _cloudSync->lastSyncOk();
+        cloud["lastAttemptEpochSec"] = _cloudSync->lastAttemptEpochSec();
+        cloud["lastSuccessEpochSec"] = _cloudSync->lastSuccessEpochSec();
+        cloud["lastSyncedRevision"]  = _cloudSync->lastSyncedRevision();
+        // Comparee cote module, pas cote JS : _config est l'autorite locale,
+        // et le sentinel (revision jamais confirmee au serveur) ne doit
+        // jamais se comparer egal a une vraie revision par accident.
+        cloud["serverCaughtUp"] = _config != nullptr &&
+            _config->configRevision() == _cloudSync->lastSyncedRevision();
     }
 
     // OWM

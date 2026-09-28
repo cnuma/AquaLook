@@ -21,6 +21,7 @@
 #include "TimeUtils.h"
 #include "WiFiManager.h"
 #include "EquipmentOutputRuntimeAdapter.h"
+#include "CloudSync.h"
 
 // ═══════════════════════════════════════════════════════════════
 //  Layout HOME 320×240 (rotation 1)
@@ -123,6 +124,11 @@ public:
         _outputs = outputs;
         _relais.outputs = outputs;
     }
+
+    // Pastille de synchro cloud dans le bandeau HOME (icone seule, voir
+    // renderCloudSprite()) -- nullptr tolere, l'icone reste alors masquee
+    // comme si la synchro etait desactivee.
+    void setCloudSync(CloudSyncScheduler* cloudSync) { _cloudSync = cloudSync; }
 
     static constexpr uint8_t SPLASH_STEPS = 8;
 
@@ -240,6 +246,7 @@ private:
     // Invariant I15 : sprite bouton unique, rendu successif Z1 puis Z2
     TFT_eSprite _sprTime   { &_tft };  //  88×16
     TFT_eSprite _sprSignal { &_tft };  //  20×16
+    TFT_eSprite _sprCloud  { &_tft };  //  16×16 -- pastille synchro cloud
     TFT_eSprite _sprPlan   { &_tft };  // 320×100
     TFT_eSprite _sprBtn0   { &_tft };  // 154×98  (réutilisé Z1+Z2)
     bool        _spritesReady  = false;
@@ -254,6 +261,9 @@ private:
     AquaLook::Runtime::EquipmentOutputRuntimeAdapter* _outputs = nullptr;
     ScheduleManager* _schedule = nullptr;
     ConfigManager*   _config   = nullptr;
+    // Lecture seule : DisplayManager n'ecrit jamais dans CloudSyncScheduler,
+    // juste ses accesseurs const pour la pastille du bandeau HOME.
+    CloudSyncScheduler* _cloudSync = nullptr;
     ScreenManager    _screenMgr;  // veille + LED
 
     // ── État UI ───────────────────────────────
@@ -304,6 +314,9 @@ private:
         float   rainMm     = -1.0f;
         bool    ntpSynced  = false;
         int8_t  todayIdx   = -99;  // force re-render planning au premier tick synced
+        // 0=masquee(desactivee) 1=a jour 2=en attente -- 255 force le
+        // premier rendu. Voir renderCloudSprite().
+        uint8_t cloudState = 255;
     } _hc;
 
     // ── Constantes layout HOME ─────────────────
@@ -376,6 +389,16 @@ private:
     static constexpr uint16_t HDR_SIGNAL_X = SCREEN_W - HDR_SIGNAL_W - 4;
     static constexpr uint16_t HDR_TIME_X   = SCREEN_W - HDR_TIME_W - 28;
     static constexpr uint16_t HDR_UPDATE_X = SCREEN_W - 35;  // pastille MAJ
+    // Pastille synchro cloud : juste a gauche de l'heure, avec de l'air --
+    // le titre/ville a gauche du bandeau (drawHomeFull_list()) ne depasse
+    // jamais x=180 environ (10 caracteres max), donc cette position reste
+    // libre sur toutes les tailles d'ecran prises en charge.
+    // 20 px et non 16 : une forme de nuage (3 cercles + une base) a besoin
+    // de plus de largeur qu'un simple rond pour rester reconnaissable a
+    // cette taille -- demande explicite du 28 septembre 2026, un rond seul
+    // se confondait avec les indicateurs de zone.
+    static constexpr uint16_t HDR_CLOUD_W  = 20;
+    static constexpr uint16_t HDR_CLOUD_X  = HDR_TIME_X - HDR_CLOUD_W - 12;
     // Boutons zones (1-2 zones, sprites larges)
 #if AQUALOOK_BOARD_S3
     // Deux cartes de 228 px separees et bordees de 8 px de marge :
@@ -546,6 +569,10 @@ private:
     void createSprites();
     void renderTimeSprite();
     void renderSignalSprite();
+    void renderCloudSprite();
+    // Partagee entre renderCloudSprite() et le controle de redessin dans
+    // updateHomeDynamic_list() -- voir la note dans DisplayManager.cpp.
+    uint8_t cloudSyncState() const;
     bool isWifiSearching() const;
     void renderPlanSprite();                                         // LIST : 7 cols, PL_PLAN_H
     void renderPlanSpriteFull(uint16_t destY, uint16_t h,

@@ -470,6 +470,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
 void DisplayManager::createSprites() {
     _sprTime.createSprite(HDR_TIME_W, 20);  // heure size2 + température size1 côte à côte
     _sprSignal.createSprite(HDR_SIGNAL_W, 16);
+    _sprCloud.createSprite(HDR_CLOUD_W, 16);
     _sprPlan.createSprite(PL_PLAN_W, PL_PLAN_H);
     _sprBtn0.createSprite(PL_BTN_W, PL_BTN_H);
     _spritesReady = true;
@@ -868,12 +869,12 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
                                ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
     if (faultMask != 0U) {
         uint8_t total = 0U;
-        for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+        for (uint8_t id = 0U; id < static_cast<uint8_t>(FaultId::COUNT_); ++id) {
             if (faultMask & (1UL << id)) total++;
         }
         _tft.setTextDatum(MC_DATUM);
         uint8_t shown = 0U;
-        for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP) && shown < 3U; ++id) {
+        for (uint8_t id = 0U; id < static_cast<uint8_t>(FaultId::COUNT_) && shown < 3U; ++id) {
             if ((faultMask & (1UL << id)) == 0U) continue;
             rightEdge -= 20;
             _tft.fillCircle(rightEdge, 14, 9, Theme::RED);
@@ -1413,6 +1414,37 @@ void DisplayManager::renderSignalSprite() {
         _sprSignal.fillRect(i * 5, 16 - h, 4, h, col);
     }
     _sprSignal.pushSprite(HDR_SIGNAL_X, 6);
+}
+
+// 0=masquee (synchro desactivee ou jamais cablee) 1=a jour 2=en attente.
+// Fonction PARTAGEE entre renderCloudSprite() (dessin) et
+// updateHomeDynamic_list() (controle de redessin) -- meme raison que
+// wifiSignalBars() plus haut : la decision de redessiner et ce qui est
+// reellement affiche ne doivent jamais pouvoir diverger.
+uint8_t DisplayManager::cloudSyncState() const {
+    if (!_cloudSync || !_cloudSync->config().enabled) return 0;
+    const bool upToDate = _cloudSync->lastSyncOk() && _config &&
+        _config->configRevision() == _cloudSync->lastSyncedRevision();
+    return upToDate ? 1 : 2;
+}
+
+void DisplayManager::renderCloudSprite() {
+    _sprCloud.fillSprite(Theme::SURFACE);
+    const uint8_t state = cloudSyncState();
+    if (state != 0) {
+        // Silhouette de nuage a partir de primitives disponibles seulement
+        // (fillCircle/fillRoundRect -- le shim S3 n'a pas fillEllipse) :
+        // trois bosses de tailles differentes qui chevauchent une base
+        // arrondie. Un rond seul, a cette taille, se confondait avec les
+        // indicateurs ronds des zones -- demande explicite du 28 septembre
+        // 2026.
+        const uint16_t col = (state == 1) ? Theme::GREEN : Theme::AMBER;
+        _sprCloud.fillRoundRect(2, 7, 16, 6, 3, col);
+        _sprCloud.fillCircle(6, 6, 4, col);
+        _sprCloud.fillCircle(12, 5, 5, col);
+        _sprCloud.fillCircle(16, 8, 3, col);
+    }
+    _sprCloud.pushSprite(HDR_CLOUD_X, 6);
 }
 
 void DisplayManager::renderPlanSprite() {
@@ -2437,6 +2469,7 @@ void DisplayManager::drawHomeFull_unwired() {
     _tft.drawString("AquaLook", 24, 8);
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
 
     const uint16_t cx = SCREEN_W / 2;
     uint16_t y = G2_CONTENT_Y + (SCREEN_H - G2_CONTENT_Y) / 2 - 52;
@@ -2485,6 +2518,7 @@ void DisplayManager::drawHomeFull_list() {
     _hc = HomeCache{};
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
 
     if (_nbZones <= 4) {
         // ── Planning + boutons sur un seul écran ──
@@ -2570,7 +2604,7 @@ void DisplayManager::drawHomeFull_list() {
 void DisplayManager::updateHomeDynamic() {
     // L'ecran "non cable" n'a rien de dynamique a rafraichir, et le laisser
     // passer ici repeindrait des elements de la grille par-dessus lui.
-    if (homeUnwired()) { renderTimeSprite(); renderSignalSprite(); return; }
+    if (homeUnwired()) { renderTimeSprite(); renderSignalSprite(); renderCloudSprite(); return; }
     switch (_homeMode) {
         case HomeMode::LIST:  updateHomeDynamic_list();  break;
         case HomeMode::GRID2: updateHomeDynamic_grid2(); break;
@@ -2595,6 +2629,12 @@ void DisplayManager::updateHomeDynamic_list() {
     // profileur (RuntimeProfiler), constate le 27 septembre 2026.
     const uint8_t bars = wifiSignalBars(WiFi.status() == WL_CONNECTED, (int8_t)WiFi.RSSI());
     if (bars != _hc.signalBars || isWifiSearching()) { _hc.signalBars = bars; renderSignalSprite(); }
+
+    // Synchro cloud — meme discipline que le signal juste au-dessus : ne
+    // redessiner que si l'etat affiche (masque/a jour/en attente) change
+    // reellement, pas a chaque appel.
+    const uint8_t cloud = cloudSyncState();
+    if (cloud != _hc.cloudState) { _hc.cloudState = cloud; renderCloudSprite(); }
 
     // Planning (uniquement si visible)
     if (_nbZones <= 4 || !_listShowForce) {
@@ -3043,6 +3083,7 @@ void DisplayManager::drawHomeFull_grid2() {
     _tft.drawString("AquaLook", 24, 8);
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
 
     // ── Séparateur vertical planning | grille ──
     // Separateur cale juste apres la colonne planning, pas contre les cartes :
@@ -3067,6 +3108,7 @@ void DisplayManager::drawHomeFull_grid2() {
 void DisplayManager::updateHomeDynamic_grid2() {
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
     float   rainMm   = _weather ? _weather->getRainMm() : 0.0f;
     bool    ntpSync  = _ntp && _ntp->isSynced();
     int8_t  todayNow = (int8_t)todayEspIdx();
@@ -3164,6 +3206,7 @@ void DisplayManager::drawHomeFull_grid4() {
     _tft.drawString("AquaLook", 24, 10);
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
     _tft.setTextDatum(TL_DATUM);
 
     // ── Contenu selon _grid4View ──
@@ -3209,6 +3252,7 @@ void DisplayManager::drawHomeFull_grid4() {
 void DisplayManager::updateHomeDynamic_grid4() {
     renderTimeSprite();
     renderSignalSprite();
+    renderCloudSprite();
 
     float   rainMm   = _weather ? _weather->getRainMm() : 0.0f;
     bool    ntpSync  = _ntp && _ntp->isSynced();
@@ -3575,7 +3619,7 @@ void DisplayManager::drawHealthFull() {
     const uint32_t faultMask = FaultManager::activeMask() &
                                ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
     uint8_t faultsShown = 0U;
-    for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP) && y < 190; ++id) {
+    for (uint8_t id = 0U; id < static_cast<uint8_t>(FaultId::COUNT_) && y < 190; ++id) {
         if ((faultMask & (1UL << id)) == 0U) continue;
         row("Defaut :", FaultManager::label(static_cast<FaultId>(id)), Theme::RED);
         faultsShown++;
@@ -4035,7 +4079,7 @@ void DisplayManager::drawAdminPageSante() {
     const uint32_t faultMask = FaultManager::activeMask() &
                                ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
     uint8_t nFaults = 0U;
-    for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+    for (uint8_t id = 0U; id < static_cast<uint8_t>(FaultId::COUNT_); ++id) {
         if (faultMask & (1UL << id)) nFaults++;
     }
     _tft.setTextColor(Theme::MUTED, Theme::SURFACE);

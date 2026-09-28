@@ -171,7 +171,7 @@ public:
 
                 JsonArray faults = doc["faults"].to<JsonArray>();
                 const uint32_t mask = FaultManager::activeMask();
-                for (uint8_t id = 0U; id <= static_cast<uint8_t>(FaultId::BOOT_LOOP); ++id) {
+                for (uint8_t id = 0U; id < static_cast<uint8_t>(FaultId::COUNT_); ++id) {
                     if ((mask & (1UL << id)) == 0U) continue;
                     JsonObject f = faults.add<JsonObject>();
                     f["id"] = id;

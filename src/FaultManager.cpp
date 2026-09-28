@@ -157,6 +157,7 @@ const char* FaultManager::label(FaultId id) {
         case FaultId::MEMORY_LOW:     return "Memoire libre basse";
         case FaultId::TIME_UNSYNCED:  return "Heure non synchronisee";
         case FaultId::BOOT_LOOP:      return "Redemarrages repetes";
+        case FaultId::CLOUD_SYNC:     return "Synchronisation cloud";
         default:                      return "Defaut inconnu";
     }
 }
@@ -173,6 +174,7 @@ char FaultManager::badgeLetter(FaultId id) {
         case FaultId::MEMORY_LOW:     return 'M';
         case FaultId::TIME_UNSYNCED:  return 'H';
         case FaultId::BOOT_LOOP:      return 'B';
+        case FaultId::CLOUD_SYNC:     return 'N';
         default:                      return '?';
     }
 }
