@@ -933,7 +933,24 @@ void CloudSyncScheduler::update(bool ntpSynced,
     // _lastSyncEpochSec qu'une fois, au prochain envoi reel.
     const bool configChanged =
         config != nullptr && config->configRevision() != _lastSyncedRevision;
-    const uint32_t requiredWaitSec = configChanged
+    // Tant que le cycle echoue, configChanged reste vrai indefiniment
+    // (_lastSyncedRevision ne se met a jour que sur un succes) : sans garde,
+    // CHAQUE panne prolongee ferait retenter a SYNC_SOON_SECONDS (30s) pour
+    // toujours, jamais l'intervalle nominal. Constate en service le 29
+    // septembre 2026 : un martelage a ce rythme pendant des heures vers un
+    // hebergement mutualise (AlwaysData) a coincide avec un echec quasi
+    // permanent (~1 succes sur 7 tentatives), la connexion se retablissant
+    // presque a chaque fois par des enregistrements TLS reinitialises en
+    // cours de negociation, jamais visibles dans le journal d'acces serveur
+    // -- coherent avec un plafond de debit cote hebergeur que le martelage
+    // entretient lui-meme sans jamais laisser de repit pour en sortir. Au-
+    // dela de CLOUD_SYNC_FAILURE_CONFIRMATIONS (3) echecs consecutifs,
+    // retomber sur l'intervalle nominal meme si la config a change : un
+    // reglage recent attendra un peu plus longtemps plutot que de ne
+    // jamais passer du tout.
+    const bool allowFastRetry =
+        configChanged && _consecutiveFailures < CLOUD_SYNC_FAILURE_CONFIRMATIONS;
+    const uint32_t requiredWaitSec = allowFastRetry
         ? SYNC_SOON_SECONDS
         : static_cast<uint32_t>(_cfg.intervalMinutes) * 60UL;
     if ((epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
