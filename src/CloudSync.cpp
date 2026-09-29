@@ -1089,45 +1089,60 @@ void CloudSyncScheduler::performSync() {
 void CloudSyncScheduler::checkSyncWatchdog() {
     if (!_syncInProgress) return;
 
-    void*    clientPtr;
-    uint32_t phaseStartMs;
-    bool     alreadyFired;
+    // TOUT le calcul -- y compris l'appel a fd() -- doit se faire SOUS LE
+    // MEME VERROU que celui qui protege _watchdog.activeClient en ecriture
+    // (voir WatchdogClientGuard dans CloudSync::run()). Corrige le 29
+    // septembre 2026 apres un "panic / exception" en service : la version
+    // precedente lisait clientPtr sous verrou puis appelait clientPtr->fd()
+    // (un appel VIRTUEL) APRES avoir relache le verrou. Rien n'empechait
+    // alors la tache de synchronisation de terminer run() entre ces deux
+    // etapes -- secureClient/plainClient sont des objets LOCAUX a run(),
+    // detruits des son retour (WatchdogClientGuard efface activeClient dans
+    // son destructeur, avant que ces objets ne soient eux-memes detruits,
+    // mais SOUS LE VERROU uniquement) -- un appel virtuel sur cet objet
+    // apres sa destruction est un use-after-free classique, coherent avec
+    // un plantage. En gardant tout -- lecture du pointeur, verification du
+    // delai, appel fd() -- SOUS LE VERROU, le destructeur de
+    // WatchdogClientGuard (qui a besoin du MEME verrou pour s'executer) ne
+    // peut pas s'intercaler : l'objet est garanti vivant pendant tout
+    // l'appel a fd(). lwip_shutdown() lui-meme reste APRES la sortie du
+    // verrou (jamais d'appel bloquant/reseau sous un spinlock ESP32), avec
+    // le meme risque residuel deja accepte (fd potentiellement recycle
+    // entre-temps -- beaucoup moins grave qu'un pointeur C++ perime : au
+    // pire un shutdown() sur un descripteur deja ferme/reutilise, jamais un
+    // saut a travers une vtable corrompue).
+    int  fd = -1;
+    bool shouldClose = false;
+
     portENTER_CRITICAL(&g_cloudSyncMux);
-    clientPtr    = _watchdog.activeClient;
-    phaseStartMs = _watchdog.phaseStartMs;
-    alreadyFired = _watchdog.fired;
+    if (_watchdog.activeClient != nullptr && !_watchdog.fired &&
+        _watchdog.phaseStartMs != 0U &&
+        (millis() - _watchdog.phaseStartMs) >= PHASE_HARD_DEADLINE_MS) {
+        // WiFiClient::fd() est virtuel : fonctionne identiquement que
+        // activeClient designe un WiFiClient (HTTP) ou un WiFiClientSecure
+        // (HTTPS), sans avoir besoin de connaitre le type concret ici.
+        //
+        // -1 est possible pour deux raisons tres differentes, a ne PAS
+        // confondre : (a) la phase vient de se terminer normalement juste
+        // avant ce controle (client->stop() deja passe, voir
+        // stop_ssl_socket() qui remet le descripteur a -1 avant de liberer
+        // quoi que ce soit d'autre) -- coincidence rare, sans consequence ;
+        // (b) AUCUN socket n'a encore ete cree (resolution DNS toujours en
+        // cours dans WiFi.hostByName(), appelee par client->connect() avant
+        // meme start_ssl_client()) -- constate en direct le 29 septembre
+        // 2026 : verrouiller _watchdog.fired ICI SANS DISTINCTION avait
+        // laisse une phase ENTIERE sans surveillance pour le reste de son
+        // execution (186895 ms observes). Dans les deux cas : ne rien
+        // verrouiller, on retentera au prochain tour de boucle.
+        fd = static_cast<WiFiClient*>(_watchdog.activeClient)->fd();
+        if (fd >= 0) {
+            _watchdog.fired = true;
+            shouldClose = true;
+        }
+    }
     portEXIT_CRITICAL(&g_cloudSyncMux);
 
-    if (clientPtr == nullptr || alreadyFired || phaseStartMs == 0U) return;
-    if ((millis() - phaseStartMs) < PHASE_HARD_DEADLINE_MS) return;
-
-    // WiFiClient::fd() est virtuel : cet appel fonctionne identiquement que
-    // clientPtr designe un WiFiClient (HTTP) ou un WiFiClientSecure (HTTPS),
-    // sans avoir besoin de connaitre le type concret ici.
-    //
-    // -1 est possible pour deux raisons tres differentes, a ne PAS confondre :
-    // (a) la phase vient de se terminer normalement juste avant ce controle
-    //     (client->stop() deja passe, voir stop_ssl_socket() qui remet le
-    //     descripteur a -1 avant de liberer quoi que ce soit d'autre) --
-    //     coincidence rare, sans consequence, la phase suivante re-armera ;
-    // (b) AUCUN socket n'a encore ete cree (resolution DNS toujours en cours
-    //     dans WiFi.hostByName(), APPELEE PAR client->connect() avant meme
-    //     start_ssl_client()) -- constate en direct le 29 septembre 2026 :
-    //     un verrou pose ICI sans distinction avait laisse une phase ENTIERE
-    //     sans surveillance pour le reste de son execution (186895 ms
-    //     observes, largement au-dela du pire cas attendu), parce que le
-    //     verrou etait pose avant meme de savoir si une fermeture avait pu
-    //     avoir lieu. Ne JAMAIS verrouiller _watchdog.fired tant qu'on n'a
-    //     pas reellement agi sur un descripteur valide -- sinon le cas (b)
-    //     desactive la protection pour le reste de la phase, silencieusement.
-    const int fd = static_cast<WiFiClient*>(clientPtr)->fd();
-    if (fd < 0) return;   // on retentera au prochain tour de boucle
-
-    // Verrou seulement ICI, juste avant d'agir reellement : une seule
-    // fermeture par phase et par descripteur, jamais un verrou "au cas ou".
-    portENTER_CRITICAL(&g_cloudSyncMux);
-    _watchdog.fired = true;
-    portEXIT_CRITICAL(&g_cloudSyncMux);
+    if (!shouldClose) return;
 
     lwip_shutdown(fd, SHUT_RDWR);
     EventLog::log(LOG_WARN,
