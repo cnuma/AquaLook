@@ -750,9 +750,13 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         // sendConfig force a true : un declenchement manuel doit remonter la
         // configuration quoi qu'il arrive, sans passer par la detection de
         // changement de CloudSyncScheduler (etat qui n'existe pas ici).
+        // watchdog nul : ce chemin ne partage pas le coeur avec un loop() en
+        // cours (mode maintenance dedie, sans autre tache active), le risque
+        // de gel externe que le plafond de securite adresse ne s'applique pas
+        // ici -- voir la note sur CloudSyncWatchdog dans CloudSync.h.
         const CloudSyncResult r =
             CloudSync::run(cloudCfg, CloudSync::buildConfigBody(configManager), true,
-                           CloudSyncPendingAck{});
+                           CloudSyncPendingAck{}, nullptr);
         if (r.commandJson) free(r.commandJson);
         success = r.valid && r.reportSuccess && r.configSuccess;
         // Libelles compactes : EventLog tronque a LOG_MSG_LEN (72).

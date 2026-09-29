@@ -72,6 +72,27 @@ struct CloudSyncResult {
     char*    commandJson     = nullptr;
 };
 
+// Poignee de securite partagee entre la tache de synchronisation et la boucle
+// principale, pour permettre a celle-ci de debloquer un appel reseau qui
+// degenere bien au-dela de tous les timeouts configures cote client -- voir
+// la note detaillee dans CloudSync.cpp (recherche "plafond de securite") et
+// la memoire checkpoint-2026-09-28-nuit2-cloudsync-hang-ssl80.md : un
+// handshake TLS peut echouer directement (hors chemin WANT_READ/WANT_WRITE)
+// bien au-dela de setHandshakeTimeout(), constate le 28 septembre 2026
+// (~50-60s au lieu des 4s configures).
+//
+// Ne transporte JAMAIS de structure mbedTLS ni n'appelle jamais stop() depuis
+// l'exterieur : seul le descripteur de socket brut (WiFiClient::fd(), virtuel,
+// partage par WiFiClient et WiFiClientSecure) est ferme depuis la boucle
+// principale via lwip_shutdown(), ce qui fait echouer proprement l'appel
+// bloquant en cours dans LA TACHE elle-meme, sans jamais toucher a l'etat
+// partage (ssl_ctx, ssl_conf...) que seule cette tache a le droit de liberer.
+struct CloudSyncWatchdog {
+    void*    volatile activeClient = nullptr;  // WiFiClient* actif ; nullptr hors synchro
+    uint32_t volatile phaseStartMs = 0;        // instant de depart de la PHASE reseau en cours
+    bool     volatile fired        = false;    // latch : n'agit qu'une fois par phase
+};
+
 class CloudSync {
 public:
     // Charge la configuration depuis NVS. Fonction partagee avec
@@ -97,10 +118,14 @@ public:
     // sendConfig est faux quand la revision de configuration n'a pas change
     // depuis le dernier envoi reussi (CloudSyncScheduler::_lastSyncedRevision) :
     // configBody est alors vide et l'etape config est sautee sans connexion.
+    // watchdog non nul en usage normal (fourni par CloudSyncScheduler::
+    // performSync()) ; nul uniquement pour un appelant qui ne peut pas se
+    // faire debloquer de l'exterieur (aucun cas actuel).
     static CloudSyncResult run(const CloudSyncConfig& cfg,
                                const String& configBody,
                                bool sendConfig,
-                               const CloudSyncPendingAck& pendingAck);
+                               const CloudSyncPendingAck& pendingAck,
+                               CloudSyncWatchdog* watchdog);
 };
 
 class CloudSyncScheduler {
@@ -178,6 +203,17 @@ public:
     static constexpr uint32_t   SYNC_TASK_STACK_BYTES = 8192;
     static constexpr UBaseType_t SYNC_TASK_PRIORITY   = 1;
 
+    // ── Plafond de securite pour un appel reseau bloque ──────────────────
+    //
+    // Couvre le pire cas LEGITIME (pas en panne) d'une phase : resolution DNS
+    // a froid (~15s, plafond reel documente dans WiFiGenericClass::hostByName,
+    // WiFiGeneric.cpp) + connexion TCP (CONNECT_TIMEOUT_MS) + handshake TLS
+    // (le meme budget), soit ~15+4+4=23s au pire sans rien d'anormal. Fixe
+    // avec une marge au-dela de ce plafond legitime, mais tres en-deca des
+    // ~50-60s constates le 28 septembre 2026 lors d'un blocage reel -- voir
+    // checkSyncWatchdog() dans CloudSync.cpp.
+    static constexpr uint32_t PHASE_HARD_DEADLINE_MS = 25000UL;
+
 private:
     void load();
     void save();
@@ -187,6 +223,10 @@ private:
     bool startSync(const ConfigManager& configManager);
     static void syncTaskEntry(void* context);
     void performSync();
+    // Appelee a chaque tour depuis update(), quel que soit l'etat par
+    // ailleurs : seule fonction autorisee a agir sur _watchdog depuis la
+    // boucle principale.
+    void checkSyncWatchdog();
     void applyPendingResult(uint32_t epochSec);
     // Applique une commande de configuration. Appelee UNIQUEMENT depuis la
     // boucle principale : elle ecrit en NVS et touche l'etat partage avec
@@ -214,6 +254,8 @@ private:
     CloudSyncResult  _pendingResult;
     volatile bool    _syncInProgress = false;
     volatile bool    _resultReady    = false;
+    // Voir PHASE_HARD_DEADLINE_MS et checkSyncWatchdog().
+    CloudSyncWatchdog _watchdog;
 
     // Derniere revision de configuration effectivement remontee avec succes.
     // Sentinelle a la premiere synchronisation (aucune revision reelle ne

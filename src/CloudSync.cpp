@@ -7,6 +7,7 @@
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
+#include <lwip/sockets.h>
 
 #include "BootLoopGuard.h"
 #include "ConfigManager.h"
@@ -531,12 +532,17 @@ String CloudSync::buildConfigBody(const ConfigManager& configManager) {
 CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
                                const String& configBody,
                                bool sendConfig,
-                               const CloudSyncPendingAck& pendingAck) {
+                               const CloudSyncPendingAck& pendingAck,
+                               CloudSyncWatchdog* watchdog) {
     CloudSyncResult result;
 
     WiFiClient plainClient;
     WiFiClientSecure secureClient;
-    Client* client = nullptr;
+    // WiFiClient*, pas Client* : fd() est virtuel sur WiFiClient (partage par
+    // WiFiClientSecure), c'est ce qui permet a checkSyncWatchdog() de
+    // retrouver le descripteur de socket brut de l'objet actif SANS connaitre
+    // son type concret -- voir CloudSyncWatchdog dans CloudSync.h.
+    WiFiClient* client = nullptr;
     if (cfg.useHttps) {
         OtaTlsTrust::configure(secureClient);
         secureClient.setHandshakeTimeout(CONNECT_TIMEOUT_MS / 1000U);
@@ -546,6 +552,44 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         plainClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
         client = &plainClient;
     }
+
+    // Publie l'objet actif une seule fois : il ne change plus pour le reste
+    // de run() (les 4 phases reutilisent le meme plainClient/secureClient).
+    // Efface toujours en sortie de fonction (voir en bas), avant que l'objet
+    // ne sorte de portee.
+    if (watchdog) {
+        portENTER_CRITICAL(&g_cloudSyncMux);
+        watchdog->activeClient = client;
+        portEXIT_CRITICAL(&g_cloudSyncMux);
+    }
+    // RAII : run() a CINQ points de retour (echecs des 4 phases + fin
+    // normale). Plutot que dupliquer un nettoyage a chacun (fragile, facile a
+    // oublier au prochain ajout), un garde de portee efface systematiquement
+    // watchdog->activeClient avant que client (plainClient/secureClient, tous
+    // deux locaux a cette fonction) ne soit detruit en sortant de portee.
+    struct WatchdogClientGuard {
+        CloudSyncWatchdog* w;
+        ~WatchdogClientGuard() {
+            if (!w) return;
+            portENTER_CRITICAL(&g_cloudSyncMux);
+            w->activeClient = nullptr;
+            portEXIT_CRITICAL(&g_cloudSyncMux);
+        }
+    } watchdogClientGuard{watchdog};
+    // Re-arme le plafond pour la phase qui commence : a appeler juste avant
+    // CHAQUE client->connect(), seul appel reellement susceptible de rester
+    // bloque bien au-dela de son propre timeout configure (voir la note sur
+    // PHASE_HARD_DEADLINE_MS dans CloudSync.h). httpExchange() n'en a pas
+    // besoin : ses boucles de lecture sont deja bornees par
+    // RESPONSE_TIMEOUT_MS via des delay(1)/delay(10) explicites, jamais un
+    // recv() bloquant brut.
+    const auto armPhaseDeadline = [&]() {
+        if (!watchdog) return;
+        portENTER_CRITICAL(&g_cloudSyncMux);
+        watchdog->phaseStartMs = millis();
+        watchdog->fired = false;
+        portEXIT_CRITICAL(&g_cloudSyncMux);
+    };
 
     const uint16_t port = cfg.port != 0U ? cfg.port : (cfg.useHttps ? 443U : 80U);
 
@@ -558,6 +602,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     const char* authToken = cfg.useHttps ? cfg.token : "";
     EventLog::log(LOG_INFO, "CloudSync: connexion %s:%u...", cfg.host, port);
     const uint32_t connectStartMs = millis();
+    armPhaseDeadline();
     if (!client->connect(cfg.host, port)) {
         EventLog::log(LOG_ERROR, "CloudSync: connexion echouee apres %lu ms",
                       static_cast<unsigned long>(millis() - connectStartMs));
@@ -613,6 +658,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         result.configSuccess = true;   // rien a envoyer n'est pas un echec
         EventLog::log(LOG_INFO, "CloudSync: config inchangee, non renvoyee");
     } else {
+        armPhaseDeadline();
         if (!client->connect(cfg.host, port)) {
             copyText(result.detail, sizeof(result.detail), "config: connexion impossible");
             result.valid = true;
@@ -639,6 +685,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
     // ── 3. Sondage d'une commande en attente ────────────────────────────
     client->stop();
+    armPhaseDeadline();
     if (!client->connect(cfg.host, port)) {
         copyText(result.detail, sizeof(result.detail), "sondage: connexion impossible");
         result.valid = true;
@@ -699,6 +746,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
     if (result.commandReceived && ackReady) {
         client->stop();
+        armPhaseDeadline();
         if (client->connect(cfg.host, port)) {
             JsonDocument doc;
             doc["correlationId"] = result.correlationId;
@@ -830,6 +878,10 @@ void CloudSyncScheduler::update(bool ntpSynced,
     // Recupere d'abord le resultat d'une synchro terminee : c'est la boucle
     // principale qui journalise et libere la memoire, jamais la tache.
     applyPendingResult(epochSec);
+    // Avant tout retour anticipe ci-dessous : c'est justement pendant que
+    // _syncInProgress est vrai (donc juste avant le "if (_syncInProgress)
+    // return;" qui suit) que ce controle a un sens.
+    checkSyncWatchdog();
 
     if (BootLoopGuard::isDegraded()) return;
     if (!_loaded || _triggered || !_cfg.enabled) return;
@@ -951,6 +1003,11 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
     _pendingResult = CloudSyncResult{};
     _syncInProgress = true;
     _resultReady = false;
+    // Etat vierge pour cette tentative : voir checkSyncWatchdog() et la note
+    // sur CloudSyncWatchdog dans CloudSync.h.
+    _watchdog.activeClient = nullptr;
+    _watchdog.phaseStartMs = 0U;
+    _watchdog.fired = false;
     portEXIT_CRITICAL(&g_cloudSyncMux);
 
     // Epinglee au coeur 1, jamais laissee libre.
@@ -994,13 +1051,89 @@ void CloudSyncScheduler::syncTaskEntry(void* context) {
 
 void CloudSyncScheduler::performSync() {
     const CloudSyncResult result =
-        CloudSync::run(_taskCfg, _taskConfigBody, _taskSendConfig, _pendingAck);
+        CloudSync::run(_taskCfg, _taskConfigBody, _taskSendConfig, _pendingAck, &_watchdog);
 
     portENTER_CRITICAL(&g_cloudSyncMux);
     _pendingResult = result;   // POD : copie sure en section critique
     _resultReady = true;
     _syncInProgress = false;
     portEXIT_CRITICAL(&g_cloudSyncMux);
+}
+
+// Plafond de securite : voir PHASE_HARD_DEADLINE_MS (CloudSync.h) et
+// CloudSyncWatchdog. Constate le 28 septembre 2026 (memoire checkpoint-2026-
+// 09-28-nuit2-cloudsync-hang-ssl80.md) : a trois reprises, un handshake TLS a
+// echoue directement (hors chemin WANT_READ/WANT_WRITE, donc hors du controle
+// de setHandshakeTimeout(), voir ssl_client.cpp:271-278 dans le framework
+// Arduino-ESP32) apres ~50-60s au lieu des quelques secondes configurees.
+// Reduire les timeouts cote client (10s -> 4s, commit 3401ead) n'avait
+// reduit la duree que de ~15% : la cause reelle est externe au firmware
+// (probablement une session NAT/pare-feu ou un timeout d'inactivite cote
+// reseau qui finit par tuer la connexion), donc hors de portee d'un simple
+// reglage de timeout. Pendant tout ce temps, CloudSync partage le coeur 1
+// avec loop() (voir startSync()), qui a subi des gels de 1,4 a 3,6s.
+//
+// Ce controle borne desormais la duree de blocage possible EN FORCANT
+// l'echec de l'appel reseau en cours, plutot que d'esperer un timeout cote
+// client qui s'est deja montre peu fiable. Il ne touche JAMAIS aux
+// structures mbedTLS (ssl_ctx, ssl_conf...), seules a la tache de
+// synchronisation le droit de les liberer (voir stop_ssl_socket() dans
+// ssl_client.cpp, qui les libere APRES avoir mis le descripteur a -1) :
+// seul le descripteur de socket brut est ferme en ecriture/lecture via
+// lwip_shutdown(), ce qui fait echouer proprement le recv()/connect() en
+// cours dans LA TACHE elle-meme (elle regagne le controle avec une erreur
+// reseau ordinaire, exactement comme si le reseau avait echoue de lui-meme),
+// sans jamais liberer le descripteur ni toucher a l'etat partage -- la tache
+// continue son propre nettoyage (client->stop()) normalement, dans son
+// propre fil d'execution, une fois l'erreur remontee.
+void CloudSyncScheduler::checkSyncWatchdog() {
+    if (!_syncInProgress) return;
+
+    void*    clientPtr;
+    uint32_t phaseStartMs;
+    bool     alreadyFired;
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    clientPtr    = _watchdog.activeClient;
+    phaseStartMs = _watchdog.phaseStartMs;
+    alreadyFired = _watchdog.fired;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    if (clientPtr == nullptr || alreadyFired || phaseStartMs == 0U) return;
+    if ((millis() - phaseStartMs) < PHASE_HARD_DEADLINE_MS) return;
+
+    // WiFiClient::fd() est virtuel : cet appel fonctionne identiquement que
+    // clientPtr designe un WiFiClient (HTTP) ou un WiFiClientSecure (HTTPS),
+    // sans avoir besoin de connaitre le type concret ici.
+    //
+    // -1 est possible pour deux raisons tres differentes, a ne PAS confondre :
+    // (a) la phase vient de se terminer normalement juste avant ce controle
+    //     (client->stop() deja passe, voir stop_ssl_socket() qui remet le
+    //     descripteur a -1 avant de liberer quoi que ce soit d'autre) --
+    //     coincidence rare, sans consequence, la phase suivante re-armera ;
+    // (b) AUCUN socket n'a encore ete cree (resolution DNS toujours en cours
+    //     dans WiFi.hostByName(), APPELEE PAR client->connect() avant meme
+    //     start_ssl_client()) -- constate en direct le 29 septembre 2026 :
+    //     un verrou pose ICI sans distinction avait laisse une phase ENTIERE
+    //     sans surveillance pour le reste de son execution (186895 ms
+    //     observes, largement au-dela du pire cas attendu), parce que le
+    //     verrou etait pose avant meme de savoir si une fermeture avait pu
+    //     avoir lieu. Ne JAMAIS verrouiller _watchdog.fired tant qu'on n'a
+    //     pas reellement agi sur un descripteur valide -- sinon le cas (b)
+    //     desactive la protection pour le reste de la phase, silencieusement.
+    const int fd = static_cast<WiFiClient*>(clientPtr)->fd();
+    if (fd < 0) return;   // on retentera au prochain tour de boucle
+
+    // Verrou seulement ICI, juste avant d'agir reellement : une seule
+    // fermeture par phase et par descripteur, jamais un verrou "au cas ou".
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _watchdog.fired = true;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    lwip_shutdown(fd, SHUT_RDWR);
+    EventLog::log(LOG_WARN,
+                  "CloudSync: plafond de securite (%lu ms) depasse sur cette "
+                  "phase, connexion debloquee de force (fd=%d)",
+                  static_cast<unsigned long>(PHASE_HARD_DEADLINE_MS), fd);
 }
 
 // ═══════════════════════════════════════════════════════════════
