@@ -20,6 +20,7 @@ Cet index permet d’identifier rapidement les états de reprise qui ont servi �
 | 2026-07-27 | lots 1 à 4 Engineering Reference v1.0 | consolidation documentaire | courant |
 | 2026-08-17 | `CHECKPOINT_2026-08-17_RESILIENCE_BOOTLOOP_ET_MAJ_RESSOURCES_WEB.md` | mise à jour des ressources Web de bout en bout, diffusion HTTP, alerte d’heure inconnue, garde anti-boucle et mode dégradé | intégré |
 | 2026-08-18 | `CHECKPOINT_2026-08-18_CANAL_WEB_INDICATEUR_VIOLET_ET_MEMOIRE.md` | canal ressources Web dans la vérification périodique, indicateur violet unifié (LED/LCD/Web), cartographie mémoire, tentative d’arène mbedTLS (résultat négatif, en attente PSRAM), récupération d’une corruption locale du dépôt Git | état de reprise courant |
+| 2026-10-01 | `CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md` | panne CloudSync de ~22h40 résolue (campagne d’isolation en 8 bancs, toutes hypothèses écartées, état transitoire externe) ; gel résiduel de boucle identifié (`DISPLAY_SLEEP_TOUCH`, jusqu’à 543-558 ms) mais **correctif `vTaskPrioritySet` essayé PUIS RETIRÉ** (n’a pas résolu le gel et a dégradé CloudSync) — **gel tactile NON résolu, rien de commité** | en cours, cause racine du gel tactile toujours ouverte |
 
 ## Informations obligatoires d’un checkpoint
 
