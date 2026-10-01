@@ -110,6 +110,7 @@ const char* RuntimeProfiler::componentName(Component component) {
         case Component::DISPLAY_TOUCH:     return "displayTouch";
         case Component::DISPLAY_FULLREDRAW: return "displayFullRedraw";
         case Component::DISPLAY_DYNAMIC:   return "displayDynamic";
+        case Component::DISPLAY_SLEEP_TOUCH: return "displaySleepTouch";
         case Component::PLANNING_DECOR:   return "planningDecor";
         case Component::FAULTS_POST:      return "faultsPost";
         case Component::YIELD:            return "yield";

@@ -512,6 +512,29 @@ void setup() {
     Serial.begin(115200);
     delay(300);
 
+    // vTaskPrioritySet(NULL, 2) TENTE puis RETIRE le 1er oct. 2026 : cense
+    // proteger loopTask (et donc DisplayManager::update(), ou un pic de
+    // 543ms avait ete mesure sur la lecture tactile en veille) en le
+    // rendant strictement prioritaire sur cloud-sync/weather-fetch/
+    // wifi-keepalive (tous restes a priorite 1, coeur 1). RESULTAT
+    // NEGATIF sur les DEUX plans en quelques minutes d'observation sur
+    // .141 : (1) le pic sur DisplaySleepTouch EST REVENU a une magnitude
+    // quasi identique (557ms) malgre le changement -- la cause n'est
+    // probablement PAS une simple priorite FreeRTOS egale, donc ce
+    // correctif n'adressait pas la vraie cause ; (2) CloudSync, stable
+    // depuis sa reprise, a enchaine 3 echecs consecutifs juste apres ce
+    // flash, dont un avec la signature SEVERE de l'ancienne panne de
+    // 22h40 (plafond de securite 25s declenche, 45,7s de blocage total,
+    // erreur mbedTLS -78/reset par le pair) -- jamais vue depuis la
+    // reprise. Hypothese retenue (non formellement prouvee) : preempter
+    // plus agressivement la tache cloud-sync pendant sa poignee de main
+    // TLS peut etirer sa duree au point de declencher un reset cote
+    // serveur/reseau. Retire par prudence plutot que de risquer la
+    // fiabilite CloudSync, tout juste retablie, pour un gain non confirme
+    // sur un probleme secondaire. Voir le checkpoint de session du
+    // 1er oct. 2026 pour le detail complet. Ne pas retenter sans une
+    // meilleure comprehension de la vraie cause du gel tactile.
+
     // Garde OTA : doit s'executer avant toute initialisation lourde. Ne
     // redemarre que si un retour arriere automatique est necessaire suite a
     // une bascule OTA qui n'a pas ete validee.

@@ -419,6 +419,15 @@ void WiFiManager::checkKeepaliveReachable(uint32_t now) {
 
 void WiFiManager::keepaliveProbeTask(void* param) {
     WiFiManager* self = static_cast<WiFiManager*>(param);
+    // Tentative d'instrumentation du 1er oct. 2026 (horodatage + EventLog)
+    // RETIREE : le log s'executait sur ce MEME coeur 1 que CloudSync, et la
+    // mesure elle-meme pouvait donc aggraver la contention qu'elle cherchait
+    // a observer (effet observateur). Un entrelacement caractere-par-
+    // caractere avec la sortie serie de CloudSync a ete constate juste
+    // apres l'ajout -- pas une preuve formelle, mais un risque suffisant
+    // pour revenir a la version sans log ici. Voir
+    // docs/checkpoints/CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md
+    // pour le contexte complet.
     WiFiClient probe;
     const bool reachable = probe.connect(
         self->_keepaliveProbeTarget, KEEPALIVE_CHECK_PORT, KEEPALIVE_CHECK_TIMEOUT_MS

@@ -27,6 +27,17 @@ public:
         DISPLAY_TOUCH,       // handleTouch()/getTouchPoint() — throttle a 80 ms
         DISPLAY_FULLREDRAW,  // drawXFull() sur _needsFullRedraw — rare, gros
         DISPLAY_DYNAMIC,     // updateXDynamic() — throttle a _refreshNomMs/ActMs
+        // Pose le 1er oct. 2026 : getTouchPoint() est aussi appele DIRECTEMENT
+        // dans la branche "ecran en veille" de update() (throttle 80 ms),
+        // SANS passer par handleTouch() donc SANS etre couvert par
+        // DISPLAY_TOUCH ci-dessus, contrairement a ce que son commentaire
+        // laissait croire. Hypothese a verifier : c'est cet appel non
+        // mesure (I2C GT911, Wire.setTimeOut(10) mais potentiellement
+        // plusieurs transactions par appel) qui explique les pics de
+        // "display" (jusqu'a 571 ms) constates alors que l'ecran est en
+        // veille et que FULLREDRAW/DYNAMIC n'ont pas tourne depuis
+        // longtemps (voir docs/engineering/15_RUNTIME_AND_PROFILING.md).
+        DISPLAY_SLEEP_TOUCH,
         PLANNING_DECOR,
         FAULTS_POST,
         YIELD,

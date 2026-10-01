@@ -641,7 +641,18 @@ void DisplayManager::update() {
         if (now - _lastTouch >= 80) {
             _lastTouch = now;
             uint16_t tx, ty;
-            if (getTouchPoint(tx, ty)) {
+            // Mesure ajoutee le 1er oct. 2026 : cet appel direct a
+            // getTouchPoint() (I2C GT911) n'etait couvert par AUCUN
+            // composant du profileur -- DISPLAY_TOUCH ne couvre que
+            // l'appel fait via handleTouch(), jamais atteint tant que
+            // l'ecran est en veille. Objectif : verifier si c'est lui qui
+            // explique les pics mesures sur "display" pendant une veille
+            // prolongee (voir le commentaire de DISPLAY_SLEEP_TOUCH dans
+            // RuntimeProfiler.h).
+            const uint32_t t0 = RuntimeProfiler::start();
+            const bool touched = getTouchPoint(tx, ty);
+            RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_SLEEP_TOUCH, t0);
+            if (touched) {
                 _screenMgr.wakeUp();          // réveil
                 _needsFullRedraw = true;       // redraw complet au réveil
                 _lastTap = now;                // reset debounce
