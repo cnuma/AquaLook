@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Runtime et profiling
 
-- Version documentaire : 1.2
+- Version documentaire : 1.3
 - Statut : référence reliée au code
 - Dernière consolidation : 2026-10-01
 - Source de code : `src/main.cpp`, `src/RuntimeProfiler.*`, `src/SystemDiagnostics.*`, `src/WiFiManager.*`, `src/WeatherManager.cpp`, `src/CloudSync.*`
@@ -183,6 +183,28 @@ n'est PAS, à ce stade, une simple histoire d'inégalité de priorité
 FreeRTOS entre tâches de même cœur. **Cause du gel tactile toujours non
 résolue au 1er octobre 2026.**
 
+### Confirmation longue durée et lien avec la fiabilité CloudSync (1er oct. 2026)
+
+Une session de ~6h de surveillance continue sur `.141` (pendant une
+édition active de créneaux via l'interface web) a confirmé que le gel
+reste présent sur la durée, à une fréquence nettement plus élevée
+pendant l'activité web active (~1 dépassement/27-30s en moyenne soutenue,
+avec des rafales locales plus proches de ~1/6s) que dans une fenêtre
+calme équivalente (~1/30s). Zéro erreur web, système toujours "healthy"
+sur toute la fenêtre — un problème de performance pure, pas de fiabilité
+applicative directe.
+
+**Conséquence découverte le même jour** : la tâche `cloud-sync` partage
+le cœur 1 avec `loopTask` (voir tableau plus haut) ; le taux d'échec
+CloudSync mesuré sur la même fenêtre est ~2x plus élevé pendant
+l'activité web active que dans une fenêtre calme (~1 échec/31min contre
+~1/67min) — cohérent avec le même gel qui, de temps en temps, tombe
+pendant la poignée de main TLS d'un cycle CloudSync au lieu de toucher
+`display`/`web`. Détail complet, chiffres et pistes de réduction des
+fausses alertes :
+`docs/checkpoints/CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md`
+et `docs/engineering/18_NETWORK_AND_WIFI.md`.
+
 ## Invariants
 
 - `INV-RUN-001` : l’ordre des managers dans `loop()` reste explicite et non bloquant.
@@ -234,6 +256,14 @@ résolue au 1er octobre 2026.**
 - `docs/engineering/35_CODE_TRACEABILITY_REGISTER.md`.
 
 ## Historique
+
+### 1.3
+
+Ajout de la confirmation longue durée (~6h) du gel résiduel cœur 1 : sa
+fréquence est nettement plus élevée pendant une activité web active que
+dans une fenêtre calme équivalente, sans impact sur les erreurs web ni
+la disponibilité. Lien établi avec un taux d'échec CloudSync ~2x plus
+élevé sur la même fenêtre (même mécanisme, pas un phénomène séparé).
 
 ### 1.2
 

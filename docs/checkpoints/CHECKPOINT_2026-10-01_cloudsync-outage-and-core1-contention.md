@@ -4,10 +4,13 @@
 - Branche : `feat/moteur-de-regles`
 - Commit de base (HEAD au début de la session) : `4176218`
   (`fix(cloud): recul vers l'intervalle nominal apres 3 echecs CloudSync`)
-- **Aucun commit créé pendant cette session** — tous les changements
-  décrits ci-dessous sont dans l'arbre de travail, non commités, en
-  attente de validation longue durée et d'une décision explicite de
-  commit.
+- **Mise a jour** : les sections ci-dessous (campagne d'isolation,
+  `DISPLAY_SLEEP_TOUCH`, tentative `vTaskPrioritySet`) ont ete committees
+  en 3 commits distincts le meme jour -- `d952690` (bancs isoles),
+  `99ead61` (instrumentation + commentaires sur la tentative retiree),
+  `e855420` (doc). Voir la section "Correlation activite web / fiabilite
+  CloudSync" plus bas pour la suite directement enchainee, PAS ENCORE
+  commitee au moment de la redaction de cette section.
 
 ## Objectif
 
@@ -275,6 +278,104 @@ tous été buildés ET flashés avec succès pendant la Partie 1.
 - `docs/engineering/15_RUNTIME_AND_PROFILING.md` → 1.2
 - `docs/engineering/18_NETWORK_AND_WIFI.md` → 1.2
 - Ce checkpoint.
+
+## Corrélation activité web / fiabilité CloudSync (1er oct. 2026, ~12h-18h20)
+
+Suite directe de la section précédente, après les 3 commits. À la demande
+de l'utilisateur ("je vais modifier les slots via le site web... pour que
+tu puisses aussi valider les perfs"), surveillance continue de `.141` sur
+**~6h** pendant une session active d'édition de créneaux via l'interface
+web, avec un objectif de diagnostic de performance plus large (pas
+uniquement CloudSync).
+
+### Gel résiduel confirmé sur longue durée, corrélé à l'activité web
+
+`/api/diagnostics -> loop.overrunCount` suivi en continu :
+
+- Rythme de fond (sans activité web active, ~3h45 avant le début de la
+  session d'édition) : ~441 dépassements cumulés depuis le dernier
+  redémarrage, soit **~1 dépassement/30s en moyenne**.
+- Pendant l'édition active (rafale initiale puis rythme soutenu sur
+  plusieurs heures) : jusqu'à **+11 dépassements/5min** (~1 toutes les
+  27s, localement plus proche de ~1/6s lors des rafales les plus
+  intenses) -- une hausse claire et mesurée de la fréquence, pas
+  seulement une impression.
+- Signature inchangée par rapport aux sections précédentes : le pic
+  "atterrit" tour à tour sur `display` (dominant), mais aussi `web`
+  lui-même a été vu touché une fois (583,9ms) -- confirme qu'il s'agit
+  toujours d'un blocage global de planification, pas d'un coût propre à
+  un composant.
+- RSSI resté dégradé (-84 à -87dBm) sur TOUTE la fenêtre observée (pas de
+  rétablissement spontané cette fois, contrairement à ce qui a parfois
+  été observé par le passé) -- facteur confondant constant, present des
+  les deux periodes comparees ci-dessous, donc n'explique PAS a lui seul
+  la hausse pendant l'activite web (il etait deja degrade avant aussi).
+- **Aucune erreur web, aucun impact sur la disponibilité** sur toute la
+  fenêtre (`web.errors` resté à 0, `loop.healthy` resté `true` en
+  continu).
+
+### CloudSync : taux d'échec ~2x plus élevé pendant l'activité web
+
+Historique complet des cycles `echec` relevé dans les logs (01/10,
+08:37-18h20) :
+
+- **Avant le début de l'édition (08:37-12:09, en excluant la fenêtre
+  polluée par la tentative `vTaskPrioritySet` 10:12-10:23)** : 3 échecs
+  isolés (08:58, 10:02, 11:38) sur ~3h21 -> **~1 échec / 67 min**.
+- **Pendant l'édition (12:09-18:20, ~6h11)** : 12 échecs, dont DEUX
+  groupes de 3 consécutifs (16:25-16:35 et 17:40-17:50, chacun
+  déclenchant le recul vers l'intervalle nominal) -> **~1 échec / 31
+  min**, soit environ **2x plus fréquent**.
+
+**Lecture retenue, pas une certitude statistique (échantillons modestes,
+3 vs 12 événements)** : cohérent avec le gel résiduel ci-dessus plutôt
+qu'un phénomène séparé -- la tâche `cloud-sync` partage le cœur 1 avec
+`loopTask`, donc le même blocage qui touche `display`/`web` de temps en
+temps tombe aussi, parfois, pendant la fenêtre de connexion TLS d'un
+cycle CloudSync, le faisant échouer. Pas une nouvelle piste, une
+confirmation supplémentaire de celle déjà identifiée plus haut dans ce
+fichier.
+
+### Mécanisme d'alerte CloudSync -- base pour un futur travail de réduction des faux positifs
+
+Relevé demandé par l'utilisateur : *"il faudra que l'on trouve des
+moyens de limiter ces erreurs intempestives... pour limiter le besoin
+d'acquitter les erreurs qui n'en sont pas vraiment"*.
+
+Mécanisme actuel confirmé par lecture du code (`CloudSync.cpp`
+~ligne 1425-1442) :
+- Un échec isolé (1 ou 2 consécutifs) ne déclenche PAS `FaultId::
+  CLOUD_SYNC` -- `FaultManager::setActive(FaultId::CLOUD_SYNC, ...)`
+  n'est levé que lorsque `_consecutiveFailures >= CLOUD_SYNC_FAILURE_
+  CONFIRMATIONS` (3).
+- Le défaut est auto-effacé (`setActive(..., false)`) dès le cycle
+  suivant qui réussit -- pas d'appel à `FaultManager::notifyError()`
+  dans ce chemin (vérifié par recherche), donc le drapeau global
+  `_unacknowledged` n'est a priori PAS positionné par CloudSync
+  spécifiquement.
+- **Non vérifié à ce stade** : si l'interface (Web/LCD) présente ce
+  défaut actif comme nécessitant une action manuelle de l'utilisateur
+  (clic "acquitter") même s'il s'auto-efface au cycle suivant, ou si
+  elle se contente de l'afficher tant qu'il est actif puis le retire
+  silencieusement. À vérifier dans `data/app.js`/l'écran Santé avant de
+  concevoir un correctif.
+
+**Pistes à explorer dans une prochaine session** (aucune non retenue,
+aucune implémentée -- juste listées pour ne pas repartir de zéro) :
+1. Si l'UI exige un acquittement manuel même pour un défaut auto-effacé :
+   distinguer "s'est produit et s'est résolu seul" de "est actif
+   maintenant" dans l'affichage, pour ne pas solliciter l'utilisateur
+   sur un groupe de 3 échecs qui s'est déjà résorbé avant qu'il ne
+   regarde l'écran.
+2. S'attaquer à la cause racine (le gel cœur 1 lui-même) plutôt qu'au
+   symptôme CloudSync -- si le gel de fond est réduit, le taux
+   d'échec CloudSync baisserait mécaniquement avec, sans toucher au
+   mécanisme d'alerte.
+3. Envisager un relâchement du seuil `CLOUD_SYNC_FAILURE_CONFIRMATIONS`
+   (actuellement 3) si les groupes de 3 s'avèrent être le mode
+   dominant de déclenchement -- compromis à peser avec la raison d'être
+   de ce seuil (ne pas masquer une vraie panne prolongée derriere un
+   seuil trop permissif).
 
 ## Références
 

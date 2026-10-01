@@ -1,6 +1,6 @@
 # AquaLook Engineering Reference — Réseau et Wi-Fi
 
-- Version documentaire : 1.2
+- Version documentaire : 1.3
 - Statut : référence reliée au code
 - Dernière consolidation : 2026-10-01
 - Source de code : `src/WiFiManager.h`, `src/WiFiManager.cpp`, `src/WebManager.*`, `src/main.cpp`, `src/CloudSync.h`, `src/CloudSync.cpp`
@@ -164,8 +164,25 @@ changement de code, a suffi à rétablir CloudSync. Conclusion retenue : état
 transitoire côté hébergeur/réseau déclenché par l'incident initial combiné
 au défaut de martelage (déjà corrigé par le recul ci-dessus), résorbé avec
 le temps — pas un défaut structurel du firmware. Détail complet de la
-campagne : checkpoint de session du 1er oct. 2026 (non encore consolidé en
-checkpoint de dépôt à la date de rédaction).
+campagne :
+`docs/checkpoints/CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md`.
+
+### Taux d'échec CloudSync corrélé à l'activité web (1er oct. 2026)
+
+Suite de l'investigation ci-dessus : une session de ~6h d'édition active
+via l'interface web a été comparée à une fenêtre calme équivalente sur le
+même firmware. Taux d'échec CloudSync mesuré : **~1 échec / 67 min au
+repos contre ~1 échec / 31 min pendant l'activité web active** (environ
+2x plus fréquent ; échantillons modestes — 3 contre 12 événements — donc
+tendance, pas une preuve statistique forte). Explication retenue : la
+tâche `cloud-sync` partage le cœur 1 avec `loopTask`
+(`docs/engineering/15_RUNTIME_AND_PROFILING.md`), et le même gel résiduel
+qui touche `display`/`web` de temps en temps tombe aussi, parfois,
+pendant la fenêtre de connexion TLS d'un cycle CloudSync -- pas un
+phénomène CloudSync séparé. Détail complet et pistes de réduction des
+fausses alertes :
+`docs/checkpoints/CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md`,
+section "Corrélation activité web / fiabilité CloudSync".
 
 ## Scan réseau
 
@@ -238,7 +255,20 @@ Le serveur Web est initialisé même si la connexion STA n’est pas encore éta
   correctif) plausible et cohérente avec les faits observés, mais non
   confirmée par une source côté serveur ;
   envisager un contact avec le support de l'hébergeur si l'incident se
-  reproduit.
+  reproduit ;
+- **réduire les fausses alertes CloudSync liées au gel résiduel cœur 1**
+  (1er oct. 2026) : `FaultId::CLOUD_SYNC` se déclenche après 3 échecs
+  consécutifs (`CLOUD_SYNC_FAILURE_CONFIRMATIONS`), ce qui arrive
+  régulièrement pendant une activité web soutenue à cause du gel résiduel
+  (voir ci-dessus et `docs/engineering/15_RUNTIME_AND_PROFILING.md`) —
+  l'utilisateur doit alors potentiellement acquitter un défaut qui s'est
+  déjà auto-résolu quelques minutes plus tard. Pistes non implémentées,
+  voir le checkpoint du 1er oct. 2026 pour le détail : distinguer dans
+  l'UI "s'est produit et résolu seul" de "actif maintenant", s'attaquer
+  plutôt à la cause racine (le gel lui-même), ou revoir le seuil de 3.
+  Vérifier d'abord si l'UI (Web/LCD) exige réellement un acquittement
+  manuel pour ce défaut précis ou si elle se contente de l'afficher tant
+  qu'il est actif (non vérifié à ce stade).
 
 ## Références
 
@@ -253,6 +283,14 @@ Le serveur Web est initialisé même si la connexion STA n’est pas encore éta
 - `docs/security/CYBERSECURITY_ARCHITECTURE.md`.
 
 ## Historique
+
+### 1.3
+
+Ajout de la corrélation mesurée entre activité web soutenue et taux
+d'échec CloudSync (~2x plus fréquent, ~1/31min contre ~1/67min au repos),
+rattachée au gel résiduel cœur 1 déjà documenté en 1.2. Nouvel écart
+ouvert sur la réduction des fausses alertes `FaultId::CLOUD_SYNC`
+déclenchées par ce gel plutôt que par une vraie panne prolongée.
 
 ### 1.2
 
