@@ -3,7 +3,7 @@ name: PlatformIO V4 Domain
 on:
   push:
     branches:
-      - feature/aqualook-v4-domain
+      - main
   pull_request:
     branches:
       - main
@@ -13,6 +13,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # ProgrammeArrosage : carte CYD historique (ESP32-2432S028).
+        # ProgrammeArrosage_s3 : JC4827W543C_I, cible de production.
+        env:
+          - ProgrammeArrosage
+          - ProgrammeArrosage_s3
 
     steps:
       - name: Checkout
@@ -36,5 +44,9 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install --upgrade platformio
 
-      - name: Build ProgrammeArrosage
-        run: pio run -e ProgrammeArrosage
+      # tools/patch_asyncwebserver.py patche les bibliotheques dans .pio/ au
+      # premier passage : un build neuf peut echouer une fois puis reussir au
+      # second (constate en local). Une seule relance ; une vraie erreur de
+      # compilation echoue aussi au second passage.
+      - name: Build ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }} || pio run -e ${{ matrix.env }}
