@@ -4,6 +4,7 @@ Ce fichier est le point d'entrée officiel de la documentation AquaLook.
 
 ## Ordre de lecture recommandé
 
+0. `docs/REPRISE_INGENIEUR.md` — état réel du projet au 5 octobre 2026 et fraîcheur de chaque document ci-dessous (plusieurs sont antérieurs au portage ESP32-S3 et à la suppression du moteur historique)
 1. `docs/engineering/00_MANUAL_INDEX.md`
 2. `docs/engineering/01_PROJECT_STATUS.md`
 3. `docs/engineering/02_SYSTEM_OVERVIEW.md`
