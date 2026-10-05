@@ -9,8 +9,11 @@ RewriteRule ^ index.php [L]
 # router.php n'existe que pour le serveur de developpement integre : le laisser
 # accessible offrirait un second chemin d'entree vers index.php, non couvert par
 # les reecritures ci-dessus.
+# cleanup.php est reserve a la tache planifiee AlwaysData (CLI) : une requete
+# HTTP ne doit jamais declencher une purge (le script se protege aussi lui-meme
+# via PHP_SAPI, en ceinture).
 # Les .md sont de la documentation de developpement, sans interet public.
-<FilesMatch "^(\.env.*|schema\.sql|router\.php|.*\.md)$">
+<FilesMatch "^(\.env.*|schema\.sql|router\.php|cleanup\.php|.*\.md)$">
     Require all denied
 </FilesMatch>
 

@@ -107,7 +107,26 @@ par Let's Encrypt, sur le domaine `*.alwaysdata.net`.
    refermé en local, où une table `module_token` gardait l'ancienne colonne
    `token` en clair alors que le code attendait `token_sha256`.
 6. **Vérifications** — `https://aqualook.alwaysdata.net/health` doit répondre
-   `{"ok":true}`, et `https://aqualook.alwaysdata.net/.env` doit répondre 403.
+   `{"ok":true}`, et `https://aqualook.alwaysdata.net/.env` doit répondre 403
+   (de même pour `/cleanup.php`).
+7. **Tâche planifiée** — panneau AlwaysData, *Nomade → Tâches planifiées →
+   Ajouter*. Commande :
+   ```
+   php /home/<compte>/www/cleanup.php
+   ```
+   (chemin absolu : le répertoire de travail d'une tâche planifiée n'est pas
+   garanti être celui du site). Fréquence : une fois par jour suffit — ce
+   n'est pas une purge sensible au délai, `module_message`/`login_attempt`
+   grossissent sur des mois, pas des heures. La sortie standard (nombre de
+   lignes purgées par table) est visible dans l'historique d'exécution de la
+   tâche ; une exception non rattrapée y ressort aussi, volontairement (voir
+   l'en-tête de `cleanup.php`).
+
+   Ce job ne remplace pas `prune_config_backups()` (élagage de
+   `module_config_backup`, fait en PHP à l'insertion) ni `command`
+   (jamais purgée : valeur de traçabilité, voir `SYSTEM_ARCHITECTURE.md`
+   §7) — ces deux-là restent hors du périmètre de `cleanup.php`,
+   délibérément.
 
 Le site sert déjà les ressources Web sous `/web/v<version>/`. L'API et la
 console cohabitent avec elles sans conflit : le `.htaccess` ne réécrit que ce
@@ -188,9 +207,8 @@ quel, tout le reste vers `index.php`, et `.env`/`schema.sql` refusés.
   sur l'Internet public ; rien n'y freine aujourd'hui une tentative répétée.
 - **Traçabilité par personne** : un unique `ADMIN_TOKEN` partagé, donc aucune
   distinction entre administrateurs dans `command.issued_by`.
-- **Purge de l'historique** : `module_message` grossit sans limite. Un module
-  qui se synchronise tous les quarts d'heure produit environ 100 messages par
-  jour ; rien ne les élague.
+- ~~**Purge de l'historique**~~ traitée le 27 septembre 2026 : voir
+  `cleanup.php` et « Tâche planifiée » ci-dessous.
 - **Déclenchement d'une mise à jour depuis le serveur** : le firmware
   n'accepte qu'un seul type de commande, `config.apply` (`CloudSync.cpp`,
   `applyCommand`). Tout autre type est explicitement refusé. Lancer une mise à
