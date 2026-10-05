@@ -1,7 +1,8 @@
 # AquaLook — Dossier de reprise ingénieur
 
 - Date de rédaction : 5 octobre 2026
-- Base inspectée : branche locale `feat/moteur-de-regles`, commit `485ce3c`
+- Base inspectée : branche `feat/moteur-de-regles`, commit `485ce3c` (état
+  Git mis à jour après le ménage du 5 octobre, base `d83f0d5`)
 - Version fonctionnelle (`VERSION`) : `5.9.7` — dernière release publiée sur GitHub : tag `v5.9.7` (17 août 2026)
 - Public visé : ingénieur embarqué qui reprend le projet sans avoir suivi son historique
 
@@ -16,31 +17,27 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
 
 ## 1. À lire avant toute action — cinq alertes
 
-1. **Le travail des sept dernières semaines n'existe qu'en local.**
-   La branche `feat/moteur-de-regles` a **404 commits d'avance sur
-   `origin/main`** et **aucune branche distante correspondante** (`git
-   ls-remote` le confirme). Les 272 commits postérieurs à `v5.9.7` — portage
-   ESP32-S3, moteur V4 seul, CloudSync, moteur de scripts, page Santé,
-   correctifs réseau — ne sont sauvegardés que dans ce dépôt local, lui-même
-   sous OneDrive. **Première action recommandée : pousser cette branche**
-   (après accord du propriétaire du dépôt, `cnuma/AquaLook`). Toutes les
-   autres branches locales (`feat/cloud-remote-config`,
-   `feat/ws2812-zone-indicator`, `hw/jc4827w543-esp32s3-port-v2`,
-   `refonte/v4-moteur`, `agent/ota-3.1-stage-inactive`) sont déjà fusionnées
-   dans `feat/moteur-de-regles`.
+1. **Tout le travail vit sur `feat/moteur-de-regles`, pas sur `main`.**
+   La branche a plus de 400 commits d'avance sur `origin/main` ; les 272
+   commits postérieurs à `v5.9.7` (portage ESP32-S3, moteur V4 seul,
+   CloudSync, moteur de scripts, page Santé, correctifs réseau) n'ont jamais
+   été fusionnés. Elle est poussée sur GitHub depuis le 5 octobre 2026 (elle
+   n'existait auparavant qu'en local). `main` a de son côté 6 commits absents
+   de la branche : préparation de la release 5.9.2 et un workflow CI
+   temporaire ajouté puis retiré — fusion attendue sans difficulté.
+   **Le dépôt est public** : ne jamais y committer de secret (`.env`,
+   identifiants Wi-Fi, jetons).
 
-2. **L'arbre de travail n'est pas propre.** Modifications non commitées, issues
-   de deux chantiers distincts — ne pas les committer en bloc :
-   - *Banc N16R8 et badge de gamme produit* (29 sept., compilé, **jamais
-     flashé**) : `platformio.ini` (env `ProgrammeArrosage_s3_n16r8`),
-     `src/OtaBuildIdentity.h`, `src/SystemDiagnostics.cpp`,
-     `src/WebManager.cpp`, `data/index.html`, `data/app.js`,
-     `data/style-base.css` (macro `AQUALOOK_PRODUCT_LINE`, « Aqualook » /
-     « Aqualook Pro »).
-   - *Serveur cloud* : `cloud/php-mutualized/.htaccess`, `README.md`, nouveau
-     `cleanup.php` (non suivi).
-   - `tools/soak/ledger.json` : registre de campagne de soak, mis à jour par
-     les scripts.
+2. **Le dépôt a été nettoyé le 5 octobre 2026.** Il ne reste que deux
+   branches, `main` et `feat/moteur-de-regles`, et aucune pull request
+   ouverte. Les 25 anciennes branches distantes ont été supprimées après
+   archivage sous des tags `archive/<nom-de-branche>` (vérifiés un à un sur le
+   dernier commit de chaque branche) ; les PR #21 et #24 ont été fermées avec
+   un renvoi vers leur archive. Récupérer une branche :
+   `git checkout -b <nom> archive/<nom>`. Les derniers travaux non commités
+   (banc N16R8 sans écran, badge « Aqualook / Aqualook Pro », purge
+   `cleanup.php`, registre de soak) ont été commités et poussés ; **le banc
+   N16R8 et le badge n'ont toujours pas été validés sur matériel**.
 
 3. **`AGENTS.md` est partiellement obsolète sur le point central du build.**
    Il impose de compiler `ProgrammeArrosage_legacy` comme référence et de
@@ -380,7 +377,11 @@ pio device monitor -p <PORT_COM> -b 115200 --dtr 1 --rts 0
 
 - CI GitHub : `platformio-v4-domain.yml` (build CYD), `security-contracts.yml`
   (`tests/contracts/test_security_contracts.py`), `ota-release.yml`.
-  Elles ne tournent que sur ce qui est poussé — donc sur rien de récent (§1).
+  Elles ne se déclenchent que sur `main` ou sur une pull request vers `main` :
+  aucun des travaux de `feat/moteur-de-regles` n'y est encore passé. Ouvrir une
+  PR de cette branche vers `main` suffit à les lancer. `materialize-run6-22.yml`
+  et le déclencheur `push` de `platformio-v4-domain.yml` visent des branches
+  qui n'existent plus (workflows morts, à retirer ou réorienter).
 - `tools/check_inline_js.py` : **ne détecte pas** une apostrophe non échappée
   dans une chaîne JS (l'interface entière s'affiche vide dans ce cas). Il n'y
   a ni Node ni test JS sur le poste : relire la ligne modifiée.
@@ -436,10 +437,11 @@ Héritées d'`AGENTS.md` et de la pratique, toujours en vigueur :
 
 ### 7.2 Préparé, non validé
 
-- Banc N16R8 sans écran et badge « Aqualook / Aqualook Pro » : compilés,
-  jamais flashés, non commités (§1).
-- `cloud/php-mutualized/cleanup.php` et modifications `.htaccess` : non
-  commités, déploiement FTP non confirmé.
+- Banc N16R8 sans écran (`d83f0d5`) et badge « Aqualook / Aqualook Pro »
+  (`5e3f512`) : commités, compilés, **jamais flashés**.
+- Purge programmée de l'historique cloud, `cloud/php-mutualized/cleanup.php`
+  (`1a7d4b6`, script CLI pour tâche planifiée AlwaysData) : commitée ;
+  déploiement FTP et création de la tâche planifiée non confirmés.
 - Après la campagne CloudSync : fichiers `app.html`/`auth.php`/`index.php`
   de l'espace utilisateur à redéployer en FTP (non confirmé).
 
@@ -633,11 +635,11 @@ des chapitres `08`, `15`, `18` du manuel (identifiants `INV-*`).
 **Jour 1 — sécuriser l'existant**
 
 1. Lire ce document, puis le checkpoint du 1er octobre.
-2. Obtenir l'accord du propriétaire et **pousser `feat/moteur-de-regles`**
-   vers `origin`.
-3. Trier l'arbre de travail : décider du sort du banc N16R8 / badge produit
-   (valider sur matériel puis commits séparés, ou mettre de côté) et du
-   `cleanup.php`.
+2. Ouvrir une pull request `feat/moteur-de-regles` → `main` (après fusion
+   des 6 commits propres à `main`) pour faire tourner la CI sur le travail
+   récent, sans la fusionner avant validation firmware et LittleFS.
+3. Valider sur matériel le banc N16R8 et le badge produit, déjà commités mais
+   jamais flashés ; confirmer le déploiement de `cleanup.php`.
 4. `pio run -e ProgrammeArrosage_s3` pour confirmer que la base compile sur
    votre poste (environ 4 min ; le premier build télécharge les bibliothèques
    et applique les patchs — relancer une fois s'il échoue).
