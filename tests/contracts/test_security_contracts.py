@@ -17,7 +17,6 @@ class SecurityContracts(unittest.TestCase):
     ordinaires dès que le firmware est corrigé.
     """
 
-    @unittest.expectedFailure
     def test_wifi_password_is_never_logged_in_cleartext(self) -> None:
         web = source("src/WebManager.cpp")
         self.assertNotRegex(web, r"PWD='%s'")
