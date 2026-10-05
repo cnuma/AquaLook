@@ -1,7 +1,7 @@
 {
- "cumul_avant_redemarrages": 135,
- "redemarrages": 35,
+ "cumul_avant_redemarrages": 191,
+ "redemarrages": 53,
  "debut": "2026-09-06T15:32:15",
  "note": "campagne V4 sur firmware valid\u00e9 : coupure reseau traversee sans plantage",
- "maintenance_jusqu_a": "2026-09-08T08:58:58"
+ "maintenance_jusqu_a": "2026-09-30T21:49:37"
 }
