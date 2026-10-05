@@ -76,6 +76,18 @@ header {
   color: var(--muted);
   letter-spacing: .05em;
 }
+.header-logo .product-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--green);
+  color: #fff;
+  vertical-align: middle;
+}
 .header-logo::before {
   display: none; /* remplacÃ© par le point animÃ© inline */
 }

@@ -18,6 +18,13 @@
 #include "BootLoopGuard.h"
 #include "DisplayManager.h"
 #include <esp_heap_caps.h>
+
+// Meme repli que SystemDiagnostics.cpp/CloudSync.cpp : "Aqualook Pro" par
+// defaut (ecran integre), redefini seulement sur le banc sans ecran (voir
+// platformio.ini, env:ProgrammeArrosage_s3_n16r8).
+#ifndef AQUALOOK_PRODUCT_LINE
+#define AQUALOOK_PRODUCT_LINE "Aqualook Pro"
+#endif
 #include <nvs.h>
 #include <nvs_flash.h>
 
@@ -1157,6 +1164,7 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
     JsonDocument doc;
 
     // Système
+    doc["productLine"] = AQUALOOK_PRODUCT_LINE;
     doc["uptime"]   = millis() / 1000UL;
     doc["heap"]     = ESP.getFreeHeap();
     doc["heapMin"]  = ESP.getMinFreeHeap();

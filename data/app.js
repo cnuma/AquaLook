@@ -1084,6 +1084,11 @@ function populateDrawer() {
   // pas besoin d'agglomerer aussi la ville dans le titre, ca la doublait.
   const city = s.owm?.city || '';
   document.getElementById('header-city').textContent = city;
+  // Gamme produit (Aqualook / Aqualook Pro) : distinguer d'un coup d'oeil
+  // les modules avec et sans ecran LCD quand plusieurs tournent en
+  // parallele (voir SystemDiagnostics.cpp / WebManager::handleAdminStatus).
+  const productBadge = document.getElementById('header-product-badge');
+  if (productBadge) productBadge.textContent = s.productLine || '';
   const ssid = s.wifi?.ssid || '--';
   document.getElementById('wifi-info').innerHTML =
     `SSID : <span>${ssid}</span><br>

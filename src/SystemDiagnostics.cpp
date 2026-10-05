@@ -27,6 +27,16 @@ static constexpr uint32_t MIN_OTA_PARTITION_SIZE = 0x1E0000UL;
 #ifndef AQUALOOK_GIT_BRANCH
 #define AQUALOOK_GIT_BRANCH "unknown"
 #endif
+// Gamme produit : "Aqualook Pro" par defaut (ecran LCD integre), la norme
+// jusqu'ici sur toutes les cartes livrees. Le seul profil qui la
+// redefinit est le banc sans ecran (voir platformio.ini,
+// env:ProgrammeArrosage_s3_n16r8) -- surexpose ici plutot que devine
+// depuis AQUALOOK_TOUCH_GT911/AQUALOOK_BOARD_S3, qui restent actifs sur ce
+// banc pour garder le meme chemin de code que la carte avec ecran (but du
+// test : isoler l'ecran comme variable, pas le retirer du binaire).
+#ifndef AQUALOOK_PRODUCT_LINE
+#define AQUALOOK_PRODUCT_LINE "Aqualook Pro"
+#endif
 
 namespace {
 
@@ -433,6 +443,7 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["gitSha"] = AQUALOOK_GIT_SHA;
     build["gitBranch"] = AQUALOOK_GIT_BRANCH;
     build["relayBackend"] = "v4";
+    build["productLine"] = AQUALOOK_PRODUCT_LINE;
     build["compiledDate"] = __DATE__;
     build["compiledTime"] = __TIME__;
 

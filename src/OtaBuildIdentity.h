@@ -24,8 +24,17 @@
 #define AQUALOOK_PIO_ENV "ProgrammeArrosage"
 #endif
 
+// Gamme produit affichee en haut de l'interface web (bandeau d'identite,
+// data/index.html) : "Aqualook Pro" par defaut (ecran LCD integre, la
+// norme sur toutes les cartes livrees jusqu'ici). Seul le banc sans ecran
+// la redefinit (platformio.ini, env:ProgrammeArrosage_s3_n16r8).
+#ifndef AQUALOOK_PRODUCT_LINE
+#define AQUALOOK_PRODUCT_LINE "Aqualook Pro"
+#endif
+
 namespace OtaBuildIdentity {
 constexpr char PRODUCT[] = "AquaLook";
+constexpr char PRODUCT_LINE[] = AQUALOOK_PRODUCT_LINE;
 constexpr char BOARD[] = "esp32-2432S028";
 constexpr char MANIFEST_HOST[] = "github.com";
 constexpr char MANIFEST_PATH[] = "/cnuma/AquaLook/releases/latest/download/aqualook-manifest.json";
