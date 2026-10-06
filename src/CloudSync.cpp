@@ -184,7 +184,11 @@ bool dechunkBody(String& body) {
 bool httpExchange(Client& client, const char* method, const char* host,
                   const char* path, const char* bearerToken,
                   const String& body, int& outStatus, String& outBody) {
-    constexpr size_t MAX_RESPONSE_BYTES = 4096U;  // reponses JSON courtes attendues
+    // 16 Ko depuis le 6 octobre 2026 (decision D014) : une commande
+    // config.apply peut porter un script complet (bytecode + source) ou
+    // le catalogue de phrases (~5 Ko). A 4 Ko, un JSON tronque ne
+    // s'analysait pas et la commande etait perdue sans message.
+    constexpr size_t MAX_RESPONSE_BYTES = 16384U;
 
     client.print(method);
     client.print(' ');
@@ -257,9 +261,28 @@ bool httpExchange(Client& client, const char* method, const char* host,
     // Lecture du corps octet par octet, bornee, avec un delay(1)
     // inconditionnel a chaque tour -- voir la note en tete de fonction.
     outBody = "";
+    // Capacite doublee par paliers : String::concat reallouerait a la
+    // taille exacte a CHAQUE octet, soit jusqu'a 16 000 reallocations
+    // pour une commande pleine. Un refus d'allocation est un echec
+    // franc -- continuer perdrait des octets en silence.
+    size_t capacity = 512U;
+    if (!outBody.reserve(capacity)) {
+        EventLog::log(LOG_ERROR, "CloudSync: tampon de reponse impossible a allouer");
+        return false;
+    }
     uint32_t lastDataAtMs = millis();
     while (client.connected() || client.available()) {
         while (client.available()) {
+            if (outBody.length() + 1U >= capacity) {
+                capacity = (capacity * 2U < MAX_RESPONSE_BYTES + 2U)
+                         ? capacity * 2U : MAX_RESPONSE_BYTES + 2U;
+                if (!outBody.reserve(capacity)) {
+                    EventLog::log(LOG_ERROR,
+                        "CloudSync: memoire insuffisante pour la reponse (%u octets lus)",
+                        static_cast<unsigned>(outBody.length()));
+                    return false;
+                }
+            }
             outBody += static_cast<char>(client.read());
             lastDataAtMs = millis();
             if (outBody.length() > MAX_RESPONSE_BYTES) {
