@@ -94,6 +94,11 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 @keyframes run{40%{box-shadow:0 0 0 9px var(--cat-dim);transform:scale(1.04)}}
 .warn{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--red);
   color:#fff;font:700 12px/20px var(--sans);text-align:center}
+.del{position:absolute;top:-10px;left:-10px;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--red);
+  background:var(--bg1);color:var(--red);font:700 15px/18px var(--sans);padding:0;cursor:pointer;display:none;z-index:2}
+.del:hover,.del:focus-visible{background:var(--red);color:#fff}
+.node:hover>.del,.node.sel>.del,.node:focus-within>.del,.hexpos:hover>.del,.hexpos:focus-within>.del,.hexpos:has(.sel)>.del{display:block}
+.hexpos{position:relative}
 .props label.check{display:flex;align-items:flex-start;gap:8px;font-weight:600;cursor:pointer}
 .props label.check input{width:auto;margin-top:2px}
 .start{border-left-width:1.5px;border-radius:24px;background:var(--green);color:#fff;padding:9px 18px;width:auto;min-width:236px;max-width:340px}
@@ -397,13 +402,20 @@ function seq(list) {
   list.forEach((n, i) => { s.appendChild(nodeEl(n)); s.appendChild(link(list, i + 1)); });
   return s;
 }
+// Supprimer directement sur le bloc : le bouton du panneau de droite et la
+// touche Suppr existaient, mais ne se voyaient pas depuis le schema.
+function delBtn(n) {
+  return editable ? '<button class="del" data-del="' + n.id + '" title="Supprimer ce bloc'
+    + (S.childKeys(n).length ? ' et tout ce qu’il contient' : '') + '" aria-label="Supprimer ce bloc">×</button>' : '';
+}
 function boxEl(n) {
   const T = S.TYPES[n.t], d = document.createElement('div');
   const w = warnings(n);
   d.className = 'node cat-' + T.cat;
   d.dataset.id = n.id; d.tabIndex = 0; d.draggable = editable;
   d.innerHTML = '<span class="ico">' + ico(T.icon) + '</span><span class="tt"><b>' + esc(T.label) + '</b><span class="sub">'
-    + esc(subOf(n)) + '</span></span>' + (w.length ? '<span class="warn" title="' + esc(w[0]) + '">!</span>' : '');
+    + esc(subOf(n)) + '</span></span>' + (w.length ? '<span class="warn" title="' + esc(w[0]) + '">!</span>' : '')
+    + delBtn(n);
   return d;
 }
 function nodeEl(n) {
@@ -413,7 +425,12 @@ function nodeEl(n) {
     const ws = warnings(n);
     h.innerHTML = '<div class="hex"><span class="eye">SI' + (ws.length ? ' · !' : '') + '</span><b>' + esc(condLabel(n.cond)) + ' ?</b></div>';
     if (ws.length) h.title = ws[0];
-    w.appendChild(h);
+    // Le losange est decoupe par clip-path : le bouton de suppression doit
+    // vivre a cote de lui, pas dedans, sinon il serait rogne.
+    const hp = document.createElement('div'); hp.className = 'hexpos';
+    hp.appendChild(h);
+    hp.insertAdjacentHTML('beforeend', delBtn(n));
+    w.appendChild(hp);
     const pl = document.createElement('div'); pl.className = 'link plain'; w.appendChild(pl);
     const br = document.createElement('div'); br.className = 'branches';
     [['oui', 'Oui'], ['non', 'Non']].forEach(([k, lab]) => {
@@ -683,6 +700,13 @@ $('palette').addEventListener('dragstart', (e) => {
 const world = $('world'), canvas = $('canvas');
 function choisir(id) { sel = id; markSel(); renderProps(); }
 world.addEventListener('click', (e) => {
+  const del = e.target.closest('.del');
+  if (del) {
+    e.stopPropagation();
+    sel = del.dataset.del; removeSel();
+    dire('Bloc supprimé. « Annuler » ou Ctrl+Z pour le rétablir.', '');
+    return;
+  }
   const plus = e.target.closest('.plus');
   if (plus) { e.stopPropagation(); openMenu(plus); return; }
   const n = e.target.closest('[data-id]');
