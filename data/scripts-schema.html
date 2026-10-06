@@ -142,6 +142,23 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .chip.oui{color:var(--green);border-color:var(--green)}
 .chip.non{color:var(--red);border-color:var(--red)}
 .chip.par{color:#0f7b7b;border-color:#0f7b7b}
+.actif-top{display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;padding:5px 10px;
+  border:1px solid var(--border2);border-radius:6px}
+.actif-top.off{color:var(--amber);border-color:var(--amber);background:#fff8e6}
+.modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(0,0,0,.35);padding:16px}
+.modal>div{background:var(--bg1);border-radius:10px;width:100%;max-width:680px;max-height:85vh;overflow:auto;
+  padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+.modal h2{font-size:16px;margin:0 0 6px}
+.modal p{font-size:13px;color:var(--text2);margin:0 0 10px;line-height:1.5}
+.modal table{width:100%;border-collapse:collapse}
+.modal td{padding:4px 6px 4px 0}
+.modal td.code{width:96px}
+.modal td.x{width:1%}
+.modal input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:7px 8px;background:var(--bg1);color:var(--text);font:inherit}
+.modal .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#msgphrases{margin-top:10px;font-size:13px}
+#msgphrases.ok{color:#1d6b34}
+#msgphrases.ko{color:#8a5a00}
 .chip.join{margin-top:-1px}
 .loop{position:relative;display:flex;flex-direction:column;align-items:center;border:1.5px dashed var(--purple);
   border-radius:14px;padding:0 20px 10px;background:rgba(102,51,204,.05)}
@@ -231,11 +248,13 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
     <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
     <select id="slot" aria-label="Emplacement du script"></select>
     <input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script">
+    <label class="actif-top edit-only" title="Un script inactif reste enregistré mais ne part jamais"><input type="checkbox" id="actif-top"> Actif</label>
     <span class="dirty" id="dirty" hidden>non enregistré</span>
     <span class="spacer"></span>
     <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
     <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>
+    <button class="btn edit-only" id="b-phrases" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
     <a class="btn" id="b-texte" href="/scripts.html">Éditeur texte</a>
     <button class="btn principal edit-only" id="b-save">Enregistrer</button>
   </header>
@@ -291,6 +310,20 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   </div>
 </div>
 
+<div class="modal" id="phrases" hidden><div role="dialog" aria-labelledby="phrases-titre">
+  <h2 id="phrases-titre">Bibliothèque de phrases</h2>
+  <p>Les blocs « Notifier » et « Noter au journal » envoient l’une de ces phrases, désignée par son code.
+  Corrigez une phrase ici une fois : tous les scripts qui la citent en profitent. Rangée sur la carte SD du module.</p>
+  <table><tbody id="phrases-liste"></tbody></table>
+  <div class="acts">
+    <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
+    <span class="spacer"></span>
+    <button class="btn" id="ph-fermer">Fermer</button>
+    <button class="btn principal" id="ph-enregistrer">Enregistrer la bibliothèque</button>
+  </div>
+  <div id="msgphrases"></div>
+</div></div>
+
 <script src="/hmac.js"></script>
 <script src="/script-lang.js"></script>
 <script src="/script-schema.js"></script>
@@ -310,6 +343,8 @@ let ZONES = [], ENTREES = [], BIBLIO = [];
 // Emplacements de scripts tels que /api/scripts les decrit, et le nombre de
 // scripts que le module fait tourner ensemble (4 sur S3, 2 sur CYD).
 let SLOTS = [], SIMULT = 2;
+// Limites de la bibliotheque de phrases, relues du module (/api/script-messages).
+let BIBLIO_MAX = 48, BIBLIO_LEN = 80;
 let TAILLE_MAX = 400, NONCE = 0;
 const zoneNom = (id) => { const z = ZONES.find((o) => o.id === id); return z ? z.nom : 'Zone ' + id + ' (inconnue)'; };
 const entreeNom = (id) => { const e = ENTREES.find((o) => o.id === id); return e ? e.nom : 'Entrée ' + id + ' (inconnue)'; };
@@ -621,7 +656,7 @@ function renderProps() {
     }
     if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
       + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
-      + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : elle se remplit depuis l’éditeur texte, section « Bibliothèque de phrases ».</div>');
+      + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : ajoutez-en avec le bouton « Phrases » en haut de la page.</div>');
     if ('n' in n) h += '<div class="f"><label for="p-n">Nombre de fois</label><input id="p-n" type="number" min="1" max="1000" data-f="n" value="' + n.n + '"></div>';
     if (n.cond) h += condFields(n.cond);
     if (n.t === 'si') h += '<div class="hint">Les blocs sous <b>Oui</b> s’exécutent si la condition est vraie, ceux sous <b>Non</b> sinon. Une branche peut rester vide.</div>';
@@ -690,7 +725,14 @@ function wireProps(p) {
   };
 }
 
-function refresh(props) { renderCanvas(); renderCode(); markSel(); if (props) renderProps(); }
+function refresh(props) {
+  renderCanvas(); renderCode(); markSel(); if (props) renderProps();
+  // Interrupteur « Actif » de la barre du haut : meme valeur que le reglage
+  // du bloc Depart, place la ou on le cherche.
+  $('actif-top').checked = doc.actif;
+  $('actif-top').disabled = !editable;
+  $('actif-top').parentNode.classList.toggle('off', !doc.actif);
+}
 
 // ── Insertion, deplacement, suppression ────────────────────────────────
 // Toutes les listes situees, a n'importe quelle profondeur, dans un bloc
@@ -916,7 +958,12 @@ async function lireModule() {
   } catch (e) { ENTREES = []; }
   try {
     const r = await fetch('/api/script-messages');
-    if (r.ok) BIBLIO = ((await r.json()).entries || []).map((o) => ({ id: o.code, code: o.code, texte: o.texte }));
+    if (r.ok) {
+      const d = await r.json();
+      BIBLIO = (d.entries || []).map((o) => ({ id: o.code, code: o.code, texte: o.texte }));
+      BIBLIO_MAX = d.max || BIBLIO_MAX;
+      BIBLIO_LEN = d.lenMax || BIBLIO_LEN;
+    }
   } catch (e) { BIBLIO = []; }
   renderSim();
 }
@@ -1119,6 +1166,87 @@ $('slot').addEventListener('change', () => {
   charger().catch(() => dire('Module injoignable.', 'err'));
 });
 $('nom').addEventListener('input', () => { doc.nom = $('nom').value; setDirty(true); });
+$('actif-top').addEventListener('change', () => {
+  pushUndo(); doc.actif = $('actif-top').checked; setDirty(true); refresh(true);
+  dire(doc.actif ? 'Script actif : il partira sur son déclencheur une fois enregistré.'
+                 : 'Script inactif : il ne partira plus, même sur « Lancer maintenant », une fois enregistré.', '');
+});
+
+// ── Bibliotheque de phrases (memes regles et meme signature que scripts.html)
+function direPhrases(t, e) { const m = $('msgphrases'); m.textContent = t || ''; m.className = e || ''; }
+function rendrePhrases() {
+  $('phrases-liste').innerHTML = BIBLIO.length ? BIBLIO.map((o, i) =>
+    '<tr><td class="code"><input type="number" min="1" max="65535" data-i="' + i + '" data-b="code" value="' + o.code + '" aria-label="Code"></td>'
+    + '<td><input type="text" maxlength="' + BIBLIO_LEN + '" data-i="' + i + '" data-b="texte" value="' + esc(o.texte) + '" aria-label="Phrase"></td>'
+    + '<td class="x"><button class="btn danger" data-del-phrase="' + i + '" title="Supprimer cette phrase">×</button></td></tr>').join('')
+    : '<tr><td style="color:var(--muted)">Aucune phrase. « Ajouter une phrase » pour commencer.</td></tr>';
+}
+function lirePhrases() {
+  $('phrases-liste').querySelectorAll('input[data-b]').forEach((el) => {
+    const o = BIBLIO[+el.dataset.i];
+    if (el.dataset.b === 'code') o.code = parseInt(el.value, 10) || 0; else o.texte = el.value;
+  });
+}
+// Premier code libre a partir de 900, comme dans scripts.html.
+function codeLibre() { const pris = new Set(BIBLIO.map((o) => o.code)); let c = 900; while (pris.has(c) && c < 65535) c++; return c; }
+let biblioAvant = null;
+$('b-phrases').onclick = () => {
+  biblioAvant = JSON.stringify(BIBLIO);
+  rendrePhrases(); direPhrases(''); $('phrases').hidden = false;
+};
+$('ph-fermer').onclick = () => {
+  // Fermer sans enregistrer : rien n'est parti vers le module, revenir a la liste lue.
+  if (biblioAvant !== null) BIBLIO = JSON.parse(biblioAvant);
+  $('phrases').hidden = true;
+};
+$('ph-ajouter').onclick = () => {
+  lirePhrases();
+  if (BIBLIO.length >= BIBLIO_MAX) { direPhrases(BIBLIO_MAX + ' phrases au maximum.', 'ko'); return; }
+  const c = codeLibre();
+  BIBLIO.push({ id: c, code: c, texte: '' });
+  rendrePhrases();
+  const champs = $('phrases-liste').querySelectorAll('input[data-b="texte"]');
+  if (champs.length) champs[champs.length - 1].focus();
+};
+$('phrases-liste').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-del-phrase]'); if (!b) return;
+  lirePhrases(); BIBLIO.splice(+b.dataset.delPhrase, 1); rendrePhrases();
+});
+$('ph-enregistrer').onclick = async () => {
+  lirePhrases();
+  const vus = new Set();
+  for (let k = 0; k < BIBLIO.length; k++) {
+    const o = BIBLIO[k];
+    if (!(o.code >= 1 && o.code <= 65535)) { direPhrases('Ligne ' + (k + 1) + ' : code hors 1–65535.', 'ko'); return; }
+    if (vus.has(o.code)) { direPhrases('Code ' + o.code + ' en double.', 'ko'); return; }
+    vus.add(o.code);
+    const t = (o.texte || '').trim();
+    if (!t) { direPhrases('Ligne ' + (k + 1) + ' : phrase vide.', 'ko'); return; }
+    if (t.length > BIBLIO_LEN) { direPhrases('Ligne ' + (k + 1) + ' : plus de ' + BIBLIO_LEN + ' caractères.', 'ko'); return; }
+    if (/[\t\r\n]/.test(t)) { direPhrases('Ligne ' + (k + 1) + ' : tabulation ou saut de ligne interdit.', 'ko'); return; }
+    o.texte = t; o.id = o.code;
+  }
+  try {
+    const etat = await prochainNonce();
+    if (!etat.configure) { direPhrases('Le module n’a pas de secret : posez-en un (bouton « Secret ») avant d’enregistrer.', 'ko'); return; }
+    // Forme canonique = les octets TSV exacts que le module ecrira.
+    const corpus = BIBLIO.map((o) => o.code + '\t' + o.texte + '\n').join('');
+    const sig = await signer('script-messages|' + etat.nonce + '|' + corpus);
+    if (!sig) { direPhrases('Secret requis pour enregistrer.', 'ko'); return; }
+    const r = await fetch('/api/script-messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: BIBLIO.map((o) => ({ code: o.code, texte: o.texte })), nonce: etat.nonce, sig: sig })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.ok) {
+      biblioAvant = JSON.stringify(BIBLIO);
+      direPhrases('Enregistré : ' + d.entrees + ' phrase(s) sur la carte SD.', 'ok');
+      refresh(true);   // les blocs Notifier affichent les nouveaux textes
+    } else {
+      direPhrases('Refusé par le module : ' + (d.error || 'raison inconnue') + '. La bibliothèque précédente est intacte.', 'ko');
+    }
+  } catch (e) { direPhrases('Module injoignable : rien n’a été enregistré.', 'ko'); }
+};
 $('b-save').onclick = enregistrer;
 $('b-lancer').onclick = lancer;
 $('b-undo').onclick = doUndo;
@@ -1129,6 +1257,7 @@ $('cover-vide').onclick = () => {
 window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', (e) => {
   const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if (e.key === 'Escape' && !$('phrases').hidden) { $('ph-fermer').click(); return; }
   if (e.key === 'Escape') { closeMenu(); choisir(null); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) { e.preventDefault(); doUndo(); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && sel && sel !== 'start') { e.preventDefault(); removeSel(); }
