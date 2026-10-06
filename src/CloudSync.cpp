@@ -22,6 +22,7 @@
 #include "RelaisManager.h"
 #include "WiFiManager.h"
 #include "RelayTopology.h"
+#include "ScriptAdmin.h"
 #include "ScriptMessageCatalogue.h"
 #include "ScriptRunner.h"
 #include "ScriptStore.h"
@@ -574,6 +575,135 @@ void buildScriptsPayload(JsonObject out, const RelaisManager* relais,
         JsonDocument phrases;
         if (ScriptMessageCatalogue::load(phrases)) out["phrases"] = phrases;
     }
+}
+
+// ── config.apply : scripts et phrases (decision D014) ─────────────────────
+//
+// Meme validation que les routes locales (ScriptAdmin), sans la signature
+// HMAC : sur ce chemin, la confiance repose sur le jeton du module et TLS.
+// Choix du proprietaire, risque documente dans CLOUD_REMOTE_CONFIG.md.
+//
+// Une commande porte UN emplacement OU le catalogue, et rien d'autre :
+// c'est ce qui la fait tenir dans la reponse de sondage (16 Ko), et un
+// refus n'a ainsi jamais a dire ce qui a ete applique a moitie.
+//
+// Rien ne se lance ici : un script modifie a distance ne part que sur un
+// declencheur local. Un script EN COURS n'est pas modifiable a distance.
+//
+// Rend true si la commande a ete appliquee ; ack.detail porte le motif ou
+// le resume dans les deux cas.
+uint8_t hexNibble(char c) {
+    if (c >= '0' && c <= '9') return static_cast<uint8_t>(c - '0');
+    if (c >= 'a' && c <= 'f') return static_cast<uint8_t>(c - 'a' + 10);
+    if (c >= 'A' && c <= 'F') return static_cast<uint8_t>(c - 'A' + 10);
+    return 0xFFU;
+}
+
+bool applyScriptsCommand(JsonVariantConst cmd, CloudSyncPendingAck& ack,
+                         const ScriptRunner* runner, StorageManager* storage) {
+    const bool hasScripts = !cmd["scripts"].isNull();
+    const bool hasPhrases = !cmd["phrases"].isNull();
+    if ((hasScripts && hasPhrases) || !cmd["zones"].isNull() ||
+        !cmd["system"].isNull() || !cmd["windAlert"].isNull()) {
+        copyText(ack.detail, sizeof(ack.detail),
+                 "commande-mixte: scripts ou phrases, seuls");
+        return false;
+    }
+
+    if (hasPhrases) {
+        String corpus;
+        uint8_t count = 0U;
+        const char* refus = ScriptAdmin::buildPhrasesCorpus(
+            cmd["phrases"].as<JsonArrayConst>(), corpus, count);
+        if (refus) {
+            snprintf(ack.detail, sizeof(ack.detail), "phrases: %s", refus);
+            return false;
+        }
+        if (!ScriptMessageCatalogue::store(corpus)) {
+            copyText(ack.detail, sizeof(ack.detail),
+                     "phrases: ecriture SD echouee, catalogue inchange");
+            return false;
+        }
+        snprintf(ack.detail, sizeof(ack.detail), "phrases: %u enregistree(s)",
+                 (unsigned)count);
+        return true;
+    }
+
+    JsonArrayConst list = cmd["scripts"].as<JsonArrayConst>();
+    if (list.isNull() || list.size() != 1U) {
+        copyText(ack.detail, sizeof(ack.detail), "un seul script par commande");
+        return false;
+    }
+    JsonObjectConst s = list[0];
+    const uint8_t index = s["i"] | 255U;
+    if (index >= ScriptStore::MAX_SCRIPTS) {
+        copyText(ack.detail, sizeof(ack.detail), "emplacement invalide");
+        return false;
+    }
+    if (runner && runner->isRunning(index)) {
+        snprintf(ack.detail, sizeof(ack.detail),
+                 "script %u en cours : a refaire apres sa fin", (unsigned)(index + 1U));
+        return false;
+    }
+
+    if (s["efface"] | false) {
+        if (!ScriptStore::erase(index)) {
+            copyText(ack.detail, sizeof(ack.detail), "effacement impossible");
+            return false;
+        }
+        snprintf(ack.detail, sizeof(ack.detail), "script %u efface",
+                 (unsigned)(index + 1U));
+        return true;
+    }
+
+    // Bytecode en hexadecimal : deux fois plus compact qu'un tableau JSON.
+    const char* hex = s["code"] | "";
+    const size_t hexLen = strlen(hex);
+    if (hexLen == 0U) {
+        copyText(ack.detail, sizeof(ack.detail), "programme vide");
+        return false;
+    }
+    if ((hexLen % 2U) != 0U) {
+        copyText(ack.detail, sizeof(ack.detail), "code hexadecimal invalide");
+        return false;
+    }
+    if (hexLen / 2U > ScriptStore::MAX_BYTECODE) {
+        copyText(ack.detail, sizeof(ack.detail), "programme trop long");
+        return false;
+    }
+    uint8_t bytes[ScriptStore::MAX_BYTECODE];
+    const uint16_t n = static_cast<uint16_t>(hexLen / 2U);
+    for (uint16_t k = 0U; k < n; ++k) {
+        const uint8_t hi = hexNibble(hex[2U * k]);
+        const uint8_t lo = hexNibble(hex[2U * k + 1U]);
+        if (hi > 15U || lo > 15U) {
+            copyText(ack.detail, sizeof(ack.detail), "code hexadecimal invalide");
+            return false;
+        }
+        bytes[k] = static_cast<uint8_t>((hi << 4) | lo);
+    }
+
+    ScriptAdmin::ScriptWrite w;
+    w.index = index;
+    w.name = s["nom"] | "sans nom";
+    w.enabled = s["actif"] | true;
+    w.trigger = s["declencheur"] | ScriptStore::TRIGGER_INPUT_CHANGE;
+    w.target = s["cible"] | 0U;
+    w.code = bytes;
+    w.codeSize = n;
+    w.source = s["source"] | "";
+    bool sourceSaved = false;
+    const char* refus = ScriptAdmin::writeScript(w, storage, sourceSaved);
+    if (refus) {
+        snprintf(ack.detail, sizeof(ack.detail), "script %u: %s",
+                 (unsigned)(index + 1U), refus);
+        return false;
+    }
+    const bool sourceLost = w.source[0] != '\0' && !sourceSaved;
+    snprintf(ack.detail, sizeof(ack.detail), "script %u enregistre (%u octets)%s",
+             (unsigned)(index + 1U), (unsigned)n,
+             sourceLost ? ", source non enregistree" : "");
+    return true;
 }
 
 }  // namespace
@@ -1379,6 +1509,26 @@ void CloudSyncScheduler::applyCommand(const char* json, const char* correlationI
         // Prevenir : c'est le seul cas ou une demande faite depuis l'espace en
         // ligne ne produit RIEN, et ou l'utilisateur peut etre ailleurs.
         NotificationManager::enqueueRemoteConfig(false, 0U, current, _pendingAck.detail);
+        return;
+    }
+
+    // ── Scripts et phrases (decision D014) : chemin a part, voir
+    // applyScriptsCommand(). Revision unique, comme une modification locale.
+    if (!cmd["scripts"].isNull() || !cmd["phrases"].isNull()) {
+        if (!applyScriptsCommand(cmd.as<JsonVariantConst>(), _pendingAck,
+                                 _scriptRunner, _reportStorage)) {
+            EventLog::log(LOG_WARN, "CloudSync: commande scripts refusee: %s",
+                          _pendingAck.detail);
+            return;
+        }
+        _configTarget->noteExternalChange();
+        copyText(_pendingAck.state, sizeof(_pendingAck.state), "accepted");
+        const size_t used = strlen(_pendingAck.detail);
+        snprintf(_pendingAck.detail + used, sizeof(_pendingAck.detail) - used,
+                 ", revision=%lu", (unsigned long)_configTarget->configRevision());
+        EventLog::log(LOG_INFO, "CloudSync: %s", _pendingAck.detail);
+        NotificationManager::enqueueRemoteConfig(true, 1U,
+                                                 _configTarget->configRevision(), "");
         return;
     }
 

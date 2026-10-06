@@ -7,6 +7,7 @@
 #include "ScriptVmSelfTest.h"
 #include "ScriptHostRuntime.h"
 #include "ApiAuth.h"
+#include "ScriptAdmin.h"
 #include "ScriptStore.h"
 #include "ScriptMessageCatalogue.h"
 #include "EventLogCatalogue.h"
@@ -2063,58 +2064,25 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
         bytes[n++] = static_cast<uint8_t>(value);
     }
 
-    ScriptStore::Meta meta;
-    meta.used = true;
-    meta.enabled = doc["actif"] | true;
-    meta.trigger = doc["declencheur"] | ScriptStore::TRIGGER_INPUT_CHANGE;
+    // Validation et ecriture partagees avec config.apply (decision D014,
+    // ScriptAdmin) : une seule definition de ce qu'est un script acceptable.
+    ScriptAdmin::ScriptWrite w;
+    w.index = index;
+    w.name = doc["nom"] | "sans nom";
+    w.enabled = doc["actif"] | true;
+    w.trigger = doc["declencheur"] | ScriptStore::TRIGGER_INPUT_CHANGE;
     // « cible » d'abord, « entree » ensuite : le second nom n'existe que pour
     // les clients ecrits avant l'arrivee des declencheurs de zone.
-    meta.triggerTarget = doc["cible"] | (uint16_t)(doc["entree"] | 0U);
-    if (meta.trigger > ScriptStore::TRIGGER_ZONE_STOP) {
-        sendError(req, "declencheur inconnu");
-        return;
-    }
-    // Un declencheur sans cible ne partirait jamais : le refuser vaut mieux
-    // que d'enregistrer une regle qui ne joue pas.
-    if (meta.trigger != ScriptStore::TRIGGER_NONE && meta.triggerTarget == 0U) {
-        sendError(req, "ce declencheur demande une cible : entree ou zone");
-        return;
-    }
-    meta.codeSize = n;
-    strlcpy(meta.name, doc["nom"] | "sans nom", sizeof(meta.name));
-
-    const char* reason = "";
-    if (!ScriptStore::save(index, meta, bytes, reason)) {
-        sendError(req, reason);
-        return;
-    }
+    w.target = doc["cible"] | (uint16_t)(doc["entree"] | 0U);
+    w.code = bytes;
+    w.codeSize = n;
+    w.source = doc["source"] | "";
+    bool sourceSaved = false;
+    const char* reason = ScriptAdmin::writeScript(w, _storage, sourceSaved);
+    if (reason) { sendError(req, reason); return; }
     // Version unique (D014) : un script corrige sur place ne doit pas
     // pouvoir etre ecrase par une commande distante batie avant lui.
     if (_config) _config->noteExternalChange();
-
-    // Le source suit le bytecode, jamais l'inverse : si l'ecriture SD echoue,
-    // le script tourne quand meme. On le signale sans faire echouer
-    // l'enregistrement -- perdre le confort d'edition n'est pas perdre la
-    // regle.
-    bool sourceSaved = false;
-    const char* source = doc["source"] | "";
-    if (_storage && _storage->isSdAvailable() && source[0] != '\0') {
-        // openWrite cree deja le repertoire parent si besoin.
-        char path[32];
-        snprintf(path, sizeof(path), "/scripts/s%u.txt", (unsigned)index);
-        FsFile f;
-        if (_storage->openWrite(path, f)) {
-            const size_t len = strlen(source);
-            sourceSaved = _storage->writeChunk(
-                f, reinterpret_cast<const uint8_t*>(source), len) == (int32_t)len;
-            _storage->closeFile(f);
-        }
-        if (!sourceSaved) {
-            EventLog::log(LOG_WARN,
-                          "Scripts: source %u non enregistree, le programme tourne quand meme",
-                          (unsigned)index);
-        }
-    }
     JsonDocument out;
     out["ok"] = true;
     out["octets"] = n;
@@ -2131,49 +2099,13 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
 // valeurs -- le corps HTTP re-serialise ne redonnerait pas les memes
 // octets. Un refus laisse le fichier en place intact.
 void WebManager::handleSaveScriptMessages(AsyncWebServerRequest* req, JsonDocument& doc) {
-    JsonArrayConst entries = doc["entries"].as<JsonArrayConst>();
-    if (entries.isNull()) { sendError(req, "liste manquante"); return; }
-    if (entries.size() > ScriptMessageCatalogue::MAX_ENTRIES) {
-        sendError(req, "trop d'entrees dans le catalogue");
-        return;
-    }
-
+    // Validation partagee avec config.apply (decision D014, ScriptAdmin).
     String corpus;
-    uint16_t seen[ScriptMessageCatalogue::MAX_ENTRIES];
     uint8_t nSeen = 0U;
-    for (JsonObjectConst e : entries) {
-        const long code = e["code"] | 0;
-        const char* texte = e["texte"] | "";
-        if (code < 1 || code > 65535) {
-            sendError(req, "code hors bornes (1 a 65535)");
-            return;
-        }
-        const size_t tlen = strlen(texte);
-        if (tlen == 0U) { sendError(req, "phrase vide"); return; }
-        if (tlen > ScriptMessageCatalogue::MAX_PHRASE) {
-            sendError(req, "phrase trop longue");
-            return;
-        }
-        for (size_t k = 0U; k < tlen; ++k) {
-            const unsigned char c = static_cast<unsigned char>(texte[k]);
-            // TAB et fin de ligne casseraient le format ; les autres
-            // caracteres de controle n'ont rien a faire dans une phrase.
-            if (c == '\t' || c == '\n' || c == '\r' || c < 0x20) {
-                sendError(req, "caractere de controle interdit dans une phrase");
-                return;
-            }
-        }
-        for (uint8_t k = 0U; k < nSeen; ++k) {
-            if (seen[k] == static_cast<uint16_t>(code)) {
-                sendError(req, "code en double dans le catalogue");
-                return;
-            }
-        }
-        seen[nSeen++] = static_cast<uint16_t>(code);
-        corpus += String(static_cast<uint16_t>(code));
-        corpus += '\t';
-        corpus += texte;
-        corpus += '\n';
+    {
+        const char* refus = ScriptAdmin::buildPhrasesCorpus(
+            doc["entries"].as<JsonArrayConst>(), corpus, nSeen);
+        if (refus) { sendError(req, refus); return; }
     }
 
     String canonical = "script-messages|";

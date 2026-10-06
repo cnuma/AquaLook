@@ -736,6 +736,7 @@ void setup() {
     cloudSyncScheduler.setConfigTarget(&configMgr);
     cloudSyncScheduler.setScheduleTarget(&scheduleMgr);
     cloudSyncScheduler.setReportSources(&relaisMgr, &storageMgr);
+    cloudSyncScheduler.setScriptRunner(&scriptRunner);
     cloudSyncScheduler.begin();
     splashStep("NTP");
 

@@ -7,6 +7,7 @@ class RelaisManager;
 class ConfigManager;
 class ScheduleManager;
 class StorageManager;
+class ScriptRunner;
 
 // ═══════════════════════════════════════════════════════════════
 //  CloudSync — telemetrie et sondage de commande vers un service
@@ -159,6 +160,9 @@ public:
 
     // Sources du bloc "scripts" du miroir (decision D014) : noms des
     // entrees (topologie) et fichiers SD (textes sources, phrases).
+    // Pour refuser la modification a distance d'un script en cours.
+    void setScriptRunner(const ScriptRunner* runner) { _scriptRunner = runner; }
+
     void setReportSources(const RelaisManager* relais, StorageManager* storage) {
         _reportRelais = relais;
         _reportStorage = storage;
@@ -292,6 +296,7 @@ private:
     ScheduleManager* _scheduleTarget = nullptr;
     const RelaisManager* _reportRelais = nullptr;
     StorageManager*      _reportStorage = nullptr;
+    const ScriptRunner*  _scriptRunner = nullptr;
 
     // Accuse en attente d'emission, produit par applyCommand() et transmis
     // au cycle suivant. Le serveur representera la meme commande tant
