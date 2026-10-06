@@ -156,6 +156,7 @@ table.biblio button.x{width:auto;padding:6px 10px;border-radius:5px;cursor:point
         <button class="principal" onclick="enregistrer()">Enregistrer</button>
         <button onclick="lancer()">Lancer maintenant</button>
         <button onclick="charger()">Recharger</button>
+        <button onclick="location.href='/scripts-schema.html?i=' + $('slot').value">Éditeur graphique</button>
         <button class="danger" onclick="effacer()">Effacer</button>
         <button onclick="definirSecret()">Secret</button>
         <button onclick="oublierSecret()">Oublier le secret ici</button>
@@ -1203,6 +1204,13 @@ chargerBiblio();
 rendreReferences().then(function () {
   majCible();
   return listeSlots();
-}).then(charger);
+}).then(function () {
+  // ?i=<emplacement> : retour depuis l'editeur graphique sur le meme script.
+  const i = new URLSearchParams(location.search).get('i');
+  if (i !== null && $('slot').querySelector('option[value="' + parseInt(i, 10) + '"]')) {
+    $('slot').value = String(parseInt(i, 10));
+  }
+  return charger();
+});
 </script>
 </body></html>

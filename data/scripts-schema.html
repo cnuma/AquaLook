@@ -1,0 +1,1028 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AquaLook - Scripts (schéma)</title>
+<link rel="stylesheet" href="/style-base.css">
+<style>
+/* Editeur graphique des scripts. Plein ecran sur ordinateur : palette a
+   gauche, schema au centre, reglages du bloc a droite, texte genere en bas.
+   Sur telephone, consultation seule : glisser des blocs au doigt sur un
+   schema de cette taille n'est pas utilisable, l'edition se fait sur PC.
+   Tout ce qui part vers le module passe par le texte genere et le
+   compilateur de script-lang.js, exactement comme dans scripts.html. */
+html,body{height:100%}
+body{padding:0;min-height:0;overflow:hidden}
+/* Sans cette regle, un « display » de classe (.cover, .tabbody...) l'emporte
+   sur l'attribut hidden et laisse le cadre visible -- style-base.css ne la
+   pose pas. */
+[hidden]{display:none!important}
+:root{--blue-dim:#dcecf5;--amber-dim:#f8e6d0;--purple-dim:#ece4fb;--slate:#33475b;
+  --slate-dim:#e3e9ef;--red-dim:#fbe1da;--line:#8fae95;--grid:rgba(26,122,52,.13);--ring:#0077aa}
+.app{height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);gap:8px;padding:10px 16px}
+svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;
+  stroke-linejoin:round;flex:none}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg1);
+  border:1px solid var(--border);border-radius:8px;padding:8px 12px}
+.brand{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--green);text-decoration:none}
+.top select,.top input{padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg1);
+  color:var(--text);font:inherit}
+#nom{width:220px;max-width:100%;font-weight:600}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border2);background:var(--bg1);
+  color:var(--text);border-radius:6px;padding:6px 11px;cursor:pointer;font:500 13px var(--sans);text-decoration:none}
+.btn:hover{background:var(--bg2)}
+.btn.principal{background:var(--green);border-color:var(--green);color:#fff}
+.btn.danger{color:var(--red);border-color:#f5c6cb}
+.btn[disabled]{opacity:.45;cursor:default}
+.dirty{font:600 11px var(--mono);color:var(--amber)}
+
+#msg{padding:7px 12px;border-radius:6px;font-size:13px;border:1px solid var(--border2);
+  background:var(--bg2);color:var(--text);overflow-wrap:anywhere}
+#msg.ok{border-color:var(--green);color:#1d6b34;background:#e9f5ec}
+#msg.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
+#msg.err{border-color:#f5c6cb;color:var(--red);background:#f8d7da}
+
+.main{min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr) 320px;gap:8px}
+.panel{background:var(--bg1);border:1px solid var(--border);border-radius:8px;min-height:0;overflow:auto}
+.ph{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px 14px 6px}
+
+.pal-group{padding:0 10px 6px}
+.pal-group h3{margin:6px 4px;font:600 12px var(--sans);color:var(--text2)}
+.pal{display:flex;align-items:center;gap:9px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--border);
+  border-left:5px solid var(--cat);border-radius:7px;background:var(--bg1);cursor:grab;user-select:none}
+.pal:hover{background:var(--cat-dim)}
+.pal .ico{color:var(--cat)}
+.pal b{display:block;font-size:13px}
+.pal span{display:block;font-size:11.5px;color:var(--muted);line-height:1.3}
+.pal-tip{margin:4px 14px 14px;font-size:12px;color:var(--muted)}
+
+.cat-eau{--cat:var(--green);--cat-dim:var(--green-dim)}
+.cat-temps{--cat:var(--blue);--cat-dim:var(--blue-dim)}
+.cat-logique{--cat:var(--amber);--cat-dim:var(--amber-dim)}
+.cat-boucle{--cat:var(--purple);--cat-dim:var(--purple-dim)}
+.cat-info{--cat:var(--slate);--cat-dim:var(--slate-dim)}
+
+.center{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 210px;gap:8px}
+.canvas{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px;background-color:var(--bg);
+  background-image:radial-gradient(var(--grid) 1.3px,transparent 1.4px);background-size:22px 22px;cursor:grab}
+.canvas.panning{cursor:grabbing}
+.world{position:absolute;left:50%;top:0;transform-origin:top center;display:flex;flex-direction:column;
+  align-items:center;padding:28px 40px 60px}
+.zoom{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;z-index:2}
+.zoom button{min-width:32px;height:32px;border:1px solid var(--border2);background:var(--bg1);color:var(--text);
+  border-radius:6px;cursor:pointer;font-weight:700;padding:0 8px}
+.legend{position:absolute;left:10px;bottom:10px;font-size:11.5px;color:var(--muted);background:var(--bg1);
+  border:1px solid var(--border);border-radius:6px;padding:4px 8px;z-index:2}
+.cover{position:absolute;inset:0;z-index:3;display:grid;place-items:center;background:rgba(240,244,241,.92);padding:16px}
+.cover>div{max-width:520px;background:var(--bg1);border:1px solid var(--border2);border-radius:10px;padding:18px 20px;
+  box-shadow:0 6px 24px rgba(0,0,0,.12)}
+.cover h2{font-size:16px;margin:0 0 8px}
+.cover p{font-size:13.5px;color:var(--text2);margin:0 0 10px;line-height:1.55}
+.cover .acts{display:flex;gap:8px;flex-wrap:wrap}
+
+.seq{display:flex;flex-direction:column;align-items:center}
+.node{position:relative;width:236px;display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg1);
+  border:1.5px solid var(--cat);border-left-width:6px;border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.node .ico{width:30px;height:30px;border-radius:50%;background:var(--cat-dim);color:var(--cat);display:grid;place-items:center;flex:none}
+.node .tt{min-width:0}
+.node b{display:block;font-size:13.5px}
+.node .sub{display:block;font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node.sel{box-shadow:0 0 0 3px var(--ring)}
+.node.run{animation:run .65s ease-out}
+.node.arret{box-shadow:0 0 0 3px var(--red)}
+@keyframes run{40%{box-shadow:0 0 0 9px var(--cat-dim);transform:scale(1.04)}}
+.warn{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--red);
+  color:#fff;font:700 12px/20px var(--sans);text-align:center}
+.start{border-left-width:1.5px;border-radius:24px;background:var(--green);color:#fff;padding:9px 18px;width:auto;min-width:236px;max-width:340px}
+.start .ico{background:rgba(255,255,255,.2);color:#fff}
+.start .eye{display:block;font:600 10.5px var(--mono);letter-spacing:.1em;opacity:.85}
+.start.off{background:var(--muted);border-color:var(--muted)}
+.end{font:600 11px var(--mono);letter-spacing:.1em;color:var(--muted);border:1.5px solid var(--line);border-radius:14px;
+  padding:3px 14px;background:var(--bg1)}
+
+.hexw{position:relative;padding:2px;background:var(--cat);cursor:pointer;width:270px;
+  clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 50%,calc(100% - 18px) 100%,18px 100%,0 50%)}
+.hexw.sel{background:var(--ring)}
+.hexw.arret{background:var(--red)}
+.hexw.run{animation:runhex .65s ease-out}
+@keyframes runhex{40%{transform:scale(1.05)}}
+.hex{clip-path:inherit;background:var(--cat-dim);padding:9px 26px;text-align:center}
+.hex .eye{display:block;font:600 10.5px var(--mono);letter-spacing:.1em;color:var(--cat)}
+.hex b{font-size:13px}
+
+.link{position:relative;width:2px;height:40px;background:var(--line)}
+.link::after{content:'';position:absolute;left:-4px;bottom:-1px;border:5px solid transparent;border-top:6px solid var(--line);border-bottom:0}
+.link.plain{height:16px}.link.plain::after{display:none}
+.plus{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;
+  border:1.5px dashed var(--border2);background:var(--bg);color:var(--muted);font:700 15px/18px var(--sans);
+  text-align:center;cursor:pointer;opacity:.5;transition:transform .12s,opacity .12s;padding:0}
+.canvas:hover .plus{opacity:1}
+.plus:hover,.plus:focus-visible{border-style:solid;border-color:var(--green);color:var(--green);opacity:1}
+body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);color:var(--green)}
+.plus.over{background:var(--green);color:#fff;border-style:solid;transform:scale(1.5)!important}
+.grow{flex:1;width:2px;background:var(--line);min-height:12px}
+.ifblk{display:flex;flex-direction:column;align-items:center}
+.branches{display:flex;align-items:stretch}
+.branch{position:relative;display:flex;flex-direction:column;align-items:center;padding:0 22px;min-width:200px}
+.branch::before,.branch::after{content:'';position:absolute;left:0;right:0;height:2px;background:var(--line)}
+.branch::before{top:0}.branch::after{bottom:0}
+.branch:first-child::before,.branch:first-child::after{left:50%}
+.branch:last-child::before,.branch:last-child::after{right:50%}
+.chip{margin-top:10px;font:600 11px var(--mono);letter-spacing:.05em;padding:2px 10px;border-radius:10px;
+  border:1.5px solid var(--line);background:var(--bg1)}
+.chip.oui{color:var(--green);border-color:var(--green)}
+.chip.non{color:var(--red);border-color:var(--red)}
+.loop{position:relative;display:flex;flex-direction:column;align-items:center;border:1.5px dashed var(--purple);
+  border-radius:14px;padding:0 20px 10px;background:rgba(102,51,204,.05)}
+.loop>.node{margin-top:-1px}
+.loopfoot{display:flex;align-items:center;gap:5px;font:600 11px var(--mono);color:var(--purple);margin-top:4px}
+
+.props{padding:0 14px 16px}
+.props .f{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.props label,.props .lab{font-size:12px;font-weight:600;color:var(--text2)}
+.props select,.props input{border:1px solid var(--border2);border-radius:6px;padding:7px 9px;background:var(--bg1);
+  color:var(--text);width:100%;font:inherit;min-width:0}
+.props .row{display:flex;gap:6px}
+.props .row>*{flex:1;min-width:0}
+.props .row>.x{flex:none;width:auto}
+.phead{display:flex;align-items:center;gap:10px;margin:2px 0 14px;padding:10px;border-radius:8px;background:var(--cat-dim);color:var(--cat)}
+.phead b{color:var(--text);font-size:15px}
+.hint{font-size:12.5px;color:var(--text2);background:var(--bg2);border-radius:6px;padding:8px 10px;margin-bottom:12px;line-height:1.5}
+.alert{font-size:12.5px;color:var(--red);background:var(--red-dim);border-radius:6px;padding:8px 10px;margin-bottom:12px}
+.term{border:1px solid var(--border);border-radius:7px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.empty{color:var(--text2);font-size:13px;line-height:1.55}
+.empty ol{padding-left:18px;margin:8px 0}
+.sec-acts{border-top:1px solid var(--border);margin-top:14px;padding-top:12px}
+
+.bottom{display:flex;flex-direction:column}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 8px;flex:none;align-items:center}
+.tabs button{border:0;background:none;padding:9px 12px;cursor:pointer;color:var(--muted);font:600 13px var(--sans);
+  border-bottom:2px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--green);border-bottom-color:var(--green)}
+.tabs .note{margin-left:auto;font:12px var(--mono);color:var(--muted)}
+.tabs .note.proche{color:var(--amber)}
+.tabs .note.hors{color:var(--red);font-weight:600}
+.tabbody{flex:1;min-height:0;overflow:auto}
+.code{font:13px/1.6 var(--mono);padding:6px 0}
+.cl{display:flex;white-space:pre;padding-right:12px;cursor:pointer}
+.cl .ln{width:40px;flex:none;text-align:right;padding-right:12px;color:var(--muted);user-select:none}
+.cl .cm{color:var(--muted)}
+.cl .kw{color:var(--purple);font-weight:600}
+.cl.hl{background:var(--blue-dim)}
+.runwrap{display:grid;grid-template-columns:240px 1fr;height:100%}
+.sim{border-right:1px solid var(--border);padding:10px 14px;font-size:13px;overflow:auto}
+.sim h4{margin:0 0 8px;font:600 12px var(--sans);color:var(--text2)}
+.sim label{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.log{font:12.5px/1.6 var(--mono);padding:8px 14px;overflow:auto}
+.log div::before{content:'› ';color:var(--muted)}
+.log .t{color:var(--muted)}
+
+.menu{position:fixed;z-index:20;background:var(--bg1);border:1px solid var(--border2);border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;width:220px}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:6px 8px;
+  border-radius:5px;cursor:pointer;text-align:left;color:var(--text);font:inherit}
+.menu button:hover,.menu button:focus-visible{background:var(--cat-dim)}
+.menu .ico{color:var(--cat)}
+.mobile-banner{display:none}
+
+@media (max-width:860px){
+  body{overflow:auto}
+  .main{grid-template-columns:minmax(0,1fr)}
+  .palette,.props-panel,.bottom,.edit-only{display:none!important}
+  .center{grid-template-rows:minmax(0,1fr)}
+  .plus{display:none}
+  .mobile-banner{display:block;background:var(--blue-dim);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px}
+  .app{grid-template-rows:auto auto auto minmax(420px,1fr)}
+  #nom{width:100%}
+}
+@media (prefers-reduced-motion:reduce){.node.run,.hexw.run{animation:none;outline:3px solid var(--cat)}}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3c-3.5 4.6-6 8-6 11a6 6 0 0 0 12 0c0-3-2.5-6.4-6-11z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><path d="M12 3l8 9-8 9-8-9z"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM9 11h7M9 15h7"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
+    <select id="slot" aria-label="Emplacement du script"></select>
+    <input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script">
+    <span class="dirty" id="dirty" hidden>non enregistré</span>
+    <span class="spacer"></span>
+    <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
+    <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
+    <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>
+    <a class="btn" id="b-texte" href="/scripts.html">Éditeur texte</a>
+    <button class="btn principal edit-only" id="b-save">Enregistrer</button>
+  </header>
+  <div id="msg">Lecture du module…</div>
+  <div class="mobile-banner">Consultation seule sur téléphone : l'édition d'un script se fait depuis un ordinateur.</div>
+
+  <div class="main">
+    <aside class="panel palette" aria-label="Palette de blocs">
+      <div class="ph">Blocs</div>
+      <div id="palette"></div>
+      <p class="pal-tip">Glissez un bloc sur un <b>+</b> du schéma, ou cliquez sur un <b>+</b> pour choisir.</p>
+    </aside>
+
+    <section class="center">
+      <div class="canvas" id="canvas" aria-label="Schéma du script">
+        <div class="world" id="world"></div>
+        <div class="legend edit-only">Molette : défiler · Ctrl+molette : zoom · Suppr : retirer le bloc</div>
+        <div class="zoom">
+          <button id="z-out" aria-label="Dézoomer">−</button>
+          <button id="z-fit">Ajuster</button>
+          <button id="z-in" aria-label="Zoomer">+</button>
+        </div>
+        <div class="cover" id="cover" hidden><div>
+          <h2 id="cover-titre"></h2>
+          <p id="cover-texte"></p>
+          <div class="acts">
+            <a class="btn principal" id="cover-texte-lien" href="/scripts.html">Ouvrir dans l'éditeur texte</a>
+            <button class="btn edit-only" id="cover-vide">Repartir d'un schéma vide</button>
+          </div>
+        </div></div>
+      </div>
+      <div class="panel bottom">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="t-code" aria-selected="true">Texte généré</button>
+          <button role="tab" id="t-run" aria-selected="false">Essai à blanc</button>
+          <span class="note" id="taille"></span>
+        </div>
+        <div class="tabbody" id="p-code"><div class="code" id="code"></div></div>
+        <div class="tabbody" id="p-run" hidden>
+          <div class="runwrap">
+            <div class="sim"><h4>Entrées simulées</h4><div id="simins"></div>
+              <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Rien n'est envoyé au module : l'essai parcourt seulement le schéma.</p></div>
+            <div class="log" id="log"><div class="t">« Essai à blanc » parcourt le script bloc par bloc, avec les entrées cochées à gauche.</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel props-panel" aria-label="Réglages du bloc">
+      <div class="ph">Réglages</div>
+      <div class="props" id="props"></div>
+    </aside>
+  </div>
+</div>
+
+<script src="/hmac.js"></script>
+<script src="/script-lang.js"></script>
+<script src="/script-schema.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const S = AquaSchema;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ico = (id) => '<svg class="ic"><use href="#' + id + '"/></svg>';
+// Memes valeurs que ScriptStore::TRIGGER_* cote firmware.
+const TRIG = {1:"le changement d'une entrée", 2:"le démarrage d'une zone", 3:"l'arrêt d'une zone", 0:'rien (lancement manuel)'};
+const PALETTE = [['Arrosage',['arroser','arreter','suspendre','reprendre']],['Temps',['attendre']],
+  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']]];
+
+// Ce que CE module offre (memes sources que scripts.html).
+let ZONES = [], ENTREES = [], BIBLIO = [];
+let TAILLE_MAX = 400, NONCE = 0;
+const zoneNom = (id) => { const z = ZONES.find((o) => o.id === id); return z ? z.nom : 'Zone ' + id + ' (inconnue)'; };
+const entreeNom = (id) => { const e = ENTREES.find((o) => o.id === id); return e ? e.nom : 'Entrée ' + id + ' (inconnue)'; };
+const phraseNom = (c) => { const p = BIBLIO.find((o) => o.code === c); return p ? p.texte : 'code ' + c; };
+const NAMES = { zone: zoneNom, input: entreeNom, phrase: phraseNom };
+
+// Le script ouvert. body = liste de blocs (voir script-schema.js).
+let doc = { nom: '', actif: true, trigger: { t: 0, target: 0 }, body: [] };
+let editable = true;        // faux quand le texte du module ne se dessine pas
+let dirty = false;
+let sel = null;
+let undo = [];
+let arret = null;           // bloc du dernier arret signale par le module
+
+// ── Etat et annulation ─────────────────────────────────────────────────
+const snap = () => JSON.stringify(doc);
+function pushUndo(s) { undo.push(s || snap()); if (undo.length > 80) undo.shift(); $('b-undo').disabled = false; }
+function setDirty(v) { dirty = v; $('dirty').hidden = !v; }
+function doUndo() {
+  const s = undo.pop(); if (!s) return;
+  doc = JSON.parse(s);
+  if (sel && sel !== 'start' && !find(sel)) sel = null;
+  $('b-undo').disabled = !undo.length;
+  setDirty(true);
+  refresh(true);
+}
+
+function find(id, list) {
+  list = list || doc.body;
+  for (let i = 0; i < list.length; i++) {
+    const n = list[i];
+    if (n.id === id) return { node: n, list: list, index: i };
+    for (const k of S.childKeys(n)) { const r = find(id, n[k]); if (r) return r; }
+  }
+  return null;
+}
+function listsOf(n, acc) { acc = acc || []; S.childKeys(n).forEach((k) => { acc.push(n[k]); n[k].forEach((c) => listsOf(c, acc)); }); return acc; }
+function hasWait(list) { return list.some((n) => n.t === 'attendre' || S.childKeys(n).some((k) => hasWait(n[k]))); }
+function loopDepth(id, list, d) {
+  list = list || doc.body; d = d || 0;
+  for (const n of list) {
+    if (n.id === id) return d;
+    const nd = n.t === 'repeter' ? d + 1 : d;
+    for (const k of S.childKeys(n)) { const r = loopDepth(id, n[k], nd); if (r >= 0) return r; }
+  }
+  return -1;
+}
+function warnings(n) {
+  const w = [];
+  if ('zone' in n && !ZONES.some((z) => z.id === n.zone)) w.push('La zone ' + n.zone + ' n’existe pas sur ce module.');
+  if (n.cond) n.cond.terms.forEach((t) => {
+    if (t.k === 'entree' && !ENTREES.some((e) => e.id === t.id)) w.push('L’entrée ' + t.id + ' n’est pas déclarée sur ce module.');
+    if (t.k === 'zoneactive' && !ZONES.some((z) => z.id === t.id)) w.push('La zone ' + t.id + ' n’existe pas sur ce module.');
+  });
+  if (n.t === 'tantque' && !hasWait(n.body)) w.push('Ajoutez un bloc « Attendre » dans la boucle : sans pause, elle tourne en continu.');
+  if (n.t === 'repeter' && loopDepth(n.id) >= 8) w.push('Trop de « Répéter » imbriqués : 8 au plus.');
+  return w;
+}
+
+// ── Libelles ───────────────────────────────────────────────────────────
+function termLabel(t) {
+  return t.k === 'entree' ? entreeNom(t.id) + (t.v ? ' est actif' : ' est inactif')
+                          : zoneNom(t.id) + (t.v ? ' arrose' : ' n’arrose pas');
+}
+function condLabel(c) { return c.terms.map(termLabel).join(c.op === 'ou' ? ' ou ' : ' et '); }
+function subOf(n) {
+  switch (n.t) {
+    case 'arroser': return zoneNom(n.zone) + ' · ' + S.duree(n.sec);
+    case 'arreter': case 'suspendre': case 'reprendre': return zoneNom(n.zone);
+    case 'attendre': return S.duree(n.sec);
+    case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
+    case 'repeter': return n.n + ' fois';
+    case 'tantque': return condLabel(n.cond);
+  }
+  return '';
+}
+function trigText() {
+  const t = doc.trigger;
+  if (t.t === 0) return 'Lancement manuel';
+  if (t.t === 1) return 'Quand « ' + entreeNom(t.target) + ' » change';
+  if (t.t === 2) return 'Quand « ' + zoneNom(t.target) + ' » démarre';
+  return 'Quand « ' + zoneNom(t.target) + ' » s’arrête';
+}
+
+// ── Rendu du schema ────────────────────────────────────────────────────
+let listIds;
+function regList(list) { if (!listIds.has(list)) listIds.set(list, 'L' + listIds.size); return listIds.get(list); }
+function listById(lid) { for (const [l, id] of listIds) if (id === lid) return l; return null; }
+function link(list, i) {
+  const d = document.createElement('div'); d.className = 'link';
+  if (editable) d.innerHTML = '<button class="plus" data-l="' + regList(list) + '" data-i="' + i + '" aria-label="Ajouter un bloc ici">+</button>';
+  return d;
+}
+function seq(list) {
+  const s = document.createElement('div'); s.className = 'seq';
+  s.appendChild(link(list, 0));
+  list.forEach((n, i) => { s.appendChild(nodeEl(n)); s.appendChild(link(list, i + 1)); });
+  return s;
+}
+function boxEl(n) {
+  const T = S.TYPES[n.t], d = document.createElement('div');
+  const w = warnings(n);
+  d.className = 'node cat-' + T.cat;
+  d.dataset.id = n.id; d.tabIndex = 0; d.draggable = editable;
+  d.innerHTML = '<span class="ico">' + ico(T.icon) + '</span><span class="tt"><b>' + esc(T.label) + '</b><span class="sub">'
+    + esc(subOf(n)) + '</span></span>' + (w.length ? '<span class="warn" title="' + esc(w[0]) + '">!</span>' : '');
+  return d;
+}
+function nodeEl(n) {
+  if (n.t === 'si') {
+    const w = document.createElement('div'); w.className = 'ifblk';
+    const h = document.createElement('div'); h.className = 'hexw cat-logique'; h.dataset.id = n.id; h.tabIndex = 0; h.draggable = editable;
+    const ws = warnings(n);
+    h.innerHTML = '<div class="hex"><span class="eye">SI' + (ws.length ? ' · !' : '') + '</span><b>' + esc(condLabel(n.cond)) + ' ?</b></div>';
+    if (ws.length) h.title = ws[0];
+    w.appendChild(h);
+    const pl = document.createElement('div'); pl.className = 'link plain'; w.appendChild(pl);
+    const br = document.createElement('div'); br.className = 'branches';
+    [['oui', 'Oui'], ['non', 'Non']].forEach(([k, lab]) => {
+      const b = document.createElement('div'); b.className = 'branch';
+      b.innerHTML = '<div class="chip ' + k + '">' + lab + '</div>';
+      b.appendChild(seq(n[k]));
+      const g = document.createElement('div'); g.className = 'grow'; b.appendChild(g);
+      br.appendChild(b);
+    });
+    w.appendChild(br);
+    return w;
+  }
+  if (n.t === 'repeter' || n.t === 'tantque') {
+    const w = document.createElement('div'); w.className = 'loop';
+    w.appendChild(boxEl(n));
+    w.appendChild(seq(n.body));
+    const f = document.createElement('div'); f.className = 'loopfoot';
+    f.innerHTML = ico('i-loop') + (n.t === 'repeter' ? 'recommence (' + n.n + ' fois)' : 'recommence tant que c’est vrai');
+    w.appendChild(f);
+    return w;
+  }
+  return boxEl(n);
+}
+function renderCanvas() {
+  listIds = new Map();
+  const w = $('world'); w.innerHTML = '';
+  const st = document.createElement('div');
+  st.className = 'node start' + (doc.actif ? '' : ' off'); st.dataset.id = 'start'; st.tabIndex = 0;
+  st.innerHTML = '<span class="ico">' + ico('i-bolt') + '</span><span class="tt"><span class="eye">'
+    + (doc.actif ? 'DÉPART' : 'DÉPART · SCRIPT INACTIF') + '</span><b>' + esc(trigText()) + '</b></span>';
+  w.appendChild(st);
+  w.appendChild(seq(doc.body));
+  const e = document.createElement('div'); e.className = 'end'; e.textContent = 'FIN'; w.appendChild(e);
+}
+function markSel() {
+  document.querySelectorAll('.sel,.arret').forEach((e) => e.classList.remove('sel', 'arret'));
+  if (arret) { const e = document.querySelector('[data-id="' + arret + '"]'); if (e) e.classList.add('arret'); }
+  if (sel) { const e = document.querySelector('[data-id="' + sel + '"]'); if (e) e.classList.add('sel'); }
+  document.querySelectorAll('.cl').forEach((l) => l.classList.toggle('hl', !!sel && l.dataset.id === sel));
+}
+
+// ── Texte genere ───────────────────────────────────────────────────────
+let GEN = { text: '', lines: [] };
+let lecture = null;         // { texte, octets } du module quand le schema est en lecture seule
+const KW = /\b(si|alors|sinon|finsi|pour|de|à|faire|finpour|tantque|fintantque|demarrer|zone|pendant|arreter|suspendre|reprendre|attendre|notifier|message|et|ou)\b/g;
+function renderCode() {
+  if (!editable && lecture) {
+    // Lecture seule : montrer ce qui tourne vraiment, pas un schema vide.
+    $('code').innerHTML = (lecture.texte || '# texte source absent de la carte SD').split('\n').map((l, i) =>
+      '<div class="cl"><span class="ln">' + (i + 1) + '</span><span>' + esc(l) + '</span></div>').join('');
+    $('taille').textContent = lecture.octets + ' / ' + TAILLE_MAX + ' octets';
+    $('taille').className = 'note';
+    return;
+  }
+  GEN = S.generate(doc.body, NAMES);
+  $('code').innerHTML = GEN.lines.map((l, i) => {
+    const h = l.text.indexOf('#');
+    const code = h < 0 ? l.text : l.text.slice(0, h), cm = h < 0 ? '' : l.text.slice(h);
+    return '<div class="cl" data-id="' + l.id + '"><span class="ln">' + (i + 1) + '</span><span>'
+      + esc(code).replace(KW, '<span class="kw">$1</span>') + (cm ? '<span class="cm">' + esc(cm) + '</span>' : '') + '</span></div>';
+  }).join('') || '<div class="cl"><span class="ln">1</span><span class="cm"># script vide : ajoutez un bloc sous « Départ »</span></div>';
+  // Taille en direct : le module refuse au-dela de ScriptStore::MAX_BYTECODE.
+  const t = $('taille');
+  try {
+    const n = AquaScript.compile(GEN.text).length;
+    t.textContent = n + ' / ' + TAILLE_MAX + ' octets';
+    t.className = 'note' + (n > TAILLE_MAX ? ' hors' : n > TAILLE_MAX * 0.85 ? ' proche' : '');
+  } catch (e) { t.textContent = 'non compilable : ' + e.message; t.className = 'note hors'; }
+}
+
+// ── Reglages ───────────────────────────────────────────────────────────
+const optsList = (list, v, vide) => list.length
+  ? list.map((o) => '<option value="' + o.id + '"' + (o.id === v ? ' selected' : '') + '>' + esc(o.nom) + '</option>').join('')
+    + (list.some((o) => o.id === v) ? '' : '<option value="' + v + '" selected>' + v + ' (inconnue)</option>')
+  : '<option value="' + v + '">' + esc(vide) + '</option>';
+const optsMap = (o, v) => Object.entries(o).map(([k, l]) => '<option value="' + k + '"' + (String(k) === String(v) ? ' selected' : '') + '>' + esc(l) + '</option>').join('');
+const zoneOpts = (v) => optsList(ZONES, v, 'aucune zone');
+const entreeOpts = (v) => optsList(ENTREES, v, 'aucune entrée déclarée');
+function phraseOpts(v) {
+  const l = BIBLIO.map((p) => ({ id: p.code, nom: p.code + ' — ' + p.texte }));
+  return optsList(l, v, 'code ' + v + ' (aucune phrase)');
+}
+// Duree : saisie dans l'unite la plus naturelle pour la valeur.
+function unitOf(sec) { return sec >= 3600 && sec % 3600 === 0 ? 3600 : sec % 60 === 0 ? 60 : 1; }
+function dureeField(sec) {
+  const u = unitOf(sec);
+  return '<div class="f"><label for="p-d">Durée</label><div class="row"><input id="p-d" type="number" min="1" data-f="duree" value="'
+    + (sec / u) + '"><select id="p-u" data-f="duree">' + optsMap({1:'secondes',60:'minutes',3600:'heures'}, u) + '</select></div></div>';
+}
+function condFields(c) {
+  let h = '<div class="lab" style="margin-bottom:6px">Condition</div>';
+  c.terms.forEach((t, i) => {
+    h += '<div class="term">'
+      + '<div class="row"><select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone'}, t.k) + '</select>'
+      + (c.terms.length > 1 ? '<button class="btn x" data-del-term="' + i + '" title="Retirer cette condition">×</button>' : '') + '</div>'
+      + '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + (t.k === 'entree' ? entreeOpts(t.id) : zoneOpts(t.id)) + '</select>'
+      + '<select data-term="' + i + '" data-tf="v" aria-label="État">' + optsMap(t.k === 'entree' ? {1:'est actif', 0:'est inactif'} : {1:'arrose', 0:'n’arrose pas'}, t.v) + '</select>'
+      + '</div>';
+  });
+  if (c.terms.length > 1) {
+    h += '<div class="f"><label for="p-op">Il faut que</label><select id="p-op" data-f="op">'
+      + optsMap({et:'toutes soient vraies (et)', ou:'au moins une soit vraie (ou)'}, c.op) + '</select></div>';
+  }
+  h += '<button class="btn" id="p-add-term">+ Ajouter une condition</button>';
+  return h;
+}
+function renderProps() {
+  const p = $('props');
+  if (!sel) {
+    p.innerHTML = '<div class="empty"><p>Cliquez sur un bloc du schéma pour le régler.</p><ol>'
+      + '<li>Le bloc vert <b>Départ</b> fixe ce qui lance le script.</li>'
+      + '<li>Glissez un bloc de la palette sur un <b>+</b> pour l’ajouter.</li>'
+      + '<li>Glissez un bloc existant sur un autre <b>+</b> pour le déplacer.</li>'
+      + '<li>Le texte du bas est ce que le module recevra.</li></ol></div>'
+      + '<div class="sec-acts acts"><button class="btn" id="b-secret">Secret</button>'
+      + '<button class="btn" id="b-oublier">Oublier le secret ici</button>'
+      + '<button class="btn danger" id="b-effacer">Effacer ce script</button></div>';
+    $('b-secret').onclick = definirSecret;
+    $('b-oublier').onclick = oublierSecret;
+    $('b-effacer').onclick = effacer;
+    return;
+  }
+  let h;
+  if (sel === 'start') {
+    const t = doc.trigger;
+    h = '<div class="phead cat-eau">' + ico('i-bolt') + '<b>Départ du script</b></div>'
+      + '<div class="f"><label for="s-t">Déclenché par</label><select id="s-t" data-f="trigger">' + optsMap(TRIG, t.t) + '</select></div>'
+      + (t.t ? '<div class="f"><label for="s-c">' + (t.t === 1 ? 'Entrée' : 'Zone') + '</label><select id="s-c" data-f="target">'
+        + (t.t === 1 ? entreeOpts(t.target) : zoneOpts(t.target)) + '</select></div>' : '')
+      + '<div class="f"><label for="s-a">Actif</label><select id="s-a" data-f="actif">' + optsMap({1:'oui', 0:'non'}, doc.actif ? 1 : 0) + '</select></div>'
+      + (doc.actif ? '' : '<div class="alert">Script inactif : il ne démarre jamais seul, et « Lancer maintenant » le refuse aussi.</div>')
+      + '<div class="hint">Le script part au moment où ça <b>change</b>, jamais sur un état qui dure. Il ne repart pas deux fois en moins de cinq secondes, et deux scripts au plus tournent en même temps.</div>';
+  } else {
+    const n = find(sel).node, T = S.TYPES[n.t];
+    h = '<div class="phead cat-' + T.cat + '">' + ico(T.icon) + '<b>' + esc(T.label) + '</b></div>';
+    warnings(n).forEach((w) => { h += '<div class="alert">' + esc(w) + '</div>'; });
+    if ('zone' in n) h += '<div class="f"><label for="p-z">Zone</label><select id="p-z" data-f="zone">' + zoneOpts(n.zone) + '</select></div>';
+    if ('sec' in n) h += dureeField(n.sec);
+    if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
+      + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
+      + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : elle se remplit depuis l’éditeur texte, section « Bibliothèque de phrases ».</div>');
+    if ('n' in n) h += '<div class="f"><label for="p-n">Nombre de fois</label><input id="p-n" type="number" min="1" max="1000" data-f="n" value="' + n.n + '"></div>';
+    if (n.cond) h += condFields(n.cond);
+    if (n.t === 'si') h += '<div class="hint">Les blocs sous <b>Oui</b> s’exécutent si la condition est vraie, ceux sous <b>Non</b> sinon. Une branche peut rester vide.</div>';
+    if (n.t === 'attendre') h += '<div class="hint">Pendant l’attente, le module continue de piloter les autres zones et l’écran.</div>';
+    if (n.t === 'arroser') h += '<div class="hint">La zone s’ouvre et le script continue aussitôt : ajoutez « Attendre » pour enchaîner après la fin de l’arrosage.</div>';
+    h += '<div class="acts"><button class="btn" id="p-dup">Dupliquer</button><button class="btn danger" id="p-del">Supprimer le bloc</button></div>';
+  }
+  p.innerHTML = h;
+  if (!editable) p.querySelectorAll('select,input,button').forEach((e) => { e.disabled = true; });
+  wireProps(p);
+}
+function wireProps(p) {
+  let before = null;
+  const target = () => sel === 'start' ? null : find(sel).node;
+  const change = (fn, rerender) => {
+    pushUndo(before || snap()); before = snap();
+    fn(); setDirty(true); refresh(rerender);
+  };
+  p.querySelectorAll('[data-f],[data-tf]').forEach((f) => {
+    f.addEventListener('focus', () => { before = snap(); });
+    f.addEventListener('change', () => {
+      const n = target();
+      if (f.dataset.tf) {
+        const t = n.cond.terms[+f.dataset.term];
+        change(() => {
+          if (f.dataset.tf === 'k') { t.k = f.value; t.id = (t.k === 'entree' ? (ENTREES[0] || {id:1}) : (ZONES[0] || {id:1})).id; t.v = 1; }
+          else t[f.dataset.tf] = parseInt(f.value, 10) || 0;
+        }, true);
+        return;
+      }
+      const k = f.dataset.f;
+      if (k === 'trigger') change(() => {
+        doc.trigger.t = parseInt(f.value, 10);
+        doc.trigger.target = doc.trigger.t === 0 ? 0 : ((doc.trigger.t === 1 ? ENTREES[0] : ZONES[0]) || {id:0}).id;
+      }, true);
+      else if (k === 'target') change(() => { doc.trigger.target = parseInt(f.value, 10) || 0; }, false);
+      else if (k === 'actif') change(() => { doc.actif = f.value === '1'; }, true);
+      else if (k === 'duree') change(() => {
+        const v = Math.max(1, Math.round(parseFloat($('p-d').value) || 1));
+        n.sec = Math.min(86400, v * parseInt($('p-u').value, 10));
+      }, true);
+      else if (k === 'n') change(() => { n.n = Math.max(1, Math.min(1000, parseInt(f.value, 10) || 1)); }, false);
+      else if (k === 'op') change(() => { n.cond.op = f.value; }, false);
+      else change(() => { n[k] = parseInt(f.value, 10) || 0; }, false);
+    });
+  });
+  p.querySelectorAll('[data-del-term]').forEach((b) => b.addEventListener('click', () => {
+    change(() => { target().cond.terms.splice(+b.dataset.delTerm, 1); }, true);
+  }));
+  if ($('p-add-term')) $('p-add-term').onclick = () => change(() => {
+    target().cond.terms.push({ k: 'entree', id: (ENTREES[0] || {id:1}).id, v: 1 });
+  }, true);
+  if ($('p-del')) $('p-del').onclick = removeSel;
+  if ($('p-dup')) $('p-dup').onclick = () => {
+    const r = find(sel); pushUndo();
+    const clone = S.reId(JSON.parse(JSON.stringify(r.node)));
+    r.list.splice(r.index + 1, 0, clone); sel = clone.id; setDirty(true); refresh(true);
+  };
+}
+
+function refresh(props) { renderCanvas(); renderCode(); markSel(); if (props) renderProps(); }
+
+// ── Insertion, deplacement, suppression ────────────────────────────────
+function insertAt(lid, idx, what) {
+  if (!editable) return;
+  const list = listById(lid); if (!list || !what) return;
+  if (what.indexOf('new:') === 0) {
+    pushUndo();
+    const n = S.make(what.slice(4), { zoneId: (ZONES[0] || {}).id, inputId: (ENTREES[0] || {}).id, code: (BIBLIO[0] || {}).code });
+    list.splice(idx, 0, n); sel = n.id;
+  } else if (what.indexOf('move:') === 0) {
+    const id = what.slice(5), r = find(id); if (!r) return;
+    if (listsOf(r.node).indexOf(list) >= 0) { dire('Un bloc ne peut pas être déplacé à l’intérieur de lui-même.', 'ko'); return; }
+    pushUndo();
+    r.list.splice(r.index, 1);
+    if (r.list === list && r.index < idx) idx--;
+    list.splice(idx, 0, r.node); sel = id;
+  } else return;
+  setDirty(true);
+  refresh(true);
+}
+function removeSel() {
+  if (!editable || !sel || sel === 'start') return;
+  const r = find(sel); if (!r) return;
+  pushUndo(); r.list.splice(r.index, 1); sel = null; setDirty(true); refresh(true);
+}
+
+let menuEl = null;
+function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
+function openMenu(btn) {
+  closeMenu();
+  const r = btn.getBoundingClientRect();
+  menuEl = document.createElement('div'); menuEl.className = 'menu'; menuEl.setAttribute('role', 'menu');
+  menuEl.innerHTML = Object.keys(S.TYPES).map((k) => {
+    const T = S.TYPES[k];
+    return '<button role="menuitem" class="cat-' + T.cat + '" data-t="' + k + '"><span class="ico">' + ico(T.icon) + '</span>' + esc(T.label) + '</button>';
+  }).join('');
+  document.body.appendChild(menuEl);
+  menuEl.style.left = Math.max(8, Math.min(r.left - 100, window.innerWidth - 228)) + 'px';
+  menuEl.style.top = Math.max(8, Math.min(r.bottom + 6, window.innerHeight - menuEl.offsetHeight - 8)) + 'px';
+  menuEl.querySelector('button').focus();
+  menuEl.onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { closeMenu(); insertAt(btn.dataset.l, +btn.dataset.i, 'new:' + b.dataset.t); } };
+}
+
+// ── Palette ────────────────────────────────────────────────────────────
+$('palette').innerHTML = PALETTE.map(([g, ks]) => '<div class="pal-group"><h3>' + g + '</h3>' + ks.map((k) => {
+  const T = S.TYPES[k];
+  return '<div class="pal cat-' + T.cat + '" draggable="true" data-new="' + k + '"><span class="ico">' + ico(T.icon)
+    + '</span><span><b>' + esc(T.label) + '</b><span>' + esc(T.desc) + '</span></span></div>';
+}).join('') + '</div>').join('');
+$('palette').addEventListener('dragstart', (e) => {
+  const p = e.target.closest('[data-new]'); if (!p || !editable) { e.preventDefault(); return; }
+  e.dataTransfer.setData('text/plain', 'new:' + p.dataset.new); e.dataTransfer.effectAllowed = 'copy';
+  document.body.classList.add('dragging');
+});
+
+// ── Canevas : selection, glisser-deposer, zoom ─────────────────────────
+const world = $('world'), canvas = $('canvas');
+function choisir(id) { sel = id; markSel(); renderProps(); }
+world.addEventListener('click', (e) => {
+  const plus = e.target.closest('.plus');
+  if (plus) { e.stopPropagation(); openMenu(plus); return; }
+  const n = e.target.closest('[data-id]');
+  if (n) choisir(n.dataset.id);
+});
+world.addEventListener('keydown', (e) => {
+  const n = e.target.closest('[data-id]');
+  if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); choisir(n.dataset.id); }
+});
+world.addEventListener('dragstart', (e) => {
+  const n = e.target.closest('[data-id]');
+  if (!editable || !n || n.dataset.id === 'start') { e.preventDefault(); return; }
+  e.dataTransfer.setData('text/plain', 'move:' + n.dataset.id); e.dataTransfer.effectAllowed = 'move';
+  document.body.classList.add('dragging');
+});
+document.addEventListener('dragend', () => {
+  document.body.classList.remove('dragging');
+  document.querySelectorAll('.plus.over').forEach((p) => p.classList.remove('over'));
+});
+world.addEventListener('dragover', (e) => { const p = e.target.closest('.plus'); if (p) { e.preventDefault(); p.classList.add('over'); } });
+world.addEventListener('dragleave', (e) => { const p = e.target.closest('.plus'); if (p) p.classList.remove('over'); });
+world.addEventListener('drop', (e) => {
+  const p = e.target.closest('.plus'); if (!p) return;
+  e.preventDefault(); document.body.classList.remove('dragging');
+  insertAt(p.dataset.l, +p.dataset.i, e.dataTransfer.getData('text/plain'));
+});
+
+let view = { x: 0, y: 0, s: 1 };
+function applyView() { world.style.transform = 'translate(calc(-50% + ' + view.x + 'px),' + view.y + 'px) scale(' + view.s + ')'; }
+function fit() { view = { x: 0, y: 0, s: Math.min(1, (canvas.clientWidth - 24) / Math.max(1, world.offsetWidth)) }; applyView(); }
+// Molette = defiler (un long script depasse vers le bas), Ctrl+molette =
+// zoom : la convention des editeurs de schemas.
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) view.s = Math.min(1.6, Math.max(0.3, view.s * (e.deltaY < 0 ? 1.1 : 0.9)));
+  else { view.y -= e.deltaY; view.x -= e.deltaX; }
+  applyView();
+}, { passive: false });
+let pan = null;
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('[data-id],.plus,.zoom,.cover,button,a')) return;
+  pan = { x: e.clientX - view.x, y: e.clientY - view.y }; canvas.classList.add('panning'); canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => { if (pan) { view.x = e.clientX - pan.x; view.y = e.clientY - pan.y; applyView(); } });
+canvas.addEventListener('pointerup', () => { pan = null; canvas.classList.remove('panning'); });
+$('z-in').onclick = () => { view.s = Math.min(1.6, view.s * 1.15); applyView(); };
+$('z-out').onclick = () => { view.s = Math.max(0.3, view.s / 1.15); applyView(); };
+$('z-fit').onclick = fit;
+window.addEventListener('resize', fit);
+$('code').addEventListener('click', (e) => { const l = e.target.closest('.cl'); if (l && l.dataset.id) choisir(l.dataset.id); });
+
+function tab(which) {
+  $('t-code').setAttribute('aria-selected', which === 'code'); $('t-run').setAttribute('aria-selected', which === 'run');
+  $('p-code').hidden = which !== 'code'; $('p-run').hidden = which !== 'run';
+}
+$('t-code').onclick = () => tab('code');
+$('t-run').onclick = () => tab('run');
+
+// ── Essai a blanc ──────────────────────────────────────────────────────
+// Parcourt le SCHEMA ici, sans le module : montre l'ordre des blocs et le
+// chemin pris aux conditions. Les durees ne sont pas reellement attendues.
+let running = false, stopReq = false;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function log(t) { const d = document.createElement('div'); d.textContent = t; $('log').appendChild(d); $('log').scrollTop = 1e9; }
+async function flash(id) {
+  const e = document.querySelector('[data-id="' + id + '"]');
+  document.querySelectorAll('.cl').forEach((l) => l.classList.toggle('hl', l.dataset.id === id));
+  if (e) { e.classList.remove('run'); void e.offsetWidth; e.classList.add('run'); }
+  await sleep(650);
+}
+function renderSim() {
+  $('simins').innerHTML = ENTREES.length
+    ? ENTREES.map((e) => '<label><input type="checkbox" id="sim' + e.id + '"> ' + esc(e.nom) + ' actif</label>').join('')
+    : '<span style="color:var(--muted)">Aucune entrée déclarée.</span>';
+}
+async function essai() {
+  if (running) { stopReq = true; return; }
+  running = true; stopReq = false; tab('run'); $('log').innerHTML = '';
+  $('b-essai').lastChild.textContent = 'Arrêter l’essai';
+  const active = new Set();
+  const evalTerm = (t) => (t.k === 'entree' ? ($('sim' + t.id) && $('sim' + t.id).checked ? 1 : 0) : (active.has(t.id) ? 1 : 0)) === t.v;
+  const evalCond = (c) => c.op === 'ou' ? c.terms.some(evalTerm) : c.terms.every(evalTerm);
+  log('Départ : ' + trigText()); await flash('start');
+  async function exec(list) {
+    for (const n of list) {
+      if (stopReq) return;
+      await flash(n.id);
+      switch (n.t) {
+        case 'arroser': active.add(n.zone); log('Ouvre ' + zoneNom(n.zone) + ' pour ' + S.duree(n.sec)); break;
+        case 'arreter': active.delete(n.zone); log('Ferme ' + zoneNom(n.zone)); break;
+        case 'suspendre': log('Met en pause ' + zoneNom(n.zone)); break;
+        case 'reprendre': log('Relance ' + zoneNom(n.zone)); break;
+        case 'attendre': log('Attend ' + S.duree(n.sec)); break;
+        case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
+        case 'message': log('Journal : « ' + phraseNom(n.code) + ' »'); break;
+        case 'si': { const r = evalCond(n.cond); log(condLabel(n.cond) + ' ? ' + (r ? 'oui' : 'non')); await exec(r ? n.oui : n.non); break; }
+        case 'repeter': for (let k = 1; k <= n.n && !stopReq; k++) { log('Tour ' + k + ' sur ' + n.n); await exec(n.body); } break;
+        case 'tantque': {
+          let k = 0;
+          while (!stopReq && evalCond(n.cond) && k < 3) { k++; log(condLabel(n.cond) + ' : tour ' + k); await exec(n.body); }
+          log(k === 3 ? 'Essai limité à 3 tours de boucle' : 'Condition fausse : sortie de la boucle'); break;
+        }
+      }
+    }
+  }
+  await exec(doc.body);
+  log(stopReq ? 'Essai interrompu' : 'Fin du script');
+  running = false; $('b-essai').lastChild.textContent = 'Essai à blanc'; markSel();
+}
+$('b-essai').onclick = essai;
+
+// ── Module : lecture ───────────────────────────────────────────────────
+function dire(texte, etat) { const m = $('msg'); m.textContent = texte; m.className = etat || ''; }
+const slot = () => parseInt($('slot').value, 10);
+
+async function lireModule() {
+  try {
+    const st = await (await fetch('/api/zonesConfig')).json();
+    ZONES = (st.zones || []).map((z, i) => ({ id: z.id || (i + 1), nom: z.name || ('Zone ' + (i + 1)) }));
+  } catch (e) { ZONES = []; }
+  try {
+    const topo = await (await fetch('/api/relay/topology')).json();
+    ENTREES = (topo.assignments || []).filter((a) => a.input).map((a) => ({ id: a.id, nom: a.roleName }));
+  } catch (e) { ENTREES = []; }
+  try {
+    const r = await fetch('/api/script-messages');
+    if (r.ok) BIBLIO = ((await r.json()).entries || []).map((o) => ({ id: o.code, code: o.code, texte: o.texte }));
+  } catch (e) { BIBLIO = []; }
+  renderSim();
+}
+async function listeSlots() {
+  const d = await (await fetch('/api/scripts')).json();
+  TAILLE_MAX = d.tailleMax || TAILLE_MAX;
+  const garde = $('slot').value;
+  $('slot').innerHTML = d.scripts.map((s) => {
+    const nom = !s.utilise ? 'vide' : (s.nom + (s.actif ? '' : ' — inactif'));
+    return '<option value="' + s.i + '">' + (s.i + 1) + ' — ' + esc(nom) + '</option>';
+  }).join('');
+  if (garde !== '') $('slot').value = garde;
+}
+
+function couvrir(titre, texte) {
+  $('cover-titre').textContent = titre;
+  $('cover-texte').textContent = texte;
+  $('cover').hidden = !titre;
+}
+function majLiensTexte() {
+  const href = '/scripts.html?i=' + slot();
+  $('b-texte').href = href; $('cover-texte-lien').href = href;
+}
+
+async function charger() {
+  const i = slot();
+  majLiensTexte();
+  sel = null; undo = []; $('b-undo').disabled = true; arret = null;
+  editable = true; lecture = null; couvrir('');
+  const d = await (await fetch('/api/script-one?i=' + i)).json();
+  if (!d.ok) {
+    doc = { nom: '', actif: true, trigger: { t: 0, target: 0 }, body: [] };
+    $('nom').value = '';
+    setDirty(false); refresh(true); fit();
+    dire('Emplacement ' + (i + 1) + ' vide : construisez le script à partir du bloc « Départ ».', '');
+    return;
+  }
+  doc = { nom: d.nom, actif: !!d.actif, trigger: { t: d.declencheur, target: d.cible || d.entree || 0 }, body: [] };
+  $('nom').value = d.nom;
+  const r = await fetch('/api/script-source?i=' + i);
+  let msg = '', etat = 'ok';
+  if (r.status !== 200) {
+    editable = false; lecture = { texte: '', octets: d.code.length };
+    couvrir('Texte source absent de la carte SD',
+      'Ce script tourne sur le module, mais son texte n’a pas été retrouvé sur la carte SD : il ne peut pas être dessiné. '
+      + 'Vous pouvez le réécrire ici en repartant d’un schéma vide.');
+    msg = 'Chargé : ' + d.code.length + ' octets, sans texte source.'; etat = 'ko';
+  } else {
+    const texte = await r.text();
+    try {
+      doc.body = S.parse(texte);
+      msg = 'Chargé : ' + d.code.length + ' octets.';
+      arret = blocDuDernierArret(d);
+    } catch (e) {
+      if (!(e instanceof S.Unsupported)) throw e;
+      editable = false; lecture = { texte: texte, octets: d.code.length };
+      couvrir('Ce script s’écrit en mode texte',
+        'Il utilise une tournure que le schéma ne sait pas dessiner (ligne ' + e.line + ' : ' + e.message + '). '
+        + 'Il reste entièrement modifiable dans l’éditeur texte. Repartir d’un schéma vide remplacera le script à l’enregistrement.');
+      msg = 'Chargé en lecture : ce script ne se dessine pas.'; etat = 'ko';
+    }
+  }
+  if (d.dernierArret) {
+    msg += ' Dernier arrêt : ' + d.dernierArret + (d.dernierArretDetail ? ' — ' + d.dernierArretDetail : '')
+      + (arret ? ' (bloc entouré en rouge).' : '.');
+    etat = 'err';
+  }
+  setDirty(false);
+  refresh(true);
+  if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
+  requestAnimationFrame(fit);
+  dire(msg, etat);
+}
+
+// Meme principe que ligneDeLaPosition() de scripts.html : le compilateur est
+// deterministe, donc le texte regenere redonne le bytecode qui a tourne --
+// sauf si sa taille differe, auquel cas on ne montre rien plutot qu'un
+// bloc faux.
+function blocDuDernierArret(d) {
+  if (!d.dernierArretDetail || typeof d.dernierArretPc !== 'number') return null;
+  const g = S.generate(doc.body, NAMES);
+  let code;
+  try { code = AquaScript.compile(g.text); } catch (e) { return null; }
+  if (code.length !== d.code.length || !code.lineMap) return null;
+  let best = null;
+  code.lineMap.forEach((pt) => { if (pt.pc <= d.dernierArretPc && (!best || pt.pc > best.pc)) best = pt; });
+  return best && g.lines[best.line - 1] ? g.lines[best.line - 1].id : null;
+}
+
+// ── Module : ecriture (signee, comme dans scripts.html) ───────────────
+function secret() {
+  let s = null;
+  try { s = localStorage.getItem('aqualook-secret'); } catch (e) {}
+  if (!s) {
+    s = prompt('Secret d’authentification du module (12 caractères minimum) :');
+    if (s) { try { localStorage.setItem('aqualook-secret', s); } catch (e) {} }
+  }
+  return s;
+}
+function oublierSecret() {
+  try { localStorage.removeItem('aqualook-secret'); } catch (e) {}
+  dire('Secret oublié sur cet appareil. Il reste en place sur le module.', '');
+}
+async function prochainNonce() {
+  const d = await (await fetch('/api/auth/state')).json();
+  NONCE = Math.max(NONCE, d.nonce || 0) + 1;
+  return { nonce: NONCE, configure: d.configure };
+}
+async function signer(canonique) {
+  const s = secret();
+  return s ? AquaHmac.hmacSha256Hex(s, canonique) : null;
+}
+async function definirSecret() {
+  const actuel = prompt('Secret ACTUEL (laisser vide si le module n’en a pas encore) :') || '';
+  const nouveau = prompt('NOUVEAU secret (12 caractères minimum) :');
+  if (!nouveau) return;
+  const r = await fetch('/api/auth-secret', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actuel: actuel, nouveau: nouveau })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    try { localStorage.setItem('aqualook-secret', nouveau); } catch (e) {}
+    dire('Secret enregistré sur le module et retenu sur cet appareil.', 'ok');
+  } else dire('Refusé : ' + (d.error || ''), 'ko');
+}
+
+async function enregistrer() {
+  if (!editable) { dire('Ce script ne se dessine pas : modifiez-le dans l’éditeur texte, ou repartez d’un schéma vide.', 'ko'); return; }
+  const g = S.generate(doc.body, NAMES);
+  let code;
+  try { code = AquaScript.compile(g.text); }
+  catch (e) { dire('Compilation impossible : ' + e.message + (e.line ? ' (ligne ' + e.line + ')' : ''), 'err'); return; }
+  if (code.length > TAILLE_MAX) { dire('Script trop long : ' + code.length + ' octets pour ' + TAILLE_MAX + ' au plus. Retirez des blocs.', 'err'); return; }
+  if (doc.trigger.t && !doc.trigger.target) { dire('Choisissez ce qui déclenche le script dans le bloc « Départ ».', 'ko'); choisir('start'); return; }
+  const i = slot();
+  const etat = await prochainNonce();
+  if (!etat.configure) { dire('Le module n’a pas encore de secret : cliquez « Secret » (panneau de droite, aucun bloc sélectionné) pour en poser un.', 'ko'); return; }
+  const hex = code.map((b) => b.toString(16).padStart(2, '0')).join('');
+  const sig = await signer('script-save|' + i + '|' + etat.nonce + '|' + hex);
+  if (!sig) { dire('Secret requis pour enregistrer.', 'ko'); return; }
+  const r = await fetch('/api/script-save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      i: i, nom: $('nom').value || 'Sans nom', actif: doc.actif,
+      declencheur: doc.trigger.t, cible: doc.trigger.target || 0,
+      code: code, source: g.text, nonce: etat.nonce, sig: sig
+    })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    setDirty(false); arret = null; markSel();
+    dire('Enregistré : ' + d.octets + ' octets acceptés par le module.', 'ok');
+    await listeSlots();
+  } else {
+    dire('Refusé par le module : ' + (d.error || 'raison inconnue') + '. Le script précédent est intact.', 'ko');
+  }
+}
+
+async function lancer() {
+  if (dirty && !confirm('Le schéma n’est pas enregistré : le module lancera la version enregistrée. Continuer ?')) return;
+  const i = slot();
+  const etat = await prochainNonce();
+  const sig = await signer('script-run|' + i + '|' + etat.nonce);
+  if (!sig) { dire('Secret requis pour lancer.', 'ko'); return; }
+  const r = await fetch('/api/script-run', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
+  });
+  const d = await r.json();
+  dire(d.ok ? 'Lancé. Le journal du module dira ce qu’il a fait.' : ('Non lancé : ' + (d.error || '')), d.ok ? 'ok' : 'ko');
+}
+
+async function effacer() {
+  const i = slot();
+  if (!confirm('Effacer le script ' + (i + 1) + ' du module ?')) return;
+  const etat = await prochainNonce();
+  const sig = await signer('script-erase|' + i + '|' + etat.nonce);
+  if (!sig) { dire('Secret requis pour effacer.', 'ko'); return; }
+  const r = await fetch('/api/script-erase', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
+  });
+  const d = await r.json();
+  await listeSlots();
+  if (d.ok) await charger();
+  dire(d.ok ? 'Effacé.' : ('Échec : ' + (d.error || '')), d.ok ? 'ok' : 'ko');
+}
+
+// ── Barre du haut et clavier ───────────────────────────────────────────
+let slotAvant = null;
+$('slot').addEventListener('focus', () => { slotAvant = $('slot').value; });
+$('slot').addEventListener('change', () => {
+  if (dirty && !confirm('Le schéma en cours n’est pas enregistré. Changer d’emplacement quand même ?')) {
+    $('slot').value = slotAvant; return;
+  }
+  history.replaceState(null, '', '?i=' + slot());
+  charger().catch(() => dire('Module injoignable.', 'err'));
+});
+$('nom').addEventListener('input', () => { doc.nom = $('nom').value; setDirty(true); });
+$('b-save').onclick = enregistrer;
+$('b-lancer').onclick = lancer;
+$('b-undo').onclick = doUndo;
+$('cover-vide').onclick = () => {
+  pushUndo(); doc.body = []; editable = true; lecture = null; couvrir(''); setDirty(true); refresh(true);
+  dire('Schéma vide : le texte actuel du module sera remplacé à l’enregistrement.', 'ko');
+};
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('keydown', (e) => {
+  const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if (e.key === 'Escape') { closeMenu(); choisir(null); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) { e.preventDefault(); doUndo(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && sel && sel !== 'start') { e.preventDefault(); removeSel(); }
+});
+document.addEventListener('pointerdown', (e) => { if (menuEl && !menuEl.contains(e.target) && !e.target.closest('.plus')) closeMenu(); });
+
+(async function () {
+  await lireModule();
+  try { await listeSlots(); }
+  catch (e) { dire('Module injoignable : la liste des scripts n’a pas pu être lue.', 'err'); return; }
+  const demande = new URLSearchParams(location.search).get('i');
+  if (demande !== null && $('slot').querySelector('option[value="' + parseInt(demande, 10) + '"]')) $('slot').value = String(parseInt(demande, 10));
+  await charger();
+})().catch(() => dire('Module injoignable.', 'err'));
+</script>
+</body></html>
