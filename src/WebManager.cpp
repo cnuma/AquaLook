@@ -2098,7 +2098,7 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
     // regle.
     bool sourceSaved = false;
     const char* source = doc["source"] | "";
-    if (_storage && _storage->isSdAvailable() && source[0] != ' ') {
+    if (_storage && _storage->isSdAvailable() && source[0] != '\0') {
         // openWrite cree deja le repertoire parent si besoin.
         char path[32];
         snprintf(path, sizeof(path), "/scripts/s%u.txt", (unsigned)index);
