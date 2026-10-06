@@ -800,3 +800,25 @@ section precedente (bouton "Acquitter" sans resume, traitee le meme jour
 avec un mecanisme complementaire : `FaultManager::lastErrorMessage()`
 couvre les erreurs sans `FaultId` structure, que la decomposition du
 masque seule ne pouvait pas voir).
+
+### Espace en ligne (`app.html`) : une suppression de créneau en attente est invisible
+
+**À faire.** Demande utilisateur du 6 octobre 2026.
+
+La grille du planning montre en ambre les créneaux **ajoutés ou modifiés**
+qui attendent la prochaine synchronisation. Elle ne montre pas les créneaux
+**supprimés** (décochés) qui l'attendent aussi. Si l'on ne fait que
+supprimer, rien n'apparaît en attente, et l'on peut croire que la demande
+n'est pas partie.
+
+Cause relevée dans le code : `celluleJour()` saute tout créneau dont l'état
+effectif est inactif (`if (!c.effectif.on) continue;`), avant même de
+regarder `c.attente`. Or `creneau()` sait déjà qu'un tel créneau est en
+attente (actif sur le module, inactif dans la commande).
+
+Attendu : dans la grille, afficher un créneau dont la suppression est en
+attente, barré et en ambre (horaire du module, `c.module`), avec la même
+légende « en attente de synchronisation ». La fenêtre de détail
+(`ouvrirJour()`) affiche déjà la ligne décochée avec son badge ; vérifier
+qu'elle reste cohérente. Le même contrôle vaudra pour l'effacement d'un
+script depuis l'espace en ligne (décision D014).
