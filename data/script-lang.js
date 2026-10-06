@@ -25,6 +25,7 @@
 //   message <code>                   -- une ligne dans le journal
 //   notifier <code>                  -- une vraie notification, si configuree
 //   lancer script <n>                -- demarre le script n (1..6) en parallele
+//   parallele ... avec ... finparallele  -- deux branches qui partent ensemble
 //   <var> = <expr>
 //
 //   Expressions : nombres, variables a..h, entree(<id>), zoneactive(<id>),
@@ -44,7 +45,8 @@
     AND: 38, OR: 39, NOT: 40,
     JMP: 48, JZ: 49, JNZ: 50,
     READ_INPUT: 64, ZONE_ACTIVE: 65, ZONE_REMAIN: 66,
-    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83
+    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83,
+    FORK: 84, JOIN: 85, ENDBRANCH: 86
   };
 
   const ACTION = {
@@ -100,6 +102,9 @@
     // sur le module (voir majSuggestions()/surlignerLigne() dans
     // scripts.html) ; le module, lui, ne voit jamais cette table.
     const stmtLines = [];
+    // Un seul bloc « parallele » a la fois : la machine ne garde qu'un retour
+    // pour le cas ou elle doit faire la branche 2 elle-meme (ScriptVm FORK).
+    let inParallel = false;
 
     const peek = () => toks[i].v;
     const line = () => toks[i].line;
@@ -233,6 +238,32 @@
           patch(toElse, out.length);
         }
         expect('finsi');
+        return;
+      }
+
+      // parallele <branche 1> avec <branche 2> finparallele
+      // Les deux branches partent ensemble ; la suite attend qu'elles soient
+      // finies toutes les deux. Forme compilee : FORK Lb ; [1] ; JOIN ;
+      // JMP fin ; Lb: [2] ; ENDBRANCH ; fin:
+      if (word === 'parallele' || word === 'parallèle') {
+        if (inParallel) {
+          throw new CompileError('un bloc « parallele » ne peut pas en contenir un autre', line());
+        }
+        next();
+        inParallel = true;
+        emit(OP.FORK);
+        const toBranch2 = out.length;
+        emitU16(0);
+        block(['avec']);
+        expect('avec');
+        emit(OP.JOIN);
+        const toEnd = emitJump(OP.JMP);
+        patch(toBranch2, out.length);
+        block(['finparallele', 'finparallèle']);
+        expect(['finparallele', 'finparallèle']);
+        emit(OP.ENDBRANCH);
+        patch(toEnd, out.length);
+        inParallel = false;
         return;
       }
 

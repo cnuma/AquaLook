@@ -141,6 +141,8 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   border:1.5px solid var(--line);background:var(--bg1)}
 .chip.oui{color:var(--green);border-color:var(--green)}
 .chip.non{color:var(--red);border-color:var(--red)}
+.chip.par{color:#0f7b7b;border-color:#0f7b7b}
+.chip.join{margin-top:-1px}
 .loop{position:relative;display:flex;flex-direction:column;align-items:center;border:1.5px dashed var(--purple);
   border-radius:14px;padding:0 20px 10px;background:rgba(102,51,204,.05)}
 .loop>.node{margin-top:-1px}
@@ -221,6 +223,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
   <symbol id="i-run" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+  <symbol id="i-par" viewBox="0 0 24 24"><path d="M8 4v15M16 4v15M5 16l3 3 3-3M13 16l3 3 3-3"/></symbol>
 </svg>
 
 <div class="app">
@@ -300,7 +303,7 @@ const ico = (id) => '<svg class="ic"><use href="#' + id + '"/></svg>';
 // Memes valeurs que ScriptStore::TRIGGER_* cote firmware.
 const TRIG = {1:"le changement d'une entrée", 2:"le démarrage d'une zone", 3:"l'arrêt d'une zone", 0:'rien (lancement manuel)'};
 const PALETTE = [['Arrosage',['arroser','arreter','suspendre','reprendre']],['Temps',['attendre']],
-  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']],['Scripts',['lancer']]];
+  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']],['Scripts',['lancer','parallele']]];
 
 // Ce que CE module offre (memes sources que scripts.html).
 let ZONES = [], ENTREES = [], BIBLIO = [];
@@ -387,6 +390,7 @@ function subOf(n) {
     case 'attendre': return S.duree(n.sec);
     case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
     case 'lancer': return scriptNom(n.script) + ' · en parallèle';
+    case 'parallele': return 'les deux branches partent ensemble';
     case 'repeter': return n.n + ' fois';
     case 'tantque': return condLabel(n.cond);
   }
@@ -454,6 +458,25 @@ function nodeEl(n) {
       br.appendChild(b);
     });
     w.appendChild(br);
+    return w;
+  }
+  if (n.t === 'parallele') {
+    // Meme dessin que « Si » (deux colonnes qui se rejoignent), mais les deux
+    // colonnes s'executent ENSEMBLE, et la suite attend la fin des deux.
+    const w = document.createElement('div'); w.className = 'ifblk';
+    w.appendChild(boxEl(n));
+    const pl = document.createElement('div'); pl.className = 'link plain'; w.appendChild(pl);
+    const br = document.createElement('div'); br.className = 'branches';
+    [['a', 'Branche 1'], ['b', 'Branche 2']].forEach(([k, lab]) => {
+      const b = document.createElement('div'); b.className = 'branch';
+      b.innerHTML = '<div class="chip par">' + lab + '</div>';
+      b.appendChild(seq(n[k]));
+      const g = document.createElement('div'); g.className = 'grow'; b.appendChild(g);
+      br.appendChild(b);
+    });
+    w.appendChild(br);
+    const fin = document.createElement('div'); fin.className = 'chip par join'; fin.textContent = 'attend les deux';
+    w.appendChild(fin);
     return w;
   }
   if (n.t === 'repeter' || n.t === 'tantque') {
@@ -582,6 +605,12 @@ function renderProps() {
     warnings(n).forEach((w) => { h += '<div class="alert">' + esc(w) + '</div>'; });
     if ('zone' in n) h += '<div class="f"><label for="p-z">Zone</label><select id="p-z" data-f="zone">' + zoneOpts(n.zone) + '</select></div>';
     if ('sec' in n) h += dureeField(n.sec);
+    if (n.t === 'parallele') {
+      h += '<div class="hint">Les blocs de la <b>branche 1</b> et de la <b>branche 2</b> partent en même temps ; '
+        + 'la suite du script attend que les deux soient finies. Les deux branches occupent deux des '
+        + SIMULT + ' places du module : s’il n’en reste qu’une, la branche 2 s’exécute après la branche 1, '
+        + 'et le journal le signale.</div>';
+    }
     if (n.t === 'lancer') {
       h += '<div class="f"><label for="p-s">Script à lancer</label><select id="p-s" data-f="script">'
         + SLOTS.filter((x) => x.i !== slot()).map((x) => '<option value="' + (x.i + 1) + '"' + (x.i + 1 === n.script ? ' selected' : '') + '>'
@@ -664,9 +693,31 @@ function wireProps(p) {
 function refresh(props) { renderCanvas(); renderCode(); markSel(); if (props) renderProps(); }
 
 // ── Insertion, deplacement, suppression ────────────────────────────────
+// Toutes les listes situees, a n'importe quelle profondeur, dans un bloc
+// « En parallele ».
+function parallelLists(list, acc, dedans) {
+  list = list || doc.body; acc = acc || [];
+  list.forEach((n) => {
+    const d = dedans || n.t === 'parallele';
+    S.childKeys(n).forEach((k) => { if (d) acc.push(n[k]); parallelLists(n[k], acc, d); });
+  });
+  return acc;
+}
+function contientParallele(n) {
+  return n.t === 'parallele' || S.childKeys(n).some((k) => n[k].some(contientParallele));
+}
 function insertAt(lid, idx, what) {
   if (!editable) return;
   const list = listById(lid); if (!list || !what) return;
+  // Pas de bloc « En parallele » dans un autre : le module ne sait pas les
+  // imbriquer (une seule branche de repli par machine, voir ScriptVm FORK).
+  const versParallele = parallelLists().indexOf(list) >= 0;
+  const apporteParallele = what === 'new:parallele'
+    || (what.indexOf('move:') === 0 && find(what.slice(5)) && contientParallele(find(what.slice(5)).node));
+  if (versParallele && apporteParallele) {
+    dire('Un bloc « En parallèle » ne peut pas en contenir un autre.', 'ko');
+    return;
+  }
   if (what.indexOf('new:') === 0) {
     pushUndo();
     const autre = SLOTS.find((x) => x.i !== slot() && x.utilise && x.actif) || SLOTS.find((x) => x.i !== slot()) || { i: 0 };
@@ -829,6 +880,11 @@ async function essai() {
         case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
         case 'message': log('Journal : « ' + phraseNom(n.code) + ' »'); break;
         case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
+        case 'parallele':
+          log('Les deux branches partent ensemble');
+          await Promise.all([exec(n.a), exec(n.b)]);
+          log('Les deux branches sont finies : la suite reprend');
+          break;
         case 'si': { const r = evalCond(n.cond); log(condLabel(n.cond) + ' ? ' + (r ? 'oui' : 'non')); await exec(r ? n.oui : n.non); break; }
         case 'repeter': for (let k = 1; k <= n.n && !stopReq; k++) { log('Tour ' + k + ' sur ' + n.n); await exec(n.body); } break;
         case 'tantque': {

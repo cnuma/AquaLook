@@ -271,7 +271,8 @@ const COMMANDES = [
     ['notifier 900', 'notifier <code>', 'Envoie une vraie notification (si elle est configurée)']
   ]],
   ['Scripts', [
-    ['lancer script 2', 'lancer script <n>', 'Démarre le script n (1 à 6) en parallèle ; celui-ci continue']
+    ['lancer script 2', 'lancer script <n>', 'Démarre le script n (1 à 6) en parallèle ; celui-ci continue'],
+    ['parallele\n  \navec\n  \nfinparallele', 'parallele … avec …', 'Deux branches qui partent ensemble ; la suite attend les deux']
   ]],
   ['Lire l’état', [
     ['entree(100)', 'entree(<id>)', 'Valeur stabilisée d’une entrée : 0 ou 1'],
@@ -628,6 +629,9 @@ const STATEMENT_DEBUT = [
   { ins: 'message ', label: 'message', aide: 'Trace dans le journal du module' },
   { ins: 'notifier ', label: 'notifier', aide: 'Notification sur le téléphone' },
   { ins: 'lancer script ', label: 'lancer', aide: 'Démarre un autre script, en parallèle' },
+  { ins: 'parallele', label: 'parallele', aide: 'Deux branches qui partent ensemble' },
+  { ins: 'avec', label: 'avec', aide: 'Dans « parallele », la branche 2' },
+  { ins: 'finparallele', label: 'finparallele', aide: 'Referme un « parallele »' },
   { ins: 'sinon', label: 'sinon', aide: 'Dans un « si », l’autre cas' },
   { ins: 'finsi', label: 'finsi', aide: 'Referme un « si »' },
   { ins: 'fintantque', label: 'fintantque', aide: 'Referme un « tantque »' },
@@ -844,7 +848,7 @@ function compiler() {
 const VOCAB_MOTSCLES = ['si', 'alors', 'sinon', 'finsi', 'tantque', 'faire', 'fintantque',
   'pour', 'de', 'à', 'finpour', 'attendre', 'demarrer', 'arreter', 'suspendre', 'reprendre',
   'pendant', 'zone', 'message', 'notifier', 'entree', 'zoneactive', 'reste', 'et', 'ou', 'non',
-  'lancer', 'script'];
+  'lancer', 'script', 'parallele', 'avec', 'finparallele'];
 
 function distanceLevenshtein(a, b) {
   const m = a.length, n = b.length;

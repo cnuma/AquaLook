@@ -37,7 +37,8 @@
     tantque:   { label: 'Tant que',         cat: 'boucle',  icon: 'i-loop',   desc: 'Refait les blocs tant qu’une condition est vraie' },
     notifier:  { label: 'Notifier',         cat: 'info',    icon: 'i-bell',   desc: 'Envoie une notification au téléphone' },
     message:   { label: 'Noter au journal', cat: 'info',    icon: 'i-note',   desc: 'Ajoute une ligne au journal du module' },
-    lancer:    { label: 'Lancer un script', cat: 'script',  icon: 'i-run',    desc: 'Démarre un autre script, qui tourne en parallèle' }
+    lancer:    { label: 'Lancer un script', cat: 'script',  icon: 'i-run',    desc: 'Démarre un autre script, qui tourne en parallèle' },
+    parallele: { label: 'En parallèle',     cat: 'script',  icon: 'i-par',    desc: 'Deux suites de blocs qui partent ensemble' }
   };
 
   const VARS = 'abcdefgh';
@@ -59,6 +60,7 @@
       case 'attendre': n.sec = 300; break;
       case 'notifier': case 'message': n.code = c; break;
       case 'lancer': n.script = ctx && ctx.scriptNo ? ctx.scriptNo : 1; break;
+      case 'parallele': n.a = []; n.b = []; break;
       case 'si': n.cond = { op: 'et', terms: [{ k: 'entree', id: e, v: 1 }] }; n.oui = []; n.non = []; break;
       case 'repeter': n.n = 3; n.body = []; break;
       case 'tantque': n.cond = { op: 'et', terms: [{ k: 'zoneactive', id: z, v: 1 }] }; n.body = []; break;
@@ -68,6 +70,7 @@
 
   function childKeys(n) {
     if (n.t === 'si') return ['oui', 'non'];
+    if (n.t === 'parallele') return ['a', 'b'];
     if (n.t === 'repeter' || n.t === 'tantque') return ['body'];
     return [];
   }
@@ -148,6 +151,13 @@
             walk(n.body, d + 1, loopDepth + 1);
             add(d, 'finpour', n.id);
             break;
+          case 'parallele':
+            add(d, 'parallele   # les deux branches partent ensemble', n.id);
+            walk(n.a, d + 1, loopDepth);
+            add(d, 'avec', n.id);
+            walk(n.b, d + 1, loopDepth);
+            add(d, 'finparallele   # attend la fin des deux branches', n.id);
+            break;
           case 'tantque':
             add(d, 'tantque ' + condCode(n.cond) + ' faire', n.id);
             walk(n.body, d + 1, loopDepth);
@@ -186,6 +196,7 @@
   function parse(text) {
     const toks = tokenize(text);
     const loopVars = [];
+    let inParallel = false;
     let i = 0;
     const peek = function () { return toks[i].low; };
     const line = function () { return toks[i].line; };
@@ -271,6 +282,18 @@
         n.oui = block(['sinon', 'finsi']);
         if (peek() === 'sinon') { next(); n.non = block(['finsi']); }
         expect('finsi');
+        return n;
+      }
+      if (w === 'parallele' || w === 'parallèle') {
+        if (inParallel) throw new Unsupported('bloc « parallele » dans un autre', ln);
+        next();
+        inParallel = true;
+        const n = { id: newId(), t: 'parallele', a: [], b: [] };
+        n.a = block(['avec']);
+        expect('avec');
+        n.b = block(['finparallele', 'finparallèle']);
+        expect(['finparallele', 'finparallèle']);
+        inParallel = false;
         return n;
       }
       if (w === 'tantque') {

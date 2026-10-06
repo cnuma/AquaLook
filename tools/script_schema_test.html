@@ -61,6 +61,26 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   try{ AquaScript.compile('lancer script 7'); ok(false,'lancer script 7 accepte a tort'); }
   catch(e){ ok(e.line===1,'lancer script 7 refuse a la compilation : '+e.message); }
 }
+// 2d. bloc « En parallele » (6 oct. 2026)
+{
+  const p=mk('parallele'); const z1=mk('arroser'); z1.zone=1; z1.sec=60; const z2=mk('arroser'); z2.zone=2; z2.sec=60;
+  p.a=[z1]; p.b=[z2];
+  const g=S.generate([p,mk('notifier')],names).text;
+  ok(/^parallele/.test(g) && /\navec/.test(g) && /\nfinparallele/.test(g),'texte : parallele / avec / finparallele');
+  const c=AquaScript.compile(g);
+  // FORK Lb ; [1] ; JOIN ; JMP fin ; Lb: [2] ; ENDBRANCH ; fin:
+  const lb=c[1]|(c[2]<<8);
+  ok(c[0]===84,'bytecode : commence par FORK');
+  ok(c[lb-4]===85 && c[lb-3]===48,'bytecode : JOIN puis JMP juste avant la branche 2');
+  const fin=c[lb-2]|(c[lb-1]<<8);
+  ok(c[fin-1]===86,'bytecode : ENDBRANCH juste avant la fin du bloc');
+  rt([p,mk('notifier')],'parallele + suite');
+  const vide=mk('parallele'); rt([vide],'parallele vide');
+  try{ AquaScript.compile('parallele\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'parallele imbrique accepte a tort'); }
+  catch(e){ ok(e.line===2,'parallele imbrique refuse a la compilation (L'+e.line+')'); }
+  try{ S.parse('parallele\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'parallele imbrique relu a tort'); }
+  catch(e){ ok(e instanceof S.Unsupported,'parallele imbrique refuse a la relecture'); }
+}
 // 3. refus attendus
 const ko={
  'variable':'a = 3\nattendre a',
