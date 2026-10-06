@@ -53,7 +53,7 @@
     const c = ctx && ctx.code ? ctx.code : 900;
     const n = { id: newId(), t: t };
     switch (t) {
-      case 'arroser': n.zone = z; n.sec = 600; break;
+      case 'arroser': n.zone = z; n.sec = 600; n.attente = true; break;
       case 'arreter': case 'suspendre': case 'reprendre': n.zone = z; break;
       case 'attendre': n.sec = 300; break;
       case 'notifier': case 'message': n.code = c; break;
@@ -108,6 +108,18 @@
         switch (n.t) {
           case 'arroser':
             add(d, 'demarrer zone ' + n.zone + ' pendant ' + n.sec + '   # ' + names.zone(n.zone) + ', ' + duree(n.sec), n.id);
+            // « demarrer » ouvre la vanne et passe aussitot a la suite. Un
+            // jardinier lit « Arroser » comme « arroser, PUIS continuer » :
+            // sans cette attente, un « Repeter 3 fois » ouvrait trois fois la
+            // zone en quelques secondes (constate sur .141 le 6 oct. 2026).
+            // reste() vaut 0 des que l'arrosage est fini ou arrete, et garde
+            // le reliquat d'une zone suspendue : c'est plus juste qu'un
+            // « attendre <duree> », qu'une suspension decalerait.
+            if (n.attente) {
+              add(d, 'tantque reste(' + n.zone + ') > 0 faire   # attend la fin de l’arrosage', n.id);
+              add(d + 1, 'attendre 1', n.id);
+              add(d, 'fintantque', n.id);
+            }
             break;
           case 'arreter': case 'suspendre': case 'reprendre':
             add(d, n.t + ' zone ' + n.zone + '   # ' + names.zone(n.zone), n.id);
@@ -195,6 +207,18 @@
       }
     }
 
+    // L'attente de fin d'arrosage que generate() ecrit apres un « demarrer »,
+    // reconnue mot pour mot et sur la MEME zone : toute autre boucle reste
+    // une boucle « Tant que » (ou est refusee, reste() n'etant pas dessinable).
+    function attenteFin(zone) {
+      const motif = ['tantque', 'reste', '(', String(zone), ')', '>', '0', 'faire', 'attendre', '1', 'fintantque'];
+      for (let k = 0; k < motif.length; k++) {
+        if (!toks[i + k] || toks[i + k].low !== motif[k]) return false;
+      }
+      i += motif.length;
+      return true;
+    }
+
     // Une condition = des termes « entree(n) / zoneactive(n) » valant 0 ou
     // 1, joints par un seul et meme mot (« et » ou « ou »).
     function term() {
@@ -279,8 +303,9 @@
         next(); expect('zone');
         const zone = number();
         expect('pendant');
-        const n = { id: newId(), t: 'arroser', zone: zone, sec: number() };
+        const n = { id: newId(), t: 'arroser', zone: zone, sec: number(), attente: false };
         noArith();
+        n.attente = attenteFin(zone);
         return n;
       }
       if (ZONE_ACTIONS.indexOf(w) >= 0) {

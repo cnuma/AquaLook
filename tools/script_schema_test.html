@@ -39,6 +39,18 @@ const hand={
  'MAJ':'SI ENTREE(1) == 1 ALORS ARRETER ZONE 1 FINSI'
 };
 for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.generate(b,names); AquaScript.compile(g.text); AquaScript.compile(t); ok(true,'main '+k); rt(b,'main '+k);}catch(e){ok(false,'main '+k+': '+e.message+' L'+e.line);} }
+// 2b. attente de fin d'arrosage (6 oct. 2026 : « Repeter 3 fois » ouvrait la zone 3 fois en parallele)
+{
+  const a=mk('arroser'); ok(a.attente===true,'Arroser attend la fin par defaut');
+  const g=S.generate([a],names).text;
+  ok(/tantque reste\(1\) > 0 faire/.test(g),'attente ecrite avec reste()');
+  const r=mk('repeter'); const z=mk('arroser'); z.zone=2; z.sec=5; r.body=[mk('arreter'),z]; rt([r],'repeter + arroser avec attente');
+  const b=S.parse('demarrer zone 2 pendant 5\nattendre 5');
+  ok(b.length===2 && b[0].attente===false,'ancien script sans attente : 2 blocs, attente=false');
+  rt(b,'ancien script sans attente');
+  try{ S.parse('demarrer zone 1 pendant 5\ntantque reste(2) > 0 faire attendre 1 fintantque'); ok(false,'attente sur une autre zone acceptee a tort'); }
+  catch(e){ ok(e instanceof S.Unsupported,'attente sur une autre zone refusee : '+e.message); }
+}
 // 3. refus attendus
 const ko={
  'variable':'a = 3\nattendre a',

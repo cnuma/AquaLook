@@ -94,6 +94,8 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 @keyframes run{40%{box-shadow:0 0 0 9px var(--cat-dim);transform:scale(1.04)}}
 .warn{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--red);
   color:#fff;font:700 12px/20px var(--sans);text-align:center}
+.props label.check{display:flex;align-items:flex-start;gap:8px;font-weight:600;cursor:pointer}
+.props label.check input{width:auto;margin-top:2px}
 .start{border-left-width:1.5px;border-radius:24px;background:var(--green);color:#fff;padding:9px 18px;width:auto;min-width:236px;max-width:340px}
 .start .ico{background:rgba(255,255,255,.2);color:#fff}
 .start .eye{display:block;font:600 10.5px var(--mono);letter-spacing:.1em;opacity:.85}
@@ -363,7 +365,7 @@ function termLabel(t) {
 function condLabel(c) { return c.terms.map(termLabel).join(c.op === 'ou' ? ' ou ' : ' et '); }
 function subOf(n) {
   switch (n.t) {
-    case 'arroser': return zoneNom(n.zone) + ' · ' + S.duree(n.sec);
+    case 'arroser': return zoneNom(n.zone) + ' · ' + S.duree(n.sec) + (n.attente ? '' : ' · sans attendre');
     case 'arreter': case 'suspendre': case 'reprendre': return zoneNom(n.zone);
     case 'attendre': return S.duree(n.sec);
     case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
@@ -557,7 +559,14 @@ function renderProps() {
     if (n.cond) h += condFields(n.cond);
     if (n.t === 'si') h += '<div class="hint">Les blocs sous <b>Oui</b> s’exécutent si la condition est vraie, ceux sous <b>Non</b> sinon. Une branche peut rester vide.</div>';
     if (n.t === 'attendre') h += '<div class="hint">Pendant l’attente, le module continue de piloter les autres zones et l’écran.</div>';
-    if (n.t === 'arroser') h += '<div class="hint">La zone s’ouvre et le script continue aussitôt : ajoutez « Attendre » pour enchaîner après la fin de l’arrosage.</div>';
+    if (n.t === 'arroser') {
+      h += '<div class="f"><label class="check"><input type="checkbox" id="p-att" data-f="attente"' + (n.attente ? ' checked' : '')
+        + '> Attendre la fin de l’arrosage avant le bloc suivant</label></div>'
+        + '<div class="hint">' + (n.attente
+          ? 'Le bloc suivant part quand la zone a fini d’arroser, même si elle a été suspendue entre-temps.'
+          : 'La zone s’ouvre et le script continue aussitôt : les blocs suivants se déroulent pendant l’arrosage.')
+        + '</div>';
+    }
     h += '<div class="acts"><button class="btn" id="p-dup">Dupliquer</button><button class="btn danger" id="p-del">Supprimer le bloc</button></div>';
   }
   p.innerHTML = h;
@@ -590,6 +599,7 @@ function wireProps(p) {
       }, true);
       else if (k === 'target') change(() => { doc.trigger.target = parseInt(f.value, 10) || 0; }, false);
       else if (k === 'actif') change(() => { doc.actif = f.value === '1'; }, true);
+      else if (k === 'attente') change(() => { n.attente = f.checked; }, true);
       else if (k === 'duree') change(() => {
         const v = Math.max(1, Math.round(parseFloat($('p-d').value) || 1));
         n.sec = Math.min(86400, v * parseInt($('p-u').value, 10));
@@ -761,7 +771,10 @@ async function essai() {
       if (stopReq) return;
       await flash(n.id);
       switch (n.t) {
-        case 'arroser': active.add(n.zone); log('Ouvre ' + zoneNom(n.zone) + ' pour ' + S.duree(n.sec)); break;
+        case 'arroser':
+          if (n.attente) log('Arrose ' + zoneNom(n.zone) + ' pendant ' + S.duree(n.sec) + ', puis continue');
+          else { active.add(n.zone); log('Ouvre ' + zoneNom(n.zone) + ' pour ' + S.duree(n.sec) + ' et continue sans attendre'); }
+          break;
         case 'arreter': active.delete(n.zone); log('Ferme ' + zoneNom(n.zone)); break;
         case 'suspendre': log('Met en pause ' + zoneNom(n.zone)); break;
         case 'reprendre': log('Relance ' + zoneNom(n.zone)); break;
