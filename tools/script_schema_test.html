@@ -1,0 +1,58 @@
+<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>
+<!-- Banc de l'editeur graphique des scripts (data/script-schema.js) :
+     generation -> compilation par script-lang.js, aller-retour texte ->
+     schema -> texte (texte et bytecode identiques), refus des tournures non
+     dessinables. Sans serveur ni module :
+       msedge --headless --allow-file-access-from-files --dump-dom tools/script_schema_test.html
+     La premiere ligne de la sortie vaut « TOUT OK » ou « ECHECS: n ». -->
+<script src="../data/script-lang.js"></script>
+<script src="../data/script-schema.js"></script>
+<script>
+const out=[];let fails=0;
+const ok=(c,m)=>{out.push((c?'OK   ':'FAIL ')+m); if(!c) fails++;};
+const names={zone:i=>'Zone'+i,input:i=>'E'+i,phrase:c=>'P'+c};
+const S=AquaSchema, mk=S.make;
+function rt(body,label){
+  const g1=S.generate(body,names); let c1;
+  try{c1=AquaScript.compile(g1.text);}catch(e){ok(false,label+' compile: '+e.message+' L'+e.line+'\n'+g1.text);return;}
+  ok(c1.length<=400,label+' taille '+c1.length+' octets');
+  let b2; try{b2=S.parse(g1.text);}catch(e){ok(false,label+' parse: '+e.message+' L'+e.line+'\n'+g1.text);return;}
+  const g2=S.generate(b2,names);
+  ok(g2.text===g1.text,label+' aller-retour identique'+(g2.text===g1.text?'':'\n'+g1.text+'---\n'+g2.text));
+  ok(JSON.stringify(AquaScript.compile(g2.text).slice())===JSON.stringify(c1.slice()),label+' bytecode identique');
+}
+// 1. arbres construits
+const si=mk('si',{}); si.cond={op:'et',terms:[{k:'entree',id:1,v:1}]};
+si.oui=[mk('suspendre'),mk('notifier')]; si.non=[mk('reprendre'),mk('message')];
+rt([si],'pluie');
+const rep=mk('repeter'); rep.body=[mk('arroser'),mk('attendre')]; rt([rep,mk('notifier')],'fractionne');
+const si2=mk('si'); si2.non=[mk('arroser')]; rt([si2],'oui vide');
+const tq=mk('tantque'); tq.cond={op:'ou',terms:[{k:'zoneactive',id:2,v:1},{k:'entree',id:3,v:0}]}; tq.body=[mk('attendre')];
+const r1=mk('repeter'),r2=mk('repeter'); r2.body=[mk('arroser'),mk('arreter')]; r1.body=[r2,tq]; rt([r1],'imbrique');
+rt([],'vide');
+// 2. textes ecrits a la main
+const hand={
+ 'nu':'si entree(1) alors\n arreter zone 2\nfinsi',
+ 'diff':'si entree(1) != 0 et non zoneactive(3) alors demarrer zone 1 pendant 90 finsi',
+ 'paren':'si (entree(2) == 0) ou (zoneactive(1)) alors message 5 sinon notifier 6 finsi # c',
+ 'pour a':'pour b de 1 a 4 faire attendre 10 finpour',
+ 'MAJ':'SI ENTREE(1) == 1 ALORS ARRETER ZONE 1 FINSI'
+};
+for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.generate(b,names); AquaScript.compile(g.text); AquaScript.compile(t); ok(true,'main '+k); rt(b,'main '+k);}catch(e){ok(false,'main '+k+': '+e.message+' L'+e.line);} }
+// 3. refus attendus
+const ko={
+ 'variable':'a = 3\nattendre a',
+ 'arith':'attendre 60 * 2',
+ 'reste':'si reste(1) > 10 alors arreter zone 1 finsi',
+ 'melange':'si entree(1) et entree(2) ou entree(3) alors arreter zone 1 finsi',
+ 'pour2':'pour a de 2 à 4 faire attendre 1 finpour',
+ 'reuse':'pour a de 1 à 2 faire\npour a de 1 à 3 faire attendre 1 finpour\nfinpour',
+ 'cmp2':'si entree(1) == 2 alors arreter zone 1 finsi',
+ 'manquant':'si entree(1) alors\narreter zone 1',
+ 'duree var':'demarrer zone 1 pendant b'
+};
+for(const [k,t] of Object.entries(ko)){ try{ S.parse(t); ok(false,'refus '+k+' : accepte a tort'); }catch(e){ ok(e instanceof S.Unsupported && e.line>0,'refus '+k+' -> L'+e.line+' '+e.message); } }
+ok(S.duree(600)==='10 min'&&S.duree(90)==='90 s'&&S.duree(5400)==='1 h 30 min'&&S.duree(7200)==='2 h','durees '+[600,90,5400,7200].map(S.duree).join(' | '));
+out.unshift(fails?('ECHECS: '+fails):'TOUT OK');
+document.getElementById('out').textContent=out.join('\n');
+</script>
