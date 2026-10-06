@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AquaLook - Scripts (schéma)</title>
-<link rel="stylesheet" href="/style-base.css">
+<link rel="stylesheet" href="style-base.css">
 <style>
 /* Editeur graphique des scripts. Plein ecran sur ordinateur : palette a
    gauche, schema au centre, reglages du bloc a droite, texte genere en bas.
@@ -225,6 +225,8 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   #nom{width:100%}
 }
 @media (prefers-reduced-motion:reduce){.node.run,.hexw.run{animation:none;outline:3px solid var(--cat)}}
+/* Espace en ligne (?module=) : rien ne se lance, pas de secret, pas d'editeur texte. */
+body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud #b-secret,body.cloud #b-oublier{display:none!important}
 </style></head><body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -324,9 +326,9 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   <div id="msgphrases"></div>
 </div></div>
 
-<script src="/hmac.js"></script>
-<script src="/script-lang.js"></script>
-<script src="/script-schema.js"></script>
+<script src="hmac.js"></script>
+<script src="script-lang.js"></script>
+<script src="script-schema.js"></script>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -346,6 +348,9 @@ let SLOTS = [], SIMULT = 2;
 // Limites de la bibliotheque de phrases, relues du module (/api/script-messages).
 let BIBLIO_MAX = 48, BIBLIO_LEN = 80;
 let TAILLE_MAX = 400, NONCE = 0;
+// Identifiant du module quand la page est servie par l'espace en ligne
+// (?module=<id>) ; null sur le module lui-meme. Voir « Mode espace en ligne ».
+const CLOUD = new URLSearchParams(location.search).get('module');
 const zoneNom = (id) => { const z = ZONES.find((o) => o.id === id); return z ? z.nom : 'Zone ' + id + ' (inconnue)'; };
 const entreeNom = (id) => { const e = ENTREES.find((o) => o.id === id); return e ? e.nom : 'Entrée ' + id + ' (inconnue)'; };
 const phraseNom = (c) => { const p = BIBLIO.find((o) => o.code === c); return p ? p.texte : 'code ' + c; };
@@ -1162,7 +1167,7 @@ $('slot').addEventListener('change', () => {
   if (dirty && !confirm('Le schéma en cours n’est pas enregistré. Changer d’emplacement quand même ?')) {
     $('slot').value = slotAvant; return;
   }
-  history.replaceState(null, '', '?i=' + slot());
+  history.replaceState(null, '', '?' + (CLOUD ? 'module=' + encodeURIComponent(CLOUD) + '&' : '') + 'i=' + slot());
   charger().catch(() => dire('Module injoignable.', 'err'));
 });
 $('nom').addEventListener('input', () => { doc.nom = $('nom').value; setDirty(true); });
@@ -1226,6 +1231,7 @@ $('ph-enregistrer').onclick = async () => {
     if (/[\t\r\n]/.test(t)) { direPhrases('Ligne ' + (k + 1) + ' : tabulation ou saut de ligne interdit.', 'ko'); return; }
     o.texte = t; o.id = o.code;
   }
+  if (CLOUD) { await envoyerPhrasesCloud(); return; }
   try {
     const etat = await prochainNonce();
     if (!etat.configure) { direPhrases('Le module n’a pas de secret : posez-en un (bouton « Secret ») avant d’enregistrer.', 'ko'); return; }
@@ -1264,13 +1270,179 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('pointerdown', (e) => { if (menuEl && !menuEl.contains(e.target) && !e.target.closest('.plus')) closeMenu(); });
 
+// ── Mode espace en ligne (decision D014) ───────────────────────────────
+// La meme page, servie par le serveur avec ?module=<id>. Lecture dans le
+// miroir que le module remonte a chaque changement ; ecriture par une
+// commande config.apply que le module appliquera -- ou refusera -- a sa
+// prochaine synchronisation : il reste seul juge. Pas de signature ni de
+// secret sur ce chemin, et rien ne se lance d'ici (pas de « Lancer »).
+// Une modification envoyee mais pas encore appliquee est AFFICHEE comme
+// telle, effacement compris : sinon rien ne dirait qu'elle est partie.
+let MIROIR = {}, CMDS = [];
+async function apiCloud(chemin, corps) {
+  const r = await fetch(chemin, corps
+    ? { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) }
+    : { credentials: 'same-origin' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || ('erreur ' + r.status));
+  return d;
+}
+// Derniere commande visant cette cible ('phrases' ou un emplacement) ; le
+// serveur les rend de la plus recente a la plus ancienne.
+function cmdPour(cible) {
+  return CMDS.find((c) => {
+    const k = c.command || {};
+    return cible === 'phrases' ? Array.isArray(k.phrases)
+      : (Array.isArray(k.scripts) && k.scripts[0] && k.scripts[0].i === cible);
+  }) || null;
+}
+const enAttente = (c) => !!c && c.state === 'pending';
+async function envoyerPhrasesCloud() {
+  try {
+    const d = await apiCloud('/app/module/phrases', { moduleId: CLOUD, phrases: BIBLIO.map((o) => ({ code: o.code, texte: o.texte })) });
+    biblioAvant = JSON.stringify(BIBLIO);
+    await lireModule();
+    direPhrases('Envoyé : le module l’appliquera à sa prochaine synchronisation'
+      + (d.remplace ? ', à la place de l’envoi précédent' : '') + '.', 'ok');
+    refresh(true);
+  } catch (e) { direPhrases('Non envoyé : ' + e.message + '.', 'ko'); }
+}
+if (CLOUD) {
+  document.body.classList.add('cloud');
+  document.querySelector('.brand').href = '/app.html';
+  $('msg').textContent = 'Lecture de l’espace en ligne…';
+
+  lireModule = async function () {
+    const d = await apiCloud('/app/module?moduleId=' + encodeURIComponent(CLOUD));
+    MIROIR = (d.config && d.config.payload) || {};
+    CMDS = d.commandes || [];
+    const sc = MIROIR.scripts || {};
+    ZONES = (MIROIR.zones || []).map((z, i) => ({ id: z.id || (i + 1), nom: z.name || ('Zone ' + (i + 1)) }));
+    ENTREES = (sc.entrees || []).map((e) => ({ id: e.id, nom: e.nom }));
+    const c = cmdPour('phrases');
+    // Phrases absentes du miroir = carte SD illisible : ne pas proposer de
+    // remplacer le catalogue par une liste vide.
+    const ph = sc.phrases;
+    const liste = enAttente(c) ? c.command.phrases : (ph ? ph.entries || [] : []);
+    BIBLIO = liste.map((o) => ({ id: o.code, code: o.code, texte: o.texte }));
+    if (ph) { BIBLIO_MAX = ph.max || BIBLIO_MAX; BIBLIO_LEN = ph.lenMax || BIBLIO_LEN; }
+    $('b-phrases').disabled = !ph;
+    $('b-phrases').textContent = enAttente(c) ? 'Phrases (en attente)' : 'Phrases';
+    renderSim();
+  };
+
+  listeSlots = async function () {
+    const sc = MIROIR.scripts;
+    if (!sc) throw new Error('ce module ne remonte pas encore ses scripts (firmware à mettre à jour)');
+    TAILLE_MAX = sc.tailleMax || TAILLE_MAX;
+    SIMULT = sc.simultanes || 2;
+    SLOTS = (sc.emplacements || []).map((s) => Object.assign({ utilise: s.nom !== undefined }, s));
+    const garde = $('slot').value;
+    $('slot').innerHTML = SLOTS.map((s) => {
+      const nom = !s.utilise ? 'vide' : (s.nom + (s.actif ? '' : ' — inactif'));
+      return '<option value="' + s.i + '">' + (s.i + 1) + ' — ' + esc(nom)
+        + (enAttente(cmdPour(s.i)) ? ' (en attente)' : '') + '</option>';
+    }).join('');
+    if (garde !== '') $('slot').value = garde;
+  };
+
+  charger = async function () {
+    const i = slot();
+    sel = null; undo = []; $('b-undo').disabled = true; arret = null;
+    editable = true; lecture = null; couvrir('');
+    const s = SLOTS.find((x) => x.i === i) || { i: i, utilise: false };
+    const c = cmdPour(i);
+    const p = enAttente(c) ? c.command.scripts[0] : null;
+    let note = '', etat = '';
+    if (p && p.efface) note = ' Effacement envoyé, en attente de synchronisation.';
+    else if (p) note = ' Modification envoyée, en attente de synchronisation : c’est elle qui est affichée.';
+    else if (c && c.state === 'refused') {
+      note = ' Dernier envoi refusé par le module : ' + ((c.result || {}).detail || 'raison inconnue') + '.';
+      etat = 'err';
+    }
+    const src = p ? (p.efface ? null : p) : (s.utilise ? s : null);
+    if (!src) {
+      doc = { nom: '', actif: true, trigger: { t: 0, target: 0 }, body: [] };
+      $('nom').value = '';
+      setDirty(false); refresh(true); fit();
+      dire('Emplacement ' + (i + 1) + ' vide : construisez le script à partir du bloc « Départ ».' + note, etat);
+      return;
+    }
+    doc = { nom: src.nom, actif: !!src.actif, trigger: { t: src.declencheur, target: src.cible || 0 }, body: [] };
+    $('nom').value = src.nom;
+    const octets = p ? p.code.length / 2 : (s.octets || 0);
+    let msg;
+    if (typeof src.source !== 'string' || !src.source) {
+      editable = false; lecture = { texte: '', octets: octets };
+      couvrir('Texte source indisponible', s.sourceTropLongue
+        ? 'Le texte de ce script est trop long pour être édité en ligne. Il reste modifiable sur le réseau local.'
+        : (MIROIR.scripts.sd === false
+          ? 'La carte SD du module est illisible : le texte de ce script n’a pas pu être lu.'
+          : 'Ce script tourne sur le module, mais son texte n’a pas été retrouvé sur la carte SD. Vous pouvez le réécrire ici en repartant d’un schéma vide.'));
+      msg = 'Chargé : ' + octets + ' octets, sans texte source.'; etat = etat || 'ko';
+    } else {
+      try {
+        doc.body = S.parse(src.source);
+        msg = 'Chargé : ' + octets + ' octets.'; etat = etat || 'ok';
+      } catch (e) {
+        if (!(e instanceof S.Unsupported)) throw e;
+        editable = false; lecture = { texte: src.source, octets: octets };
+        couvrir('Ce script s’écrit en mode texte',
+          'Il utilise une tournure que le schéma ne sait pas dessiner (ligne ' + e.line + ' : ' + e.message + '). '
+          + 'Il se modifie dans l’éditeur texte du module, sur le réseau local. Repartir d’un schéma vide remplacera le script à l’enregistrement.');
+        msg = 'Chargé en lecture : ce script ne se dessine pas.'; etat = etat || 'ko';
+      }
+    }
+    setDirty(false); refresh(true);
+    if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
+    requestAnimationFrame(fit);
+    dire(msg + note, etat);
+  };
+
+  enregistrer = async function () {
+    if (!editable) { dire('Ce script ne se dessine pas : repartez d’un schéma vide pour le remplacer, ou modifiez-le sur le réseau local.', 'ko'); return; }
+    const g = S.generate(doc.body, NAMES);
+    let code;
+    try { code = AquaScript.compile(g.text); }
+    catch (e) { dire('Compilation impossible : ' + e.message + (e.line ? ' (ligne ' + e.line + ')' : ''), 'err'); return; }
+    if (code.length > TAILLE_MAX) { dire('Script trop long : ' + code.length + ' octets pour ' + TAILLE_MAX + ' au plus. Retirez des blocs.', 'err'); return; }
+    if (doc.trigger.t && !doc.trigger.target) { dire('Choisissez ce qui déclenche le script dans le bloc « Départ ».', 'ko'); choisir('start'); return; }
+    try {
+      const d = await apiCloud('/app/module/script', { moduleId: CLOUD, script: {
+        i: slot(), nom: $('nom').value || 'Sans nom', actif: doc.actif,
+        declencheur: doc.trigger.t, cible: doc.trigger.target || 0,
+        code: code.map((b) => b.toString(16).padStart(2, '0')).join(''), source: g.text } });
+      setDirty(false); arret = null; markSel();
+      await lireModule(); await listeSlots();
+      dire('Envoyé (' + code.length + ' octets) : le module l’appliquera à sa prochaine synchronisation'
+        + (d.remplace ? ', à la place de l’envoi précédent' : '') + '. Il reste seul juge et peut refuser.', 'ok');
+    } catch (e) { dire('Non envoyé : ' + e.message + '.', 'ko'); }
+  };
+
+  effacer = async function () {
+    const i = slot();
+    if (!confirm('Effacer le script ' + (i + 1) + ' du module ? L’effacement partira à sa prochaine synchronisation.')) return;
+    try {
+      await apiCloud('/app/module/script', { moduleId: CLOUD, script: { i: i, efface: true } });
+      await lireModule(); await listeSlots(); await charger();
+    } catch (e) { dire('Non envoyé : ' + e.message + '.', 'ko'); }
+  };
+
+  lancer = function () { dire('Un script ne se lance pas depuis l’espace en ligne.', 'ko'); };
+  $('b-save').onclick = enregistrer;
+  $('b-lancer').onclick = lancer;
+}
+
 (async function () {
   await lireModule();
   try { await listeSlots(); }
-  catch (e) { dire('Module injoignable : la liste des scripts n’a pas pu être lue.', 'err'); return; }
+  catch (e) {
+    dire(CLOUD ? 'Lecture impossible : ' + e.message + '.' : 'Module injoignable : la liste des scripts n’a pas pu être lue.', 'err');
+    return;
+  }
   const demande = new URLSearchParams(location.search).get('i');
   if (demande !== null && $('slot').querySelector('option[value="' + parseInt(demande, 10) + '"]')) $('slot').value = String(parseInt(demande, 10));
   await charger();
-})().catch(() => dire('Module injoignable.', 'err'));
+})().catch((e) => dire(CLOUD ? 'Lecture impossible : ' + e.message + '. Reconnectez-vous depuis l’espace en ligne.' : 'Module injoignable.', 'err'));
 </script>
 </body></html>

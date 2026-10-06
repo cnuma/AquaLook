@@ -26,7 +26,7 @@ input,select,button{font:inherit;color:var(--text);background:var(--surface);
 input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--green)}
 button{cursor:pointer}
 button:hover:not(:disabled){border-color:var(--green)}
-button.primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:600}
+button.primary,a.primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:600}
 button.primary:hover:not(:disabled){filter:brightness(.92)}
 button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
 button:disabled{opacity:.45;cursor:not-allowed}
@@ -521,6 +521,7 @@ async function recharger(){
     + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div>'
     + '<p class="hint">Cliquez un jour pour voir et modifier ses créneaux, ou le nom '
     + 'd&rsquo;une zone pour ses réglages.</p></div>'
+    + '<div class="card"><h2>Scripts</h2><div id="scripts"></div></div>'
     + '<details class="card"><summary><h2 style="display:inline">Modifications envoyées</h2></summary>'
     + '<div id="cmds" style="margin-top:12px"></div></details>'
     + '<details class="card"><summary><h2 style="display:inline">Sauvegarde de l&rsquo;installation</h2></summary>'
@@ -530,12 +531,44 @@ async function recharger(){
     + 'de remplacement.</p></details>';
 
   rendrePlanning();
+  rendreScripts(d.commandes || []);
   // Sauvegardes chargees AVANT les commandes : rendreCommandes() resout
   // baseRevision en date lisible via SAUV (etatPourRevision), et a besoin
   // que la liste soit deja la pour ne pas afficher un numero brut le temps
   // d'un aller-retour reseau.
   await chargerSauvegardes();
   rendreCommandes(d.commandes || []);
+}
+
+// ── Scripts (decision D014) ────────────────────────────────────────────────
+//
+// Resume des six emplacements tel que le module les remonte, et lien vers
+// l'editeur graphique (/editeur/, meme page que sur le module, en mode
+// espace en ligne). Une modification en attente est signalee ici aussi :
+// sinon un effacement envoye ne laisserait aucune trace visible.
+function rendreScripts(cmds){
+  const el = $('scripts');
+  if (!el) return;
+  const sc = CFG.payload.scripts;
+  if (!sc) {
+    el.innerHTML = '<p class="hint" style="margin:0">Ce module ne remonte pas encore ses scripts : '
+      + 'son firmware est à mettre à jour.</p>';
+    return;
+  }
+  const attente = i => cmds.some(c => c.state === 'pending' && c.command
+    && Array.isArray(c.command.scripts) && c.command.scripts[0] && c.command.scripts[0].i === i);
+  el.innerHTML = '<table class="hist"><tr><th>N°</th><th>Script</th><th>État</th></tr>'
+    + (sc.emplacements || []).map(s => '<tr><td>' + (s.i + 1) + '</td><td>'
+        + (s.nom !== undefined ? esc(s.nom) : '<span class="mod-s" style="margin:0">vide</span>')
+        + '</td><td>' + (attente(s.i) ? '<span class="tag pending">en attente</span>'
+          : (s.nom === undefined ? '' : (s.actif ? 'actif' : 'inactif'))) + '</td></tr>').join('')
+    + '</table>'
+    + '<div class="row" style="margin-top:12px"><a class="primary" style="display:inline-block;padding:8px 14px;'
+    + 'border-radius:8px;text-decoration:none" href="/editeur/scripts-schema.html?module='
+    + encodeURIComponent(MOD) + '">Ouvrir l&rsquo;éditeur des scripts</a></div>'
+    + '<p class="hint">Édition sur ordinateur. Le module applique une modification à sa '
+    + 'prochaine synchronisation et reste seul juge : il refuse ce qu&rsquo;il n&rsquo;accepterait '
+    + 'pas sur place. Un script ne se lance jamais d&rsquo;ici.</p>';
 }
 
 // ── Sauvegarde de l'installation ───────────────────────────────────────────
@@ -1016,6 +1049,16 @@ function envoyerZone(i){
 
 function resumeCommande(c){
   const cmd = c.command;
+  // Scripts et phrases (decision D014) : une commande porte l'un OU l'autre.
+  if (cmd && Array.isArray(cmd.phrases)) {
+    return '<b>Phrases</b> &mdash; ' + cmd.phrases.length + ' phrase(s)';
+  }
+  if (cmd && Array.isArray(cmd.scripts) && cmd.scripts[0]) {
+    const s = cmd.scripts[0];
+    return '<b>Script ' + (s.i + 1) + '</b> &mdash; ' + (s.efface ? 'effacement'
+      : esc(s.nom || '') + (s.actif === false ? ' (inactif)' : '') + ' &middot; '
+        + ((s.code || '').length / 2) + ' octets');
+  }
   if (!cmd || !Array.isArray(cmd.zones)) return '';
   const nom = i => {
     const z = (CFG && CFG.payload && CFG.payload.zones) ? CFG.payload.zones[i] : null;
