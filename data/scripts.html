@@ -187,8 +187,9 @@ table.biblio button.x{width:auto;padding:6px 10px;border-radius:5px;cursor:point
       <b>Enregistrer</b> compile, signe et dépose — le module revérifie et peut
       refuser, auquel cas le script précédent reste intact.
       <b>Lancer maintenant</b> l'exécute sans attendre l'entrée.
-      Deux scripts au plus tournent en même temps ; un déclenchement qui n'a pas
-      pu partir est écrit dans le journal du module.</p>
+      Quatre scripts au plus tournent en même temps (deux sur l'ancienne carte CYD) ;
+      un déclenchement ou un « lancer script » qui n'a pas pu partir est écrit dans
+      le journal du module.</p>
       </details>
 
       <details id="dbiblio">
@@ -268,6 +269,9 @@ const COMMANDES = [
     ['attendre 5', 'attendre <secondes>', 'Rend la main : n’occupe pas le module'],
     ['message 900', 'message <code>', 'Écrit une trace dans le journal du module'],
     ['notifier 900', 'notifier <code>', 'Envoie une vraie notification (si elle est configurée)']
+  ]],
+  ['Scripts', [
+    ['lancer script 2', 'lancer script <n>', 'Démarre le script n (1 à 6) en parallèle ; celui-ci continue']
   ]],
   ['Lire l’état', [
     ['entree(100)', 'entree(<id>)', 'Valeur stabilisée d’une entrée : 0 ou 1'],
@@ -623,6 +627,7 @@ const STATEMENT_DEBUT = [
   { ins: 'reprendre ', label: 'reprendre', aide: 'Reprend une zone suspendue' },
   { ins: 'message ', label: 'message', aide: 'Trace dans le journal du module' },
   { ins: 'notifier ', label: 'notifier', aide: 'Notification sur le téléphone' },
+  { ins: 'lancer script ', label: 'lancer', aide: 'Démarre un autre script, en parallèle' },
   { ins: 'sinon', label: 'sinon', aide: 'Dans un « si », l’autre cas' },
   { ins: 'finsi', label: 'finsi', aide: 'Referme un « si »' },
   { ins: 'fintantque', label: 'fintantque', aide: 'Referme un « tantque »' },
@@ -838,7 +843,8 @@ function compiler() {
 // de laisser chercher la faute lettre par lettre.
 const VOCAB_MOTSCLES = ['si', 'alors', 'sinon', 'finsi', 'tantque', 'faire', 'fintantque',
   'pour', 'de', 'à', 'finpour', 'attendre', 'demarrer', 'arreter', 'suspendre', 'reprendre',
-  'pendant', 'zone', 'message', 'notifier', 'entree', 'zoneactive', 'reste', 'et', 'ou', 'non'];
+  'pendant', 'zone', 'message', 'notifier', 'entree', 'zoneactive', 'reste', 'et', 'ou', 'non',
+  'lancer', 'script'];
 
 function distanceLevenshtein(a, b) {
   const m = a.length, n = b.length;

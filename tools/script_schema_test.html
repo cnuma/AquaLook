@@ -51,6 +51,16 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   try{ S.parse('demarrer zone 1 pendant 5\ntantque reste(2) > 0 faire attendre 1 fintantque'); ok(false,'attente sur une autre zone acceptee a tort'); }
   catch(e){ ok(e instanceof S.Unsupported,'attente sur une autre zone refusee : '+e.message); }
 }
+// 2c. lancer un autre script (6 oct. 2026)
+{
+  const l=mk('lancer',{scriptNo:3}); ok(l.script===3,'Lancer un script : emplacement par defaut');
+  const g=S.generate([l],names).text;
+  ok(/^lancer script 3/.test(g),'texte : lancer script 3');
+  const c=AquaScript.compile(g); ok(c[0]===1 && c[5]===80 && c[6]===6 && c[7]===3 && c[8]===0,'bytecode : PUSH 0, ACTION SCRIPT_RUN cible 3');
+  rt([l, mk('arroser')],'lancer + arroser');
+  try{ AquaScript.compile('lancer script 7'); ok(false,'lancer script 7 accepte a tort'); }
+  catch(e){ ok(e.line===1,'lancer script 7 refuse a la compilation : '+e.message); }
+}
 // 3. refus attendus
 const ko={
  'variable':'a = 3\nattendre a',

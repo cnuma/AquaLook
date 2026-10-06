@@ -36,7 +36,8 @@
     repeter:   { label: 'Répéter',          cat: 'boucle',  icon: 'i-loop',   desc: 'Refait les blocs un nombre de fois' },
     tantque:   { label: 'Tant que',         cat: 'boucle',  icon: 'i-loop',   desc: 'Refait les blocs tant qu’une condition est vraie' },
     notifier:  { label: 'Notifier',         cat: 'info',    icon: 'i-bell',   desc: 'Envoie une notification au téléphone' },
-    message:   { label: 'Noter au journal', cat: 'info',    icon: 'i-note',   desc: 'Ajoute une ligne au journal du module' }
+    message:   { label: 'Noter au journal', cat: 'info',    icon: 'i-note',   desc: 'Ajoute une ligne au journal du module' },
+    lancer:    { label: 'Lancer un script', cat: 'script',  icon: 'i-run',    desc: 'Démarre un autre script, qui tourne en parallèle' }
   };
 
   const VARS = 'abcdefgh';
@@ -57,6 +58,7 @@
       case 'arreter': case 'suspendre': case 'reprendre': n.zone = z; break;
       case 'attendre': n.sec = 300; break;
       case 'notifier': case 'message': n.code = c; break;
+      case 'lancer': n.script = ctx && ctx.scriptNo ? ctx.scriptNo : 1; break;
       case 'si': n.cond = { op: 'et', terms: [{ k: 'entree', id: e, v: 1 }] }; n.oui = []; n.non = []; break;
       case 'repeter': n.n = 3; n.body = []; break;
       case 'tantque': n.cond = { op: 'et', terms: [{ k: 'zoneactive', id: z, v: 1 }] }; n.body = []; break;
@@ -129,6 +131,9 @@
             break;
           case 'notifier': case 'message':
             add(d, n.t + ' ' + n.code + '   # ' + names.phrase(n.code), n.id);
+            break;
+          case 'lancer':
+            add(d, 'lancer script ' + n.script + '   # ' + (names.script ? names.script(n.script) : 'script ' + n.script), n.id);
             break;
           case 'si':
             add(d, 'si ' + condCode(n.cond) + ' alors', n.id);
@@ -299,6 +304,7 @@
       }
       if (w === 'attendre') { next(); const n = { id: newId(), t: 'attendre', sec: number() }; noArith(); return n; }
       if (w === 'notifier' || w === 'message') { next(); return { id: newId(), t: w, code: number() }; }
+      if (w === 'lancer') { next(); expect('script'); return { id: newId(), t: 'lancer', script: number() }; }
       if (w === 'demarrer') {
         next(); expect('zone');
         const zone = number();

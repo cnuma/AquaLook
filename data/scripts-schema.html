@@ -62,6 +62,7 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .cat-logique{--cat:var(--amber);--cat-dim:var(--amber-dim)}
 .cat-boucle{--cat:var(--purple);--cat-dim:var(--purple-dim)}
 .cat-info{--cat:var(--slate);--cat-dim:var(--slate-dim)}
+.cat-script{--cat:#0f7b7b;--cat-dim:#d9f0ee}
 
 .center{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 210px;gap:8px}
 .canvas{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px;background-color:var(--bg);
@@ -299,15 +300,20 @@ const ico = (id) => '<svg class="ic"><use href="#' + id + '"/></svg>';
 // Memes valeurs que ScriptStore::TRIGGER_* cote firmware.
 const TRIG = {1:"le changement d'une entrée", 2:"le démarrage d'une zone", 3:"l'arrêt d'une zone", 0:'rien (lancement manuel)'};
 const PALETTE = [['Arrosage',['arroser','arreter','suspendre','reprendre']],['Temps',['attendre']],
-  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']]];
+  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']],['Scripts',['lancer']]];
 
 // Ce que CE module offre (memes sources que scripts.html).
 let ZONES = [], ENTREES = [], BIBLIO = [];
+// Emplacements de scripts tels que /api/scripts les decrit, et le nombre de
+// scripts que le module fait tourner ensemble (4 sur S3, 2 sur CYD).
+let SLOTS = [], SIMULT = 2;
 let TAILLE_MAX = 400, NONCE = 0;
 const zoneNom = (id) => { const z = ZONES.find((o) => o.id === id); return z ? z.nom : 'Zone ' + id + ' (inconnue)'; };
 const entreeNom = (id) => { const e = ENTREES.find((o) => o.id === id); return e ? e.nom : 'Entrée ' + id + ' (inconnue)'; };
 const phraseNom = (c) => { const p = BIBLIO.find((o) => o.code === c); return p ? p.texte : 'code ' + c; };
-const NAMES = { zone: zoneNom, input: entreeNom, phrase: phraseNom };
+const scriptSlot = (no) => SLOTS[no - 1];
+const scriptNom = (no) => { const s = scriptSlot(no); return no + ' — ' + (s && s.utilise ? s.nom : 'vide'); };
+const NAMES = { zone: zoneNom, input: entreeNom, phrase: phraseNom, script: scriptNom };
 
 // Le script ouvert. body = liste de blocs (voir script-schema.js).
 let doc = { nom: '', actif: true, trigger: { t: 0, target: 0 }, body: [] };
@@ -357,6 +363,12 @@ function warnings(n) {
     if (t.k === 'entree' && !ENTREES.some((e) => e.id === t.id)) w.push('L’entrée ' + t.id + ' n’est pas déclarée sur ce module.');
     if (t.k === 'zoneactive' && !ZONES.some((z) => z.id === t.id)) w.push('La zone ' + t.id + ' n’existe pas sur ce module.');
   });
+  if (n.t === 'lancer') {
+    const c = scriptSlot(n.script);
+    if (n.script === slot() + 1) w.push('Un script ne peut pas se lancer lui-même : le module ignorera ce bloc.');
+    else if (!c || !c.utilise) w.push('L’emplacement ' + n.script + ' est vide : rien ne partira.');
+    else if (!c.actif) w.push('Le script ' + n.script + ' est inactif : le module refusera de le lancer.');
+  }
   if (n.t === 'tantque' && !hasWait(n.body)) w.push('Ajoutez un bloc « Attendre » dans la boucle : sans pause, elle tourne en continu.');
   if (n.t === 'repeter' && loopDepth(n.id) >= 8) w.push('Trop de « Répéter » imbriqués : 8 au plus.');
   return w;
@@ -374,6 +386,7 @@ function subOf(n) {
     case 'arreter': case 'suspendre': case 'reprendre': return zoneNom(n.zone);
     case 'attendre': return S.duree(n.sec);
     case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
+    case 'lancer': return scriptNom(n.script) + ' · en parallèle';
     case 'repeter': return n.n + ' fois';
     case 'tantque': return condLabel(n.cond);
   }
@@ -562,13 +575,21 @@ function renderProps() {
         + (t.t === 1 ? entreeOpts(t.target) : zoneOpts(t.target)) + '</select></div>' : '')
       + '<div class="f"><label for="s-a">Actif</label><select id="s-a" data-f="actif">' + optsMap({1:'oui', 0:'non'}, doc.actif ? 1 : 0) + '</select></div>'
       + (doc.actif ? '' : '<div class="alert">Script inactif : il ne démarre jamais seul, et « Lancer maintenant » le refuse aussi.</div>')
-      + '<div class="hint">Le script part au moment où ça <b>change</b>, jamais sur un état qui dure. Il ne repart pas deux fois en moins de cinq secondes, et deux scripts au plus tournent en même temps.</div>';
+      + '<div class="hint">Le script part au moment où ça <b>change</b>, jamais sur un état qui dure. Il ne repart pas deux fois en moins de cinq secondes, et ' + SIMULT + ' scripts au plus tournent en même temps.</div>';
   } else {
     const n = find(sel).node, T = S.TYPES[n.t];
     h = '<div class="phead cat-' + T.cat + '">' + ico(T.icon) + '<b>' + esc(T.label) + '</b></div>';
     warnings(n).forEach((w) => { h += '<div class="alert">' + esc(w) + '</div>'; });
     if ('zone' in n) h += '<div class="f"><label for="p-z">Zone</label><select id="p-z" data-f="zone">' + zoneOpts(n.zone) + '</select></div>';
     if ('sec' in n) h += dureeField(n.sec);
+    if (n.t === 'lancer') {
+      h += '<div class="f"><label for="p-s">Script à lancer</label><select id="p-s" data-f="script">'
+        + SLOTS.filter((x) => x.i !== slot()).map((x) => '<option value="' + (x.i + 1) + '"' + (x.i + 1 === n.script ? ' selected' : '') + '>'
+          + esc(scriptNom(x.i + 1) + (x.utilise && !x.actif ? ' (inactif)' : '')) + '</option>').join('')
+        + '</select></div>'
+        + '<div class="hint">Le script lancé part en parallèle : celui-ci continue aussitôt. S’il ne peut pas partir (déjà en cours, inactif, ou '
+        + SIMULT + ' scripts tournent déjà), le refus est écrit dans le journal et ce script continue.</div>';
+    }
     if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
       + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
       + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : elle se remplit depuis l’éditeur texte, section « Bibliothèque de phrases ».</div>');
@@ -648,7 +669,9 @@ function insertAt(lid, idx, what) {
   const list = listById(lid); if (!list || !what) return;
   if (what.indexOf('new:') === 0) {
     pushUndo();
-    const n = S.make(what.slice(4), { zoneId: (ZONES[0] || {}).id, inputId: (ENTREES[0] || {}).id, code: (BIBLIO[0] || {}).code });
+    const autre = SLOTS.find((x) => x.i !== slot() && x.utilise && x.actif) || SLOTS.find((x) => x.i !== slot()) || { i: 0 };
+    const n = S.make(what.slice(4), { zoneId: (ZONES[0] || {}).id, inputId: (ENTREES[0] || {}).id, code: (BIBLIO[0] || {}).code,
+                                      scriptNo: autre.i + 1 });
     list.splice(idx, 0, n); sel = n.id;
   } else if (what.indexOf('move:') === 0) {
     const id = what.slice(5), r = find(id); if (!r) return;
@@ -805,6 +828,7 @@ async function essai() {
         case 'attendre': log('Attend ' + S.duree(n.sec)); break;
         case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
         case 'message': log('Journal : « ' + phraseNom(n.code) + ' »'); break;
+        case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
         case 'si': { const r = evalCond(n.cond); log(condLabel(n.cond) + ' ? ' + (r ? 'oui' : 'non')); await exec(r ? n.oui : n.non); break; }
         case 'repeter': for (let k = 1; k <= n.n && !stopReq; k++) { log('Tour ' + k + ' sur ' + n.n); await exec(n.body); } break;
         case 'tantque': {
@@ -843,6 +867,8 @@ async function lireModule() {
 async function listeSlots() {
   const d = await (await fetch('/api/scripts')).json();
   TAILLE_MAX = d.tailleMax || TAILLE_MAX;
+  SLOTS = d.scripts || [];
+  SIMULT = d.simultanes || 2;
   const garde = $('slot').value;
   $('slot').innerHTML = d.scripts.map((s) => {
     const nom = !s.utilise ? 'vide' : (s.nom + (s.actif ? '' : ' — inactif'));

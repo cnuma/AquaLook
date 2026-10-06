@@ -24,6 +24,7 @@
 //   reprendre zone <id>
 //   message <code>                   -- une ligne dans le journal
 //   notifier <code>                  -- une vraie notification, si configuree
+//   lancer script <n>                -- demarre le script n (1..6) en parallele
 //   <var> = <expr>
 //
 //   Expressions : nombres, variables a..h, entree(<id>), zoneactive(<id>),
@@ -47,8 +48,11 @@
   };
 
   const ACTION = {
-    ZONE_START: 1, ZONE_STOP: 2, ZONE_PAUSE: 3, ZONE_RESUME: 4, SET_OUTPUT: 5
+    ZONE_START: 1, ZONE_STOP: 2, ZONE_PAUSE: 3, ZONE_RESUME: 4, SET_OUTPUT: 5,
+    SCRIPT_RUN: 6
   };
+  // Emplacements de scripts sur le module (ScriptStore::MAX_SCRIPTS).
+  const MAX_SCRIPTS = 6;
 
   const VARS = 'abcdefgh';
 
@@ -293,6 +297,23 @@
              word === 'arreter' ? ACTION.ZONE_STOP
              : word === 'suspendre' ? ACTION.ZONE_PAUSE : ACTION.ZONE_RESUME);
         emitU16(id);
+        return;
+      }
+
+      // Le script lance part EN PARALLELE : celui-ci continue aussitot. Un
+      // lancement que le module ne peut pas honorer (place prise, script
+      // inactif...) est journalise, sans arreter ce script.
+      if (word === 'lancer') {
+        next();
+        expect('script');
+        const ln = line();
+        const n = number();
+        if (n < 1 || n > MAX_SCRIPTS) {
+          throw new CompileError('script ' + n + ' : les emplacements vont de 1 à ' + MAX_SCRIPTS, ln);
+        }
+        emit(OP.PUSH); emitI32(0);
+        emit(OP.ACTION, ACTION.SCRIPT_RUN);
+        emitU16(n);
         return;
       }
 
