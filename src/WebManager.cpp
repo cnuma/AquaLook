@@ -730,6 +730,9 @@ void WebManager::setupRoutes() {
         JsonDocument doc;
         doc["max"] = ScriptStore::MAX_SCRIPTS;
         doc["tailleMax"] = ScriptStore::MAX_BYTECODE;
+        // Scripts pouvant tourner ensemble (4 sur S3, 2 sur CYD) : l'editeur
+        // l'affiche plutot que de supposer un chiffre.
+        doc["simultanes"] = static_cast<unsigned>(ScriptRunner::MAX_CONCURRENT);
         JsonArray arr = doc["scripts"].to<JsonArray>();
         ScriptStore::Meta metas[ScriptStore::MAX_SCRIPTS];
         ScriptStore::loadAllMeta(metas, ScriptStore::MAX_SCRIPTS);

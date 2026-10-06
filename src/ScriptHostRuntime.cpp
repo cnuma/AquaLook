@@ -4,6 +4,7 @@
 
 #include "EventLog.h"
 #include "NotificationManager.h"
+#include "ScriptStore.h"
 
 namespace {
 
@@ -85,6 +86,24 @@ bool zoneRemainingSec(void* raw, uint16_t zoneId, int32_t& value) {
 bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
     ScriptRuntimeContext* ctx = ctxOf(raw);
     if (!ctx || !ctx->schedule) return false;
+
+    // Lancer un autre script : jamais un refus. Decision du 6 oct. 2026 -- un
+    // lancement rate (place prise, script inactif ou deja en cours) ne doit
+    // pas interrompre le script appelant, qui tient peut-etre une zone
+    // ouverte. Le runner journalise ce qui n'a pas pu partir.
+    if (act == ScriptAction::SCRIPT_RUN) {
+        if (target < 1U || target > ScriptStore::MAX_SCRIPTS) {
+            EventLog::log(LOG_WARN, "Script: lancement du script %u ignore (emplacement 1 a %u)",
+                          (unsigned)target, (unsigned)ScriptStore::MAX_SCRIPTS);
+        } else if (target - 1U == ctx->selfIndex) {
+            EventLog::log(LOG_WARN, "Script %u: se lancer lui-meme est ignore",
+                          (unsigned)target);
+        } else {
+            ctx->launchMask |= static_cast<uint8_t>(1U << (target - 1U));
+            ctx->actions++;
+        }
+        return true;
+    }
 
     const uint8_t z = zoneIndex(ctx, target);
     if (z >= MAX_ZONES) {

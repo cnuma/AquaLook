@@ -42,6 +42,12 @@ struct ScriptRuntimeContext {
     // "action refusee" seul ne dit pas QUOI a echoue. Tampon fixe : pas
     // d'allocation dans le chemin d'execution des scripts.
     char refusalReason[48] = "";
+    // Emplacement de CE script (0..5), pour refuser qu'il se lance lui-meme.
+    uint8_t selfIndex = 0xFF;
+    // Scripts que ce script demande de lancer, un bit par emplacement. Le
+    // runner les demarre APRES le tick : demarrer un travail depuis l'hote,
+    // en plein parcours de la table des travaux, la modifierait sous ses pieds.
+    uint8_t launchMask = 0U;
 };
 
 const AquaLook::Domain::ScriptHostOps& scriptHostOps();

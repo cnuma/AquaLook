@@ -77,6 +77,7 @@ enum class ScriptAction : uint8_t {
     ZONE_PAUSE = 3,   // met en pause, le reliquat est conserve
     ZONE_RESUME = 4,  // reprend le reliquat conserve
     SET_OUTPUT = 5,   // argument : 0/1 -- pompe, eclairage, auxiliaire
+    SCRIPT_RUN = 6,   // cible : numero d'emplacement (1..6), argument ignore
 };
 
 enum class ScriptStatus : uint8_t {

@@ -18,10 +18,20 @@
 //
 // COMBIEN A LA FOIS
 //
-// Deux, volontairement. Chaque script en cours immobilise un tampon de
-// bytecode et une machine ; six a la fois couteraient de la RAM pour un
-// besoin qui n'existe pas. Un declenchement de plus alors que les deux
-// places sont prises est SIGNALE, jamais avale en silence.
+// Quatre sur ESP32-S3, deux sur l'ancienne carte CYD. Chaque script en cours
+// immobilise un tampon de bytecode et une machine (~600 octets). Deux
+// suffisaient tant qu'un script ne pouvait pas en lancer un autre ; depuis
+// « lancer script N » (6 oct. 2026), un script qui en lance un second en
+// occupe deja deux. Le S3 a la RAM pour quatre ; la CYD, tres juste en
+// memoire, garde deux. Un declenchement de plus alors que toutes les places
+// sont prises est SIGNALE, jamais avale en silence.
+//
+// UN SCRIPT PEUT EN LANCER UN AUTRE
+//
+// « lancer script N » ne fait que DEMANDER : le lancement a lieu apres le
+// tour du script appelant, avec les memes regles qu'un declenchement (place
+// libre, script actif, pas deja en cours, pas relance en moins de 5 s). Un
+// refus est journalise et le script appelant continue.
 //
 // UN SCRIPT DEJA EN COURS NE REDEMARRE PAS
 //
@@ -37,7 +47,11 @@
 
 class ScriptRunner {
 public:
+#if AQUALOOK_BOARD_S3
+    static constexpr uint8_t MAX_CONCURRENT = 4;
+#else
     static constexpr uint8_t MAX_CONCURRENT = 2;
+#endif
 
     void begin(const InputSampler* inputs, ScheduleManager* schedule,
                const ConfigManager* config);
@@ -75,6 +89,9 @@ private:
     };
 
     bool start(uint8_t index, const char*& reason);
+    // Demarre les scripts demandes par « lancer script N » (masque d'un bit
+    // par emplacement) au nom du script `caller`.
+    void launchRequested(uint8_t caller, uint8_t mask);
     int8_t freeSlot() const;
 
     Job _jobs[MAX_CONCURRENT];

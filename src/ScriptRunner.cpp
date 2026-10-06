@@ -78,6 +78,7 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     // fonction : on le recopie dans le travail, qui, lui, survit au tick.
     strlcpy(job.name, meta.name, sizeof(job.name));
     job.ctx.name = job.name;
+    job.ctx.selfIndex = index;
     job.index = index;
     job.active = true;
     job.vm.load(ScriptProgram(job.code, meta.codeSize), &scriptHostOps(), &job.ctx);
@@ -87,6 +88,32 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     _lastAbortPc[index] = 0U;
     EventLog::log(LOG_INFO, "Script %u (%s) demarre", (unsigned)(index + 1U), meta.name);
     return true;
+}
+
+void ScriptRunner::launchRequested(uint8_t caller, uint8_t mask) {
+    const uint32_t now = millis();
+    for (uint8_t i = 0U; i < ScriptStore::MAX_SCRIPTS; ++i) {
+        if (!(mask & (1U << i))) continue;
+        // Meme garde que pour un declenchement : A qui lance B qui relance A
+        // tournerait sans fin, chaque script finissant avant d'etre relance.
+        if (_lastStartMs[i] != 0U && (now - _lastStartMs[i]) < MIN_RESTART_MS) {
+            EventLog::log(LOG_WARN,
+                          "Script %u : lancement du script %u refuse "
+                          "(moins de %lus depuis son dernier depart)",
+                          (unsigned)(caller + 1U), (unsigned)(i + 1U),
+                          (unsigned long)(MIN_RESTART_MS / 1000UL));
+            continue;
+        }
+        const char* reason = "";
+        if (start(i, reason)) {
+            _lastStartMs[i] = now;
+            EventLog::log(LOG_INFO, "Script %u a lance le script %u",
+                          (unsigned)(caller + 1U), (unsigned)(i + 1U));
+        } else {
+            EventLog::log(LOG_WARN, "Script %u : lancement du script %u refuse (%s)",
+                          (unsigned)(caller + 1U), (unsigned)(i + 1U), reason);
+        }
+    }
 }
 
 bool ScriptRunner::runNow(uint8_t index, const char*& reason) {
@@ -166,6 +193,12 @@ void ScriptRunner::update() {
         if (!job.active) continue;
 
         const ScriptStatus st = job.vm.tick();
+        // Relever les lancements demandes pendant ce tour AVANT de liberer
+        // la place : un script qui en lance un autre puis se termine laisse
+        // ainsi sa propre place au script lance.
+        const uint8_t launches = job.ctx.launchMask;
+        const uint8_t caller = job.index;
+        job.ctx.launchMask = 0U;
         if (st == ScriptStatus::FINISHED) {
             EventLog::log(LOG_INFO,
                           "Script %u termine : %u lecture(s), %u action(s), %u refus",
@@ -197,5 +230,9 @@ void ScriptRunner::update() {
                           (unsigned)job.vm.programCounter());
             job.active = false;
         }
+        // Apres le traitement de fin : `job` peut desormais etre libre et
+        // reutilise par start(). Un script lance dans une place d'indice
+        // superieur avance des ce tour-ci, sinon au tour suivant.
+        if (launches) launchRequested(caller, launches);
     }
 }
