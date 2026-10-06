@@ -6,6 +6,7 @@ class WiFiManager;
 class RelaisManager;
 class ConfigManager;
 class ScheduleManager;
+class StorageManager;
 
 // ═══════════════════════════════════════════════════════════════
 //  CloudSync — telemetrie et sondage de commande vers un service
@@ -108,7 +109,11 @@ public:
     // l'interface web du module, et une lecture concurrente donnerait un
     // instantane incoherent. Meme discipline que WeatherManager, qui copie sa
     // requete avant de lancer sa tache.
-    static String buildConfigBody(const ConfigManager& configManager);
+    // relais et storage alimentent le bloc "scripts" (entrees, sources,
+    // phrases) ; absents, le bloc ne porte que les entetes des scripts.
+    static String buildConfigBody(const ConfigManager& configManager,
+                                  const RelaisManager* relais = nullptr,
+                                  StorageManager* storage = nullptr);
 
     // Envoie la telemetrie puis, si sendConfig, la configuration effective ;
     // sonde une commande en attente, l'accuse sans encore l'appliquer. Bloque
@@ -151,6 +156,13 @@ public:
     // diverger le planning actif de celui enregistre - c'est d'ailleurs ce
     // que fait deja WebManager::handleSetDaySlot pour la voie locale.
     void setScheduleTarget(ScheduleManager* schedule) { _scheduleTarget = schedule; }
+
+    // Sources du bloc "scripts" du miroir (decision D014) : noms des
+    // entrees (topologie) et fichiers SD (textes sources, phrases).
+    void setReportSources(const RelaisManager* relais, StorageManager* storage) {
+        _reportRelais = relais;
+        _reportStorage = storage;
+    }
 
     bool set(bool enabled, const char* host, uint16_t port, bool useHttps,
              const char* moduleId, const char* token, uint16_t intervalMinutes);
@@ -278,6 +290,8 @@ private:
 
     ConfigManager*   _configTarget = nullptr;
     ScheduleManager* _scheduleTarget = nullptr;
+    const RelaisManager* _reportRelais = nullptr;
+    StorageManager*      _reportStorage = nullptr;
 
     // Accuse en attente d'emission, produit par applyCommand() et transmis
     // au cycle suivant. Le serveur representera la meme commande tant

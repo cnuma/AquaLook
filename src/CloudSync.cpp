@@ -21,6 +21,11 @@
 #include "OtaTlsTrust.h"
 #include "RelaisManager.h"
 #include "WiFiManager.h"
+#include "RelayTopology.h"
+#include "ScriptMessageCatalogue.h"
+#include "ScriptRunner.h"
+#include "ScriptStore.h"
+#include "StorageManager.h"
 
 #ifndef AQUALOOK_VERSION
 #define AQUALOOK_VERSION "unknown"
@@ -434,6 +439,9 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
         const CfgZone& src = cm.zone(z);
         JsonObject zone = zones.add<JsonObject>();
         zone["i"]            = z;
+        // Identifiant STABLE, celui que citent les scripts (declencheur
+        // de zone, arroser N) -- distinct de l'index i (decision D014).
+        zone["id"]           = cm.zoneId(z);
         zone["name"]         = src.name;
         zone["mode"]         = src.mode;
         zone["intervalDays"] = src.intervalDays;
@@ -467,6 +475,105 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
     }
 
     buildSettingsPayload(cm, payload["settings"].to<JsonObject>());
+}
+
+// Bloc "scripts" du miroir (decision D014, docs/architecture/
+// CLOUD_REMOTE_CONFIG.md) : ce dont l'editeur de l'espace en ligne a besoin
+// pour afficher et recompiler les scripts. Le bytecode ne remonte PAS --
+// l'editeur recompile le source ; sans source, l'emplacement s'affiche en
+// lecture seule, comme dans l'editeur local.
+//
+// Un source plus long que MAX_CLOUD_SOURCE n'est pas remonte (drapeau
+// "sourceTropLongue") : il ne tiendrait pas dans une commande de retour
+// (plafond 16 Ko), et le tronquer ferait recompiler un texte faux.
+constexpr size_t MAX_CLOUD_SOURCE = 4096U;
+
+bool readScriptSource(StorageManager* storage, uint8_t index,
+                      String& out, bool& tooLong) {
+    tooLong = false;
+    if (!storage || !storage->isSdAvailable()) return false;
+    char path[32];
+    snprintf(path, sizeof(path), "/scripts/s%u.txt", (unsigned)index);
+    if (!storage->existsOnSd(path)) return false;   // pas de source : normal
+    FsFile f;
+    if (!storage->openRead(path, f)) return false;
+    // Un octet de plus que le plafond, pour DETECTER le depassement plutot
+    // que de tronquer sans le savoir.
+    char* buf = static_cast<char*>(malloc(MAX_CLOUD_SOURCE + 2U));
+    if (!buf) { storage->closeFile(f); return false; }
+    size_t total = 0U;
+    while (total < MAX_CLOUD_SOURCE + 1U) {
+        const int32_t got = storage->readChunk(
+            f, reinterpret_cast<uint8_t*>(buf + total), MAX_CLOUD_SOURCE + 1U - total);
+        if (got <= 0) break;
+        total += static_cast<size_t>(got);
+    }
+    storage->closeFile(f);
+    if (total > MAX_CLOUD_SOURCE) {
+        tooLong = true;
+        free(buf);
+        return false;
+    }
+    buf[total] = '\0';
+    out = buf;
+    free(buf);
+    return total > 0U;
+}
+
+void buildScriptsPayload(JsonObject out, const RelaisManager* relais,
+                         StorageManager* storage) {
+    out["max"] = ScriptStore::MAX_SCRIPTS;
+    out["tailleMax"] = ScriptStore::MAX_BYTECODE;
+    out["simultanes"] = static_cast<unsigned>(ScriptRunner::MAX_CONCURRENT);
+    // Distingue "pas de source enregistree" de "carte SD absente" : dans le
+    // second cas, l'editeur en ligne doit le dire plutot que de presenter
+    // tous les scripts comme non editables sans raison.
+    out["sd"] = storage != nullptr && storage->isSdAvailable();
+
+    ScriptStore::Meta metas[ScriptStore::MAX_SCRIPTS];
+    ScriptStore::loadAllMeta(metas, ScriptStore::MAX_SCRIPTS);
+    JsonArray slots = out["emplacements"].to<JsonArray>();
+    for (uint8_t i = 0U; i < ScriptStore::MAX_SCRIPTS; ++i) {
+        JsonObject o = slots.add<JsonObject>();
+        o["i"] = i;
+        if (!metas[i].used) continue;
+        // Memes noms de champs que GET /api/scripts : un seul vocabulaire
+        // pour les deux editeurs.
+        o["nom"] = metas[i].name;
+        o["actif"] = metas[i].enabled;
+        o["declencheur"] = metas[i].trigger;
+        o["cible"] = metas[i].triggerTarget;
+        o["octets"] = metas[i].codeSize;
+        String source;
+        bool tooLong = false;
+        if (readScriptSource(storage, i, source, tooLong)) {
+            o["source"] = source;
+        } else if (tooLong) {
+            o["sourceTropLongue"] = true;
+        }
+    }
+
+    // Entrees : identifiant stable (cite par les scripts) et libelle de
+    // role, comme les lit l'editeur local dans /api/relay/topology.
+    if (relais) {
+        JsonArray inputs = out["entrees"].to<JsonArray>();
+        const RelayTopology::RelayTopologyConfig& topo = relais->topology();
+        for (uint8_t a = 0U; a < RelayTopology::MAX_RELAY_ASSIGNMENTS; ++a) {
+            const RelayTopology::RelayAssignment& as = topo.assignments[a];
+            if (!as.enabled || !as.isInput()) continue;
+            JsonObject e = inputs.add<JsonObject>();
+            e["id"] = as.id;
+            e["nom"] = RelayTopology::roleName(as.role);
+        }
+    }
+
+    // Phrases : meme lecture que GET /api/script-messages. Absentes si la
+    // SD est illisible -- l'editeur en ligne ne doit alors pas proposer de
+    // remplacer le catalogue par une liste vide.
+    if (storage) {
+        JsonDocument phrases;
+        if (ScriptMessageCatalogue::load(phrases)) out["phrases"] = phrases;
+    }
 }
 
 }  // namespace
@@ -543,10 +650,13 @@ CloudSyncConfig CloudSync::loadConfig() {
     return cfg;
 }
 
-String CloudSync::buildConfigBody(const ConfigManager& configManager) {
+String CloudSync::buildConfigBody(const ConfigManager& configManager,
+                                  const RelaisManager* relais,
+                                  StorageManager* storage) {
     JsonDocument doc;
     doc["type"] = "config";
     buildConfigPayload(configManager, doc["payload"].to<JsonObject>());
+    buildScriptsPayload(doc["payload"]["scripts"].to<JsonObject>(), relais, storage);
     String body;
     serializeJson(doc, body);
     return body;
@@ -1036,7 +1146,20 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
     _taskRevisionAttempted = configManager.configRevision();
     _taskSendConfig = (_taskRevisionAttempted != _lastSyncedRevision);
     // Serialise ICI, dans la boucle principale : voir CloudSync::buildConfigBody.
-    _taskConfigBody = _taskSendConfig ? CloudSync::buildConfigBody(configManager) : String();
+    //
+    // Taille et duree journalisees : depuis D014 le miroir lit la SD
+    // (sources, phrases) dans la boucle principale, et peut passer de
+    // ~3 Ko a ~20 Ko. Une derive doit se voir sans instrument (F15).
+    if (_taskSendConfig) {
+        const uint32_t t0 = millis();
+        _taskConfigBody = CloudSync::buildConfigBody(configManager, _reportRelais,
+                                                     _reportStorage);
+        EventLog::log(LOG_INFO, "CloudSync: miroir %u octets, construit en %lu ms",
+                      static_cast<unsigned>(_taskConfigBody.length()),
+                      static_cast<unsigned long>(millis() - t0));
+    } else {
+        _taskConfigBody = String();
+    }
     _taskCfg = _cfg;
 
     portENTER_CRITICAL(&g_cloudSyncMux);

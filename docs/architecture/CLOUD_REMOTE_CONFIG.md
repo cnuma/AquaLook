@@ -251,6 +251,14 @@ Comme le reste du miroir, il n'est envoyé que lorsque la révision change.
   manque ou si le fichier n'existe pas. L'éditeur cloud affiche alors
   l'emplacement en **lecture seule**, comme l'éditeur local devant un script
   sans source.
+- Un source de plus de 4 096 octets n'est pas remonté : l'emplacement porte
+  `"sourceTropLongue": true` et reste en lecture seule dans l'éditeur en
+  ligne. Il ne tiendrait pas dans une commande de retour, et le tronquer
+  ferait recompiler un texte faux.
+- `"sd": false` signale une carte SD absente ou illisible. Ce cas se
+  distingue d'un script qui n'a simplement jamais eu de source. Dans ce
+  cas, `phrases` est absent : l'éditeur en ligne ne doit pas proposer de
+  remplacer le catalogue par une liste vide.
 - Le bytecode ne remonte pas : l'éditeur recompile le source.
 - Les noms des zones sont déjà dans `zones[]`. L'identifiant **stable** de
   chaque zone (`zoneId`), cité par les scripts et distinct de l'index `i`, y
