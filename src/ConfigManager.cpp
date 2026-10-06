@@ -671,6 +671,15 @@ void ConfigManager::persistRevision() {
     }
 }
 
+// Meme sequence que setWindAlert() et setWebAssetsUrl(), autres reglages
+// ranges hors du blob principal : la version est persistee tout de suite,
+// puisqu'aucun save() ne suivra pour le faire.
+void ConfigManager::noteExternalChange() {
+    bumpRevision();
+    persistRevision();
+    _revisionBumped = false;
+}
+
 void ConfigManager::save() {
     PersistedConfig* blob = static_cast<PersistedConfig*>(malloc(sizeof(PersistedConfig)));
     if (!blob) {

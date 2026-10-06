@@ -374,6 +374,11 @@ public:
     void loadWebAssetsUrl();
     void bumpRevision();
     void persistRevision();
+    // Une donnee persistee HORS du blob de configuration vient de changer
+    // (scripts, bibliotheque de phrases) : faire monter la version comme pour
+    // tout autre reglage, sinon une commande distante batie avant pourrait
+    // l'ecraser (decision D014, docs/codex/02_DECISIONS.md).
+    void noteExternalChange();
     void setWeatherVisualsEnabled(bool enabled);
 
     // Planning

@@ -2088,6 +2088,9 @@ void WebManager::handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc)
         sendError(req, reason);
         return;
     }
+    // Version unique (D014) : un script corrige sur place ne doit pas
+    // pouvoir etre ecrase par une commande distante batie avant lui.
+    if (_config) _config->noteExternalChange();
 
     // Le source suit le bytecode, jamais l'inverse : si l'ecriture SD echoue,
     // le script tourne quand meme. On le signale sans faire echouer
@@ -2186,6 +2189,7 @@ void WebManager::handleSaveScriptMessages(AsyncWebServerRequest* req, JsonDocume
         sendError(req, "ecriture SD echouee : catalogue inchange", 500);
         return;
     }
+    if (_config) _config->noteExternalChange();   // version unique (D014)
 
     JsonDocument out;
     out["ok"] = true;
@@ -2206,6 +2210,7 @@ void WebManager::handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc
         }
     }
     if (!ScriptStore::erase(index)) { sendError(req, "effacement impossible"); return; }
+    if (_config) _config->noteExternalChange();   // version unique (D014)
     sendOk(req);
 }
 
