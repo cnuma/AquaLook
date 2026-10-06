@@ -60,3 +60,14 @@ Cette identité est réutilisée sans duplication manuelle par :
 - les futurs exports de diagnostic.
 
 La vue Web « À propos » doit être facilement accessible depuis l’interface principale. Elle fait partie des ressources complètes servies prioritairement depuis la SD, mais une information de version minimale doit rester consultable lorsque l’interface de secours LittleFS est utilisée.
+
+## D014 — Scripts et phrases modifiables depuis l’espace en ligne (6 oct. 2026)
+
+Décision du propriétaire. Le périmètre de `config.apply` (`docs/architecture/CLOUD_REMOTE_CONFIG.md`) s’élargit aux scripts : emplacements, nom, actif, déclencheur, cible, contenu, effacement. Il s’élargit aussi à la bibliothèque de phrases (`/scripts/messages.tsv`).
+
+- **Même méthode que les créneaux d’arrosage** : le serveur propose, le module arbitre, le local gagne (`baseRevision`). Aucun nouveau type de commande n’est créé.
+- **Révision unique** : un enregistrement local de script, un effacement ou une sauvegarde de phrases incrémente désormais `configRevision`, comme tout autre réglage. Une commande bâtie avant est refusée, scripts et planning confondus.
+- **Pas de signature de bout en bout.** Sur ce chemin, la confiance repose sur le jeton du module et sur TLS, et non sur `ApiAuth` (HMAC) qui protège les routes locales. Risque accepté en connaissance de cause : un serveur compromis pourrait installer un script qui ouvre une vanne au prochain déclencheur local. Ce risque est borné par la durée maximale de sécurité, qui reste intangible.
+- **Rien ne se lance à distance** : pas de « Lancer maintenant », pas de pose ni de changement du secret HMAC. Un script modifié à distance ne part que sur un déclencheur local.
+- **Le module ne fait pas confiance au bytecode reçu** : il le revalide (`validateScriptProgram`) avec les mêmes règles que `/api/script-save`. Un script en cours d’exécution n’est pas modifiable à distance.
+- **Une commande = un emplacement ou le catalogue de phrases.** La réponse de `/v1/pending-command` peut atteindre 16 Ko (au lieu de 4 Ko).

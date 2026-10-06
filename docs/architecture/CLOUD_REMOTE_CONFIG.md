@@ -44,7 +44,9 @@ le serveur **propose**, le module **arbitre**.
 ### 1. Périmètre — configuration seulement
 
 Sont applicables à distance : créneaux d'arrosage, réglages de zone,
-paramètres système d'affichage, options météo, seuils d'alerte vent.
+paramètres système d'affichage, options météo, seuils d'alerte vent — et,
+depuis le 6 octobre 2026, scripts et phrases (voir « Élargissement du
+6 octobre 2026 » plus bas).
 
 Sont **refusés**, quelle que soit la commande :
 
@@ -189,6 +191,123 @@ carte.** À noter que le gain ne vient PAS de la PSRAM : le framework force
 les tampons mbedTLS en RAM interne (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=1`,
 voir `docs/engineering/38_MEMORY_MANAGEMENT.md`). C'est la RAM interne bien
 plus généreuse du S3 qui suffit.
+
+## Élargissement du 6 octobre 2026 — scripts et phrases
+
+Décision `D014` (`docs/codex/02_DECISIONS.md`). Les scripts et la
+bibliothèque de phrases deviennent modifiables depuis l'espace utilisateur
+(`app.html`), par `config.apply`. Les trois décisions ci-dessus (périmètre,
+le local gagne, format partiel) s'appliquent sans changement.
+
+### Ce qui reste refusé
+
+| Interdit | Pourquoi |
+|---|---|
+| Lancer un script (« Lancer maintenant ») | lancer un script, c'est commander des vannes : une action immédiate, pas une configuration |
+| Poser ou changer le secret HMAC (`ApiAuth`) | c'est lui qui protège les routes locales ; le céder au serveur reviendrait à lui confier le module entier |
+| Modifier un script en cours d'exécution | remplacer le bytecode sous une machine qui l'exécute ; refus explicite, l'utilisateur recommence une fois le script terminé |
+
+### Pas de signature de bout en bout — risque accepté
+
+Les routes locales `/api/script-save`, `/api/script-erase` et
+`/api/script-messages` sont signées HMAC. Le chemin cloud ne l'est pas, par
+choix du propriétaire. Sur ce chemin, la confiance repose sur le jeton
+porteur du module et sur TLS. Conséquence assumée : un serveur compromis
+pourrait installer un script qui ouvre une vanne au prochain déclencheur
+local. Le risque est borné par la durée maximale de sécurité des relais, qui
+s'applique à toute ouverture, quelle que soit son origine.
+
+### Révision unique
+
+Jusqu'ici, un enregistrement local de script ne touchait pas
+`configRevision` (ScriptStore a sa propre clé NVS). Il l'incrémente
+désormais, tout comme un effacement de script ou une sauvegarde de phrases.
+Sans cela, une commande distante pourrait écraser un script que
+l'utilisateur vient de corriger sur place. Le compteur reste unique : une
+édition locale de script fait aussi refuser une modification de planning
+bâtie avant elle. Le serveur relit la configuration et repropose, comme pour
+le planning.
+
+### Remontée (module → serveur)
+
+Un bloc `scripts` est ajouté au miroir de configuration (`buildConfigPayload`).
+Comme le reste du miroir, il n'est envoyé que lorsque la révision change.
+
+```json
+"scripts": {
+  "max": 6, "tailleMax": 400, "simultanes": 4,
+  "emplacements": [
+    { "i": 0, "nom": "Cuve pleine", "actif": true, "declencheur": 1,
+      "cible": 3, "octets": 112, "source": "si entree ... " },
+    { "i": 1 }
+  ],
+  "entrees": [ { "id": 3, "nom": "Flotteur cuve" } ],
+  "phrases": { "max": 48, "lenMax": 80,
+               "entries": [ { "code": 1, "texte": "Cuve pleine" } ] }
+}
+```
+
+- `source` vient de la carte SD (`/scripts/s<i>.txt`). Il est absent si la SD
+  manque ou si le fichier n'existe pas. L'éditeur cloud affiche alors
+  l'emplacement en **lecture seule**, comme l'éditeur local devant un script
+  sans source.
+- Le bytecode ne remonte pas : l'éditeur recompile le source.
+- Les noms des zones sont déjà dans `zones[]`. L'identifiant **stable** de
+  chaque zone (`zoneId`), cité par les scripts et distinct de l'index `i`, y
+  est ajouté (`"id"`). Le nom d'une entrée est son libellé de rôle
+  (`roleName`), comme dans l'éditeur local.
+
+### Descente (serveur → module)
+
+Une commande porte **soit un emplacement, soit le catalogue de phrases**,
+jamais plusieurs scripts. C'est ce qui permet de tenir dans la taille de
+réponse.
+
+```json
+{ "type": "config.apply", "baseRevision": 57,
+  "scripts": [ { "i": 2, "nom": "Arrosage cuve", "actif": true,
+                 "declencheur": 2, "cible": 1,
+                 "code": "1a02...", "source": "quand zone ... " } ] }
+
+{ "type": "config.apply", "baseRevision": 57,
+  "scripts": [ { "i": 4, "efface": true } ] }
+
+{ "type": "config.apply", "baseRevision": 57,
+  "phrases": [ { "code": 1, "texte": "Cuve pleine" } ] }
+```
+
+- `code` est le bytecode en hexadécimal (800 caractères au plus, contre
+  ~1,6 Ko en tableau JSON). Il est compilé dans `app.html` par le même
+  `script-lang.js` que l'éditeur local.
+- Le module applique **les mêmes contrôles** que les routes locales, sans la
+  signature : `validateScriptProgram` via `ScriptStore::save`, déclencheur
+  connu, cible non nulle si un déclencheur est posé, taille ≤ 400 octets.
+  Pour les phrases : codes 1-65535 uniques, ≤ 48 entrées, ≤ 80 octets, aucun
+  caractère de contrôle. Le catalogue est remplacé en entier, comme en
+  local.
+- Le source suit le bytecode, jamais l'inverse : si l'écriture SD échoue, le
+  script tourne quand même, et l'accusé le signale.
+- Un compilateur cloud plus récent que le firmware peut produire un opcode
+  inconnu du module. La revalidation le refuse avec son motif : l'échec est
+  sûr et visible dans l'accusé.
+
+### Taille de la réponse de sondage
+
+`httpExchange()` tronquait le corps à 4 096 octets ; un JSON tronqué ne
+s'analyse pas, et la commande était perdue sans message. Le plafond passe à
+**16 Ko**. Il est mesuré sur S3 (environ 200 Ko de tas interne libre au
+repos) et suffit pour un script complet ou le catalogue de phrases (~5 Ko).
+Côté serveur, `app.html` refuse avant envoi une commande qui dépasserait ce
+plafond.
+
+### Points à vérifier à l'implémentation
+
+- La lecture des six sources et du catalogue sur SD a lieu dans
+  `buildConfigBody()`, donc dans la boucle principale. Il faut mesurer sa
+  durée (`runtimeComponents`) et l'accès concurrent à la SD avec le serveur
+  Web.
+- Pic mémoire du miroir (règle F15) : corps `String` de l'ordre de 20 Ko
+  au lieu de ~3 Ko, à relever avant et après sur `.141`.
 
 ## Ce que cette conception ne traite pas
 
