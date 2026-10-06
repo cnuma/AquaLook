@@ -198,8 +198,31 @@ bool alert(void* raw, uint16_t code) {
 
 uint32_t nowMs(void*) { return millis(); }
 
+bool fork(void* raw, uint16_t pc) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    if (!ctx || ctx->isBranch || ctx->forkPc != ScriptRuntimeContext::NO_FORK) return false;
+    if (ctx->freeSlots == 0U) {
+        // La machine fait alors la branche 2 elle-meme, a la suite : le dire,
+        // sinon l'utilisateur croira ses deux zones arrosees ensemble.
+        EventLog::log(LOG_WARN,
+                      "Script %u : branche parallele executee a la suite (aucune place libre)",
+                      (unsigned)(ctx->selfIndex + 1U));
+        return false;
+    }
+    ctx->forkPc = pc;
+    ctx->freeSlots--;
+    ctx->branchesRunning++;
+    return true;
+}
+
+uint8_t branchesRunning(void* raw) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    return ctx ? ctx->branchesRunning : 0U;
+}
+
 const ScriptHostOps OPS = {
-    readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs
+    readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs,
+    fork, branchesRunning
 };
 
 } // namespace

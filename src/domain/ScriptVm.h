@@ -68,6 +68,21 @@ enum class ScriptOp : uint8_t {
     // quelqu'un. Les confondre ferait envoyer une alerte a chaque trace de
     // mise au point.
     ALERT = 83,
+
+    // Bloc « parallele ... avec ... finparallele » (6 oct. 2026). La forme
+    // compilee est : FORK Lb ; [branche 1] ; JOIN ; JMP fin ; Lb: [branche 2] ;
+    // ENDBRANCH ; fin:
+    //
+    // FORK demande a l'hote de faire tourner la branche 2 (a partir de Lb)
+    // dans une seconde machine. S'il refuse -- aucune place libre --, cette
+    // machine execute la branche 2 elle-meme, puis revient juste apres FORK :
+    // les deux branches s'enchainent au lieu de partir ensemble, mais aucune
+    // n'est perdue. Un seul retour en attente : pas de bloc parallele imbrique
+    // (refuse par le compilateur).
+    FORK = 84,       // + u16 : debut de la branche 2
+    JOIN = 85,       // rend la main tant que la branche 2 tourne ailleurs
+    ENDBRANCH = 86,  // fin de branche 2 : termine la machine-branche, ou
+                     // revient apres FORK quand la branche a ete faite ici
 };
 
 // Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
@@ -132,6 +147,12 @@ struct ScriptHostOps {
     // prevenu quelqu'un.
     bool (*alert)(void* ctx, uint16_t messageCode);
     uint32_t (*nowMs)(void* ctx);
+    // Bloc parallele. fork() : true si l'hote fera tourner la branche qui
+    // commence a `pc` dans une autre machine ; false pour que celle-ci la
+    // fasse elle-meme. branchesRunning() : branches encore en cours ailleurs.
+    // Absents (nullptr) : FORK execute toujours la branche sur place.
+    bool (*fork)(void* ctx, uint16_t pc);
+    uint8_t (*branchesRunning)(void* ctx);
 };
 
 struct ScriptProgram {
@@ -175,6 +196,11 @@ public:
     // avancer le script.
     ScriptStatus tick();
 
+    // Fait de cette machine celle d'une branche 2 de bloc parallele : elle
+    // part de `pc` et s'arrete (FINISHED) sur ENDBRANCH. A appeler juste
+    // apres load().
+    void startBranch(uint16_t pc) { _pc = pc; _isBranch = true; }
+
     ScriptStatus status() const { return _status; }
     ScriptAbort abortReason() const { return _abort; }
     uint16_t programCounter() const { return _pc; }
@@ -206,6 +232,14 @@ private:
     uint32_t _loops = 0U;
     uint32_t _startedMs = 0U;
     uint32_t _wakeAtMs = 0U;
+
+    // Retour apres une branche 2 executee sur place (FORK refuse), sinon
+    // NO_RETURN. Et vrai pour une machine-branche (startBranch()).
+    static constexpr uint16_t NO_RETURN = 0xFFFFU;
+    // Frequence a laquelle JOIN revient voir si la branche 2 est finie.
+    static constexpr uint32_t JOIN_POLL_MS = 250U;
+    uint16_t _returnPc = NO_RETURN;
+    bool _isBranch = false;
 
     ScriptStatus _status = ScriptStatus::READY;
     ScriptAbort _abort = ScriptAbort::NONE;

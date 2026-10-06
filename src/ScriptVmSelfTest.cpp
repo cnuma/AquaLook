@@ -31,6 +31,11 @@ struct FakeHost {
     uint16_t lastTarget = 0U;
     int32_t lastArg = 0;
     bool refuseActions = false;
+    // Bloc parallele : l'hote jouet accepte la branche 2 seulement si
+    // acceptFork, et dit qu'elle tourne tant que branches > 0.
+    bool acceptFork = false;
+    uint16_t forkPc = 0U;
+    uint8_t branches = 0U;
 };
 
 bool hostReadInput(void* ctx, uint16_t, int32_t& v) {
@@ -63,11 +68,56 @@ bool hostAlert(void* ctx, uint16_t code) {
     return true;
 }
 uint32_t hostNow(void* ctx) { return static_cast<FakeHost*>(ctx)->nowMs; }
+bool hostFork(void* ctx, uint16_t pc) {
+    FakeHost* h = static_cast<FakeHost*>(ctx);
+    if (!h->acceptFork) return false;
+    h->forkPc = pc;
+    h->branches = 1U;
+    return true;
+}
+uint8_t hostBranches(void* ctx) { return static_cast<FakeHost*>(ctx)->branches; }
 
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
-    hostAction, hostNotify, hostAlert, hostNow
+    hostAction, hostNotify, hostAlert, hostNow,
+    hostFork, hostBranches
 };
+
+// Bloc parallele assemble comme script-lang.js le compile :
+//   FORK Lb ; [1] var0 = 1 ; JOIN ; JMP fin ; Lb: [2] var1 = var0*10 + 2 ;
+//   ENDBRANCH ; fin: HALT
+// Le calcul de la branche 2 revele l'ORDRE d'execution : var1 vaut 2 si la
+// branche 2 passe avant la branche 1 (repli sur place), 12 si apres.
+struct ParallelProgram {
+    uint8_t code[64] = {};
+    uint16_t n = 0U;
+    uint16_t branch2 = 0U;
+};
+ParallelProgram assembleParallel() {
+    ParallelProgram p;
+    uint8_t* c = p.code;
+    uint16_t& n = p.n;
+    auto u8 = [&](uint8_t v) { c[n++] = v; };
+    auto u16 = [&](uint16_t v) { c[n++] = (uint8_t)(v & 0xFF); c[n++] = (uint8_t)(v >> 8); };
+    auto push = [&](int32_t v) {
+        u8((uint8_t)ScriptOp::PUSH);
+        const uint32_t r = (uint32_t)v;
+        for (uint8_t i = 0U; i < 4U; ++i) u8((uint8_t)((r >> (8U * i)) & 0xFFU));
+    };
+    u8((uint8_t)ScriptOp::FORK); const uint16_t forkAt = n; u16(0);
+    push(1); u8((uint8_t)ScriptOp::STORE); u8(0);
+    u8((uint8_t)ScriptOp::JOIN);
+    u8((uint8_t)ScriptOp::JMP); const uint16_t jmpAt = n; u16(0);
+    p.branch2 = n;
+    u8((uint8_t)ScriptOp::LOAD); u8(0); push(10); u8((uint8_t)ScriptOp::MUL);
+    push(2); u8((uint8_t)ScriptOp::ADD); u8((uint8_t)ScriptOp::STORE); u8(1);
+    u8((uint8_t)ScriptOp::ENDBRANCH);
+    const uint16_t fin = n;
+    u8((uint8_t)ScriptOp::HALT);
+    c[forkAt] = (uint8_t)(p.branch2 & 0xFF); c[forkAt + 1] = (uint8_t)(p.branch2 >> 8);
+    c[jmpAt] = (uint8_t)(fin & 0xFF);        c[jmpAt + 1] = (uint8_t)(fin >> 8);
+    return p;
+}
 
 // Petit assembleur, pour que les programmes de test restent lisibles.
 struct Asm {
@@ -364,6 +414,55 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
                         vm.abortReason() == ScriptAbort::HOST_REFUSED;
         snprintf(detail, sizeof(detail), "arret=%s", scriptAbortName(vm.abortReason()));
         record(cases, "action refusee par l hote", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11b. Bloc parallele sans place libre : la branche 2 est faite sur
+    // place, AVANT la branche 1, puis la machine revient -- rien n'est perdu.
+    {
+        total++;
+        FakeHost h;   // acceptFork = false
+        const ParallelProgram p = assembleParallel();
+        const ScriptProgram prog(p.code, p.n);
+        ScriptVm vm;
+        vm.load(prog, &HOST_OPS, &h);
+        run(vm, 20U);
+        const bool ok = validateScriptProgram(prog) == ScriptAbort::NONE &&
+                        vm.status() == ScriptStatus::FINISHED &&
+                        vm.variable(0) == 1 && vm.variable(1) == 2;
+        snprintf(detail, sizeof(detail), "var0=%ld var1=%ld (attendu 1 et 2)",
+                 (long)vm.variable(0), (long)vm.variable(1));
+        record(cases, "parallele : repli sur place", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11c. Bloc parallele avec place : la machine fait la branche 1, attend
+    // sur JOIN tant que la branche 2 tourne ailleurs, puis termine sans
+    // refaire la branche 2. Et une machine-branche ne fait QUE la branche 2.
+    {
+        total++;
+        FakeHost h; h.acceptFork = true;
+        const ParallelProgram p = assembleParallel();
+        ScriptVm vm;
+        vm.load(ScriptProgram(p.code, p.n), &HOST_OPS, &h);
+        run(vm, 5U, &h, 100U);
+        const bool waited = vm.status() == ScriptStatus::WAITING && vm.variable(0) == 1 &&
+                            h.forkPc == p.branch2;
+        h.branches = 0U;
+        run(vm, 10U, &h, 300U);
+        const bool joined = vm.status() == ScriptStatus::FINISHED && vm.variable(1) == 0;
+
+        FakeHost hb;
+        ScriptVm branch;
+        branch.load(ScriptProgram(p.code, p.n), &HOST_OPS, &hb);
+        branch.startBranch(p.branch2);
+        run(branch, 10U);
+        const bool branchOk = branch.status() == ScriptStatus::FINISHED &&
+                              branch.variable(1) == 2 && branch.variable(0) == 0;
+        const bool ok = waited && joined && branchOk;
+        snprintf(detail, sizeof(detail), "attente=%d rendez-vous=%d branche=%d",
+                 waited ? 1 : 0, joined ? 1 : 0, branchOk ? 1 : 0);
+        record(cases, "parallele : attente et branche", ok, detail);
         if (ok) passed++;
     }
 

@@ -29,13 +29,14 @@ static int8_t operandBytes(ScriptOp op) {
         case ScriptOp::LE:  case ScriptOp::GT:  case ScriptOp::GE:
         case ScriptOp::AND: case ScriptOp::OR:  case ScriptOp::NOT:
         case ScriptOp::WAIT:
+        case ScriptOp::JOIN: case ScriptOp::ENDBRANCH:
             return 0;
         case ScriptOp::LOAD: case ScriptOp::STORE:
             return 1;
         case ScriptOp::JMP: case ScriptOp::JZ: case ScriptOp::JNZ:
         case ScriptOp::READ_INPUT: case ScriptOp::ZONE_ACTIVE:
         case ScriptOp::ZONE_REMAIN: case ScriptOp::NOTIFY:
-        case ScriptOp::ALERT:
+        case ScriptOp::ALERT: case ScriptOp::FORK:
             return 2;
         case ScriptOp::PUSH:
             return 4;
@@ -81,7 +82,9 @@ ScriptAbort validateScriptProgram(const ScriptProgram& program) {
     while (pc < program.size) {
         const ScriptOp op = static_cast<ScriptOp>(program.code[pc]);
         const int8_t operands = operandBytes(op);
-        if (op == ScriptOp::JMP || op == ScriptOp::JZ || op == ScriptOp::JNZ) {
+        // La cible de FORK est un debut de branche : meme exigence qu'un saut.
+        if (op == ScriptOp::JMP || op == ScriptOp::JZ || op == ScriptOp::JNZ ||
+            op == ScriptOp::FORK) {
             const uint16_t target = static_cast<uint16_t>(
                 program.code[pc + 1U] |
                 (static_cast<uint16_t>(program.code[pc + 2U]) << 8));
@@ -110,6 +113,8 @@ void ScriptVm::load(const ScriptProgram& program,
     _steps = 0U;
     _loops = 0U;
     _wakeAtMs = 0U;
+    _returnPc = NO_RETURN;
+    _isBranch = false;
     _startedMs = (host && host->nowMs) ? host->nowMs(hostContext) : 0U;
     _abort = ScriptAbort::NONE;
     _status = (program.code && program.size > 0U)
@@ -358,6 +363,45 @@ ScriptStatus ScriptVm::tick() {
                 _status = ScriptStatus::WAITING;
                 return _status;
             }
+
+            case ScriptOp::FORK: {
+                if (!fetch16(u16)) return _status;
+                if (u16 >= _program.size) { fail(ScriptAbort::BAD_JUMP); return _status; }
+                if (_host->fork && _host->fork(_hostCtx, u16)) break;   // branche 2 ailleurs
+                // Pas de place : faire la branche 2 ici, puis revenir. Un
+                // second retour en attente voudrait dire un bloc imbrique,
+                // que le compilateur refuse -- ne pas l'executer de travers.
+                if (_returnPc != NO_RETURN) { _pc = here; fail(ScriptAbort::BAD_JUMP); return _status; }
+                _returnPc = _pc;
+                _pc = u16;
+                break;
+            }
+
+            case ScriptOp::JOIN:
+                // Meme principe que WAIT : rendre la main sans consommer
+                // d'instructions, et revenir verifier un peu plus tard.
+                if (_host->branchesRunning && _host->branchesRunning(_hostCtx) > 0U) {
+                    _pc = here;
+                    _wakeAtMs = now + JOIN_POLL_MS;
+                    _status = ScriptStatus::WAITING;
+                    return _status;
+                }
+                break;
+
+            case ScriptOp::ENDBRANCH:
+                if (_isBranch) {
+                    _status = ScriptStatus::FINISHED;
+                    return _status;
+                }
+                if (_returnPc != NO_RETURN) {
+                    _pc = _returnPc;
+                    _returnPc = NO_RETURN;
+                    break;
+                }
+                // Atteint sans FORK prealable : programme mal forme.
+                _pc = here;
+                fail(ScriptAbort::BAD_JUMP);
+                return _status;
 
             default:
                 fail(ScriptAbort::BAD_OPCODE);

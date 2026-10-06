@@ -2,6 +2,8 @@
 
 #include "EventLog.h"
 
+#include <string.h>
+
 using AquaLook::Domain::ScriptAbort;
 using AquaLook::Domain::ScriptProgram;
 using AquaLook::Domain::ScriptStatus;
@@ -21,6 +23,12 @@ void ScriptRunner::begin(const InputSampler* inputs, ScheduleManager* schedule,
         _lastAbortPc[i] = 0U;
     }
     _primed = false;
+}
+
+uint8_t ScriptRunner::freeCount() const {
+    uint8_t n = 0U;
+    for (uint8_t i = 0U; i < MAX_CONCURRENT; ++i) if (!_jobs[i].active) n++;
+    return n;
 }
 
 int8_t ScriptRunner::freeSlot() const {
@@ -80,6 +88,9 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     job.ctx.name = job.name;
     job.ctx.selfIndex = index;
     job.index = index;
+    job.isBranch = false;
+    job.parentSlot = 0xFF;
+    job.codeSize = meta.codeSize;
     job.active = true;
     job.vm.load(ScriptProgram(job.code, meta.codeSize), &scriptHostOps(), &job.ctx);
 
@@ -88,6 +99,44 @@ bool ScriptRunner::start(uint8_t index, const char*& reason) {
     _lastAbortPc[index] = 0U;
     EventLog::log(LOG_INFO, "Script %u (%s) demarre", (unsigned)(index + 1U), meta.name);
     return true;
+}
+
+bool ScriptRunner::startBranch(uint8_t parentSlot, uint16_t pc) {
+    const int8_t slot = freeSlot();
+    if (slot < 0) return false;
+    Job& parent = _jobs[parentSlot];
+    Job& b = _jobs[slot];
+    // Copie du bytecode : chaque travail possede son tampon, et le parent
+    // peut se terminer (place reutilisee) pendant que la branche tourne.
+    memcpy(b.code, parent.code, sizeof(b.code));
+    b.codeSize = parent.codeSize;
+    b.ctx = ScriptRuntimeContext();
+    b.ctx.inputs = _inputs;
+    b.ctx.schedule = _schedule;
+    b.ctx.config = _config;
+    strlcpy(b.name, parent.name, sizeof(b.name));
+    b.ctx.name = b.name;
+    b.ctx.selfIndex = parent.index;
+    b.ctx.isBranch = true;
+    b.index = parent.index;
+    b.isBranch = true;
+    b.parentSlot = parentSlot;
+    b.active = true;
+    b.vm.load(ScriptProgram(b.code, b.codeSize), &scriptHostOps(), &b.ctx);
+    b.vm.startBranch(pc);
+    EventLog::log(LOG_INFO, "Script %u : branche parallele demarree",
+                  (unsigned)(parent.index + 1U));
+    return true;
+}
+
+void ScriptRunner::stopBranches(uint8_t parentSlot, const char* why) {
+    for (uint8_t t = 0U; t < MAX_CONCURRENT; ++t) {
+        Job& b = _jobs[t];
+        if (!b.active || !b.isBranch || b.parentSlot != parentSlot) continue;
+        b.active = false;
+        EventLog::log(LOG_WARN, "Script %u : branche parallele arretee (%s)",
+                      (unsigned)(b.index + 1U), why);
+    }
 }
 
 void ScriptRunner::launchRequested(uint8_t caller, uint8_t mask) {
@@ -192,19 +241,35 @@ void ScriptRunner::update() {
         Job& job = _jobs[s];
         if (!job.active) continue;
 
+        // Places libres au moment du tick : c'est ce que fork() consulte pour
+        // accepter une branche parallele, qui sera demarree juste apres.
+        job.ctx.freeSlots = freeCount();
         const ScriptStatus st = job.vm.tick();
+        const uint16_t forkPc = job.ctx.forkPc;
+        job.ctx.forkPc = ScriptRuntimeContext::NO_FORK;
         // Relever les lancements demandes pendant ce tour AVANT de liberer
         // la place : un script qui en lance un autre puis se termine laisse
         // ainsi sa propre place au script lance.
         const uint8_t launches = job.ctx.launchMask;
         const uint8_t caller = job.index;
         job.ctx.launchMask = 0U;
-        if (st == ScriptStatus::FINISHED) {
+        if (st == ScriptStatus::FINISHED && job.isBranch) {
+            // Fin normale d'une branche 2 : le parent, en attente sur JOIN,
+            // pourra continuer.
+            Job& parent = _jobs[job.parentSlot];
+            if (parent.active && !parent.isBranch && parent.ctx.branchesRunning > 0U) {
+                parent.ctx.branchesRunning--;
+            }
+            EventLog::log(LOG_INFO, "Script %u : branche parallele terminee",
+                          (unsigned)(job.index + 1U));
+            job.active = false;
+        } else if (st == ScriptStatus::FINISHED) {
             EventLog::log(LOG_INFO,
                           "Script %u termine : %u lecture(s), %u action(s), %u refus",
                           (unsigned)(job.index + 1U), (unsigned)job.ctx.reads,
                           (unsigned)job.ctx.actions, (unsigned)job.ctx.refusals);
             job.active = false;
+            stopBranches(s, "script termine");
         } else if (st == ScriptStatus::ABORTED) {
             const ScriptAbort why = job.vm.abortReason();
             _lastAbort[job.index] = scriptAbortName(why);
@@ -229,6 +294,27 @@ void ScriptRunner::update() {
                           (unsigned long)job.vm.stepsUsed(),
                           (unsigned)job.vm.programCounter());
             job.active = false;
+            if (job.isBranch) {
+                // Une branche est une partie du script : son arret arrete le
+                // script entier, comme une erreur dans un script unique.
+                Job& parent = _jobs[job.parentSlot];
+                if (parent.active && !parent.isBranch && parent.index == job.index) {
+                    parent.active = false;
+                    EventLog::log(LOG_ERROR, "Script %u ARRETE : sa branche parallele s'est arretee",
+                                  (unsigned)(job.index + 1U));
+                    stopBranches(job.parentSlot, "script arrete");
+                }
+            } else {
+                stopBranches(s, "script arrete");
+            }
+        } else if (forkPc != ScriptRuntimeContext::NO_FORK && !job.isBranch) {
+            // fork() n'a accepte que s'il restait une place : elle est libre,
+            // rien n'a demarre entre le tick et ici.
+            if (!startBranch(s, forkPc)) {
+                if (job.ctx.branchesRunning > 0U) job.ctx.branchesRunning--;
+                EventLog::log(LOG_ERROR, "Script %u : branche parallele non demarree",
+                              (unsigned)(job.index + 1U));
+            }
         }
         // Apres le traitement de fin : `job` peut desormais etre libre et
         // reutilise par start(). Un script lance dans une place d'indice

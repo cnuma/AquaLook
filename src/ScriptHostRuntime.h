@@ -48,6 +48,17 @@ struct ScriptRuntimeContext {
     // runner les demarre APRES le tick : demarrer un travail depuis l'hote,
     // en plein parcours de la table des travaux, la modifierait sous ses pieds.
     uint8_t launchMask = 0U;
+
+    // Bloc parallele. Le runner pose freeSlots avant chaque tick ; fork()
+    // n'accepte une branche que s'il reste une place, et note son debut dans
+    // forkPc pour que le runner la demarre apres le tick. branchesRunning
+    // compte les branches 2 en cours (decompte par le runner a leur fin).
+    // Une machine-branche (isBranch) ne peut pas en ouvrir une autre.
+    static constexpr uint16_t NO_FORK = 0xFFFFU;
+    uint8_t freeSlots = 0U;
+    uint16_t forkPc = NO_FORK;
+    uint8_t branchesRunning = 0U;
+    bool isBranch = false;
 };
 
 const AquaLook::Domain::ScriptHostOps& scriptHostOps();

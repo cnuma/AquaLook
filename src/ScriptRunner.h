@@ -82,6 +82,11 @@ private:
     struct Job {
         bool active = false;
         uint8_t index = 0xFF;
+        // Branche 2 d'un bloc parallele : meme script (index) que son parent,
+        // qui tourne dans la place parentSlot.
+        bool isBranch = false;
+        uint8_t parentSlot = 0xFF;
+        uint16_t codeSize = 0U;
         char name[ScriptStore::MAX_NAME] = {};
         uint8_t code[ScriptStore::MAX_BYTECODE] = {};
         AquaLook::Domain::ScriptVm vm;
@@ -92,7 +97,12 @@ private:
     // Demarre les scripts demandes par « lancer script N » (masque d'un bit
     // par emplacement) au nom du script `caller`.
     void launchRequested(uint8_t caller, uint8_t mask);
+    // Bloc parallele : demarre la branche 2 du travail parentSlot a `pc`.
+    bool startBranch(uint8_t parentSlot, uint16_t pc);
+    // Arrete les branches 2 encore en cours du travail parentSlot.
+    void stopBranches(uint8_t parentSlot, const char* why);
     int8_t freeSlot() const;
+    uint8_t freeCount() const;
 
     Job _jobs[MAX_CONCURRENT];
     const InputSampler* _inputs = nullptr;
