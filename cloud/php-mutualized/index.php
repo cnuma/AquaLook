@@ -410,6 +410,13 @@ try {
         // juste avant.
         $enAttente = pending_config_command($moduleId);
         $fusion = false;
+        if ($enAttente !== null && pending_kind($enAttente['command']) !== 'zones') {
+            // Un script ou les phrases attendent (decision D014) : fusionner
+            // ferait une commande mixte que le module refuse, et annuler
+            // perdrait la modification en attente. On fait patienter.
+            send_json(409, ['detail' => 'une modification de script attend la synchronisation '
+                . 'du module : réessayez dans quelques minutes']);
+        }
         if ($enAttente !== null) {
             $zones = merge_zones($enAttente['command']['zones'] ?? [], $zones);
             cancel_command($enAttente['correlationId'],
@@ -425,6 +432,123 @@ try {
             'baseRevision'  => $courante['revision'],
             'fusion'        => $fusion,
             'zones'         => count($zones),
+        ]);
+    }
+
+    // ── Scripts et phrases (decision D014) ──────────────────────────────────
+    //
+    // Meme methode que le planning : le serveur PROPOSE une commande
+    // config.apply, le module arbitre (baseRevision, revalidation complete du
+    // bytecode), le local gagne. Une commande porte UN script OU le catalogue
+    // de phrases : c'est la forme que le module accepte, et ce qui la fait
+    // tenir dans sa reponse de sondage (16 Ko).
+    //
+    // Rien ne se lance d'ici : aucune route ne demarre un script ni ne pose le
+    // secret de signature du module.
+    //
+    // La validation ci-dessous n'est qu'un premier filtre, pour repondre vite
+    // a l'utilisateur. Le module refait tous les controles et reste seul juge.
+
+    if ($method === 'POST' && ($path === '/app/module/script' || $path === '/app/module/phrases')) {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!preg_match(MODULE_ID_PATTERN, $moduleId) || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+
+        if ($path === '/app/module/script') {
+            $s = $body['script'] ?? null;
+            if (!is_array($s) || !is_int($s['i'] ?? null) || $s['i'] < 0 || $s['i'] > 5) {
+                send_json(400, ['detail' => 'emplacement de script invalide (0 a 5)']);
+            }
+            if (($s['efface'] ?? false) === true) {
+                $bloc = ['scripts' => [['i' => $s['i'], 'efface' => true]]];
+            } else {
+                $code = $s['code'] ?? '';
+                $nom = $s['nom'] ?? '';
+                $source = $s['source'] ?? '';
+                $decl = $s['declencheur'] ?? null;
+                $cible = $s['cible'] ?? 0;
+                if (!is_string($code) || !preg_match('/^([0-9a-fA-F]{2}){1,400}$/', $code)) {
+                    send_json(400, ['detail' => 'programme compile absent ou invalide']);
+                }
+                if (!is_string($nom) || $nom === '' || strlen($nom) > 23) {
+                    send_json(400, ['detail' => 'nom requis, 23 octets au plus']);
+                }
+                if (!is_int($decl) || $decl < 0 || $decl > 3 || !is_int($cible) || $cible < 0 || $cible > 65535) {
+                    send_json(400, ['detail' => 'declencheur ou cible invalide']);
+                }
+                if (!is_string($source) || strlen($source) > 4096) {
+                    send_json(400, ['detail' => 'texte du script trop long (4096 octets au plus)']);
+                }
+                $bloc = ['scripts' => [[
+                    'i' => $s['i'], 'nom' => $nom, 'actif' => ($s['actif'] ?? true) === true,
+                    'declencheur' => $decl, 'cible' => $cible,
+                    'code' => strtolower($code), 'source' => $source,
+                ]]];
+            }
+            $nature = 'script:' . $s['i'];
+        } else {
+            $liste = $body['phrases'] ?? null;
+            if (!is_array($liste) || count($liste) > 48) {
+                send_json(400, ['detail' => 'liste de phrases invalide (48 au plus)']);
+            }
+            $vus = [];
+            $propres = [];
+            foreach ($liste as $p) {
+                $c = $p['code'] ?? null;
+                $t = $p['texte'] ?? null;
+                if (!is_int($c) || $c < 1 || $c > 65535 || isset($vus[$c])) {
+                    send_json(400, ['detail' => 'code de phrase invalide ou en double']);
+                }
+                if (!is_string($t) || $t === '' || strlen($t) > 80 || preg_match('/[\x00-\x1f]/', $t)) {
+                    send_json(400, ['detail' => 'phrase vide, trop longue (80 octets) ou avec caractere de controle']);
+                }
+                $vus[$c] = true;
+                $propres[] = ['code' => $c, 'texte' => $t];
+            }
+            $bloc = ['phrases' => $propres];
+            $nature = 'phrases';
+        }
+
+        // baseRevision vient du serveur, jamais du client (voir /schedule).
+        $courante = module_config($moduleId);
+        if ($courante === null) {
+            send_json(409, [
+                'detail' => 'configuration du module inconnue du serveur : attendez sa prochaine synchronisation',
+            ]);
+        }
+
+        // Une seule commande en vol : la meme cible se remplace (la derniere
+        // intention l'emporte) ; une AUTRE modification en attente fait
+        // patienter, car deux commandes sur la meme baseRevision feraient
+        // refuser la seconde des que la premiere serait appliquee.
+        $enAttente = pending_config_command($moduleId);
+        $remplace = false;
+        if ($enAttente !== null) {
+            if (pending_kind($enAttente['command']) !== $nature) {
+                send_json(409, ['detail' => 'une autre modification attend la synchronisation '
+                    . 'du module : réessayez dans quelques minutes']);
+            }
+            cancel_command($enAttente['correlationId'], 'remplacee par une modification plus recente');
+            $remplace = true;
+        }
+
+        $commande = ['type' => 'config.apply', 'baseRevision' => $courante['revision']] + $bloc;
+        // Plafond du MODULE, plus bas que celui du serveur : sa reponse de
+        // sondage est bornee a 16 Ko, enveloppe comprise.
+        if (strlen(json_encode($commande, JSON_UNESCAPED_UNICODE)) > 15 * 1024) {
+            send_json(413, ['detail' => 'commande trop volumineuse pour le module (15 Ko au plus)']);
+        }
+        $correlationId = create_command($moduleId, $commande, 'espace:' . $user['email']);
+        send_json(200, [
+            'correlationId' => $correlationId,
+            'baseRevision'  => $courante['revision'],
+            'remplace'      => $remplace,
         ]);
     }
 

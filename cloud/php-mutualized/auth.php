@@ -479,6 +479,26 @@ function pending_config_command(string $moduleId): ?array
 }
 
 /**
+ * Nature d'une commande config.apply en attente (decision D014) :
+ * 'script:<i>', 'phrases' ou 'zones'.
+ *
+ * Depuis que scripts et phrases passent par config.apply, une commande en
+ * file n'est plus forcement fusionnable avec une autre : le module refuse une
+ * commande mixte, et n'accepte qu'un script par commande. Avant de fusionner
+ * ou de remplacer, il faut donc savoir ce qui attend.
+ */
+function pending_kind(array $command): string
+{
+    if (isset($command['phrases'])) {
+        return 'phrases';
+    }
+    if (isset($command['scripts'][0]['i'])) {
+        return 'script:' . (int)$command['scripts'][0]['i'];
+    }
+    return 'zones';
+}
+
+/**
  * Fusionne deux listes de zones, la plus recente l'emportant PAR CRENEAU.
  *
  * La granularite compte, et une premiere version l'avait ratee : fusionner
