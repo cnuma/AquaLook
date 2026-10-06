@@ -608,7 +608,7 @@ static bool isPrivateAddress(const char* host) {
         *parts[i] = v;
         if (i < 3U) { if (*p != '.') return false; ++p; }
     }
-    if (*p != ' ') return false;
+    if (*p != '\0') return false;
     if (a > 255U || b > 255U || c > 255U || d > 255U) return false;
     if (a == 127U) return true;                      // 127.0.0.0/8
     if (a == 10U) return true;                       // 10.0.0.0/8
