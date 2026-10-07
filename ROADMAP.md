@@ -628,6 +628,9 @@ Demande utilisateur du 7 septembre 2026, explicitement differee.
 
 ### Éditeur de scripts : contextualiser les commandes proposées
 
+`scripts.html` a été retiré le 7 oct. 2026 : ce point vaut désormais pour
+l'éditeur graphique (palette et fenêtre « Modifier le texte »).
+
 Le panneau « Commandes » de `scripts.html` (`COMMANDES` dans le script inline)
 montre aujourd'hui la liste complète, toujours la même, quel que soit le
 script en cours d'édition. Certaines entrées n'ont pourtant de sens que dans
@@ -825,8 +828,8 @@ script depuis l'espace en ligne (décision D014).
 
 ### Éditeur graphique des scripts : améliorations demandées
 
-**Fait** (7 oct. 2026 : les 8 points ; reste la passe « Fermer » sur les
-autres pages, et la décision de retirer `scripts.html`).
+**Fait** (7 oct. 2026 : les 8 points ; `scripts.html` retiré le même jour ;
+reste la passe « Fermer » sur les autres pages).
 Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
@@ -868,8 +871,9 @@ AlwaysData, la page étant la même sur le module et en ligne.
    perdre la modification. Ce point rend `scripts.html` supprimable : il
    conditionne l'abandon de l'ancien éditeur.
    **Fait** (commit « modifier le texte genere ») : un texte non
-   dessinable est gardé tel quel (mode texte) ; `scripts.html` n'est pas
-   encore retiré.
+   dessinable est gardé tel quel (mode texte). `scripts.html` est retiré
+   (7 oct. 2026), avec le bouton « Éditeur texte » et le lien de la
+   couverture de l'éditeur graphique.
 7. **Boucles « Répéter » et « Tant que » en forme de pince**, comme dans
    Scratch : les blocs contenus sont encadrés par le bloc de boucle, ce qui
    distingue visuellement une structure (boucle) d'une étape (arroser,

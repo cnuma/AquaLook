@@ -99,8 +99,8 @@
     // Un point {pc, line} au debut de CHAQUE instruction (voir statement()
     // ci-dessous) -- pas une table octet par octet, trop lourde pour rien.
     // Sert uniquement cote editeur, a retrouver la ligne d'un arret survenu
-    // sur le module (voir majSuggestions()/surlignerLigne() dans
-    // scripts.html) ; le module, lui, ne voit jamais cette table.
+    // sur le module (voir l'arret sur le schema dans
+    // scripts-schema.html) ; le module, lui, ne voit jamais cette table.
     const stmtLines = [];
     // Un seul bloc « parallele » a la fois : la machine ne garde qu'un retour
     // pour le cas ou elle doit faire la branche 2 elle-meme (ScriptVm FORK).

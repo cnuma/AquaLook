@@ -8,7 +8,7 @@
    Sur telephone, consultation seule : glisser des blocs au doigt sur un
    schema de cette taille n'est pas utilisable, l'edition se fait sur PC.
    Tout ce qui part vers le module passe par le texte genere et le
-   compilateur de script-lang.js, exactement comme dans scripts.html. */
+   compilateur de script-lang.js. */
 html,body{height:100%}
 body{padding:0;min-height:0;overflow:hidden}
 /* Sans cette regle, un « display » de classe (.cover, .tabbody...) l'emporte
@@ -276,8 +276,8 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   #nom{width:100%}
 }
 @media (prefers-reduced-motion:reduce){.node.run,.hexw.run{animation:none;outline:3px solid var(--cat)}}
-/* Espace en ligne (?module=) : rien ne se lance, pas de secret, pas d'editeur texte. */
-body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud #b-secret,body.cloud #b-oublier{display:none!important}
+/* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
+body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!important}
 </style></head><body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -309,7 +309,6 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
     <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>
     <button class="btn edit-only" id="b-phrases" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
-    <a class="btn" id="b-texte" href="/scripts.html">Éditeur texte</a>
     <button class="btn principal edit-only" id="b-save">Enregistrer</button>
   </header>
   <div id="msg">Lecture du module…</div>
@@ -336,7 +335,6 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
           <p id="cover-texte"></p>
           <div class="acts">
             <button class="btn principal" id="cover-modif">Modifier le texte</button>
-            <a class="btn" id="cover-texte-lien" href="/scripts.html">Ouvrir dans l'éditeur texte</a>
             <button class="btn edit-only" id="cover-vide">Repartir d'un schéma vide</button>
           </div>
         </div></div>
@@ -409,7 +407,7 @@ const TRIG = {1:"le changement d'une entrée", 2:"le démarrage d'une zone", 3:"
 const PALETTE = [['Arrosage',['arroser','arreter','suspendre','reprendre']],['Temps',['attendre']],
   ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']],['Scripts',['lancer','parallele']]];
 
-// Ce que CE module offre (memes sources que scripts.html).
+// Ce que CE module offre.
 let ZONES = [], ENTREES = [], BIBLIO = [];
 // Emplacements de scripts tels que /api/scripts les decrit, et le nombre de
 // scripts que le module fait tourner ensemble (4 sur S3, 2 sur CYD).
@@ -1148,14 +1146,9 @@ function couvrir(titre, texte) {
   $('cover-texte').textContent = texte;
   $('cover').hidden = !titre;
 }
-function majLiensTexte() {
-  const href = '/scripts.html?i=' + slot();
-  $('b-texte').href = href; $('cover-texte-lien').href = href;
-}
 
 async function charger() {
   const i = slot();
-  majLiensTexte();
   sel = null; undo = []; $('b-undo').disabled = true; arret = null;
   editable = true; lecture = null; couvrir('');
   const d = await (await fetch('/api/script-one?i=' + i)).json();
@@ -1204,8 +1197,8 @@ async function charger() {
   dire(msg, etat);
 }
 
-// Meme principe que ligneDeLaPosition() de scripts.html : le compilateur est
-// deterministe, donc le texte regenere redonne le bytecode qui a tourne --
+// Le compilateur est deterministe, donc le texte regenere redonne le
+// bytecode qui a tourne --
 // sauf si sa taille differe, auquel cas on ne montre rien plutot qu'un
 // bloc faux.
 function blocDuDernierArret(d) {
@@ -1219,7 +1212,7 @@ function blocDuDernierArret(d) {
   return best && g.lines[best.line - 1] ? g.lines[best.line - 1].id : null;
 }
 
-// ── Module : ecriture (signee, comme dans scripts.html) ───────────────
+// ── Module : ecriture (signee) ───────────────────────────────────────
 function secret() {
   let s = null;
   try { s = localStorage.getItem('aqualook-secret'); } catch (e) {}
@@ -1344,7 +1337,7 @@ $('actif-top').addEventListener('change', () => {
                  : 'Script inactif : il ne partira plus, même sur « Lancer maintenant », une fois enregistré.', '');
 });
 
-// ── Bibliotheque de phrases (memes regles et meme signature que scripts.html)
+// ── Bibliotheque de phrases (signee comme les scripts)
 function direPhrases(t, e) { const m = $('msgphrases'); m.textContent = t || ''; m.className = e || ''; }
 function rendrePhrases() {
   $('phrases-liste').innerHTML = BIBLIO.length ? BIBLIO.map((o, i) =>
@@ -1359,7 +1352,7 @@ function lirePhrases() {
     if (el.dataset.b === 'code') o.code = parseInt(el.value, 10) || 0; else o.texte = el.value;
   });
 }
-// Premier code libre a partir de 900, comme dans scripts.html.
+// Premier code libre a partir de 900.
 function codeLibre() { const pris = new Set(BIBLIO.map((o) => o.code)); let c = 900; while (pris.has(c) && c < 65535) c++; return c; }
 let biblioAvant = null;
 $('b-phrases').onclick = () => {
@@ -1428,7 +1421,7 @@ $('cover-vide').onclick = () => {
   dire('Schéma vide : le texte actuel du module sera remplacé à l’enregistrement.', 'ko');
 };
 
-// ── Modifier le texte (remplace l'editeur texte de scripts.html) ────────
+// ── Modifier le texte (remplace l'ancien editeur texte scripts.html) ────
 // Le texte applique est compile, puis relu en schema. S'il ne se dessine
 // pas, il est GARDE tel quel (mode texte : schema en lecture, Enregistrer
 // envoie ce texte) plutot que perdu ou traduit « a peu pres ».
