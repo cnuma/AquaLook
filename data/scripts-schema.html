@@ -1111,7 +1111,9 @@ async function listeSlots() {
 // Etat des notifications et gamme, relus avec la liste des scripts.
 function majModule(notif, gamme) {
   NOTIF = typeof notif === 'boolean' ? notif : null;
-  $('gamme').textContent = gamme || ''; $('gamme').hidden = !gamme;
+  // La marque AquaLook est deja a gauche : ne garder que « Pro ».
+  gamme = (gamme || '').replace(/^aqualook\s*/i, '');
+  $('gamme').textContent = gamme; $('gamme').hidden = !gamme;
   $('ph-notif').hidden = NOTIF !== false;
   const p = $('palette').querySelector('[data-new="notifier"] span span');
   if (p) {

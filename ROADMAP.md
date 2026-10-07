@@ -862,7 +862,8 @@ AlwaysData, la page étant la même sur le module et en ligne.
 5. **Afficher la gamme « Aqualook Pro »** dans l'interface des scripts,
    comme le badge déjà présent sur `index.html` (`productLine` de
    `/api/diagnostics`). En mode espace en ligne, la valeur n'est pas dans le
-   miroir : à y ajouter. **Fait** (`99f21eb`).
+   miroir : à y ajouter. **Fait** (`99f21eb`). La pastille n'affiche que
+   « Pro » (la marque AquaLook est déjà à côté), ici comme sur `index.html`.
 6. **Modifier le « texte généré » depuis l'éditeur graphique**, par un
    dispositif voisin de l'édition des phrases (panneau d'édition, validation
    à l'enregistrement), sans repasser par `scripts.html`, appelée à

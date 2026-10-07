@@ -1088,7 +1088,13 @@ function populateDrawer() {
   // les modules avec et sans ecran LCD quand plusieurs tournent en
   // parallele (voir SystemDiagnostics.cpp / WebManager::handleAdminStatus).
   const productBadge = document.getElementById('header-product-badge');
-  if (productBadge) productBadge.textContent = s.productLine || '';
+  // Le titre porte deja AQUALOOK : la pastille ne garde que le suffixe
+  // (« Pro »), et disparait pour la gamme de base.
+  const gamme = (s.productLine || '').replace(/^aqualook\s*/i, '');
+  if (productBadge) {
+    productBadge.textContent = gamme;
+    productBadge.style.display = gamme ? '' : 'none';
+  }
   const ssid = s.wifi?.ssid || '--';
   document.getElementById('wifi-info').innerHTML =
     `SSID : <span>${ssid}</span><br>
