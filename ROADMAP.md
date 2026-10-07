@@ -806,7 +806,10 @@ masque seule ne pouvait pas voir).
 
 ### Espace en ligne (`app.html`) : une suppression de créneau en attente est invisible
 
-**À faire.** Demande utilisateur du 6 octobre 2026.
+**Fait** (7 oct. 2026, vérifié au banc avec un faux serveur, à valider en
+ligne après dépôt FTP) : créneau barré, cadre ambre en pointillés, horaire
+du module ; légende « (barré : suppression) » ; `ouvrirJour()` cohérent.
+Demande utilisateur du 6 octobre 2026.
 
 La grille du planning montre en ambre les créneaux **ajoutés ou modifiés**
 qui attendent la prochaine synchronisation. Elle ne montre pas les créneaux

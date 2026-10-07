@@ -83,6 +83,9 @@ label{color:var(--muted);font-size:13px}
     font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
 .cr:last-child{margin-bottom:0}
 .cr.att{background:var(--amber);color:#fff}
+/* Suppression en attente : horaire du module, barre, cadre ambre. */
+.cr.sup{background:transparent;color:var(--amber);border:1px dashed var(--amber);
+        padding:1px 5px;text-decoration:line-through}
 .echec{display:block;margin-top:4px;font-size:10.5px;color:var(--red);font-weight:600}
 .legende{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:12px;
          color:var(--muted);align-items:center}
@@ -845,7 +848,7 @@ function rendrePlanning(){
 
   h += '</table><div class="legende">'
      + '<span><span class="ex" style="background:var(--text)"></span>programmé sur le module</span>'
-     + '<span><span class="ex" style="background:var(--amber)"></span>en attente de synchronisation</span>'
+     + '<span><span class="ex" style="background:var(--amber)"></span>en attente de synchronisation (barré : suppression)</span>'
      + '<span style="color:var(--red)">&#10007; tentative refusée, non appliquée</span></div>';
   $('planning').innerHTML = h;
 
@@ -863,7 +866,16 @@ function celluleJour(i, mode, d, large){
   for (let r = 0; r < MAX_SLOTS; r++) {
     const c = creneau(i, mode, d, r);
     if (c.refuse) echecs++;
-    if (!c.effectif.on) continue;
+    if (!c.effectif.on) {
+      // Un creneau decoche qui tourne encore sur le module est une
+      // suppression en attente : la montrer (horaire du module, barre),
+      // sinon une demande qui ne fait que supprimer semble n'etre pas partie.
+      if (c.attente && c.module.on) {
+        lignes.push('<span class="cr sup">'
+          + hhmm(c.module.h, c.module.m) + ' ' + c.module.dur + APO + '</span>');
+      }
+      continue;
+    }
     lignes.push('<span class="cr' + (c.attente ? ' att' : '') + '">'
       + hhmm(c.effectif.h, c.effectif.m) + ' ' + c.effectif.dur + APO + '</span>');
   }
