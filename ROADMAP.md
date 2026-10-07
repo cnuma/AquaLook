@@ -886,8 +886,9 @@ AlwaysData, la page étant la même sur le module et en ligne.
    Scratch : les blocs contenus sont encadrés par le bloc de boucle, ce qui
    distingue visuellement une structure (boucle) d'une étape (arroser,
    arrêter, notifier…). Le « Si » et le « En parallèle » pourraient suivre.
-   **Fait pour les boucles** (`1335f45`) ; « Si » et « En parallèle » non
-   modifiés.
+   **Fait pour les boucles** (`1335f45`), puis pour « Si » (ambre, le
+   losange devient la mâchoire du haut) et « En parallèle » (sarcelle) le
+   7 oct. 2026 au soir ; vérifié au banc, à valider par l'utilisateur.
 8. **Conditions : « et » / « ou » entre chaque test**, avec la priorité
    mathématique habituelle (« et » avant « ou », parenthèses implicites),
    et conditions déplaçables par glisser-déposer comme les blocs. Valable
