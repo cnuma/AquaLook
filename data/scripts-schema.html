@@ -173,10 +173,25 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 #msgphrases.ok{color:#1d6b34}
 #msgphrases.ko{color:#8a5a00}
 .chip.join{margin-top:-1px}
-.loop{position:relative;display:flex;flex-direction:column;align-items:center;border:1.5px dashed var(--purple);
-  border-radius:14px;padding:0 20px 10px;background:rgba(102,51,204,.05)}
-.loop>.node{margin-top:-1px}
-.loopfoot{display:flex;align-items:center;gap:5px;font:600 11px var(--mono);color:var(--purple);margin-top:4px}
+/* Boucles en pince, comme Scratch : la machoire du haut est le bloc
+   (reglages), le bras gauche ramene vers le haut, la machoire du bas dit
+   quand la boucle recommence. Les blocs contenus sont pinces dedans, ce qui
+   distingue une structure d'une etape. Toute la pince prend la couleur de
+   selection (ou d'arret) de son bloc. */
+.pince{--pc:var(--purple);display:grid;grid-template-columns:18px auto}
+.pince:has(>.node.sel){--pc:var(--ring)}
+.pince:has(>.node.arret){--pc:var(--red)}
+.pince>.node{grid-column:1/3;width:auto;min-width:256px;border-color:var(--pc);border-left-width:1.5px;
+  border-radius:8px 8px 8px 0;background:var(--purple-dim)}
+.pince>.node.sel,.pince>.node.arret{box-shadow:none}
+.pince>.node .ico{background:var(--bg1)}
+.pince-arm{position:relative;background:var(--pc)}
+.pince-arm::before{content:'';position:absolute;left:4px;top:6px;border:5px solid transparent;border-top:0;border-bottom:7px solid #fff}
+.pince-body{display:flex;flex-direction:column;align-items:center;padding:0 18px 6px 10px;min-width:230px;
+  background:rgba(102,51,204,.04);border-right:1.5px dashed rgba(102,51,204,.25)}
+.pince-foot{grid-column:1/3;display:flex;align-items:center;gap:6px;background:var(--pc);color:#fff;
+  font:600 11px var(--mono);padding:5px 12px;border-radius:0 8px 8px 8px}
+.pince-foot svg.ic{width:14px;height:14px}
 
 .props{padding:0 14px 16px}
 .props .f{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
@@ -548,10 +563,12 @@ function nodeEl(n) {
     return w;
   }
   if (n.t === 'repeter' || n.t === 'tantque') {
-    const w = document.createElement('div'); w.className = 'loop';
+    const w = document.createElement('div'); w.className = 'pince';
     w.appendChild(boxEl(n));
-    w.appendChild(seq(n.body));
-    const f = document.createElement('div'); f.className = 'loopfoot';
+    const arm = document.createElement('div'); arm.className = 'pince-arm'; w.appendChild(arm);
+    const body = document.createElement('div'); body.className = 'pince-body';
+    body.appendChild(seq(n.body)); w.appendChild(body);
+    const f = document.createElement('div'); f.className = 'pince-foot';
     f.innerHTML = ico('i-loop') + (n.t === 'repeter' ? 'recommence (' + n.n + ' fois)' : 'recommence tant que c’est vrai');
     w.appendChild(f);
     return w;
