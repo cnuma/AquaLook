@@ -239,7 +239,7 @@ public:
         AsyncCallbackJsonWebHandler* notificationConfigHandler =
             new AsyncCallbackJsonWebHandler(
                 "/api/notifications/config",
-                [](AsyncWebServerRequest* req, JsonVariant& value) {
+                [this](AsyncWebServerRequest* req, JsonVariant& value) {
                     JsonObject obj = value.as<JsonObject>();
                     const bool enabled = obj["enabled"] | false;
                     const char* server = obj["server"] | "https://ntfy.sh";
@@ -255,6 +255,10 @@ public:
                         req->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid-config\"}");
                         return;
                     }
+                    // Reglage range hors du blob de configuration : faire
+                    // monter la version, sinon le miroir en ligne (champ
+                    // scripts.notifications) n'est jamais renvoye.
+                    if (_config) _config->noteExternalChange();
                     req->send(200, "application/json", "{\"ok\":true}");
                 }
             );

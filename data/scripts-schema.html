@@ -27,8 +27,14 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .brand{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--green);text-decoration:none}
 .top select,.top input{padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg1);
   color:var(--text);font:inherit}
-#nom{width:220px;max-width:100%;font-weight:600}
+/* Base 120 px, jusqu'a 220 : le retour a la ligne de la barre se decide sur
+   la base, ce qui laisse la place a la pastille de gamme sur un ecran de PC. */
+#nom{flex:1 1 120px;max-width:220px;min-width:0;font-weight:600}
 .spacer{flex:1}
+/* Gamme produit, meme pastille que le bandeau d'index.html. */
+.gamme{font:700 10px var(--sans);letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:var(--green);color:#fff}
+.pal-off{color:var(--red)!important;font-weight:600}
+.notif-off{font-size:12.5px;color:var(--red);background:var(--red-dim);border-radius:6px;padding:8px 10px;margin:0 0 10px}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border2);background:var(--bg1);
   color:var(--text);border-radius:6px;padding:6px 11px;cursor:pointer;font:500 13px var(--sans);text-decoration:none}
 .btn:hover{background:var(--bg2)}
@@ -255,6 +261,7 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
 <div class="app">
   <header class="top">
     <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
+    <span class="gamme" id="gamme" hidden></span>
     <select id="slot" aria-label="Emplacement du script"></select>
     <input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script">
     <label class="actif-top edit-only" title="Un script inactif reste enregistré mais ne part jamais"><input type="checkbox" id="actif-top"> Actif</label>
@@ -323,6 +330,8 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
   <h2 id="phrases-titre">Bibliothèque de phrases</h2>
   <p>Les blocs « Notifier » et « Noter au journal » envoient l’une de ces phrases, désignée par son code.
   Corrigez une phrase ici une fois : tous les scripts qui la citent en profitent. Rangée sur la carte SD du module.</p>
+  <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier » n’enverront rien.
+  « Noter au journal » n’est pas concerné.</p>
   <table><tbody id="phrases-liste"></tbody></table>
   <div class="acts">
     <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
@@ -355,6 +364,9 @@ let SLOTS = [], SIMULT = 2;
 // Limites de la bibliotheque de phrases, relues du module (/api/script-messages).
 let BIBLIO_MAX = 48, BIBLIO_LEN = 80;
 let TAILLE_MAX = 400, NONCE = 0;
+// Notifications pretes sur le module (true/false), null si le firmware ne
+// le dit pas encore : on n'affiche alors rien plutot qu'un faux etat.
+let NOTIF = null;
 // Identifiant du module quand la page est servie par l'espace en ligne
 // (?module=<id>) ; null sur le module lui-meme. Voir « Mode espace en ligne ».
 const CLOUD = new URLSearchParams(location.search).get('module');
@@ -419,6 +431,7 @@ function warnings(n) {
     else if (!c || !c.utilise) w.push('L’emplacement ' + n.script + ' est vide : rien ne partira.');
     else if (!c.actif) w.push('Le script ' + n.script + ' est inactif : le module refusera de le lancer.');
   }
+  if (n.t === 'notifier' && NOTIF === false) w.push('Notifications désactivées sur le module : ce bloc n’enverra rien.');
   if (n.t === 'tantque' && !hasWait(n.body)) w.push('Ajoutez un bloc « Attendre » dans la boucle : sans pause, elle tourne en continu.');
   if (n.t === 'repeter' && loopDepth(n.id) >= 8) w.push('Trop de « Répéter » imbriqués : 8 au plus.');
   return w;
@@ -985,7 +998,19 @@ async function listeSlots() {
   TAILLE_MAX = d.tailleMax || TAILLE_MAX;
   SLOTS = d.scripts || [];
   SIMULT = d.simultanes || 2;
+  majModule(d.notifications, d.productLine);
   rendreSlots();
+}
+// Etat des notifications et gamme, relus avec la liste des scripts.
+function majModule(notif, gamme) {
+  NOTIF = typeof notif === 'boolean' ? notif : null;
+  $('gamme').textContent = gamme || ''; $('gamme').hidden = !gamme;
+  $('ph-notif').hidden = NOTIF !== false;
+  const p = $('palette').querySelector('[data-new="notifier"] span span');
+  if (p) {
+    p.textContent = NOTIF === false ? 'Notifications désactivées sur le module' : S.TYPES.notifier.desc;
+    p.classList.toggle('pal-off', NOTIF === false);
+  }
 }
 // Liste des emplacements. L'espace en ligne remplace vueSlot et suffixeSlot
 // pour montrer la commande en attente plutot que le miroir.
@@ -1362,6 +1387,7 @@ if (CLOUD) {
     TAILLE_MAX = sc.tailleMax || TAILLE_MAX;
     SIMULT = sc.simultanes || 2;
     SLOTS = (sc.emplacements || []).map((s) => Object.assign({ utilise: s.nom !== undefined }, s));
+    majModule(sc.notifications, sc.productLine);
     rendreSlots();
   };
   // Une commande en attente l'emporte sur le miroir : c'est elle que charger()

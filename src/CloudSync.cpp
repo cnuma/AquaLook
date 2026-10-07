@@ -526,6 +526,11 @@ void buildScriptsPayload(JsonObject out, const RelaisManager* relais,
     out["max"] = ScriptStore::MAX_SCRIPTS;
     out["tailleMax"] = ScriptStore::MAX_BYTECODE;
     out["simultanes"] = static_cast<unsigned>(ScriptRunner::MAX_CONCURRENT);
+    // Memes champs que GET /api/scripts. Les notifications sont rangees hors
+    // du blob de configuration : leur changement passe par
+    // noteExternalChange() (WebManager.h) pour que ce miroir soit renvoye.
+    out["notifications"] = NotificationManager::notificationsReady();
+    out["productLine"] = OtaBuildIdentity::PRODUCT_LINE;
     // Distingue "pas de source enregistree" de "carte SD absente" : dans le
     // second cas, l'editeur en ligne doit le dire plutot que de presenter
     // tous les scripts comme non editables sans raison.
