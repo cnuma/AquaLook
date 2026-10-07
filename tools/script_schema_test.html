@@ -22,12 +22,12 @@ function rt(body,label){
   ok(JSON.stringify(AquaScript.compile(g2.text).slice())===JSON.stringify(c1.slice()),label+' bytecode identique');
 }
 // 1. arbres construits
-const si=mk('si',{}); si.cond={op:'et',terms:[{k:'entree',id:1,v:1}]};
+const si=mk('si',{}); si.cond={terms:[{k:'entree',id:1,v:1}],ops:[]};
 si.oui=[mk('suspendre'),mk('notifier')]; si.non=[mk('reprendre'),mk('message')];
 rt([si],'pluie');
 const rep=mk('repeter'); rep.body=[mk('arroser'),mk('attendre')]; rt([rep,mk('notifier')],'fractionne');
 const si2=mk('si'); si2.non=[mk('arroser')]; rt([si2],'oui vide');
-const tq=mk('tantque'); tq.cond={op:'ou',terms:[{k:'zoneactive',id:2,v:1},{k:'entree',id:3,v:0}]}; tq.body=[mk('attendre')];
+const tq=mk('tantque'); tq.cond={terms:[{k:'zoneactive',id:2,v:1},{k:'entree',id:3,v:0}],ops:['ou']}; tq.body=[mk('attendre')];
 const r1=mk('repeter'),r2=mk('repeter'); r2.body=[mk('arroser'),mk('arreter')]; r1.body=[r2,tq]; rt([r1],'imbrique');
 rt([],'vide');
 // 2. textes ecrits a la main
@@ -81,12 +81,56 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   try{ S.parse('parallele\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'parallele imbrique relu a tort'); }
   catch(e){ ok(e instanceof S.Unsupported,'parallele imbrique refuse a la relecture'); }
 }
+// 2e. « et » / « ou » entre chaque condition, « et » avant « ou » (7 oct. 2026)
+{
+  const T=(id)=>({k:'entree',id:id,v:1});
+  // un operateur unique s'ecrit comme avant : pas de parentheses
+  const s1=mk('si'); s1.cond={terms:[T(1),T(2),T(3)],ops:['et','et']};
+  ok(/^si entree\(1\) == 1 et entree\(2\) == 1 et entree\(3\) == 1 alors/.test(S.generate([s1],names).text),'operateur unique : texte inchange, sans parentheses');
+  // melange : groupes « et » entre parentheses, bytecode identique au texte sans parentheses
+  const s2=mk('si'); s2.cond={terms:[T(1),T(2),T(3),T(4)],ops:['et','ou','et']};
+  const g2=S.generate([s2],names).text;
+  ok(g2.indexOf('si (entree(1) == 1 et entree(2) == 1) ou (entree(3) == 1 et entree(4) == 1) alors')===0,'melange : groupes entre parentheses\n'+g2);
+  const nu='si entree(1) == 1 et entree(2) == 1 ou entree(3) == 1 et entree(4) == 1 alors\nfinsi\n';
+  ok(JSON.stringify(AquaScript.compile(g2).slice())===JSON.stringify(AquaScript.compile(nu).slice()),'melange : meme bytecode avec ou sans parentheses');
+  rt([s2],'melange et/ou/et');
+  const s3=mk('tantque'); s3.cond={terms:[T(1),T(2),{k:'zoneactive',id:2,v:0}],ops:['ou','et']}; s3.body=[mk('attendre')];
+  ok(/^tantque entree\(1\) == 1 ou \(entree\(2\) == 1 et zoneactive\(2\) == 0\) faire/.test(S.generate([s3],names).text),'Tant que : ou puis groupe et');
+  rt([s3],'tant que ou/et');
+  // relecture de textes ecrits a la main, avec ou sans parentheses
+  const lus={
+    'si entree(1) et entree(2) ou entree(3) alors arreter zone 1 finsi':['et','ou'],
+    'si entree(1) ou entree(2) et non entree(3) alors arreter zone 1 finsi':['ou','et'],
+    'si (entree(1) et entree(2)) ou entree(3) alors arreter zone 1 finsi':['et','ou'],
+    'si ((entree(1))) ou (entree(2) ou entree(3)) alors arreter zone 1 finsi':['ou','ou']
+  };
+  for(const [t,ops] of Object.entries(lus)){
+    try{ const b=S.parse(t); ok(JSON.stringify(b[0].cond.ops)===JSON.stringify(ops),'relu '+JSON.stringify(b[0].cond.ops)+' : '+t); rt(b,'relu : '+t); }
+    catch(e){ ok(false,'relecture '+t+' : '+e.message); }
+  }
+  // table de verite : condEval (schema, essai a blanc) == priorite du langage.
+  // JavaScript a la meme priorite (&& avant ||) : on lui fait evaluer le
+  // texte genere, mots remplaces, pour toutes les combinaisons d'entrees.
+  const modeles=[['et','ou','et'],['ou','et','ou'],['ou','et','et'],['et','et','ou'],['ou','ou','et']];
+  let diffs=0, cas=0;
+  modeles.forEach((ops)=>{
+    const c={terms:[T(1),T(2),{k:'entree',id:3,v:0},T(4)],ops:ops};
+    const js=S.condText(c,(t)=>'(E['+t.id+']==='+t.v+')',' && ',' || ');
+    for(let m=0;m<16;m++){
+      const E=[0,m&1,(m>>1)&1,(m>>2)&1,(m>>3)&1]; cas++;
+      const attendu=Function('E','return '+js)(E);
+      if(S.condEval(c,(t)=>E[t.id]===t.v)!==attendu) diffs++;
+    }
+  });
+  ok(diffs===0,'table de verite : '+cas+' cas, '+diffs+' ecart(s) entre schema et priorite du langage');
+}
 // 3. refus attendus
 const ko={
  'variable':'a = 3\nattendre a',
  'arith':'attendre 60 * 2',
  'reste':'si reste(1) > 10 alors arreter zone 1 finsi',
- 'melange':'si entree(1) et entree(2) ou entree(3) alors arreter zone 1 finsi',
+ 'ou dans et':'si (entree(1) ou entree(2)) et entree(3) alors arreter zone 1 finsi',
+ 'non groupe':'si non (entree(1) et entree(2)) alors arreter zone 1 finsi',
  'pour2':'pour a de 2 à 4 faire attendre 1 finpour',
  'reuse':'pour a de 1 à 2 faire\npour a de 1 à 3 faire attendre 1 finpour\nfinpour',
  'cmp2':'si entree(1) == 2 alors arreter zone 1 finsi',

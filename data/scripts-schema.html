@@ -191,6 +191,14 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .hint{font-size:12.5px;color:var(--text2);background:var(--bg2);border-radius:6px;padding:8px 10px;margin-bottom:12px;line-height:1.5}
 .alert{font-size:12.5px;color:var(--red);background:var(--red-dim);border-radius:6px;padding:8px 10px;margin-bottom:12px}
 .term{border:1px solid var(--border);border-radius:7px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+.term.over{outline:2px dashed var(--ring);outline-offset:1px}
+.term .grip{flex:none;align-self:center;cursor:grab;color:var(--muted);font-size:15px;padding:0 2px;user-select:none}
+/* « et » colle les conditions d'un meme groupe ; « ou » les espace et se
+   voit, puisqu'il separe les groupes. */
+.opsel{display:flex;justify-content:center;margin:-4px 0 4px}
+.opsel.ou{margin:6px 0 12px}
+.props .opsel select{width:auto;padding:3px 10px;font-weight:600}
+.props .opsel.ou select{color:var(--amber);border-color:var(--amber)}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .empty{color:var(--text2);font-size:13px;line-height:1.55}
 .empty ol{padding-left:18px;margin:8px 0}
@@ -442,7 +450,7 @@ function termLabel(t) {
   return t.k === 'entree' ? entreeNom(t.id) + (t.v ? ' est actif' : ' est inactif')
                           : zoneNom(t.id) + (t.v ? ' arrose' : ' n’arrose pas');
 }
-function condLabel(c) { return c.terms.map(termLabel).join(c.op === 'ou' ? ' ou ' : ' et '); }
+function condLabel(c) { return S.condText(c, termLabel, ' et ', ' ou '); }
 function subOf(n) {
   switch (n.t) {
     case 'arroser': return zoneNom(n.zone) + ' · ' + S.duree(n.sec) + (n.attente ? '' : ' · sans attendre');
@@ -616,22 +624,37 @@ function dureeField(sec) {
   return '<div class="f"><label for="p-d">Durée</label><div class="row"><input id="p-d" type="number" min="1" data-f="duree" value="'
     + (sec / u) + '"><select id="p-u" data-f="duree">' + optsMap({1:'secondes',60:'minutes',3600:'heures'}, u) + '</select></div></div>';
 }
+// Un « et » / « ou » entre chaque condition (cond.ops[i] joint les termes i
+// et i+1). « et » passe avant « ou », comme dans le langage : la ligne « Lu
+// comme » montre les groupes entre parentheses. Les conditions se deplacent
+// par la poignee ou le bouton ↑ ; les « et/ou » restent a leur place.
 function condFields(c) {
   let h = '<div class="lab" style="margin-bottom:6px">Condition</div>';
   c.terms.forEach((t, i) => {
-    h += '<div class="term">'
-      + '<div class="row"><select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone'}, t.k) + '</select>'
+    if (i) h += '<div class="opsel' + (c.ops[i - 1] === 'ou' ? ' ou' : '') + '"><select data-op="' + (i - 1)
+      + '" aria-label="Lien entre les conditions ' + i + ' et ' + (i + 1) + '">' + optsMap({et:'et', ou:'ou'}, c.ops[i - 1]) + '</select></div>';
+    h += '<div class="term" data-tbox="' + i + '">'
+      + '<div class="row">' + (c.terms.length > 1 ? '<span class="grip" title="Glisser pour déplacer cette condition">⠿</span>' : '')
+      + '<select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone'}, t.k) + '</select>'
+      + (i ? '<button class="btn x" data-up-term="' + i + '" title="Monter cette condition" aria-label="Monter cette condition">↑</button>' : '')
       + (c.terms.length > 1 ? '<button class="btn x" data-del-term="' + i + '" title="Retirer cette condition">×</button>' : '') + '</div>'
       + '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + (t.k === 'entree' ? entreeOpts(t.id) : zoneOpts(t.id)) + '</select>'
       + '<select data-term="' + i + '" data-tf="v" aria-label="État">' + optsMap(t.k === 'entree' ? {1:'est actif', 0:'est inactif'} : {1:'arrose', 0:'n’arrose pas'}, t.v) + '</select>'
       + '</div>';
   });
   if (c.terms.length > 1) {
-    h += '<div class="f"><label for="p-op">Il faut que</label><select id="p-op" data-f="op">'
-      + optsMap({et:'toutes soient vraies (et)', ou:'au moins une soit vraie (ou)'}, c.op) + '</select></div>';
+    const mix = c.ops.includes('et') && c.ops.includes('ou');
+    h += '<div class="hint">Lu comme : <b>' + esc(condLabel(c)) + '</b>.'
+      + (mix ? ' « et » passe avant « ou » : chaque groupe entre parenthèses est vrai si toutes ses conditions le sont, et il suffit d’un groupe vrai.' : '')
+      + '</div>';
   }
   h += '<button class="btn" id="p-add-term">+ Ajouter une condition</button>';
   return h;
+}
+function moveTerm(c, from, to) {
+  if (from === to || to < 0 || to >= c.terms.length) return;
+  const t = c.terms.splice(from, 1)[0];
+  c.terms.splice(to, 0, t);
 }
 function renderProps() {
   const p = $('props');
@@ -732,15 +755,47 @@ function wireProps(p) {
         n.sec = Math.min(86400, v * parseInt($('p-u').value, 10));
       }, true);
       else if (k === 'n') change(() => { n.n = Math.max(1, Math.min(1000, parseInt(f.value, 10) || 1)); }, false);
-      else if (k === 'op') change(() => { n.cond.op = f.value; }, false);
       else change(() => { n[k] = parseInt(f.value, 10) || 0; }, false);
     });
   });
-  p.querySelectorAll('[data-del-term]').forEach((b) => b.addEventListener('click', () => {
-    change(() => { target().cond.terms.splice(+b.dataset.delTerm, 1); }, true);
+  p.querySelectorAll('[data-op]').forEach((f) => f.addEventListener('change', () => {
+    change(() => { target().cond.ops[+f.dataset.op] = f.value; }, true);
   }));
+  // Retirer une condition retire aussi le « et/ou » qui la liait a la precedente
+  // (a la suivante pour la premiere).
+  p.querySelectorAll('[data-del-term]').forEach((b) => b.addEventListener('click', () => {
+    const i = +b.dataset.delTerm;
+    change(() => { const c = target().cond; c.terms.splice(i, 1); c.ops.splice(i ? i - 1 : 0, 1); }, true);
+  }));
+  p.querySelectorAll('[data-up-term]').forEach((b) => b.addEventListener('click', () => {
+    const i = +b.dataset.upTerm;
+    change(() => { moveTerm(target().cond, i, i - 1); }, true);
+  }));
+  // Glisser-deposer des conditions, par la poignee seulement : un cadre
+  // entierement « draggable » genait la selection dans ses listes.
+  let dragTerm = -1;
+  p.querySelectorAll('.term .grip').forEach((g) => {
+    const box = g.closest('.term');
+    g.addEventListener('mousedown', () => { if (editable) box.draggable = true; });
+    box.addEventListener('dragstart', (e) => {
+      dragTerm = +box.dataset.tbox; e.dataTransfer.setData('text/plain', 'term:' + dragTerm); e.dataTransfer.effectAllowed = 'move';
+    });
+    box.addEventListener('dragend', () => { box.draggable = false; dragTerm = -1; p.querySelectorAll('.term.over').forEach((x) => x.classList.remove('over')); });
+  });
+  p.querySelectorAll('.term').forEach((box) => {
+    box.addEventListener('dragover', (e) => { if (dragTerm >= 0) { e.preventDefault(); box.classList.add('over'); } });
+    box.addEventListener('dragleave', () => box.classList.remove('over'));
+    box.addEventListener('drop', (e) => {
+      if (dragTerm < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const from = dragTerm, to = +box.dataset.tbox;
+      change(() => { moveTerm(target().cond, from, to); }, true);
+    });
+  });
   if ($('p-add-term')) $('p-add-term').onclick = () => change(() => {
-    target().cond.terms.push({ k: 'entree', id: (ENTREES[0] || {id:1}).id, v: 1 });
+    const c = target().cond;
+    c.terms.push({ k: 'entree', id: (ENTREES[0] || {id:1}).id, v: 1 });
+    c.ops.push('et');
   }, true);
   if ($('p-del')) $('p-del').onclick = removeSel;
   if ($('p-dup')) $('p-dup').onclick = () => {
@@ -930,7 +985,7 @@ async function essai() {
   $('b-essai').lastChild.textContent = 'Arrêter l’essai';
   const active = new Set();
   const evalTerm = (t) => (t.k === 'entree' ? ($('sim' + t.id) && $('sim' + t.id).checked ? 1 : 0) : (active.has(t.id) ? 1 : 0)) === t.v;
-  const evalCond = (c) => c.op === 'ou' ? c.terms.some(evalTerm) : c.terms.every(evalTerm);
+  const evalCond = (c) => S.condEval(c, evalTerm);
   log('Départ : ' + trigText()); await flash('start');
   async function exec(list) {
     for (const n of list) {

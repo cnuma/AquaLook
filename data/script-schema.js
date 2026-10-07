@@ -61,9 +61,9 @@
       case 'notifier': case 'message': n.code = c; break;
       case 'lancer': n.script = ctx && ctx.scriptNo ? ctx.scriptNo : 1; break;
       case 'parallele': n.a = []; n.b = []; break;
-      case 'si': n.cond = { op: 'et', terms: [{ k: 'entree', id: e, v: 1 }] }; n.oui = []; n.non = []; break;
+      case 'si': n.cond = { terms: [{ k: 'entree', id: e, v: 1 }], ops: [] }; n.oui = []; n.non = []; break;
       case 'repeter': n.n = 3; n.body = []; break;
-      case 'tantque': n.cond = { op: 'et', terms: [{ k: 'zoneactive', id: z, v: 1 }] }; n.body = []; break;
+      case 'tantque': n.cond = { terms: [{ k: 'zoneactive', id: z, v: 1 }], ops: [] }; n.body = []; break;
     }
     return n;
   }
@@ -85,9 +85,31 @@
   function termCode(t) {
     return (t.k === 'entree' ? 'entree(' : 'zoneactive(') + t.id + ') == ' + (t.v ? 1 : 0);
   }
-  function condCode(c) {
-    return c.terms.map(termCode).join(c.op === 'ou' ? ' ou ' : ' et ');
+  // Une condition = des termes, et entre deux termes voisins un mot « et »
+  // ou « ou » (ops[i] joint terms[i] et terms[i+1]). « et » passe avant
+  // « ou », comme dans le compilateur (script-lang.js, orExpr/andExpr) :
+  // la condition se lit donc comme des groupes « et » separes par « ou ».
+  function condGroups(c) {
+    const g = [[c.terms[0]]];
+    for (let i = 1; i < c.terms.length; i++) {
+      if (c.ops[i - 1] === 'ou') g.push([]);
+      g[g.length - 1].push(c.terms[i]);
+    }
+    return g;
   }
+  // Texte de la condition avec fmt(terme) pour chaque terme. Quand « et » et
+  // « ou » se melangent, chaque groupe « et » est mis entre parentheses : le
+  // compilateur n'en a pas besoin, le lecteur si. Un operateur unique s'ecrit
+  // comme avant (meme texte, meme bytecode pour les scripts existants).
+  function condText(c, fmt, et, ou) {
+    const g = condGroups(c);
+    return g.map(function (grp) {
+      const s = grp.map(fmt).join(et);
+      return g.length > 1 && grp.length > 1 ? '(' + s + ')' : s;
+    }).join(ou);
+  }
+  function condCode(c) { return condText(c, termCode, ' et ', ' ou '); }
+  function condEval(c, test) { return condGroups(c).some(function (g) { return g.every(test); }); }
 
   // Duree lisible pour les commentaires et les blocs : « 10 min », « 90 s »,
   // « 1 h 30 min ».
@@ -236,14 +258,40 @@
     }
 
     // Une condition = des termes « entree(n) / zoneactive(n) » valant 0 ou
-    // 1, joints par un seul et meme mot (« et » ou « ou »).
-    function term() {
-      if (peek() === 'non') { next(); const t = term(); t.v = t.v ? 0 : 1; return t; }
-      if (peek() === '(') {
-        next(); const c = condition(); expect(')');
-        if (c.terms.length !== 1) throw new Unsupported('parenthèses autour de plusieurs conditions', line());
-        return c.terms[0];
+    // 1, joints par « et » / « ou » avec la priorite du compilateur. Chaque
+    // niveau rend des groupes « et » separes par « ou » (tableau de tableaux
+    // de termes) ; ce qui ne s'ecrit pas ainsi sans recalculer la condition
+    // est refuse plutot que reecrit.
+    function orGroups() {
+      let g = andGroups();
+      while (peek() === 'ou') { next(); g = g.concat(andGroups()); }
+      return g;
+    }
+    function andGroups() {
+      const ln = line();
+      const parts = [unaryGroups()];
+      while (peek() === 'et') { next(); parts.push(unaryGroups()); }
+      if (parts.length === 1) return parts[0];
+      // « (a ou b) et c » : le dessiner a plat demanderait de developper la
+      // condition, donc de changer le texte de l'auteur.
+      if (parts.some(function (p) { return p.length > 1; })) {
+        throw new Unsupported('« ou » entre parenthèses à l’intérieur d’un « et »', ln);
       }
+      return [[].concat.apply([], parts.map(function (p) { return p[0]; }))];
+    }
+    function unaryGroups() {
+      if (peek() === 'non') {
+        const ln = line();
+        next();
+        const g = unaryGroups();
+        if (g.length !== 1 || g[0].length !== 1) throw new Unsupported('« non » devant plusieurs conditions', ln);
+        g[0][0].v = g[0][0].v ? 0 : 1;
+        return g;
+      }
+      if (peek() === '(') { next(); const g = orGroups(); expect(')'); return g; }
+      return [[term()]];
+    }
+    function term() {
       const w = peek();
       if (w !== 'entree' && w !== 'zoneactive') {
         throw new Unsupported('condition « ' + (toks[i].v || 'fin du script') + ' » : seules les entrées et l’état des zones se dessinent', line());
@@ -262,15 +310,14 @@
       return t;
     }
     function condition() {
-      const terms = [term()];
-      let op = null;
-      while (peek() === 'et' || peek() === 'ou') {
-        const w = next().low;
-        if (op && op !== w) throw new Unsupported('« et » et « ou » mélangés dans une même condition', line());
-        op = w;
-        terms.push(term());
-      }
-      return { op: op || 'et', terms: terms };
+      const c = { terms: [], ops: [] };
+      orGroups().forEach(function (g, gi) {
+        g.forEach(function (t, ti) {
+          if (c.terms.length) c.ops.push(ti === 0 && gi > 0 ? 'ou' : 'et');
+          c.terms.push(t);
+        });
+      });
+      return c;
     }
 
     function statement() {
@@ -359,6 +406,7 @@
 
   global.AquaSchema = {
     TYPES: TYPES, make: make, childKeys: childKeys, reId: reId,
-    generate: generate, parse: parse, duree: duree, Unsupported: Unsupported
+    generate: generate, parse: parse, duree: duree, Unsupported: Unsupported,
+    condGroups: condGroups, condText: condText, condEval: condEval
   };
 })(window);
