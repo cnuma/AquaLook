@@ -825,7 +825,8 @@ script depuis l'espace en ligne (décision D014).
 
 ### Éditeur graphique des scripts : améliorations demandées
 
-**À faire.** Demandes utilisateur des 6-7 octobre 2026, à traiter dans
+**En cours** (7 oct. 2026 : points 1 à 5 et 8 faits, 6 et 7 restent).
+Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
 AlwaysData, la page étant la même sur le module et en ligne.
@@ -837,24 +838,27 @@ AlwaysData, la page étant la même sur le module et en ligne.
    module trace déjà l'état (`Notification: pret enabled=no`), mais il n'est
    exposé ni par `/api/scripts` ni par le miroir : à ajouter aux deux
    (source : `NotificationManager`), puis à afficher.
+   **Fait** (`99f21eb`) : seul « Notifier » est marqué, « Noter au journal »
+   ne passant pas par les notifications.
 2. **Panneau « Phrases » centré.** Il est aujourd'hui décalé sur la gauche
-   de la page ; le centrer.
+   de la page ; le centrer. **Fait** (`a810871`).
 3. **Bouton « Fermer » bleu, au niveau de « Enregistrer la bibliothèque ».**
    Même rangée, couleur bleue. **Règle d'interface valable pour toute
    l'interface** : chaque bouton « Fermer » suit ce modèle ; une passe sur
    les autres pages (`app.html` et ses fenêtres de détail, `index.html`,
-   etc.) est à prévoir.
+   etc.) est à prévoir. **Fait dans l'éditeur** (`a810871`, classe
+   `.btn.fermer`) ; la passe sur les autres pages reste à faire.
 4. **Renommer un script ne met pas à jour la liste déroulante.** Le champ
    nom ne met à jour que `doc.nom` (`$('nom')`, évènement `input`) ; la
    liste n'est relue qu'après un enregistrement. En mode espace en ligne,
    `listeSlots()` lit le nom dans le miroir et ignore celui de la commande
    en attente : le nom reste l'ancien jusqu'à la synchronisation. À vérifier
    dans les deux modes, puis refléter le nom saisi (et celui de la commande
-   en attente) dans la liste.
+   en attente) dans la liste. **Fait** (`866dd70`).
 5. **Afficher la gamme « Aqualook Pro »** dans l'interface des scripts,
    comme le badge déjà présent sur `index.html` (`productLine` de
    `/api/diagnostics`). En mode espace en ligne, la valeur n'est pas dans le
-   miroir : à y ajouter.
+   miroir : à y ajouter. **Fait** (`99f21eb`).
 6. **Modifier le « texte généré » depuis l'éditeur graphique**, par un
    dispositif voisin de l'édition des phrases (panneau d'édition, validation
    à l'enregistrement), sans repasser par `scripts.html`, appelée à
@@ -876,3 +880,6 @@ AlwaysData, la page étant la même sur le module et en ligne.
    graphique ; les scripts existants doivent continuer à se relire (un
    opérateur unique reste un cas particulier). À vérifier : le langage et la
    VM savent déjà exprimer des « et/ou » mélangés (`script-lang.js`).
+   **Fait** (`a7bb5e7`) : le compilateur avait déjà la bonne priorité.
+   Reste refusé à la relecture : un « ou » entre parenthèses à l'intérieur
+   d'un « et », et « non » devant un groupe.
