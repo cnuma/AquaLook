@@ -207,6 +207,10 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .alert{font-size:12.5px;color:var(--red);background:var(--red-dim);border-radius:6px;padding:8px 10px;margin-bottom:12px}
 .term{border:1px solid var(--border);border-radius:7px;padding:8px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
 .term.over{outline:2px dashed var(--ring);outline-offset:1px}
+/* Retirer une condition : rouge, pour ne pas la confondre avec ↑ ni avec
+   les listes (demande du 7 oct. 2026). */
+.term .btn.danger{background:var(--red-dim);border-color:var(--red);font-weight:700}
+.term .btn.danger:hover{background:var(--red);color:#fff}
 .term .grip{flex:none;align-self:center;cursor:grab;color:var(--muted);font-size:15px;padding:0 2px;user-select:none}
 /* « et » colle les conditions d'un meme groupe ; « ou » les espace et se
    voit, puisqu'il separe les groupes. */
@@ -654,7 +658,7 @@ function condFields(c) {
       + '<div class="row">' + (c.terms.length > 1 ? '<span class="grip" title="Glisser pour déplacer cette condition">⠿</span>' : '')
       + '<select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone'}, t.k) + '</select>'
       + (i ? '<button class="btn x" data-up-term="' + i + '" title="Monter cette condition" aria-label="Monter cette condition">↑</button>' : '')
-      + (c.terms.length > 1 ? '<button class="btn x" data-del-term="' + i + '" title="Retirer cette condition">×</button>' : '') + '</div>'
+      + (c.terms.length > 1 ? '<button class="btn x danger" data-del-term="' + i + '" title="Retirer cette condition" aria-label="Retirer cette condition">×</button>' : '') + '</div>'
       + '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + (t.k === 'entree' ? entreeOpts(t.id) : zoneOpts(t.id)) + '</select>'
       + '<select data-term="' + i + '" data-tf="v" aria-label="État">' + optsMap(t.k === 'entree' ? {1:'est actif', 0:'est inactif'} : {1:'arrose', 0:'n’arrose pas'}, t.v) + '</select>'
       + '</div>';
