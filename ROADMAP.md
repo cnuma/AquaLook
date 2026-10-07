@@ -825,7 +825,7 @@ script depuis l'espace en ligne (décision D014).
 
 ### Éditeur graphique des scripts : améliorations demandées
 
-**En cours** (7 oct. 2026 : points 1 à 5 et 8 faits, 6 et 7 restent).
+**En cours** (7 oct. 2026 : points 1 à 5, 7 et 8 faits, reste le 6).
 Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
@@ -870,6 +870,8 @@ AlwaysData, la page étant la même sur le module et en ligne.
    Scratch : les blocs contenus sont encadrés par le bloc de boucle, ce qui
    distingue visuellement une structure (boucle) d'une étape (arroser,
    arrêter, notifier…). Le « Si » et le « En parallèle » pourraient suivre.
+   **Fait pour les boucles** (`1335f45`) ; « Si » et « En parallèle » non
+   modifiés.
 8. **Conditions : « et » / « ou » entre chaque test**, avec la priorité
    mathématique habituelle (« et » avant « ou », parenthèses implicites),
    et conditions déplaçables par glisser-déposer comme les blocs. Valable
