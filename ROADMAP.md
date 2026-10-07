@@ -830,8 +830,8 @@ script depuis l'espace en ligne (décision D014).
 
 **Fait** (7 oct. 2026 : les 8 points ; `scripts.html` retiré le même jour ;
 barre du haut : « Script non enregistré » posé sous le nom, la barre tient
-sur une ligne jusqu'à ~1 200 px ; reste la passe « Fermer » sur les autres
-pages).
+sur une ligne jusqu'à ~1 200 px ; passe « Fermer » bleu faite sur
+`index.html` et `app.html`, classe `.btn.fermer` dans `style-base.css`).
 Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
@@ -853,7 +853,9 @@ AlwaysData, la page étant la même sur le module et en ligne.
    l'interface** : chaque bouton « Fermer » suit ce modèle ; une passe sur
    les autres pages (`app.html` et ses fenêtres de détail, `index.html`,
    etc.) est à prévoir. **Fait dans l'éditeur** (`a810871`, classe
-   `.btn.fermer`) ; la passe sur les autres pages reste à faire.
+   `.btn.fermer`) ; passe faite le 7 oct. 2026 : bouton « Fermer » bleu en bas
+   de la modale d'`index.html` (la croix reste), fenêtre de sauvegarde
+   d'`app.html` ; règle commune déplacée dans `style-base.css`.
 4. **Renommer un script ne met pas à jour la liste déroulante.** Le champ
    nom ne met à jour que `doc.nom` (`$('nom')`, évènement `input`) ; la
    liste n'est relue qu'après un enregistrement. En mode espace en ligne,

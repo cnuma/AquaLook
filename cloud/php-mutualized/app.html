@@ -29,6 +29,10 @@ button:hover:not(:disabled){border-color:var(--green)}
 button.primary,a.primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:600}
 button.primary:hover:not(:disabled){filter:brightness(.92)}
 button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+/* Regle d'interface (7 oct. 2026) : tout « Fermer » est bleu, sur la rangee
+   du bouton principal -- meme bleu que .btn.fermer de l'editeur de scripts. */
+button.fermer{background:#0077aa;color:#fff;border-color:#0077aa;font-weight:600}
+button.fermer:hover:not(:disabled){filter:brightness(.92)}
 button:disabled{opacity:.45;cursor:not-allowed}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
       padding:18px;margin-bottom:16px}
@@ -777,7 +781,7 @@ async function ouvrirSauvegarde(id){
      + '<button class="primary" id="sv-res">Restaurer ces créneaux</button>'
      + '<button id="sv-enr">Enregistrer le nom</button>'
      + '<button id="sv-ep">' + (s.pinned ? 'Ne plus conserver' : 'Conserver toujours') + '</button>'
-     + '<button class="ghost" id="sv-non">Fermer</button></div>';
+     + '<button class="fermer" id="sv-non">Fermer</button></div>';
 
   $('panneau').innerHTML = h;
   $('voile').classList.add('on');

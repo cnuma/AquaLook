@@ -373,6 +373,12 @@ header {
   cursor: pointer; background: var(--green); color: #fff; transition: filter .2s;
 }
 .btn-full:hover { filter: brightness(.9); }
+/* Regle d'interface (7 oct. 2026) : tout bouton « Fermer » est bleu, sur la
+   rangee du bouton principal ou sous lui. Classe de reference pour toutes
+   les pages du module (l'espace en ligne app.html a sa propre copie). */
+.btn-full.fermer { background: var(--blue); }
+.btn.fermer { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.fermer:hover { background: #00648f; }
 
 /* Logs */
 #logs {
