@@ -27,9 +27,11 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .brand{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--green);text-decoration:none}
 .top select,.top input{padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg1);
   color:var(--text);font:inherit}
-/* Base 120 px, jusqu'a 220 : le retour a la ligne de la barre se decide sur
-   la base, ce qui laisse la place a la pastille de gamme sur un ecran de PC. */
-#nom{flex:1 1 120px;max-width:220px;min-width:0;font-weight:600}
+#nom{width:100%;font-weight:600}
+/* Champ nom : base 120 px, jusqu'a 220 (le retour a la ligne de la barre se
+   decide sur la base). « non enregistre » est pose sur son bord bas, hors du
+   flux : son apparition ne change plus la largeur de la barre. */
+.nomwrap{position:relative;display:flex;flex:1 1 120px;max-width:220px;min-width:0}
 .spacer{flex:1}
 /* Gamme produit, meme pastille que le bandeau d'index.html. */
 .gamme{font:700 10px var(--sans);letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:var(--green);color:#fff}
@@ -41,7 +43,8 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .btn.principal{background:var(--green);border-color:var(--green);color:#fff}
 .btn.danger{color:var(--red);border-color:#f5c6cb}
 .btn[disabled]{opacity:.45;cursor:default}
-.dirty{font:600 11px var(--mono);color:var(--amber)}
+.dirty{position:absolute;left:7px;top:100%;transform:translateY(-55%);padding:0 4px;background:var(--bg1);font:700 11px/1 var(--sans);color:var(--amber);white-space:nowrap;pointer-events:none;animation:clignote 1.1s ease-in-out infinite alternate}
+@keyframes clignote{to{opacity:.25}}
 
 #msg{padding:7px 12px;border-radius:6px;font-size:13px;border:1px solid var(--border2);
   background:var(--bg2);color:var(--text);overflow-wrap:anywhere}
@@ -273,9 +276,9 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   .plus{display:none}
   .mobile-banner{display:block;background:var(--blue-dim);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px}
   .app{grid-template-rows:auto auto auto minmax(420px,1fr)}
-  #nom{width:100%}
+  .nomwrap{max-width:none;flex-basis:100%}
 }
-@media (prefers-reduced-motion:reduce){.node.run,.hexw.run{animation:none;outline:3px solid var(--cat)}}
+@media (prefers-reduced-motion:reduce){.node.run,.hexw.run{animation:none;outline:3px solid var(--cat)}.dirty{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
 body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!important}
 </style></head><body>
@@ -301,9 +304,8 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!imp
     <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
     <span class="gamme" id="gamme" hidden></span>
     <select id="slot" aria-label="Emplacement du script"></select>
-    <input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script">
+    <span class="nomwrap"><input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script"><span class="dirty" id="dirty" hidden>Script non enregistré</span></span>
     <label class="actif-top edit-only" title="Un script inactif reste enregistré mais ne part jamais"><input type="checkbox" id="actif-top"> Actif</label>
-    <span class="dirty" id="dirty" hidden>non enregistré</span>
     <span class="spacer"></span>
     <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>

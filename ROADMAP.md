@@ -829,7 +829,9 @@ script depuis l'espace en ligne (décision D014).
 ### Éditeur graphique des scripts : améliorations demandées
 
 **Fait** (7 oct. 2026 : les 8 points ; `scripts.html` retiré le même jour ;
-reste la passe « Fermer » sur les autres pages).
+barre du haut : « Script non enregistré » posé sous le nom, la barre tient
+sur une ligne jusqu'à ~1 200 px ; reste la passe « Fermer » sur les autres
+pages).
 Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
