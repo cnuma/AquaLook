@@ -145,17 +145,24 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .actif-top{display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;padding:5px 10px;
   border:1px solid var(--border2);border-radius:6px}
 .actif-top.off{color:var(--amber);border-color:var(--amber);background:#fff8e6}
-.modal{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(0,0,0,.35);padding:16px}
-.modal>div{background:var(--bg1);border-radius:10px;width:100%;max-width:680px;max-height:85vh;overflow:auto;
+/* « voile » et non « modal » : style-base.css definit deja .modal (boite de
+   440 px des fenetres d'index.html), qui s'appliquait au voile entier et
+   collait la fenetre des phrases a gauche. */
+.voile{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(0,0,0,.35);padding:16px}
+.voile>div{background:var(--bg1);border-radius:10px;width:100%;max-width:680px;max-height:85vh;overflow:auto;
   padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
-.modal h2{font-size:16px;margin:0 0 6px}
-.modal p{font-size:13px;color:var(--text2);margin:0 0 10px;line-height:1.5}
-.modal table{width:100%;border-collapse:collapse}
-.modal td{padding:4px 6px 4px 0}
-.modal td.code{width:96px}
-.modal td.x{width:1%}
-.modal input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:7px 8px;background:var(--bg1);color:var(--text);font:inherit}
-.modal .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.voile h2{font-size:16px;margin:0 0 6px}
+.voile p{font-size:13px;color:var(--text2);margin:0 0 10px;line-height:1.5}
+.voile table{width:100%;border-collapse:collapse}
+.voile td{padding:4px 6px 4px 0}
+.voile td.code{width:96px}
+.voile td.x{width:1%}
+.voile input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:7px 8px;background:var(--bg1);color:var(--text);font:inherit}
+.voile .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+/* Regle d'interface (7 oct. 2026) : « Fermer » est bleu, sur la rangee du
+   bouton principal de la fenetre. */
+.btn.fermer{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.fermer:hover{background:#00648f}
 #msgphrases{margin-top:10px;font-size:13px}
 #msgphrases.ok{color:#1d6b34}
 #msgphrases.ko{color:#8a5a00}
@@ -312,7 +319,7 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
   </div>
 </div>
 
-<div class="modal" id="phrases" hidden><div role="dialog" aria-labelledby="phrases-titre">
+<div class="voile" id="phrases" hidden><div role="dialog" aria-labelledby="phrases-titre">
   <h2 id="phrases-titre">Bibliothèque de phrases</h2>
   <p>Les blocs « Notifier » et « Noter au journal » envoient l’une de ces phrases, désignée par son code.
   Corrigez une phrase ici une fois : tous les scripts qui la citent en profitent. Rangée sur la carte SD du module.</p>
@@ -320,7 +327,7 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
   <div class="acts">
     <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
     <span class="spacer"></span>
-    <button class="btn" id="ph-fermer">Fermer</button>
+    <button class="btn fermer" id="ph-fermer">Fermer</button>
     <button class="btn principal" id="ph-enregistrer">Enregistrer la bibliothèque</button>
   </div>
   <div id="msgphrases"></div>
