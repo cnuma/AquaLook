@@ -223,12 +223,13 @@ public:
     //
     // Couvre le pire cas LEGITIME (pas en panne) d'une phase : resolution DNS
     // a froid (~15s, plafond reel documente dans WiFiGenericClass::hostByName,
-    // WiFiGeneric.cpp) + connexion TCP (CONNECT_TIMEOUT_MS) + handshake TLS
-    // (le meme budget), soit ~15+4+4=23s au pire sans rien d'anormal. Fixe
+    // WiFiGeneric.cpp) + connexion TCP (CONNECT_TIMEOUT_MS, 4 s) + handshake
+    // TLS (TLS_HANDSHAKE_TIMEOUT_MS, 8 s depuis le 7 oct. 2026), soit
+    // ~15+4+8=27s au pire sans rien d'anormal. Fixe
     // avec une marge au-dela de ce plafond legitime, mais tres en-deca des
     // ~50-60s constates le 28 septembre 2026 lors d'un blocage reel -- voir
     // checkSyncWatchdog() dans CloudSync.cpp.
-    static constexpr uint32_t PHASE_HARD_DEADLINE_MS = 25000UL;
+    static constexpr uint32_t PHASE_HARD_DEADLINE_MS = 30000UL;
 
 private:
     void load();

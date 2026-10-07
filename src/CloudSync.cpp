@@ -79,6 +79,15 @@ constexpr uint32_t RESPONSE_TIMEOUT_MS = 10000UL;
 // une fois la connexion etablie, chemin deja sain.
 constexpr uint32_t CONNECT_TIMEOUT_MS = 4000UL;
 
+// Handshake TLS seul, separe de CONNECT_TIMEOUT_MS le 7 oct. 2026 : les
+// connexions REUSSIES prenaient deja 3 970-4 070 ms, et les echecs
+// abandonnaient vers 4 450-4 900 ms (checkpoint du 7 oct. 2026, §7). La duree
+// normale tombait donc pile sur le plafond de 4 s : la moindre activite Web
+// sur le coeur 1 suffisait a faire echouer 4 cycles sur 5. Les blocages de
+// 50-60 s qui avaient motive la baisse a 4 s ne dependaient pas de ce delai
+// (voir plus haut) et sont desormais bornes par PHASE_HARD_DEADLINE_MS.
+constexpr uint32_t TLS_HANDSHAKE_TIMEOUT_MS = 8000UL;
+
 constexpr uint32_t BLOCKED_LOG_INTERVAL_MS = 3600000UL;  // 1/h, meme raison qu'UpdateCheckScheduler
 
 void copyText(char* destination, size_t destinationSize, const char* source) {
@@ -813,7 +822,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     WiFiClient* client = nullptr;
     if (cfg.useHttps) {
         OtaTlsTrust::configure(secureClient);
-        secureClient.setHandshakeTimeout(CONNECT_TIMEOUT_MS / 1000U);
+        secureClient.setHandshakeTimeout(TLS_HANDSHAKE_TIMEOUT_MS / 1000U);
         secureClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
         client = &secureClient;
     } else {
