@@ -744,6 +744,7 @@ function refresh(props) {
   $('actif-top').checked = doc.actif;
   $('actif-top').disabled = !editable;
   $('actif-top').parentNode.classList.toggle('off', !doc.actif);
+  majNomSlot();
 }
 
 // ── Insertion, deplacement, suppression ────────────────────────────────
@@ -984,12 +985,28 @@ async function listeSlots() {
   TAILLE_MAX = d.tailleMax || TAILLE_MAX;
   SLOTS = d.scripts || [];
   SIMULT = d.simultanes || 2;
+  rendreSlots();
+}
+// Liste des emplacements. L'espace en ligne remplace vueSlot et suffixeSlot
+// pour montrer la commande en attente plutot que le miroir.
+let vueSlot = (s) => s;
+let suffixeSlot = () => '';
+function libelleSlot(s, v) {
+  v = v || vueSlot(s);
+  return (s.i + 1) + ' — ' + (!v.utilise ? 'vide' : (v.nom + (v.actif ? '' : ' — inactif'))) + suffixeSlot(s.i);
+}
+function rendreSlots() {
   const garde = $('slot').value;
-  $('slot').innerHTML = d.scripts.map((s) => {
-    const nom = !s.utilise ? 'vide' : (s.nom + (s.actif ? '' : ' — inactif'));
-    return '<option value="' + s.i + '">' + (s.i + 1) + ' — ' + esc(nom) + '</option>';
-  }).join('');
+  $('slot').innerHTML = SLOTS.map((s) => '<option value="' + s.i + '">' + esc(libelleSlot(s)) + '</option>').join('');
   if (garde !== '') $('slot').value = garde;
+}
+// L'emplacement ouvert montre le nom saisi tout de suite, sans attendre
+// l'enregistrement : c'est ce nom-la (le champ, pas doc.nom) qui partira.
+function majNomSlot() {
+  const o = $('slot').selectedOptions[0]; if (!o) return;
+  const s = SLOTS.find((x) => x.i === slot()) || { i: slot(), utilise: false };
+  const nom = $('nom').value;
+  o.textContent = libelleSlot(s, { utilise: vueSlot(s).utilise || !!nom, nom: nom || 'Sans nom', actif: doc.actif });
 }
 
 function couvrir(titre, texte) {
@@ -1174,10 +1191,11 @@ $('slot').addEventListener('change', () => {
   if (dirty && !confirm('Le schéma en cours n’est pas enregistré. Changer d’emplacement quand même ?')) {
     $('slot').value = slotAvant; return;
   }
+  rendreSlots();   // l'emplacement quitte reprend son nom enregistre
   history.replaceState(null, '', '?' + (CLOUD ? 'module=' + encodeURIComponent(CLOUD) + '&' : '') + 'i=' + slot());
   charger().catch(() => dire('Module injoignable.', 'err'));
 });
-$('nom').addEventListener('input', () => { doc.nom = $('nom').value; setDirty(true); });
+$('nom').addEventListener('input', () => { doc.nom = $('nom').value; setDirty(true); majNomSlot(); });
 $('actif-top').addEventListener('change', () => {
   pushUndo(); doc.actif = $('actif-top').checked; setDirty(true); refresh(true);
   dire(doc.actif ? 'Script actif : il partira sur son déclencheur une fois enregistré.'
@@ -1344,14 +1362,17 @@ if (CLOUD) {
     TAILLE_MAX = sc.tailleMax || TAILLE_MAX;
     SIMULT = sc.simultanes || 2;
     SLOTS = (sc.emplacements || []).map((s) => Object.assign({ utilise: s.nom !== undefined }, s));
-    const garde = $('slot').value;
-    $('slot').innerHTML = SLOTS.map((s) => {
-      const nom = !s.utilise ? 'vide' : (s.nom + (s.actif ? '' : ' — inactif'));
-      return '<option value="' + s.i + '">' + (s.i + 1) + ' — ' + esc(nom)
-        + (enAttente(cmdPour(s.i)) ? ' (en attente)' : '') + '</option>';
-    }).join('');
-    if (garde !== '') $('slot').value = garde;
+    rendreSlots();
   };
+  // Une commande en attente l'emporte sur le miroir : c'est elle que charger()
+  // affiche, la liste doit dire le meme nom.
+  vueSlot = function (s) {
+    const c = cmdPour(s.i);
+    if (!enAttente(c)) return s;
+    const p = c.command.scripts[0];
+    return p.efface ? { i: s.i, utilise: false } : Object.assign({ utilise: true }, p);
+  };
+  suffixeSlot = (i) => (enAttente(cmdPour(i)) ? ' (en attente)' : '');
 
   charger = async function () {
     const i = slot();
