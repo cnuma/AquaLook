@@ -169,6 +169,17 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
    bouton principal de la fenetre. */
 .btn.fermer{background:var(--blue);border-color:var(--blue);color:#fff}
 .btn.fermer:hover{background:#00648f}
+.voile>div.large{max-width:880px}
+#tx-src{width:100%;min-height:340px;font:13px/1.6 var(--mono);border:1px solid var(--border2);border-radius:6px;
+  padding:8px 10px;background:var(--bg1);color:var(--text);resize:vertical;tab-size:2;white-space:pre}
+#tx-etat{margin-top:8px;font-size:13px;line-height:1.5}
+#tx-etat .ok{color:#1d6b34}
+#tx-etat .ko{color:#8a5a00}
+#tx-etat .err{color:var(--red);font-weight:600}
+/* .tabs button retire bordure et fond des onglets : les remettre ici. */
+.tabs .tx-btn{margin-left:8px;padding:3px 9px;font:500 12px var(--sans);color:var(--text);background:var(--bg1);
+  border:1px solid var(--border2);border-radius:6px}
+.tabs .tx-btn:hover{background:var(--bg2)}
 #msgphrases{margin-top:10px;font-size:13px}
 #msgphrases.ok{color:#1d6b34}
 #msgphrases.ko{color:#8a5a00}
@@ -324,7 +335,8 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
           <h2 id="cover-titre"></h2>
           <p id="cover-texte"></p>
           <div class="acts">
-            <a class="btn principal" id="cover-texte-lien" href="/scripts.html">Ouvrir dans l'éditeur texte</a>
+            <button class="btn principal" id="cover-modif">Modifier le texte</button>
+            <a class="btn" id="cover-texte-lien" href="/scripts.html">Ouvrir dans l'éditeur texte</a>
             <button class="btn edit-only" id="cover-vide">Repartir d'un schéma vide</button>
           </div>
         </div></div>
@@ -333,6 +345,7 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
         <div class="tabs" role="tablist">
           <button role="tab" id="t-code" aria-selected="true">Texte généré</button>
           <button role="tab" id="t-run" aria-selected="false">Essai à blanc</button>
+          <button class="btn tx-btn" id="b-modif-texte" title="Modifier directement le texte que le module reçoit">Modifier le texte</button>
           <span class="note" id="taille"></span>
         </div>
         <div class="tabbody" id="p-code"><div class="code" id="code"></div></div>
@@ -367,6 +380,19 @@ body.cloud #b-lancer,body.cloud #b-texte,body.cloud #cover-texte-lien,body.cloud
     <button class="btn principal" id="ph-enregistrer">Enregistrer la bibliothèque</button>
   </div>
   <div id="msgphrases"></div>
+</div></div>
+
+<div class="voile" id="texte" hidden><div role="dialog" aria-labelledby="texte-titre" class="large">
+  <h2 id="texte-titre">Texte du script</h2>
+  <p>C’est ce texte que le module reçoit. « Appliquer » le compile puis le redessine. S’il utilise une tournure que le schéma
+  ne sait pas dessiner (variables, calculs…), il est gardé tel quel : le schéma passe en lecture et « Enregistrer » envoie ce texte.</p>
+  <textarea id="tx-src" spellcheck="false" autocomplete="off" aria-label="Texte du script"></textarea>
+  <div id="tx-etat" aria-live="polite"></div>
+  <div class="acts">
+    <span class="spacer"></span>
+    <button class="btn fermer" id="tx-fermer">Fermer</button>
+    <button class="btn principal" id="tx-appliquer">Appliquer</button>
+  </div>
 </div></div>
 
 <script src="hmac.js"></script>
@@ -600,11 +626,15 @@ function markSel() {
 // ── Texte genere ───────────────────────────────────────────────────────
 let GEN = { text: '', lines: [] };
 let lecture = null;         // { texte, octets } du module quand le schema est en lecture seule
+// Mode texte : le script ne se dessine pas mais son texte est connu. Le
+// declencheur et « Actif » restent reglables (panneau de droite), comme dans
+// l'ancien editeur texte.
+const modeTexte = () => !editable && !!(lecture && lecture.texte);
 const KW = /\b(si|alors|sinon|finsi|pour|de|à|faire|finpour|tantque|fintantque|demarrer|zone|pendant|arreter|suspendre|reprendre|attendre|notifier|message|et|ou)\b/g;
 function renderCode() {
   if (!editable && lecture) {
     // Lecture seule : montrer ce qui tourne vraiment, pas un schema vide.
-    $('code').innerHTML = (lecture.texte || '# texte source absent de la carte SD').split('\n').map((l, i) =>
+    $('code').innerHTML = (lecture.texte.replace(/\n+$/, '') || '# texte source absent de la carte SD').split('\n').map((l, i) =>
       '<div class="cl"><span class="ln">' + (i + 1) + '</span><span>' + esc(l) + '</span></div>').join('');
     $('taille').textContent = lecture.octets + ' / ' + TAILLE_MAX + ' octets';
     $('taille').className = 'note';
@@ -741,7 +771,7 @@ function renderProps() {
     h += '<div class="acts"><button class="btn" id="p-dup">Dupliquer</button><button class="btn danger" id="p-del">Supprimer le bloc</button></div>';
   }
   p.innerHTML = h;
-  if (!editable) p.querySelectorAll('select,input,button').forEach((e) => { e.disabled = true; });
+  if (!editable && !(sel === 'start' && modeTexte())) p.querySelectorAll('select,input,button').forEach((e) => { e.disabled = true; });
   wireProps(p);
 }
 function wireProps(p) {
@@ -831,7 +861,7 @@ function refresh(props) {
   // Interrupteur « Actif » de la barre du haut : meme valeur que le reglage
   // du bloc Depart, place la ou on le cherche.
   $('actif-top').checked = doc.actif;
-  $('actif-top').disabled = !editable;
+  $('actif-top').disabled = !editable && !modeTexte();
   $('actif-top').parentNode.classList.toggle('off', !doc.actif);
   majNomSlot();
 }
@@ -1002,6 +1032,9 @@ function renderSim() {
 }
 async function essai() {
   if (running) { stopReq = true; return; }
+  // L'essai parcourt le schema : en mode texte, il ne correspondrait pas a
+  // ce que le module recevra.
+  if (!editable) { dire('Essai à blanc indisponible : ce script ne se dessine pas, l’essai ne refléterait pas son texte.', 'ko'); return; }
   running = true; stopReq = false; tab('run'); $('log').innerHTML = '';
   $('b-essai').lastChild.textContent = 'Arrêter l’essai';
   const active = new Set();
@@ -1141,7 +1174,7 @@ async function charger() {
     editable = false; lecture = { texte: '', octets: d.code.length };
     couvrir('Texte source absent de la carte SD',
       'Ce script tourne sur le module, mais son texte n’a pas été retrouvé sur la carte SD : il ne peut pas être dessiné. '
-      + 'Vous pouvez le réécrire ici en repartant d’un schéma vide.');
+      + 'Vous pouvez le réécrire ici, en schéma ou avec « Modifier le texte ».');
     msg = 'Chargé : ' + d.code.length + ' octets, sans texte source.'; etat = 'ko';
   } else {
     const texte = await r.text();
@@ -1154,7 +1187,7 @@ async function charger() {
       editable = false; lecture = { texte: texte, octets: d.code.length };
       couvrir('Ce script s’écrit en mode texte',
         'Il utilise une tournure que le schéma ne sait pas dessiner (ligne ' + e.line + ' : ' + e.message + '). '
-        + 'Il reste entièrement modifiable dans l’éditeur texte. Repartir d’un schéma vide remplacera le script à l’enregistrement.');
+        + 'Il reste entièrement modifiable avec « Modifier le texte ». Repartir d’un schéma vide remplacera le script à l’enregistrement.');
       msg = 'Chargé en lecture : ce script ne se dessine pas.'; etat = 'ko';
     }
   }
@@ -1165,7 +1198,8 @@ async function charger() {
   }
   setDirty(false);
   refresh(true);
-  if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
+  if (modeTexte()) { sel = 'start'; markSel(); renderProps(); }
+  else if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
   requestAnimationFrame(fit);
   dire(msg, etat);
 }
@@ -1223,9 +1257,16 @@ async function definirSecret() {
   } else dire('Refusé : ' + (d.error || ''), 'ko');
 }
 
+// Texte a envoyer : celui du schema, ou en mode texte celui garde tel quel
+// (null si le schema est en lecture sans texte : source absente de la SD).
+function texteAEnvoyer() {
+  if (editable) return S.generate(doc.body, NAMES).text;
+  return lecture && lecture.texte ? lecture.texte : null;
+}
 async function enregistrer() {
-  if (!editable) { dire('Ce script ne se dessine pas : modifiez-le dans l’éditeur texte, ou repartez d’un schéma vide.', 'ko'); return; }
-  const g = S.generate(doc.body, NAMES);
+  const texte = texteAEnvoyer();
+  if (texte === null) { dire('Aucun texte à enregistrer : écrivez-le avec « Modifier le texte », ou repartez d’un schéma vide.', 'ko'); return; }
+  const g = { text: texte };
   let code;
   try { code = AquaScript.compile(g.text); }
   catch (e) { dire('Compilation impossible : ' + e.message + (e.line ? ' (ligne ' + e.line + ')' : ''), 'err'); return; }
@@ -1386,10 +1427,91 @@ $('cover-vide').onclick = () => {
   pushUndo(); doc.body = []; editable = true; lecture = null; couvrir(''); setDirty(true); refresh(true);
   dire('Schéma vide : le texte actuel du module sera remplacé à l’enregistrement.', 'ko');
 };
+
+// ── Modifier le texte (remplace l'editeur texte de scripts.html) ────────
+// Le texte applique est compile, puis relu en schema. S'il ne se dessine
+// pas, il est GARDE tel quel (mode texte : schema en lecture, Enregistrer
+// envoie ce texte) plutot que perdu ou traduit « a peu pres ».
+let texteOuvert = '';
+function analyseTexte(t) {
+  const r = { code: null, err: null, body: null, raison: null };
+  try { r.code = AquaScript.compile(t); } catch (e) { r.err = e; return r; }
+  try { r.body = S.parse(t); } catch (e) { if (!(e instanceof S.Unsupported)) throw e; r.raison = e; }
+  return r;
+}
+function majEtatTexte() {
+  const t = $('tx-src').value, r = analyseTexte(t);
+  let h;
+  if (r.err) h = '<span class="err">Ne compile pas' + (r.err.line ? ' (ligne ' + r.err.line + ')' : '') + ' : ' + esc(r.err.message) + '</span>';
+  else if (r.code.length > TAILLE_MAX) h = '<span class="err">Trop long : ' + r.code.length + ' octets pour ' + TAILLE_MAX + ' au plus.</span>';
+  else {
+    h = '<span class="ok">Compile : ' + r.code.length + ' / ' + TAILLE_MAX + ' octets.</span> ';
+    if (r.body) {
+      // Commentaires et mise en forme sont regeneres a partir du schema :
+      // le dire si le texte saisi en differe, plutot que de les effacer en douce.
+      h += S.generate(r.body, NAMES).text.trim() === t.trim() ? '<span class="ok">Se dessine en schéma.</span>'
+        : '<span class="ok">Se dessine en schéma</span> <span class="ko">(mise en forme et commentaires « # » seront réécrits).</span>';
+    } else {
+      h += '<span class="ko">Ne se dessine pas (ligne ' + r.raison.line + ' : ' + esc(r.raison.message)
+        + ') : il sera gardé tel quel, schéma en lecture.</span>';
+    }
+  }
+  $('tx-etat').innerHTML = h;
+  return r;
+}
+function ouvrirTexte() {
+  texteOuvert = !editable && lecture ? (lecture.texte || '') : S.generate(doc.body, NAMES).text;
+  $('tx-src').value = texteOuvert;
+  $('texte').hidden = false;
+  majEtatTexte();
+  $('tx-src').focus();
+}
+// « fin du script » est signale sur la ligne vide qui suit le dernier saut
+// de ligne : remonter a la derniere ligne non vide, celle a corriger.
+function selectionnerLigne(n) {
+  const ta = $('tx-src'), lignes = ta.value.split('\n');
+  if (!n) return;
+  n = Math.min(n, lignes.length);
+  while (n > 1 && !lignes[n - 1].trim()) n--;
+  const debut = lignes.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
+  ta.focus(); ta.setSelectionRange(debut, debut + lignes[n - 1].length);
+}
+function appliquerTexte() {
+  const t = $('tx-src').value.replace(/\r\n/g, '\n');
+  const r = majEtatTexte();
+  if (r.err) { selectionnerLigne(r.err.line); return; }
+  if (r.code.length > TAILLE_MAX) return;
+  if (r.body) {
+    // Schema -> schema : annulable. Depuis ou vers le mode texte, l'historique
+    // d'annulation ne decrit plus le meme objet : il repart de zero.
+    if (editable) pushUndo(); else { undo = []; $('b-undo').disabled = true; }
+    doc.body = r.body; editable = true; lecture = null; couvrir('');
+    dire('Texte appliqué et redessiné. Il part au module à l’enregistrement.', 'ok');
+  } else {
+    undo = []; $('b-undo').disabled = true;
+    doc.body = []; editable = false; lecture = { texte: t, octets: r.code.length };
+    couvrir('Ce script s’écrit en mode texte',
+      'Il utilise une tournure que le schéma ne sait pas dessiner (ligne ' + r.raison.line + ' : ' + r.raison.message + '). '
+      + 'Il est gardé tel quel et « Enregistrer » l’enverra au module. « Modifier le texte » pour y revenir.');
+    dire('Texte appliqué en mode texte : il part au module à l’enregistrement.', 'ko');
+  }
+  sel = editable ? null : 'start'; setDirty(true); $('texte').hidden = true;
+  refresh(true);
+  requestAnimationFrame(fit);
+}
+$('b-modif-texte').onclick = ouvrirTexte;
+$('cover-modif').onclick = ouvrirTexte;
+$('tx-src').addEventListener('input', majEtatTexte);
+$('tx-appliquer').onclick = appliquerTexte;
+$('tx-fermer').onclick = () => {
+  if ($('tx-src').value !== texteOuvert && !confirm('Fermer sans appliquer ? Les modifications du texte seront perdues.')) return;
+  $('texte').hidden = true;
+};
 window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', (e) => {
   const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if (e.key === 'Escape' && !$('phrases').hidden) { $('ph-fermer').click(); return; }
+  if (e.key === 'Escape' && !$('texte').hidden) { $('tx-fermer').click(); return; }
   if (e.key === 'Escape') { closeMenu(); choisir(null); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) { e.preventDefault(); doUndo(); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && sel && sel !== 'start') { e.preventDefault(); removeSel(); }
@@ -1508,7 +1630,7 @@ if (CLOUD) {
         ? 'Le texte de ce script est trop long pour être édité en ligne. Il reste modifiable sur le réseau local.'
         : (MIROIR.scripts.sd === false
           ? 'La carte SD du module est illisible : le texte de ce script n’a pas pu être lu.'
-          : 'Ce script tourne sur le module, mais son texte n’a pas été retrouvé sur la carte SD. Vous pouvez le réécrire ici en repartant d’un schéma vide.'));
+          : 'Ce script tourne sur le module, mais son texte n’a pas été retrouvé sur la carte SD. Vous pouvez le réécrire ici, en schéma ou avec « Modifier le texte ».'));
       msg = 'Chargé : ' + octets + ' octets, sans texte source.'; etat = etat || 'ko';
     } else {
       try {
@@ -1519,19 +1641,21 @@ if (CLOUD) {
         editable = false; lecture = { texte: src.source, octets: octets };
         couvrir('Ce script s’écrit en mode texte',
           'Il utilise une tournure que le schéma ne sait pas dessiner (ligne ' + e.line + ' : ' + e.message + '). '
-          + 'Il se modifie dans l’éditeur texte du module, sur le réseau local. Repartir d’un schéma vide remplacera le script à l’enregistrement.');
+          + 'Il se modifie avec « Modifier le texte ». Repartir d’un schéma vide remplacera le script à l’enregistrement.');
         msg = 'Chargé en lecture : ce script ne se dessine pas.'; etat = etat || 'ko';
       }
     }
     setDirty(false); refresh(true);
-    if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
+    if (modeTexte()) { sel = 'start'; markSel(); renderProps(); }
+    else if (!editable) $('props').innerHTML = '<div class="empty">Lecture seule.</div>';
     requestAnimationFrame(fit);
     dire(msg + note, etat);
   };
 
   enregistrer = async function () {
-    if (!editable) { dire('Ce script ne se dessine pas : repartez d’un schéma vide pour le remplacer, ou modifiez-le sur le réseau local.', 'ko'); return; }
-    const g = S.generate(doc.body, NAMES);
+    const texte = texteAEnvoyer();
+    if (texte === null) { dire('Aucun texte à envoyer : écrivez-le avec « Modifier le texte », ou repartez d’un schéma vide.', 'ko'); return; }
+    const g = { text: texte };
     let code;
     try { code = AquaScript.compile(g.text); }
     catch (e) { dire('Compilation impossible : ' + e.message + (e.line ? ' (ligne ' + e.line + ')' : ''), 'err'); return; }
