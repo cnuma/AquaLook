@@ -562,13 +562,24 @@ function rendreScripts(cmds){
       + 'son firmware est à mettre à jour.</p>';
     return;
   }
-  const attente = i => cmds.some(c => c.state === 'pending' && c.command
-    && Array.isArray(c.command.scripts) && c.command.scripts[0] && c.command.scripts[0].i === i);
+  // Commande en attente la plus recente pour cet emplacement (cmds : du plus
+  // recent au plus ancien). Un effacement se dit comme tel, nom barre, comme
+  // une suppression de creneau dans la grille : « en attente » seul laissait
+  // croire a une simple modification.
+  const attente = i => {
+    const c = cmds.find(c => c.state === 'pending' && c.command
+      && Array.isArray(c.command.scripts) && c.command.scripts[0] && c.command.scripts[0].i === i);
+    return c ? c.command.scripts[0] : null;
+  };
   el.innerHTML = '<table class="hist"><tr><th>N°</th><th>Script</th><th>État</th></tr>'
-    + (sc.emplacements || []).map(s => '<tr><td>' + (s.i + 1) + '</td><td>'
-        + (s.nom !== undefined ? esc(s.nom) : '<span class="mod-s" style="margin:0">vide</span>')
-        + '</td><td>' + (attente(s.i) ? '<span class="tag pending">en attente</span>'
-          : (s.nom === undefined ? '' : (s.actif ? 'actif' : 'inactif'))) + '</td></tr>').join('')
+    + (sc.emplacements || []).map(s => {
+        const a = attente(s.i), efface = !!(a && a.efface === true);
+        const nom = s.nom !== undefined ? esc(s.nom) : '<span class="mod-s" style="margin:0">vide</span>';
+        return '<tr><td>' + (s.i + 1) + '</td><td>' + (efface && s.nom !== undefined ? '<s>' + nom + '</s>' : nom)
+          + '</td><td>' + (efface ? '<span class="tag pending">effacement en attente</span>'
+            : a ? '<span class="tag pending">en attente</span>'
+            : (s.nom === undefined ? '' : (s.actif ? 'actif' : 'inactif'))) + '</td></tr>';
+      }).join('')
     + '</table>'
     + '<div class="row" style="margin-top:12px"><a class="primary" style="display:inline-block;padding:8px 14px;'
     + 'border-radius:8px;text-decoration:none" href="/editeur/scripts-schema.html?module='

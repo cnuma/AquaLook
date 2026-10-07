@@ -828,6 +828,9 @@ légende « en attente de synchronisation ». La fenêtre de détail
 (`ouvrirJour()`) affiche déjà la ligne décochée avec son badge ; vérifier
 qu'elle reste cohérente. Le même contrôle vaudra pour l'effacement d'un
 script depuis l'espace en ligne (décision D014).
+**Fait aussi pour les scripts** (7 oct. 2026, banc) : un effacement en
+attente s'affiche « effacement en attente », nom barré, dans le tableau des
+scripts de `app.html`.
 
 ### Éditeur graphique des scripts : améliorations demandées
 
