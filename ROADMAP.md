@@ -825,7 +825,8 @@ script depuis l'espace en ligne (décision D014).
 
 ### Éditeur graphique des scripts : améliorations demandées
 
-**En cours** (7 oct. 2026 : points 1 à 5, 7 et 8 faits, reste le 6).
+**Fait** (7 oct. 2026 : les 8 points ; reste la passe « Fermer » sur les
+autres pages, et la décision de retirer `scripts.html`).
 Demandes utilisateur des 6-7 octobre 2026, à traiter dans
 `data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
 changement de cette page doit aussi être recopié dans `/editeur/` sur
@@ -866,6 +867,9 @@ AlwaysData, la page étant la même sur le module et en ligne.
    (`AquaSchema.parse`) ; s'il n'est pas dessinable, le dire plutôt que de
    perdre la modification. Ce point rend `scripts.html` supprimable : il
    conditionne l'abandon de l'ancien éditeur.
+   **Fait** (commit « modifier le texte genere ») : un texte non
+   dessinable est gardé tel quel (mode texte) ; `scripts.html` n'est pas
+   encore retiré.
 7. **Boucles « Répéter » et « Tant que » en forme de pince**, comme dans
    Scratch : les blocs contenus sont encadrés par le bloc de boucle, ce qui
    distingue visuellement une structure (boucle) d'une étape (arroser,
