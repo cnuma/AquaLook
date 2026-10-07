@@ -822,3 +822,57 @@ légende « en attente de synchronisation ». La fenêtre de détail
 (`ouvrirJour()`) affiche déjà la ligne décochée avec son badge ; vérifier
 qu'elle reste cohérente. Le même contrôle vaudra pour l'effacement d'un
 script depuis l'espace en ligne (décision D014).
+
+### Éditeur graphique des scripts : améliorations demandées
+
+**À faire.** Demandes utilisateur des 6-7 octobre 2026, à traiter dans
+`data/scripts-schema.html` (et `script-schema.js` pour le modèle). Chaque
+changement de cette page doit aussi être recopié dans `/editeur/` sur
+AlwaysData, la page étant la même sur le module et en ligne.
+
+1. **Notifications désactivées : le dire dans l'éditeur.** Quand les
+   notifications sont coupées sur le module, un visuel doit le montrer dans
+   les scripts (blocs « Notifier » et « Noter », panneau « Phrases »),
+   sinon un script semble alerter alors que rien ne part. Le journal du
+   module trace déjà l'état (`Notification: pret enabled=no`), mais il n'est
+   exposé ni par `/api/scripts` ni par le miroir : à ajouter aux deux
+   (source : `NotificationManager`), puis à afficher.
+2. **Panneau « Phrases » centré.** Il est aujourd'hui décalé sur la gauche
+   de la page ; le centrer.
+3. **Bouton « Fermer » bleu, au niveau de « Enregistrer la bibliothèque ».**
+   Même rangée, couleur bleue. **Règle d'interface valable pour toute
+   l'interface** : chaque bouton « Fermer » suit ce modèle ; une passe sur
+   les autres pages (`app.html` et ses fenêtres de détail, `index.html`,
+   etc.) est à prévoir.
+4. **Renommer un script ne met pas à jour la liste déroulante.** Le champ
+   nom ne met à jour que `doc.nom` (`$('nom')`, évènement `input`) ; la
+   liste n'est relue qu'après un enregistrement. En mode espace en ligne,
+   `listeSlots()` lit le nom dans le miroir et ignore celui de la commande
+   en attente : le nom reste l'ancien jusqu'à la synchronisation. À vérifier
+   dans les deux modes, puis refléter le nom saisi (et celui de la commande
+   en attente) dans la liste.
+5. **Afficher la gamme « Aqualook Pro »** dans l'interface des scripts,
+   comme le badge déjà présent sur `index.html` (`productLine` de
+   `/api/diagnostics`). En mode espace en ligne, la valeur n'est pas dans le
+   miroir : à y ajouter.
+6. **Modifier le « texte généré » depuis l'éditeur graphique**, par un
+   dispositif voisin de l'édition des phrases (panneau d'édition, validation
+   à l'enregistrement), sans repasser par `scripts.html`, appelée à
+   disparaître. Un texte modifié doit être recompilé et relu en schéma
+   (`AquaSchema.parse`) ; s'il n'est pas dessinable, le dire plutôt que de
+   perdre la modification. Ce point rend `scripts.html` supprimable : il
+   conditionne l'abandon de l'ancien éditeur.
+7. **Boucles « Répéter » et « Tant que » en forme de pince**, comme dans
+   Scratch : les blocs contenus sont encadrés par le bloc de boucle, ce qui
+   distingue visuellement une structure (boucle) d'une étape (arroser,
+   arrêter, notifier…). Le « Si » et le « En parallèle » pourraient suivre.
+8. **Conditions : « et » / « ou » entre chaque test**, avec la priorité
+   mathématique habituelle (« et » avant « ou », parenthèses implicites),
+   et conditions déplaçables par glisser-déposer comme les blocs. Valable
+   pour « Si » et pour « Tant que ». Aujourd'hui, un seul opérateur
+   s'applique à toutes les conditions du bloc. Chantier de fond : il touche
+   le modèle (`script-schema.js`), la génération du texte, la relecture
+   texte → schéma, le banc `tools/script_schema_test.html` et l'éditeur
+   graphique ; les scripts existants doivent continuer à se relire (un
+   opérateur unique reste un cas particulier). À vérifier : le langage et la
+   VM savent déjà exprimer des « et/ou » mélangés (`script-lang.js`).
