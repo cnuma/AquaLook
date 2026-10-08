@@ -264,10 +264,18 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .tabform td.x{width:1%}
 .tabform input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:4px 7px;background:var(--bg1);color:var(--text);font:inherit}
 .tabform .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+/* Pied colle au bas de l'onglet : la liste (16 variables, jusqu'a 48
+   phrases) defile dessous, boutons et message restent visibles (demande du
+   8 oct. 2026). bottom/marge negatifs = recouvrir le padding du bas. */
+.tabform .pied{position:sticky;bottom:-8px;margin:0 -12px -8px;padding:0 12px 8px;background:var(--bg1);border-top:1px solid var(--border)}
 .tabform .aide{margin:0 0 6px;color:var(--text2);font-size:12px}
 /* Bouton « Enregistrer » : orange qui respire tant que le script n'est pas
    enregistre (demande du 8 oct. 2026). */
-#b-save.a-enregistrer{background:var(--amber);border-color:var(--amber);animation:respire 1.2s ease-in-out infinite alternate}
+#b-save.a-enregistrer,.tabform .btn.principal.a-enregistrer{background:var(--amber);border-color:var(--amber);animation:respire 1.2s ease-in-out infinite alternate}
+/* Phrases / Variables modifiees et pas enregistrees : meme signal que le
+   script (bouton orange qui respire), plus une puce sur l'onglet, visible
+   depuis les autres onglets (demande du 8 oct. 2026). */
+.tabs button.modifie::after{content:' \25CF';color:var(--amber)}
 @keyframes respire{to{box-shadow:0 0 0 4px rgba(168,107,11,.25)}}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 8px;flex:none;align-items:center}
 .tabs button{border:0;background:none;padding:9px 12px;cursor:pointer;color:var(--muted);font:600 13px var(--sans);
@@ -309,7 +317,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   .app{grid-template-rows:auto auto auto minmax(420px,1fr)}
   .nomwrap{max-width:none;flex-basis:100%}
 }
-@media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,#b-save.a-enregistrer{animation:none}}
+@media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,.a-enregistrer{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
 body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-var{display:none!important}
 </style></head><body>
@@ -399,6 +407,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
           <p class="aide">Phrases citées par « Notifier sur GSM » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.</p>
           <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier sur GSM » n’enverront rien. « Noter au journal » n’est pas concerné.</p>
           <table><tbody id="phrases-liste"></tbody></table>
+          <div class="pied">
           <div class="acts">
             <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
             <span class="spacer"></span>
@@ -406,11 +415,13 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
             <button class="btn principal" id="ph-enregistrer">Enregistrer les phrases</button>
           </div>
           <div id="msgphrases"></div>
+          </div>
         </div>
         <div class="tabbody tabform" id="p-var" hidden>
           <p class="aide">Seize nombres entiers partagés par <b>tous</b> les scripts et conservés au redémarrage. Une nouvelle valeur ne s’applique qu’aux lignes remplies.</p>
           <table><thead><tr><td class="g"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
           <tbody id="gv-liste"></tbody></table>
+          <div class="pied">
           <div class="acts">
             <button class="btn" id="gv-relire">Relire les valeurs</button>
             <span class="spacer"></span>
@@ -418,6 +429,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
             <button class="btn principal" id="gv-enregistrer">Enregistrer les variables</button>
           </div>
           <div id="msgvariables"></div>
+          </div>
         </div>
        </div>
       </div>
@@ -1109,8 +1121,9 @@ async function tab(which) {
     $('t-' + k).setAttribute('aria-selected', which === k);
     $('p-' + k).hidden = which !== k;
   });
-  if (which === 'phr' && !phrPret) { biblioAvant = JSON.stringify(BIBLIO); rendrePhrases(); direPhrases(''); phrPret = true; }
-  if (which === 'var' && !varPret) { await lireGlobales(); rendreVariables(); direVariables(''); varPret = true; }
+  if (which === 'phr' && !phrPret) { biblioAvant = JSON.stringify(BIBLIO); rendrePhrases(); direPhrases(''); phrPret = true; phrasesModifiees(false); }
+  if (which === 'var' && !varPret) { await lireGlobales(); rendreVariables(); direVariables(''); varPret = true; variablesModifiees(false); }
+  if (which !== 'run') lireSources();
 }
 $('t-run').onclick = () => tab('run');
 // Replier la zone du bas : preference de ce navigateur seulement.
@@ -1482,6 +1495,62 @@ $('actif-top').addEventListener('change', () => {
                  : 'Script inactif : il ne partira plus, même sur « Lancer maintenant », une fois enregistré.', '');
 });
 
+// ── Ou servent phrases et variables (demande du 8 oct. 2026) ───────────
+// Au survol d'une ligne, les scripts qui la citent ; avant d'effacer une
+// phrase ou le nom d'une variable cites, une confirmation. Textes relus a
+// l'ouverture des onglets et juste avant une confirmation ; l'emplacement
+// ouvert compte pour son schema en cours, pas pour ce qui est enregistre.
+// null = texte introuvable : l'emplacement est signale « non vérifié ».
+let SOURCES = {}, sourcesLues = false;
+async function lireSources() {
+  const lu = {};
+  for (const s of SLOTS) {
+    const v = vueSlot(s);
+    if (!v.utilise || s.i === slot()) continue;
+    if (CLOUD) { lu[s.i] = typeof v.source === 'string' && v.source ? v.source : null; continue; }
+    try { const r = await fetch('/api/script-source?i=' + s.i); lu[s.i] = r.status === 200 ? await r.text() : null; }
+    catch (e) { lu[s.i] = null; }
+  }
+  SOURCES = lu; sourcesLues = true;
+}
+// Codes de phrase et numeros de variable cites, commentaires retires : le
+// texte genere y recopie les noms.
+function references(texte) {
+  const ph = new Set(), gv = new Set();
+  String(texte || '').split('\n').forEach((l) => {
+    l = l.replace(/#.*$/, '');
+    for (const m of l.matchAll(/\b(?:message|notifier)\s+(\d+)/g)) if (+m[1]) ph.add(+m[1]);
+    for (const m of l.matchAll(/\bg(\d+)\b/g)) gv.add(+m[1]);
+  });
+  return { ph: ph, gv: gv };
+}
+// Scripts qui citent la phrase (genre 'ph') ou la variable ('gv') n.
+function utilisations(genre, n) {
+  const oui = [], inconnus = [];
+  SLOTS.forEach((s) => {
+    const ouvert = s.i === slot();
+    if (!ouvert && !vueSlot(s).utilise) return;
+    const texte = ouvert ? texteAEnvoyer() : SOURCES[s.i];
+    if (texte === undefined) return;
+    if (texte === null) { inconnus.push(s.i + 1); return; }
+    if (references(texte)[genre].has(n)) oui.push((s.i + 1) + ' — ' + (ouvert ? ($('nom').value || 'Sans nom') : vueSlot(s).nom));
+  });
+  return { oui: oui, inconnus: inconnus };
+}
+function texteUtilisations(u) {
+  return (u.oui.length ? 'Utilisée dans : ' + u.oui.join(', ') : 'Utilisée dans aucun script')
+    + (u.inconnus.length ? ' (texte introuvable, non vérifié : script ' + u.inconnus.join(', ') + ')' : '') + '.';
+}
+function survolUtilisations(liste, genre, numero) {
+  liste.addEventListener('mouseover', (e) => {
+    const tr = e.target.closest('tr'); if (!tr || !liste.contains(tr)) return;
+    const n = numero(tr);
+    tr.title = !n ? '' : sourcesLues ? texteUtilisations(utilisations(genre, n)) : 'Recherche des scripts qui l’utilisent…';
+  });
+}
+function phrasesModifiees(v) { $('ph-enregistrer').classList.toggle('a-enregistrer', v); $('t-phr').classList.toggle('modifie', v); }
+function variablesModifiees(v) { $('gv-enregistrer').classList.toggle('a-enregistrer', v); $('t-var').classList.toggle('modifie', v); }
+
 // ── Bibliotheque de phrases (signee comme les scripts)
 function direPhrases(t, e) { const m = $('msgphrases'); m.textContent = t || ''; m.className = e || ''; }
 function rendrePhrases() {
@@ -1500,23 +1569,39 @@ function lirePhrases() {
 // Premier code libre a partir de 900.
 function codeLibre() { const pris = new Set(BIBLIO.map((o) => o.code)); let c = 900; while (pris.has(c) && c < 65535) c++; return c; }
 let biblioAvant = null;
+// Phrases citees dont la suppression a deja ete confirmee (bouton ×) : ne
+// pas redemander a l'enregistrement.
+let phrasesConfirmees = new Set();
+const avertPhrase = (u) => 'Utilisée dans : ' + u.oui.join(', ')
+  + '.\nCes blocs n’auront plus de texte : le journal et la notification ne montreront que le code.';
+survolUtilisations($('phrases-liste'), 'ph', (tr) => { const c = tr.querySelector('input[data-b="code"]'); return c ? parseInt(c.value, 10) || 0 : 0; });
+$('phrases-liste').addEventListener('input', () => phrasesModifiees(true));
 $('ph-fermer').onclick = () => {
   // Annuler : rien n'est parti vers le module, revenir a la liste lue.
   if (biblioAvant !== null) BIBLIO = JSON.parse(biblioAvant);
-  rendrePhrases(); direPhrases('Modifications annulées.', '');
+  phrasesConfirmees = new Set();
+  rendrePhrases(); direPhrases('Modifications annulées.', ''); phrasesModifiees(false);
 };
 $('ph-ajouter').onclick = () => {
   lirePhrases();
   if (BIBLIO.length >= BIBLIO_MAX) { direPhrases(BIBLIO_MAX + ' phrases au maximum.', 'ko'); return; }
   const c = codeLibre();
   BIBLIO.push({ id: c, code: c, texte: '' });
-  rendrePhrases();
+  rendrePhrases(); phrasesModifiees(true);
   const champs = $('phrases-liste').querySelectorAll('input[data-b="texte"]');
   if (champs.length) champs[champs.length - 1].focus();
 };
-$('phrases-liste').addEventListener('click', (e) => {
+$('phrases-liste').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-del-phrase]'); if (!b) return;
-  lirePhrases(); BIBLIO.splice(+b.dataset.delPhrase, 1); rendrePhrases();
+  lirePhrases();
+  const o = BIBLIO[+b.dataset.delPhrase];
+  await lireSources();
+  const u = utilisations('ph', o.code);
+  if (u.oui.length) {
+    if (!confirm('Supprimer la phrase ' + o.code + ' « ' + o.texte + ' » ?\n' + avertPhrase(u))) return;
+    phrasesConfirmees.add(o.code);
+  }
+  BIBLIO.splice(BIBLIO.indexOf(o), 1); rendrePhrases(); phrasesModifiees(true);
 });
 $('ph-enregistrer').onclick = async () => {
   lirePhrases();
@@ -1532,6 +1617,12 @@ $('ph-enregistrer').onclick = async () => {
     if (/[\t\r\n]/.test(t)) { direPhrases('Ligne ' + (k + 1) + ' : tabulation ou saut de ligne interdit.', 'ko'); return; }
     o.texte = t; o.id = o.code;
   }
+  // Un code change ou une phrase videe puis retiree sans × : meme question.
+  await lireSources();
+  const perdues = (biblioAvant ? JSON.parse(biblioAvant) : []).filter((a) => !vus.has(a.code) && !phrasesConfirmees.has(a.code))
+    .map((a) => ({ a: a, u: utilisations('ph', a.code) })).filter((x) => x.u.oui.length);
+  if (perdues.length && !confirm(perdues.map((x) => 'La phrase ' + x.a.code + ' « ' + x.a.texte + ' » disparaît.\n' + avertPhrase(x.u)).join('\n\n')
+    + '\n\nEnregistrer quand même ?')) return;
   if (CLOUD) { await envoyerPhrasesCloud(); return; }
   try {
     const etat = await prochainNonce();
@@ -1547,6 +1638,7 @@ $('ph-enregistrer').onclick = async () => {
     const d = await r.json().catch(() => ({}));
     if (d.ok) {
       biblioAvant = JSON.stringify(BIBLIO);
+      phrasesConfirmees = new Set(); phrasesModifiees(false);
       direPhrases('Enregistré : ' + d.entrees + ' phrase(s) sur la carte SD.', 'ok');
       refresh(true);   // les blocs Notifier affichent les nouveaux textes
     } else {
@@ -1566,6 +1658,9 @@ function rendreVariables() {
   }).join('');
 }
 
+survolUtilisations($('gv-liste'), 'gv', (tr) => { const c = tr.querySelector('input[data-gn]'); return c ? +c.dataset.gn : 0; });
+$('gv-liste').addEventListener('input', () => variablesModifiees(true));
+
 $('gv-relire').onclick = async () => {
   // Garder les noms en cours de saisie : seules les valeurs sont relues.
   const saisis = {};
@@ -1574,7 +1669,7 @@ $('gv-relire').onclick = async () => {
   $('gv-liste').querySelectorAll('input[data-gn]').forEach((el) => { el.value = saisis[el.dataset.gn]; });
   direVariables('Valeurs relues sur le module.', 'ok');
 };
-$('gv-fermer').onclick = () => { rendreVariables(); direVariables('Modifications annulées.', ''); };
+$('gv-fermer').onclick = () => { rendreVariables(); direVariables('Modifications annulées.', ''); variablesModifiees(false); };
 $('gv-enregistrer').onclick = async () => {
   const noms = [], vus = new Set(), fixe = [];
   for (let i = 1; i <= S.GLOBAL_COUNT; i++) {
@@ -1590,6 +1685,14 @@ $('gv-enregistrer').onclick = async () => {
       fixe.push({ i: i, v: entier(nv) });
     }
   }
+  // Nom efface d'une variable citee : les blocs n'afficheront plus que gN.
+  await lireSources();
+  const effaces = noms.map((nom, k) => ({ i: k + 1, nom: nom, avant: globaleNom(k + 1) }))
+    .filter((x) => !x.nom && x.avant !== 'g' + x.i).map((x) => Object.assign(x, { u: utilisations('gv', x.i) }))
+    .filter((x) => x.u.oui.length);
+  if (effaces.length && !confirm(effaces.map((x) => 'La variable g' + x.i + ' « ' + x.avant + ' » perd son nom.\nUtilisée dans : '
+    + x.u.oui.join(', ') + '.\nLes blocs et le journal n’afficheront plus que g' + x.i + '.').join('\n\n')
+    + '\n\nEnregistrer quand même ?')) return;
   try {
     const etat = await prochainNonce();
     if (!etat.configure) { direVariables('Le module n’a pas de secret : posez-en un (bouton « Secret ») avant d’enregistrer.', 'ko'); return; }
@@ -1604,7 +1707,7 @@ $('gv-enregistrer').onclick = async () => {
     });
     const d = await r.json().catch(() => ({}));
     if (d.ok) {
-      await lireGlobales(); rendreVariables();
+      await lireGlobales(); rendreVariables(); variablesModifiees(false);
       direVariables('Enregistré : noms à jour' + (d.fixees ? ', ' + d.fixees + ' valeur(s) fixée(s).' : '.'), 'ok');
       refresh(true);   // les blocs affichent les nouveaux noms
     } else {
@@ -1699,7 +1802,9 @@ $('tx-fermer').onclick = () => {
   if ($('tx-src').value !== texteOuvert && !confirm('Fermer sans appliquer ? Les modifications du texte seront perdues.')) return;
   $('texte').hidden = true;
 };
-window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => {
+  if (dirty || $('t-phr').classList.contains('modifie') || $('t-var').classList.contains('modifie')) { e.preventDefault(); e.returnValue = ''; }
+});
 document.addEventListener('keydown', (e) => {
   const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if (e.key === 'Escape' && !$('texte').hidden) { $('tx-fermer').click(); return; }
@@ -1740,6 +1845,7 @@ async function envoyerPhrasesCloud() {
   try {
     const d = await apiCloud('/app/module/phrases', { moduleId: CLOUD, phrases: BIBLIO.map((o) => ({ code: o.code, texte: o.texte })) });
     biblioAvant = JSON.stringify(BIBLIO);
+    phrasesConfirmees = new Set(); phrasesModifiees(false);
     await lireModule();
     direPhrases('Envoyé : le module l’appliquera à sa prochaine synchronisation'
       + (d.remplace ? ', à la place de l’envoi précédent' : '') + '.', 'ok');
