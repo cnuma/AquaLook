@@ -25,7 +25,10 @@
     ok([1, 2, 3, 16].every((i) => nom(i).readOnly), 'noms en lecture seule');
     ok(ligne(1).querySelector('.val').textContent === '42' && ligne(3).querySelector('.val').textContent === '-7', 'valeurs du miroir');
     const rel = document.getElementById('gv-releve').textContent;
-    ok(/^Valeur au \d\d\/\d\d/.test(rel), 'date du releve : ' + rel);
+    const suivies = new URLSearchParams(location.search).get('suivies') === '1';
+    // Miroir du 08/10, dernier contact le 09/10 (heure locale : jour seul).
+    ok(new RegExp('^Valeur au ' + (suivies ? '09' : '08') + '/10').test(rel), 'date du releve : ' + rel);
+    ok(suivies ? /dernier contact/.test(document.getElementById('gv-releve').title) : /Relevé envoyé/.test(document.getElementById('gv-releve').title), 'aide de la date');
     ok(!visible(ligne(1).querySelector('.nv')) && !visible(document.querySelector('#p-var thead .nv')), 'colonne Nouvelle valeur masquee');
     ok(['gv-relire', 'gv-fermer', 'gv-enregistrer'].every((id) => !visible(document.getElementById(id))), 'boutons d’ecriture masques');
     await wait(400);

@@ -32,6 +32,8 @@ PAGE = "scripts-schema.html"
 SCENARIOS = [
     ("module local", "module_simule.js", "verifications.js", ""),
     ("espace en ligne", "miroir_simule.js", "verifications_miroir.js", "?module=Banc-01"),
+    ("en ligne, valeurs suivies", "miroir_simule.js", "verifications_miroir.js",
+     "?module=Banc-01&suivies=1"),
     ("en ligne, firmware anterieur", "miroir_simule.js", "verifications_miroir.js",
      "?module=Banc-01&sansvars=1"),
 ]
