@@ -177,9 +177,22 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .tabs .tx-btn{margin-left:8px;padding:3px 9px;font:500 12px var(--sans);color:var(--text);background:var(--bg1);
   border:1px solid var(--border2);border-radius:6px}
 .tabs .tx-btn:hover{background:var(--bg2)}
-#msgphrases{margin-top:10px;font-size:13px}
-#msgphrases.ok{color:#1d6b34}
-#msgphrases.ko{color:#8a5a00}
+/* Message des onglets Phrases / Variables : entre les boutons, et
+   ephemere sauf erreur (demande du 8 oct. 2026). */
+.tabform .msgtab{flex:1 1 140px;min-width:0;align-self:center;font-size:12.5px;color:var(--text2);transition:opacity .4s}
+.tabform .msgtab.ok{color:#1d6b34}
+.tabform .msgtab.ko{color:#8a5a00}
+.tabform .msgtab.fond{opacity:0}
+/* « Annuler les modifications » : de la famille de « Fermer », sans en
+   prendre le bleu plein. */
+.btn.annuler{background:#e6f1f7;border-color:#8fbfd8;color:#00648f}
+.btn.annuler:hover{background:#d3e7f2}
+/* Nombre de scripts qui citent la phrase ou la variable : vert si citee,
+   gris sinon ; « … » tant que les textes ne sont pas relus. */
+.tabform td.u{width:1%;padding-right:8px}
+.nb{display:inline-block;min-width:20px;padding:0 5px;border-radius:9px;font:600 11px/17px var(--mono);
+  text-align:center;background:var(--bg2);color:var(--muted);border:1px solid var(--border)}
+.nb.oui{background:var(--green);border-color:var(--green);color:#fff}
 /* Structures en pince, comme Scratch : la machoire du haut est le bloc
    (reglages), le bras gauche tient le contenu, la machoire du bas dit ce qui
    se passe ensuite (boucle : quand elle recommence, avec une fleche de retour
@@ -268,7 +281,6 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
    phrases) defile dessous, boutons et message restent visibles (demande du
    8 oct. 2026). bottom/marge negatifs = recouvrir le padding du bas. */
 .tabform .pied{position:sticky;bottom:-8px;margin:0 -12px -8px;padding:0 12px 8px;background:var(--bg1);border-top:1px solid var(--border)}
-.tabform .aide{margin:0 0 6px;color:var(--text2);font-size:12px}
 /* Bouton « Enregistrer » : orange qui respire tant que le script n'est pas
    enregistre (demande du 8 oct. 2026). */
 #b-save.a-enregistrer,.tabform .btn.principal.a-enregistrer{background:var(--amber);border-color:var(--amber);animation:respire 1.2s ease-in-out infinite alternate}
@@ -392,9 +404,9 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
        </div>
        <div class="panel">
         <div class="tabs" role="tablist">
+          <button role="tab" id="t-phr" aria-selected="false" title="Phrases citées par « Notifier sur GSM » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.">Phrases</button>
+          <button role="tab" id="t-var" aria-selected="false" title="Seize nombres entiers partagés par tous les scripts et conservés au redémarrage. Une nouvelle valeur ne s’applique qu’aux lignes remplies.">Variables</button>
           <button role="tab" id="t-run" aria-selected="true">Essai à blanc</button>
-          <button role="tab" id="t-phr" aria-selected="false" title="Textes envoyés par les blocs Notifier sur GSM et Noter au journal">Phrases</button>
-          <button role="tab" id="t-var" aria-selected="false" title="Variables partagées par tous les scripts : noms et valeurs">Variables</button>
         </div>
         <div class="tabbody" id="p-run">
           <div class="runwrap">
@@ -404,31 +416,27 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
           </div>
         </div>
         <div class="tabbody tabform" id="p-phr" hidden>
-          <p class="aide">Phrases citées par « Notifier sur GSM » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.</p>
-          <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier sur GSM » n’enverront rien. « Noter au journal » n’est pas concerné.</p>
+          <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier sur GSM » n’enverront rien.</p>
           <table><tbody id="phrases-liste"></tbody></table>
           <div class="pied">
           <div class="acts">
             <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
-            <span class="spacer"></span>
-            <button class="btn" id="ph-fermer">Annuler les modifications</button>
+            <span class="msgtab" id="msgphrases" aria-live="polite"></span>
+            <button class="btn annuler" id="ph-fermer">Annuler les modifications</button>
             <button class="btn principal" id="ph-enregistrer">Enregistrer les phrases</button>
           </div>
-          <div id="msgphrases"></div>
           </div>
         </div>
         <div class="tabbody tabform" id="p-var" hidden>
-          <p class="aide">Seize nombres entiers partagés par <b>tous</b> les scripts et conservés au redémarrage. Une nouvelle valeur ne s’applique qu’aux lignes remplies.</p>
-          <table><thead><tr><td class="g"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
+          <table><thead><tr><td class="g"></td><td class="u"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
           <tbody id="gv-liste"></tbody></table>
           <div class="pied">
           <div class="acts">
             <button class="btn" id="gv-relire">Relire les valeurs</button>
-            <span class="spacer"></span>
-            <button class="btn" id="gv-fermer">Annuler les modifications</button>
+            <span class="msgtab" id="msgvariables" aria-live="polite"></span>
+            <button class="btn annuler" id="gv-fermer">Annuler les modifications</button>
             <button class="btn principal" id="gv-enregistrer">Enregistrer les variables</button>
           </div>
-          <div id="msgvariables"></div>
           </div>
         </div>
        </div>
@@ -720,6 +728,7 @@ function renderCode() {
     t.textContent = n + ' / ' + TAILLE_MAX + ' octets';
     t.className = 'note' + (n > TAILLE_MAX ? ' hors' : n > TAILLE_MAX * 0.85 ? ' proche' : '');
   } catch (e) { t.textContent = 'non compilable : ' + e.message; t.className = 'note hors'; }
+  if (!$('p-phr').hidden || !$('p-var').hidden) majPuces();
 }
 
 // ── Reglages ───────────────────────────────────────────────────────────
@@ -1512,6 +1521,7 @@ async function lireSources() {
     catch (e) { lu[s.i] = null; }
   }
   SOURCES = lu; sourcesLues = true;
+  majPuces();
 }
 // Codes de phrase et numeros de variable cites, commentaires retires : le
 // texte genere y recopie les noms.
@@ -1548,17 +1558,37 @@ function survolUtilisations(liste, genre, numero) {
     tr.title = !n ? '' : sourcesLues ? texteUtilisations(utilisations(genre, n)) : 'Recherche des scripts qui l’utilisent…';
   });
 }
+const numPhrase = (tr) => { const c = tr.querySelector('input[data-b="code"]'); return c ? parseInt(c.value, 10) || 0 : 0; };
+const numVariable = (tr) => { const c = tr.querySelector('input[data-gn]'); return c ? +c.dataset.gn : 0; };
+function majPuces() {
+  [['phrases-liste', 'ph', numPhrase], ['gv-liste', 'gv', numVariable]].forEach(([id, genre, numero]) => {
+    $(id).querySelectorAll('[data-nb]').forEach((b) => {
+      const n = numero(b.closest('tr'));
+      if (!n || !sourcesLues) { b.textContent = '…'; b.className = 'nb'; return; }
+      const k = utilisations(genre, n).oui.length;
+      b.textContent = k; b.className = 'nb' + (k ? ' oui' : '');
+    });
+  });
+}
 function phrasesModifiees(v) { $('ph-enregistrer').classList.toggle('a-enregistrer', v); $('t-phr').classList.toggle('modifie', v); }
 function variablesModifiees(v) { $('gv-enregistrer').classList.toggle('a-enregistrer', v); $('t-var').classList.toggle('modifie', v); }
 
 // ── Bibliotheque de phrases (signee comme les scripts)
-function direPhrases(t, e) { const m = $('msgphrases'); m.textContent = t || ''; m.className = e || ''; }
+// Un message d'erreur reste ; les autres s'effacent au bout de 3 s.
+function direTab(id, t, e) {
+  const m = $(id); clearTimeout(m._t);
+  m.textContent = t || ''; m.className = 'msgtab ' + (e || '');
+  if (t && e !== 'ko') m._t = setTimeout(() => { m.classList.add('fond'); m._t = setTimeout(() => { m.textContent = ''; }, 400); }, 3000);
+}
+function direPhrases(t, e) { direTab('msgphrases', t, e); }
 function rendrePhrases() {
   $('phrases-liste').innerHTML = BIBLIO.length ? BIBLIO.map((o, i) =>
     '<tr><td class="code"><input type="number" min="1" max="65535" data-i="' + i + '" data-b="code" value="' + o.code + '" aria-label="Code"></td>'
+    + '<td class="u"><span class="nb" data-nb>…</span></td>'
     + '<td><input type="text" maxlength="' + BIBLIO_LEN + '" data-i="' + i + '" data-b="texte" value="' + esc(o.texte) + '" aria-label="Phrase"></td>'
     + '<td class="x"><button class="btn danger" data-del-phrase="' + i + '" title="Supprimer cette phrase">×</button></td></tr>').join('')
     : '<tr><td style="color:var(--muted)">Aucune phrase. « Ajouter une phrase » pour commencer.</td></tr>';
+  majPuces();
 }
 function lirePhrases() {
   $('phrases-liste').querySelectorAll('input[data-b]').forEach((el) => {
@@ -1574,8 +1604,8 @@ let biblioAvant = null;
 let phrasesConfirmees = new Set();
 const avertPhrase = (u) => 'Utilisée dans : ' + u.oui.join(', ')
   + '.\nCes blocs n’auront plus de texte : le journal et la notification ne montreront que le code.';
-survolUtilisations($('phrases-liste'), 'ph', (tr) => { const c = tr.querySelector('input[data-b="code"]'); return c ? parseInt(c.value, 10) || 0 : 0; });
-$('phrases-liste').addEventListener('input', () => phrasesModifiees(true));
+survolUtilisations($('phrases-liste'), 'ph', numPhrase);
+$('phrases-liste').addEventListener('input', (e) => { phrasesModifiees(true); if (e.target.dataset.b === 'code') majPuces(); });
 $('ph-fermer').onclick = () => {
   // Annuler : rien n'est parti vers le module, revenir a la liste lue.
   if (biblioAvant !== null) BIBLIO = JSON.parse(biblioAvant);
@@ -1647,18 +1677,19 @@ $('ph-enregistrer').onclick = async () => {
   } catch (e) { direPhrases('Module injoignable : rien n’a été enregistré.', 'ko'); }
 };
 // ── Variables partagees ────────────────────────────────────────────────
-function direVariables(t, e) { const m = $('msgvariables'); m.textContent = t || ''; m.className = e || ''; }
+function direVariables(t, e) { direTab('msgvariables', t, e); }
 function rendreVariables() {
   $('gv-liste').innerHTML = Array.from({ length: S.GLOBAL_COUNT }, (_, k) => k + 1).map((i) => {
     const g = GLOBALES.find((o) => o.i === i) || { nom: '', valeur: 0 };
-    return '<tr><td class="g">g' + i + '</td>'
+    return '<tr><td class="g">g' + i + '</td><td class="u"><span class="nb" data-nb>…</span></td>'
       + '<td><input type="text" maxlength="23" data-gn="' + i + '" value="' + esc(g.nom) + '" aria-label="Nom de g' + i + '"></td>'
       + '<td class="val">' + g.valeur + '</td>'
       + '<td class="nv"><input type="number" data-gv="' + i + '" placeholder="inchangée" aria-label="Nouvelle valeur de g' + i + '"></td></tr>';
   }).join('');
+  majPuces();
 }
 
-survolUtilisations($('gv-liste'), 'gv', (tr) => { const c = tr.querySelector('input[data-gn]'); return c ? +c.dataset.gn : 0; });
+survolUtilisations($('gv-liste'), 'gv', numVariable);
 $('gv-liste').addEventListener('input', () => variablesModifiees(true));
 
 $('gv-relire').onclick = async () => {
