@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Banc de l'editeur de scripts (data/scripts-schema.html), sans module.
 
-Assemble dans un dossier temporaire une copie de la page avec un module
-simule (tools/editeur_banc/module_simule.js, qui remplace fetch) et les
-verifications (tools/editeur_banc/verifications.js), puis l'ouvre dans Edge
-sans affichage et lit le bloc <pre id="RESULTATS">.
+Pour chaque scenario, assemble dans un dossier temporaire une copie de la
+page avec un module simule (qui remplace fetch) et ses verifications, puis
+l'ouvre dans Edge sans affichage et lit le bloc <pre id="RESULTATS"> :
+  - module local      : module_simule.js + verifications.js
+  - espace en ligne   : miroir_simule.js + verifications_miroir.js (?module=)
+  - en ligne, firmware anterieur (miroir sans variables, &sansvars=1)
 
     python tools/editeur_banc.py            # resume + echecs
     python tools/editeur_banc.py -v         # toutes les lignes
@@ -27,6 +29,12 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(RACINE, "data")
 BANC = os.path.join(RACINE, "tools", "editeur_banc")
 PAGE = "scripts-schema.html"
+SCENARIOS = [
+    ("module local", "module_simule.js", "verifications.js", ""),
+    ("espace en ligne", "miroir_simule.js", "verifications_miroir.js", "?module=Banc-01"),
+    ("en ligne, firmware anterieur", "miroir_simule.js", "verifications_miroir.js",
+     "?module=Banc-01&sansvars=1"),
+]
 
 EDGE_CANDIDATS = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -50,10 +58,10 @@ def lire(chemin):
         return f.read()
 
 
-def assembler(dossier):
+def assembler(dossier, fichier_simule, fichier_verifs):
     page = lire(os.path.join(DATA, PAGE))
-    simule = lire(os.path.join(BANC, "module_simule.js"))
-    verifs = lire(os.path.join(BANC, "verifications.js"))
+    simule = lire(os.path.join(BANC, fichier_simule))
+    verifs = lire(os.path.join(BANC, fichier_verifs))
 
     # Le module simule doit passer avant le premier script de la page, pour
     # que fetch soit remplace avant tout appel ; les verifications en dernier.
@@ -89,9 +97,18 @@ def main():
         print("Edge/Chromium introuvable : preciser --edge")
         return 1
 
+    echec = False
+    for titre, simule, verifs, requete in SCENARIOS:
+        print("== " + titre)
+        if not jouer(edge, simule, verifs, requete, args.verbeux):
+            echec = True
+    return 1 if echec else 0
+
+
+def jouer(edge, fichier_simule, fichier_verifs, requete, verbeux):
     with tempfile.TemporaryDirectory(prefix="aqualook-banc-") as tmp:
-        assembler(tmp)
-        url = "file:///" + os.path.join(tmp, PAGE).replace(os.sep, "/")
+        assembler(tmp, fichier_simule, fichier_verifs)
+        url = "file:///" + os.path.join(tmp, PAGE).replace(os.sep, "/") + requete
         # virtual-time-budget avance les minuteries (le message ephemere de
         # 3 s est verifie) sans attendre en temps reel ; la fenetre fixe la
         # hauteur dont depend la verification « pied visible sans defiler ».
@@ -104,7 +121,7 @@ def main():
                                     encoding="utf-8", errors="replace").stdout
         except subprocess.TimeoutExpired:
             print("Edge n'a pas rendu la page en 120 s")
-            return 1
+            return False
 
     # Le dernier bloc : le texte des verifications injectees cite aussi la
     # balise, mais seul le bloc ajoute a la fin par la page porte le resultat.
@@ -112,15 +129,15 @@ def main():
     fin = sortie.find("</pre>", debut)
     if debut < 0 or fin < 0:
         print("Pas de bloc RESULTATS : la page n'a pas termine ses verifications")
-        return 1
+        return False
     lignes = html.unescape(sortie[debut + len('<pre id="RESULTATS">'):fin]).splitlines()
     tete, detail = lignes[0], lignes[1:]
     for ligne in detail:
-        if args.verbeux or not ligne.startswith("OK"):
+        if verbeux or not ligne.startswith("OK"):
             print(ligne)
     nb_ok = sum(1 for l in detail if l.startswith("OK"))
     print("%s (%d/%d)" % (tete, nb_ok, len(detail)))
-    return 0 if tete == "TOUT OK" else 1
+    return tete == "TOUT OK"
 
 
 if __name__ == "__main__":
