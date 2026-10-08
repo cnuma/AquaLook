@@ -1245,6 +1245,7 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         cloud["lastAttemptEpochSec"] = _cloudSync->lastAttemptEpochSec();
         cloud["lastSuccessEpochSec"] = _cloudSync->lastSuccessEpochSec();
         cloud["lastSyncedRevision"]  = _cloudSync->lastSyncedRevision();
+        cloud["resultSinceBoot"]     = _cloudSync->resultSinceBoot();
         // Comparee cote module, pas cote JS : _config est l'autorite locale,
         // et le sentinel (revision jamais confirmee au serveur) ne doit
         // jamais se comparer egal a une vraie revision par accident.

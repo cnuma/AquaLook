@@ -185,6 +185,10 @@ public:
     uint32_t lastAttemptEpochSec() const { return _lastSyncEpochSec; }
     uint32_t lastSuccessEpochSec() const { return _lastSuccessEpochSec; }
     uint8_t  consecutiveFailures() const { return _consecutiveFailures; }
+    // Faux tant qu'aucun cycle n'a abouti (succes ou echec) depuis le boot :
+    // lastAttemptEpochSec vient de la NVS, les autres champs de la RAM, et
+    // sans ce drapeau la page les combinait en un "Echec" qui n'a pas eu lieu.
+    bool     resultSinceBoot() const { return _resultSinceBoot; }
 
     static constexpr uint32_t WIFI_STABLE_MS = 300000UL;   // 5 min, meme seuil qu'UpdateCheckScheduler
 
@@ -292,6 +296,7 @@ private:
     bool     _lastSyncOk = false;
     uint32_t _lastSuccessEpochSec = 0U;
     uint8_t  _consecutiveFailures = 0U;
+    bool     _resultSinceBoot = false;
 
     ConfigManager*   _configTarget = nullptr;
     ScheduleManager* _scheduleTarget = nullptr;
