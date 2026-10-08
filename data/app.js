@@ -1493,7 +1493,13 @@ async function fetchAssetsVersion() {
     const r = await fetch('/assets-version.json', {cache:'no-store'});
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const v = await r.json();
-    el.textContent = `Pages synchronisees le ${v.syncedAt}` + (v.gitSha ? ` (${v.gitSha})` : '');
+    // Trois auteurs du marqueur : sync-sd-assets.ps1 (syncedAt, gitSha),
+    // la mise a jour reseau (version, source=manifest) et le depot direct
+    // (source=deploy). Seul le premier porte une date.
+    if (v.syncedAt) el.textContent = `Pages synchronisees le ${v.syncedAt}` + (v.gitSha ? ` (${v.gitSha})` : '');
+    else if (v.source === 'deploy') el.textContent = 'Pages deposees directement (depot direct)';
+    else if (v.version) el.textContent = `Pages Web version ${v.version}`;
+    else el.textContent = '';
   } catch(e) {
     el.textContent = '';  // ancienne synchro sans ce fichier -- rien a afficher, pas d'erreur genante
   }
