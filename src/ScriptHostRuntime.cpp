@@ -273,9 +273,33 @@ bool notifyVar(void* raw, uint16_t code, uint8_t index) {
     return true;
 }
 
+// « notifier <code> avec gN » : meme refus qu'alert() si les notifications
+// ne sont pas pretes ; la valeur est lue ICI, au moment du bloc.
+bool alertVar(void* raw, uint16_t code, uint8_t index) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    if (index >= ScriptGlobals::COUNT) return false;
+    if (ctx) ctx->lastAlert = code;
+    char nom[ScriptGlobals::NAME_LEN_MAX + 1U];
+    ScriptGlobals::name(index, nom, sizeof(nom));
+    if (nom[0] == '\0') snprintf(nom, sizeof(nom), "g%u", (unsigned)(index + 1U));
+    char extra[48];
+    snprintf(extra, sizeof(extra), "%s = %ld", nom, static_cast<long>(ScriptGlobals::get(index)));
+    if (!NotificationManager::enqueueScriptMessage(code, ctx ? ctx->name : "", extra)) {
+        EventLog::log(LOG_WARN, "[SCRIPT-ALERT] code=%u non_envoyee (%s)", (unsigned)code, extra);
+        if (ctx) {
+            ctx->refusals++;
+            snprintf(ctx->refusalReason, sizeof(ctx->refusalReason),
+                     "notification %u non envoyee", (unsigned)code);
+        }
+        return false;
+    }
+    EventLog::log(LOG_INFO, "[SCRIPT-ALERT] code=%u envoyee (%s)", (unsigned)code, extra);
+    return true;
+}
+
 const ScriptHostOps OPS = {
     readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs,
-    fork, branchesRunning, joinAny, globalGet, globalSet, notifyVar
+    fork, branchesRunning, joinAny, globalGet, globalSet, notifyVar, alertVar
 };
 
 } // namespace

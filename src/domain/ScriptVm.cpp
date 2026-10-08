@@ -43,7 +43,7 @@ static int8_t operandBytes(ScriptOp op) {
             return 4;
         case ScriptOp::ACTION:
             return 3;   // action (1) + cible (2)
-        case ScriptOp::NOTIFY_VAR:
+        case ScriptOp::NOTIFY_VAR: case ScriptOp::ALERT_VAR:
             return 3;   // code (2) + globale (1)
         default:
             return -1;
@@ -81,7 +81,8 @@ ScriptAbort validateScriptProgram(const ScriptProgram& program) {
                 return ScriptAbort::BAD_VARIABLE;
             }
         }
-        if (op == ScriptOp::NOTIFY_VAR && program.code[pc + 3U] >= ScriptVm::GLOBAL_COUNT) {
+        if ((op == ScriptOp::NOTIFY_VAR || op == ScriptOp::ALERT_VAR) &&
+            program.code[pc + 3U] >= ScriptVm::GLOBAL_COUNT) {
             return ScriptAbort::BAD_VARIABLE;
         }
         pc = static_cast<uint16_t>(pc + 1U + operands);
@@ -383,6 +384,16 @@ ScriptStatus ScriptVm::tick() {
                 if (u8 >= GLOBAL_COUNT) { _pc = here; fail(ScriptAbort::BAD_VARIABLE); return _status; }
                 const bool ok = _host->notifyVar ? _host->notifyVar(_hostCtx, u16, u8)
                                                  : (_host->notify && _host->notify(_hostCtx, u16));
+                if (!ok) { _pc = here; fail(ScriptAbort::HOST_REFUSED); return _status; }
+                break;
+            }
+
+            case ScriptOp::ALERT_VAR: {
+                if (!fetch16(u16)) return _status;
+                if (!fetch8(u8)) return _status;
+                if (u8 >= GLOBAL_COUNT) { _pc = here; fail(ScriptAbort::BAD_VARIABLE); return _status; }
+                const bool ok = _host->alertVar ? _host->alertVar(_hostCtx, u16, u8)
+                                                : (_host->alert && _host->alert(_hostCtx, u16));
                 if (!ok) { _pc = here; fail(ScriptAbort::HOST_REFUSED); return _status; }
                 break;
             }

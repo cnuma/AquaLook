@@ -102,6 +102,9 @@ RemoteConfigEvent g_remoteConfig;
 struct ScriptMessageEvent {
     uint16_t code = 0U;
     char     nom[24] = "";
+    // « notifier <code> avec gN » : « <nom> = <valeur> », lu quand le bloc
+    // s'execute (pas a l'envoi, qui peut venir plus tard). Vide sinon.
+    char     extra[48] = "";
 };
 ScriptMessageEvent g_scriptMessage;
 volatile bool g_scriptMessagePending = false;
@@ -366,7 +369,8 @@ bool NotificationManager::notificationsReady() {
     return ready;
 }
 
-bool NotificationManager::enqueueScriptMessage(uint16_t code, const char* scriptName) {
+bool NotificationManager::enqueueScriptMessage(uint16_t code, const char* scriptName,
+                                               const char* extra) {
     // Refuser QUAND ce n'est pas configure, plutot que d'accepter et de ne
     // rien envoyer : un script qui croit avoir prevenu quelqu'un est pire
     // qu'un script qui sait qu'il n'a pas pu.
@@ -379,6 +383,8 @@ bool NotificationManager::enqueueScriptMessage(uint16_t code, const char* script
     g_scriptMessage.code = code;
     copyText(g_scriptMessage.nom, sizeof(g_scriptMessage.nom),
              scriptName ? scriptName : "");
+    copyText(g_scriptMessage.extra, sizeof(g_scriptMessage.extra),
+             extra ? extra : "");
     g_scriptMessagePending = true;
     portEXIT_CRITICAL(&g_mux);
     return true;
@@ -819,6 +825,10 @@ bool NotificationManager::sendCurrentWork() {
                            "en ecrivant le script.";
                 EventLog::log(LOG_WARN, "Script: phrase %u absente du catalogue",
                               static_cast<unsigned>(g_scriptMessage.code));
+            }
+            if (g_scriptMessage.extra[0] != static_cast<char>(0)) {
+                message += static_cast<char>(10);   // saut de ligne
+                message += g_scriptMessage.extra;
             }
             tags = "memo";
             break;

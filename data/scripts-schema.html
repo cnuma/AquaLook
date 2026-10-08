@@ -240,6 +240,12 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;min-height:0}
 .bottom>.panel{display:flex;flex-direction:column;min-height:0}
 .tabs .ttl{padding:9px 4px;font:600 13px var(--sans);color:var(--green)}
+/* Zone du bas repliee : seules les barres d'onglets restent, le schema
+   prend la place (8 oct. 2026). */
+.center.replie{grid-template-rows:minmax(0,1fr) auto}
+.center.replie .bottom .tabbody{display:none!important}
+.tabs .replier{margin-left:8px}
+.bottom .tabs>*{white-space:nowrap;flex:none}
 .tabform{padding:8px 12px;overflow:auto;font-size:13px}
 .tabform table{width:100%;border-collapse:collapse}
 .tabform td{padding:2px 6px 2px 0}
@@ -361,13 +367,14 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
           <span class="ttl">Texte généré</span>
           <button class="btn tx-btn" id="b-modif-texte" title="Modifier directement le texte que le module reçoit">Modifier le texte</button>
           <span class="note" id="taille"></span>
+          <button class="btn tx-btn replier" id="b-replier" title="Replier ou déplier la zone du bas" aria-expanded="true" aria-label="Replier la zone du bas">▾</button>
         </div>
         <div class="tabbody" id="p-code"><div class="code" id="code"></div></div>
        </div>
        <div class="panel">
         <div class="tabs" role="tablist">
           <button role="tab" id="t-run" aria-selected="true">Essai à blanc</button>
-          <button role="tab" id="t-phr" aria-selected="false" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
+          <button role="tab" id="t-phr" aria-selected="false" title="Textes envoyés par les blocs Notifier sur GSM et Noter au journal">Phrases</button>
           <button role="tab" id="t-var" aria-selected="false" title="Variables partagées par tous les scripts : noms et valeurs">Variables</button>
         </div>
         <div class="tabbody" id="p-run">
@@ -378,8 +385,8 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
           </div>
         </div>
         <div class="tabbody tabform" id="p-phr" hidden>
-          <p class="aide">Phrases citées par « Notifier » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.</p>
-          <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier » n’enverront rien. « Noter au journal » n’est pas concerné.</p>
+          <p class="aide">Phrases citées par « Notifier sur GSM » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.</p>
+          <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier sur GSM » n’enverront rien. « Noter au journal » n’est pas concerné.</p>
           <table><tbody id="phrases-liste"></tbody></table>
           <div class="acts">
             <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
@@ -815,10 +822,11 @@ function renderProps() {
     if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
       + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
       + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : ajoutez-en dans l’onglet « Phrases », en bas.</div>');
-    if (n.t === 'message') {
-      h += '<div class="f"><label for="p-gvar">Ajouter la valeur de</label><select id="p-gvar" data-f="gvar">'
+    if (n.t === 'message' || n.t === 'notifier') {
+      h += '<div class="f"><label for="p-gvar">Ajouter la valeur d’une variable (facultatif)</label><select id="p-gvar" data-f="gvar">'
         + '<option value="0"' + (n.gvar ? '' : ' selected') + '>(aucune variable)</option>' + globaleOpts(n.gvar || 0) + '</select></div>'
-        + (n.gvar ? '<div class="hint">Le journal portera la phrase puis « ' + esc(globaleNom(n.gvar)) + ' = valeur », lue au moment où le bloc s’exécute.</div>' : '');
+        + (n.gvar ? '<div class="hint">' + (n.t === 'message' ? 'Le journal' : 'La notification') + ' portera la phrase puis « '
+          + esc(globaleNom(n.gvar)) + ' = valeur », lue au moment où le bloc s’exécute.</div>' : '');
     }
     if ('n' in n) h += '<div class="f"><label for="p-n">Nombre de fois</label><input id="p-n" type="number" min="1" max="1000" data-f="n" value="' + n.n + '"></div>';
     if (n.cond) h += condFields(n.cond);
@@ -1085,6 +1093,7 @@ $('code').addEventListener('click', (e) => { const l = e.target.closest('.cl'); 
 // puis apres Enregistrer, Annuler ou Relire.
 let phrPret = false, varPret = false;
 async function tab(which) {
+  if (document.querySelector('.center').classList.contains('replie')) replier(false);
   ['run', 'phr', 'var'].forEach((k) => {
     $('t-' + k).setAttribute('aria-selected', which === k);
     $('p-' + k).hidden = which !== k;
@@ -1093,6 +1102,17 @@ async function tab(which) {
   if (which === 'var' && !varPret) { await lireGlobales(); rendreVariables(); direVariables(''); varPret = true; }
 }
 $('t-run').onclick = () => tab('run');
+// Replier la zone du bas : preference de ce navigateur seulement.
+function replier(oui) {
+  document.querySelector('.center').classList.toggle('replie', oui);
+  $('b-replier').textContent = oui ? '▴' : '▾';
+  $('b-replier').setAttribute('aria-label', oui ? 'Déplier la zone du bas' : 'Replier la zone du bas');
+  $('b-replier').setAttribute('aria-expanded', !oui);
+  try { localStorage.setItem('aqualook-bas-replie', oui ? '1' : '0'); } catch (e) {}
+  requestAnimationFrame(fit);
+}
+$('b-replier').onclick = () => replier(!document.querySelector('.center').classList.contains('replie'));
+try { if (localStorage.getItem('aqualook-bas-replie') === '1') replier(true); } catch (e) {}
 $('t-phr').onclick = () => tab('phr');
 $('t-var').onclick = () => tab('var');
 
@@ -1144,7 +1164,7 @@ async function essai() {
         case 'suspendre': log('Met en pause ' + zoneNom(n.zone)); break;
         case 'reprendre': log('Relance ' + zoneNom(n.zone)); break;
         case 'attendre': log('Attend ' + S.duree(n.sec)); break;
-        case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
+        case 'notifier': log('Notification sur GSM : « ' + phraseNom(n.code) + ' »' + (n.gvar ? ' -- ' + globaleNom(n.gvar) + ' = ' + gval(n.gvar) : '')); break;
         case 'message': log('Journal : « ' + phraseNom(n.code) + ' »' + (n.gvar ? ' -- ' + globaleNom(n.gvar) + ' = ' + gval(n.gvar) : '')); break;
         case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
         case 'variable':

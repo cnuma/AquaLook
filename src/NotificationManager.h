@@ -105,7 +105,8 @@ public:
     /** Message demande par un script. Retourne false si les notifications ne
      *  sont pas configurees : le script doit pouvoir savoir que son alerte
      *  n'est PAS partie, plutot que de croire avoir prevenu quelqu'un. */
-    static bool enqueueScriptMessage(uint16_t code, const char* scriptName);
+    static bool enqueueScriptMessage(uint16_t code, const char* scriptName,
+                                     const char* extra = nullptr);
     /** Le garde anti-boucle vient de confirmer un essai : demarrages sans
      *  stabilite qui avaient declenche l'episode, repris dans le message
      *  pour orienter l'utilisateur vers une cause probable. A appeler

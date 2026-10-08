@@ -39,7 +39,7 @@
     si:        { label: 'Si… alors',        cat: 'logique', icon: 'i-branch', desc: 'Deux chemins selon une condition' },
     repeter:   { label: 'Répéter',          cat: 'boucle',  icon: 'i-loop',   desc: 'Refait les blocs un nombre de fois' },
     tantque:   { label: 'Tant que',         cat: 'boucle',  icon: 'i-loop',   desc: 'Refait les blocs tant qu’une condition est vraie' },
-    notifier:  { label: 'Notifier',         cat: 'info',    icon: 'i-bell',   desc: 'Envoie une notification au téléphone' },
+    notifier:  { label: 'Notifier sur GSM', cat: 'info',    icon: 'i-bell',   desc: 'Envoie une notification au téléphone' },
     message:   { label: 'Noter au journal', cat: 'info',    icon: 'i-note',   desc: 'Ajoute une ligne au journal du module' },
     lancer:    { label: 'Lancer un script', cat: 'script',  icon: 'i-run',    desc: 'Démarre un autre script, qui tourne en parallèle' },
     parallele: { label: 'En parallèle',     cat: 'script',  icon: 'i-par',    desc: 'Deux suites de blocs qui partent ensemble' },
@@ -170,8 +170,8 @@
             add(d, 'attendre ' + n.sec + '   # ' + duree(n.sec), n.id);
             break;
           case 'notifier': case 'message':
-            if (n.t === 'message' && n.gvar) {
-              add(d, 'message ' + n.code + ' avec g' + n.gvar + '   # ' + (n.code ? names.phrase(n.code) + ', ' : '')
+            if (n.gvar) {
+              add(d, n.t + ' ' + n.code + ' avec g' + n.gvar + '   # ' + (n.code ? names.phrase(n.code) + ', ' : '')
                 + (names.globale ? names.globale(n.gvar) : 'g' + n.gvar), n.id);
             } else {
               add(d, n.t + ' ' + n.code + '   # ' + names.phrase(n.code), n.id);
@@ -425,7 +425,7 @@
       if (w === 'notifier' || w === 'message') {
         next();
         const n = { id: newId(), t: w, code: number() };
-        if (w === 'message' && peek() === 'avec') {
+        if (peek() === 'avec') {
           next();
           const gn = globalNo(peek());
           if (!gn) throw new Unsupported('« avec » attend une variable g1 à g16', ln);

@@ -42,6 +42,7 @@ struct FakeHost {
     // Variables globales jouets (le vrai magasin est ScriptGlobals, en NVS).
     int32_t globals[16] = {};
     uint8_t lastNotifyVar = 0xFFU;
+    uint8_t lastAlertVar = 0xFFU;
 };
 
 bool hostReadInput(void* ctx, uint16_t, int32_t& v) {
@@ -108,10 +109,18 @@ bool hostNotifyVar(void* ctx, uint16_t code, uint8_t i) {
     return true;
 }
 
+bool hostAlertVar(void* ctx, uint16_t code, uint8_t i) {
+    FakeHost* h = static_cast<FakeHost*>(ctx);
+    h->lastAlert = code;
+    h->lastAlertVar = i;
+    return true;
+}
+
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
     hostAction, hostNotify, hostAlert, hostNow,
-    hostFork, hostBranches, hostJoinAny, hostGlobalGet, hostGlobalSet, hostNotifyVar
+    hostFork, hostBranches, hostJoinAny, hostGlobalGet, hostGlobalSet, hostNotifyVar,
+    hostAlertVar
 };
 
 // Bloc parallele assemble comme script-lang.js le compile :
@@ -572,6 +581,24 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
         snprintf(detail, sizeof(detail), "code=%u var=%u refus g17=%d",
                  (unsigned)h.lastNotify, (unsigned)h.lastNotifyVar, refuse ? 1 : 0);
         record(cases, "journal avec variable", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11h. « notifier 901 avec g2 » : l'hote recoit code et numero.
+    {
+        total++;
+        FakeHost h;
+        Asm a;
+        a.op(ScriptOp::ALERT_VAR).u16v(901).u8v(1).op(ScriptOp::HALT);
+        ScriptVm vm;
+        vm.load(a.program(), &HOST_OPS, &h);
+        run(vm, 5U);
+        const bool ok = validateScriptProgram(a.program()) == ScriptAbort::NONE &&
+                        vm.status() == ScriptStatus::FINISHED && h.lastAlert == 901U &&
+                        h.lastAlertVar == 1U;
+        snprintf(detail, sizeof(detail), "code=%u var=%u",
+                 (unsigned)h.lastAlert, (unsigned)h.lastAlertVar);
+        record(cases, "notification avec variable", ok, detail);
         if (ok) passed++;
     }
 

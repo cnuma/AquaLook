@@ -27,6 +27,7 @@
 //                                       valeur de la variable globale n
 //                                       (code 0 : sans phrase)
 //   notifier <code>                  -- une vraie notification, si configuree
+//   notifier <code> avec g<n>        -- la meme, avec nom et valeur de gN
 //   lancer script <n>                -- demarre le script n (1..6) en parallele
 //   parallele [et] ... avec ... finparallele  -- deux branches qui partent
 //                                    ensemble ; la suite attend les deux
@@ -55,7 +56,7 @@
     AND: 38, OR: 39, NOT: 40,
     JMP: 48, JZ: 49, JNZ: 50,
     READ_INPUT: 64, ZONE_ACTIVE: 65, ZONE_REMAIN: 66,
-    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83, NOTIFY_VAR: 88,
+    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83, NOTIFY_VAR: 88, ALERT_VAR: 89,
     FORK: 84, JOIN: 85, ENDBRANCH: 86, JOINANY: 87
   };
 
@@ -363,7 +364,20 @@
       // « notifier » reveille quelqu'un ; « message » ecrit une ligne. Deux
       // mots distincts parce que ce sont deux gestes distincts : confondre
       // les deux ferait envoyer une alerte a chaque trace de mise au point.
-      if (word === 'notifier') { next(); emit(OP.ALERT); emitU16(number()); return; }
+      if (word === 'notifier') {
+        next();
+        const code = number();
+        if (lower(peek()) === 'avec') {
+          next();
+          const ln = line();
+          const gv = globalIndex(next());
+          if (gv < 0) throw new CompileError('« avec » attend une variable g1 à g16', ln);
+          emit(OP.ALERT_VAR); emitU16(code); emit(gv);
+          return;
+        }
+        emit(OP.ALERT); emitU16(code);
+        return;
+      }
 
       if (word === 'demarrer') {
         next();

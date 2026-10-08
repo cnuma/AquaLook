@@ -100,6 +100,9 @@ enum class ScriptOp : uint8_t {
     // la valeur de la variable globale N, que l'hote lit lui-meme -- le
     // journal dit ainsi QUELLE variable, pas seulement un nombre.
     NOTIFY_VAR = 88, // + u16 code (0 = sans phrase), + u8 globale (0..15)
+    // « notifier <code> avec gN » : comme ALERT, la notification porte en
+    // plus le nom et la valeur de la globale N au moment du bloc.
+    ALERT_VAR = 89,  // + u16 code, + u8 globale (0..15)
 };
 
 // Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
@@ -182,6 +185,8 @@ struct ScriptHostOps {
     bool (*globalSet)(void* ctx, uint8_t index, int32_t value);
     // Ligne de journal avec la valeur d'une globale. Absent : NOTIFY simple.
     bool (*notifyVar)(void* ctx, uint16_t messageCode, uint8_t globalIndex);
+    // Notification mobile avec la valeur d'une globale. Absent : ALERT simple.
+    bool (*alertVar)(void* ctx, uint16_t messageCode, uint8_t globalIndex);
 };
 
 struct ScriptProgram {
