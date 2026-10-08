@@ -969,6 +969,27 @@ function texteZone(hex) {
   return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
 }
 
+// Cases d'une meme ligne a la hauteur de la plus haute, pour un planning
+// uniforme. Mesure apres rendu plutot qu'un etirement CSS (height:100% dans
+// une cellule) : celui-ci n'est pas fiable sous Firefox. Sans effet en
+// affichage etroit, ou les jours sont empiles (td en display:block).
+function egaliserJours(){
+  const p = $('planning');
+  if (!p) return;
+  p.querySelectorAll('.plan tr').forEach(tr => {
+    const js = Array.from(tr.querySelectorAll('.jour'));
+    js.forEach(j => { j.style.height = ''; });
+    if (js.length < 2 || getComputedStyle(tr).display !== 'table-row') return;
+    const h = Math.max.apply(null, js.map(j => j.offsetHeight));
+    js.forEach(j => { j.style.height = h + 'px'; });
+  });
+}
+let _egaliserH = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_egaliserH);
+  _egaliserH = setTimeout(egaliserJours, 150);
+});
+
 function rendrePlanning(){
   const zones = CFG.payload.zones || [];
   let h = '<table class="plan"><tr><th></th>'
@@ -998,6 +1019,7 @@ function rendrePlanning(){
      + '<span><span class="ex" style="background:var(--amber)"></span>en attente de synchronisation (barré : suppression)</span>'
      + '<span style="color:var(--red)">&#10007; tentative refusée, non appliquée</span></div>';
   $('planning').innerHTML = h;
+  egaliserJours();
 
   $('planning').querySelectorAll('.jour').forEach(b => {
     b.onclick = () => ouvrirJour(Number(b.dataset.z), Number(b.dataset.d));
