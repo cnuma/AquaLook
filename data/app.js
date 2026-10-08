@@ -198,6 +198,21 @@ function zoneHex(z, i) {
   const key = ['cZone0','cZone1','cZone2','cZone3'][i % 4];
   return (displayConfig && displayConfig[key]) || ZONE_FALLBACK_HEX[i % 4];
 }
+// Texte lisible sur une couleur de zone : noir ou blanc, celui qui offre
+// le meilleur contraste (luminance relative WCAG). Une couleur de texte
+// fixe deviendrait illisible pour certaines zones (noir sur une zone
+// noire, vert sur vert...) : le choix suit donc chaque couleur.
+function zoneTextHex(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const lin = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
+}
 let _zonesView = 'normal';
 try { _zonesView = localStorage.getItem('zonesView') || 'normal'; } catch(e) {}
 function setZonesView(v) {
@@ -504,8 +519,9 @@ function renderPlanning() {
     const rainThresh = z.rain?.threshMm ?? z.rainThresh ?? 2;
     const zoneColor = ZONE_COLORS[zi];  // classe CSS de structure
     const zHex = zoneHex(z, zi);        // couleur propre a cette zone
+    const zTxt = zoneTextHex(zHex);     // nom lisible sur la pastille
     if (z.mode === 0) {
-      html += `<div class="pg-header zone-hdr pg-zone-label-${zoneColor}" style="color:${zHex};font-size:${nb>8?'9px':'11px'}">${name}</div>`;
+      html += `<div class="pg-header zone-hdr pg-zone-label-${zoneColor}" style="--zc:${zHex};--zt:${zTxt};font-size:${nb>8?'9px':'11px'}"><span class="zn">${name}</span></div>`;
       colDays.forEach((espIdx,col) => {
       const slots   = (_zoneSlots[zi]?.daySlots?.[espIdx]) || (z.daySlots && z.daySlots[espIdx]) || [];
         const enabled = slots.filter(s => s.e??s.enabled);
@@ -539,8 +555,8 @@ function renderPlanning() {
         if (offset >= nbCols) break;
         triggerCols.add(offset);
       }
-      html += `<div class="pg-header zone-hdr interval-zone-hdr">
-        <span class="pg-zone-label-${zoneColor}" style="color:${zHex}">${name}</span>
+      html += `<div class="pg-header zone-hdr interval-zone-hdr" style="--zc:${zHex};--zt:${zTxt}">
+        <span class="zn pg-zone-label-${zoneColor}">${name}</span>
         <span style="font-size:9px;color:var(--muted);margin-left:4px">/${intervalD}j</span>
       </div>`;
       colDays.forEach((espIdx, col) => {

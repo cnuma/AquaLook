@@ -74,9 +74,21 @@ label{color:var(--muted);font-size:13px}
       background:var(--green-dim);border:1px solid var(--line);border-radius:8px;padding:6px}
 .jour:hover{border-color:var(--green);background:#d8ecdd}
 .jour.vide{background:var(--bg);color:var(--muted);text-align:center;padding-top:22px}
-.znom{background:transparent;border:none;font-weight:600;text-align:left;
-      padding:6px 8px 6px 0;white-space:nowrap;color:var(--text)}
-.znom:hover{color:var(--green);text-decoration:underline}
+/* Nom de zone : meme dessin que le planning du module (data/style.css,
+   .zone-hdr) -- fond teinte, liseret et pastille dans la couleur de la zone
+   (--zc), hachures pour le mode "tous les N jours". */
+.znom{--zc:#6633cc;border:none;font-weight:600;text-align:left;
+      padding:6px 8px 6px 9px;white-space:nowrap;color:var(--text);border-radius:5px;
+      background:color-mix(in srgb,var(--zc) 8%,transparent);
+      box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent)}
+.znom.inter{background:repeating-linear-gradient(135deg,
+      color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
+      color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px)}
+/* Pastille pleine, nom en noir ou blanc selon le contraste (--zt,
+   texteZone()) : lisible quelle que soit la couleur choisie. */
+.znom .zn{display:inline-block;padding:1px 6px;border-radius:3px;background:var(--zc);
+      color:var(--zt,#000);box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 60%,#000)}
+.znom:hover .zn{text-decoration:underline}
 .znom small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
 .jc{display:block}
 .cr{display:block;border-radius:5px;padding:2px 6px;margin-bottom:3px;
@@ -174,7 +186,7 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
   .plan tr:first-child{display:none}          /* en-tetes de colonnes */
   .plan td{display:block}
   .plan td:first-child{margin-bottom:7px}
-  .znom{padding:0 0 2px;font-size:15px}
+  .znom{padding:4px 8px 4px 9px;font-size:15px}
 
   /* Le jour devient une ligne : son nom a gauche, ses creneaux a droite. */
   .jour{display:flex;align-items:flex-start;gap:10px;min-width:0;min-height:0;
@@ -912,6 +924,31 @@ async function restaurerSauvegarde(id, bouton){
   }
 }
 
+// Couleur d'identite d'une zone, remontee par le module (zones[].color,
+// "#rrggbb"). Repli : la palette par defaut du module (data/app.js,
+// ZONE_FALLBACK_HEX) pour un firmware qui ne l'envoie pas encore.
+const ZONE_FALLBACK_HEX = ['#00fc00', '#0090f8', '#f8a400', '#780078'];
+function couleurZone(z, i){
+  const c = z && z.color;
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : ZONE_FALLBACK_HEX[i % 4];
+}
+
+// Texte lisible sur une couleur de zone : noir ou blanc, celui qui offre
+// le meilleur contraste (luminance relative WCAG). Une couleur de texte
+// fixe deviendrait illisible pour certaines zones (noir sur une zone
+// noire, vert sur vert...) : le choix suit donc chaque couleur.
+function texteZone(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const lin = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
+}
+
 function rendrePlanning(){
   const zones = CFG.payload.zones || [];
   let h = '<table class="plan"><tr><th></th>'
@@ -919,8 +956,9 @@ function rendrePlanning(){
 
   zones.forEach((z, i) => {
     const mode = (Number(z.mode) === 1) ? 1 : 0;
-    h += '<tr><td><button class="znom" data-z="' + i + '">'
-       + esc(z.name || ('Zone ' + (i+1)))
+    h += '<tr><td><button class="znom' + ((mode === 1) ? ' inter' : '') + '" data-z="' + i + '"'
+       + ' style="--zc:' + couleurZone(z, i) + ';--zt:' + texteZone(couleurZone(z, i)) + '">'
+       + '<span class="zn">' + esc(z.name || ('Zone ' + (i+1))) + '</span>'
        + '<small>' + ((mode === 1) ? 'tous les ' + esc(z.intervalDays || 1) + ' j'
                                    : 'jours fixes') + '</small></button></td>';
     if (mode === 1) {

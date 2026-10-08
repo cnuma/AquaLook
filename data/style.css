@@ -19,23 +19,32 @@
 .planning-grid>.pg-header:not(.zone-hdr){color:#2f6f7e}
 .planning-grid>.pg-header.today:not(.zone-hdr){color:#174f5d;font-weight:700}
 
-/* Mode intervalle : entete du planning hachuree, nom lisible sur fond uni. */
-.interval-zone-hdr{
+/* Nom de zone du planning : fond teinte, liseret et pastille dans la
+   couleur de la zone (--zc, posee par app.js depuis sa definition) --
+   la meme que les cartes Zones et le cloud. Mode intervalle : hachures,
+   dans cette meme couleur et non plus en violet fixe. La pastille est
+   pleine, le nom en noir ou blanc selon le contraste (--zt, zoneTextHex()
+   dans app.js) : jamais de vert sur vert ni de noir sur noir. */
+.planning-grid>.pg-header.zone-hdr{
+  --zc:#6633cc;
   padding-left:5px;
   border-radius:4px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.10) 0,
-    rgba(102,51,204,.10) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
-  box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
+  border-left:none;
+  background:color-mix(in srgb,var(--zc) 8%,transparent);
+  box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent);
 }
-.interval-zone-hdr>span:first-child{
+.planning-grid>.pg-header.zone-hdr.interval-zone-hdr{
+  background:repeating-linear-gradient(135deg,
+    color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
+    color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px);
+}
+.zone-hdr>.zn{
   display:inline-block;
   padding:1px 5px;
   border-radius:3px;
-  background:var(--bg);
-  box-shadow:0 0 0 1px rgba(102,51,204,.16);
+  background:var(--zc);
+  color:var(--zt,#000);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 60%,#000);
 }
 
 /* Jours non prevus en mode intervalle. */
