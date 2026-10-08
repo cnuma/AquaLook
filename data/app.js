@@ -151,7 +151,9 @@ function renderCloudBadge() {
   // module dont la synchro echouait en boucle (mauvais RSSI).
   const rev = (c.lastSyncedRevision != null && c.lastSyncedRevision !== 4294967295)
     ? ('n°' + c.lastSyncedRevision) : 'jamais confirmée';
-  el.textContent = upToDate
+  // resultSinceBoot === false : redemarre, aucun cycle encore (voir cloudsync.html).
+  el.textContent = c.resultSinceBoot === false ? '☁ · en attente (redémarrage)'
+    : upToDate
     ? '☁ ' + rev + ' · à jour (' + depuisEpochSec(c.lastSuccessEpochSec) + ')'
     : '☁ ' + rev + ' · sync… (' + depuisEpochSec(c.lastAttemptEpochSec) + ')';
 }

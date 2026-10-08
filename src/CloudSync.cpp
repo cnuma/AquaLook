@@ -1746,6 +1746,7 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
     // bit "non acquitte" ne se relève qu'au front montant), donc rappeler
     // false a chaque succes ou true a chaque echec ne spamme rien.
     _lastSyncOk = ok;
+    _resultSinceBoot = true;
     if (ok) {
         _lastSuccessEpochSec = epochSec;
         _consecutiveFailures = 0U;

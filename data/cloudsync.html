@@ -106,12 +106,19 @@ function rendre(d) {
   }
   $('cycleCard').style.display = '';
 
+  // resultSinceBoot === false : redemarre, aucun cycle encore. La date de
+  // tentative vient de la NVS (avant le boot), le reste de la RAM : ne pas
+  // en conclure un echec. Absent (ancien firmware) : comportement d'avant.
+  const attente = c.resultSinceBoot === false;
   const ok = $('lastOk');
-  ok.textContent = c.lastSyncOk ? 'OK' : (c.lastAttemptEpochSec ? 'Échec' : 'Aucun cycle encore');
-  ok.className = 'v ' + (c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : ''));
+  ok.textContent = attente ? 'En attente du 1er cycle depuis le redemarrage'
+    : c.lastSyncOk ? 'OK' : (c.lastAttemptEpochSec ? 'Échec' : 'Aucun cycle encore');
+  ok.className = 'v ' + (attente ? '' : c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : ''));
 
-  $('lastAttempt').textContent = depuisEpochSec(c.lastAttemptEpochSec);
-  $('lastSuccess').textContent = depuisEpochSec(c.lastSuccessEpochSec);
+  $('lastAttempt').textContent = depuisEpochSec(c.lastAttemptEpochSec) +
+    (attente && c.lastAttemptEpochSec ? ' (avant redemarrage)' : '');
+  $('lastSuccess').textContent = attente ? 'pas encore depuis le redemarrage'
+    : depuisEpochSec(c.lastSuccessEpochSec);
 
   // 4294967295 = sentinelle "jamais confirmee" (CloudSyncScheduler::
   // _lastSyncedRevision avant le premier envoi reussi) -- ne pas l'afficher
@@ -120,8 +127,8 @@ function rendre(d) {
   $('revision').textContent = hasRevision ? ('n°' + c.lastSyncedRevision) : '—';
 
   const cu = $('caughtUp');
-  cu.textContent = c.serverCaughtUp ? 'À jour' : 'En retard';
-  cu.className = 'v ' + (c.serverCaughtUp ? 'ok' : 'warn');
+  cu.textContent = attente ? 'Inconnu (pas encore echange)' : c.serverCaughtUp ? 'À jour' : 'En retard';
+  cu.className = 'v ' + (attente ? '' : c.serverCaughtUp ? 'ok' : 'warn');
 
   const link = $('cloudLink');
   if (c.host) {
