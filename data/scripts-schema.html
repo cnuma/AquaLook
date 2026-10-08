@@ -140,6 +140,10 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .chip.oui{color:var(--green);border-color:var(--green)}
 .chip.non{color:var(--red);border-color:var(--red)}
 .chip.par{color:#0f7b7b;border-color:#0f7b7b}
+/* « En parallele » sans pince (8 oct. 2026 : la pince rendait le bloc
+   confus) : le bloc, deux colonnes, et l'etiquette de jonction. */
+.parblk{display:flex;flex-direction:column;align-items:center}
+.chip.join{margin-top:-1px}
 .actif-top{display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;padding:5px 10px;
   border:1px solid var(--border2);border-radius:6px}
 .actif-top.off{color:var(--amber);border-color:var(--amber);background:#fff8e6}
@@ -176,22 +180,22 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
    (reglages), le bras gauche tient le contenu, la machoire du bas dit ce qui
    se passe ensuite (boucle : quand elle recommence, avec une fleche de retour
    sur le bras ; « Si » et « En parallele » : ou la suite reprend). Les blocs contenus sont pinces dedans, ce qui
-   distingue une structure d'une etape. Toute la pince prend la couleur de
-   selection (ou d'arret) de son bloc. */
-.pince{--pc:var(--purple);--pd:var(--purple-dim);--pt:rgba(102,51,204,.04);--pe:rgba(102,51,204,.25);
-  display:grid;grid-template-columns:18px auto;width:max-content}
-.pince.si{--pc:var(--amber);--pd:var(--amber-dim);--pt:rgba(168,107,11,.05);--pe:rgba(168,107,11,.3)}
-.pince.par{--pc:#0f7b7b;--pd:#d9f0ee;--pt:rgba(15,123,123,.05);--pe:rgba(15,123,123,.3)}
+   distingue une structure d'une etape. Toute la pince -- machoires, bras,
+   fond et liseret -- derive d'une seule couleur --pc : celle du bloc, ou de
+   sa selection (ou de son arret), d'un seul tenant (demande du 8 oct. 2026). */
+.pince{--pc:var(--purple);display:grid;grid-template-columns:18px auto;width:max-content}
+.pince.si{--pc:var(--amber)}
 .pince:has(>.node.sel){--pc:var(--ring)}
 .pince:has(>.node.arret){--pc:var(--red)}
 .pince>.node{grid-column:1/3;width:auto;min-width:256px;border-color:var(--pc);border-left-width:1.5px;
-  border-radius:8px 8px 8px 0;background:var(--pd)}
+  border-radius:8px 8px 8px 0;background:var(--pc);color:#fff}
+.pince>.node .sub{color:rgba(255,255,255,.85)}
 .pince>.node.sel,.pince>.node.arret{box-shadow:none}
-.pince>.node .ico{background:var(--bg1)}
+.pince>.node .ico{background:#fff;color:var(--pc)}
 .pince-arm{position:relative;background:var(--pc)}
 .pince.boucle>.pince-arm::before{content:'';position:absolute;left:4px;top:6px;border:5px solid transparent;border-top:0;border-bottom:7px solid #fff}
 .pince-body{display:flex;flex-direction:column;align-items:center;padding:0 18px 6px 10px;min-width:230px;
-  background:var(--pt);border-right:1.5px dashed var(--pe)}
+  background:color-mix(in srgb,var(--pc) 5%,transparent);border-right:1.5px dashed color-mix(in srgb,var(--pc) 30%,transparent)}
 .pince-foot{grid-column:1/3;display:flex;align-items:center;gap:6px;background:var(--pc);color:#fff;
   font:600 11px var(--mono);padding:5px 12px;border-radius:0 8px 8px 8px}
 .pince-foot svg.ic{width:14px;height:14px}
@@ -540,15 +544,18 @@ function boxEl(n) {
 }
 function nodeEl(n) {
   if (n.t === 'si' || n.t === 'parallele') {
-    // Pince, comme les boucles : les deux colonnes sont tenues par le bloc.
-    // « Si » : une seule colonne s'execute selon la condition. « En
-    // parallele » : les deux s'executent ENSEMBLE, et la suite attend la fin
-    // des deux.
+    // « Si » : pince, comme les boucles ; une seule colonne s'execute selon
+    // la condition. « En parallele » : pas de pince (confus a l'oeil, 8 oct.
+    // 2026) ; les deux colonnes partent ENSEMBLE, et l'etiquette du bas dit
+    // quand la suite reprend.
     const si = n.t === 'si';
-    const w = document.createElement('div'); w.className = 'pince ' + (si ? 'si' : 'par');
+    const w = document.createElement('div'); w.className = si ? 'pince si' : 'parblk';
     w.appendChild(boxEl(n));
-    const arm = document.createElement('div'); arm.className = 'pince-arm'; w.appendChild(arm);
-    const body = document.createElement('div'); body.className = 'pince-body';
+    const body = si ? document.createElement('div') : w;
+    if (si) {
+      const arm = document.createElement('div'); arm.className = 'pince-arm'; w.appendChild(arm);
+      body.className = 'pince-body';
+    }
     body.appendChild(Object.assign(document.createElement('div'), { className: 'link plain' }));
     const br = document.createElement('div'); br.className = 'branches';
     (si ? [['oui', 'Oui', 'oui'], ['non', 'Non', 'non']] : [['a', 'Branche 1', 'par'], ['b', 'Branche 2', 'par']]).forEach(([k, lab, c]) => {
@@ -559,11 +566,17 @@ function nodeEl(n) {
       br.appendChild(b);
     });
     body.appendChild(br);
-    body.appendChild(Object.assign(document.createElement('div'), { className: 'link plain' }));
-    w.appendChild(body);
-    const f = document.createElement('div'); f.className = 'pince-foot';
-    f.innerHTML = si ? ico('i-branch') + 'fin du « si », la suite reprend ici' : ico('i-par') + 'attend la fin des deux branches';
-    w.appendChild(f);
+    if (si) {
+      body.appendChild(Object.assign(document.createElement('div'), { className: 'link plain' }));
+      w.appendChild(body);
+      const f = document.createElement('div'); f.className = 'pince-foot';
+      f.innerHTML = ico('i-branch') + 'fin du « si », la suite reprend ici';
+      w.appendChild(f);
+    } else {
+      const fin = document.createElement('div'); fin.className = 'chip par join';
+      fin.textContent = 'attend les deux';
+      w.appendChild(fin);
+    }
     return w;
   }
   if (n.t === 'repeter' || n.t === 'tantque') {
