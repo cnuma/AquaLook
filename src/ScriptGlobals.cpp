@@ -121,6 +121,13 @@ void begin() {
 
 bool started() { return g_started; }
 
+uint32_t snapshot(int32_t out[COUNT]) {
+    portENTER_CRITICAL(&g_mux);
+    for (uint8_t i = 0U; i < COUNT; ++i) out[i] = g_values[i];
+    portEXIT_CRITICAL(&g_mux);
+    return crc32Bytes(reinterpret_cast<const uint8_t*>(out), COUNT * sizeof(int32_t));
+}
+
 int32_t get(uint8_t i) {
     if (i >= COUNT) return 0;
     portENTER_CRITICAL(&g_mux);

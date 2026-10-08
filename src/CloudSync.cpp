@@ -744,6 +744,17 @@ bool applyScriptsCommand(JsonVariantConst cmd, CloudSyncPendingAck& ack,
     return true;
 }
 
+// Valeurs des variables g1..g16 dans le rapport de telemetrie (D015) : un
+// script peut changer une valeur sans faire monter la revision, donc sans
+// renvoyer le miroir. Le rapport de chaque cycle porte alors
+// "variables": {crc, valeurs[16]}, mais SEULEMENT quand le CRC differe du
+// dernier envoi CONFIRME (http 2xx) : rien ne s'ajoute tant que les valeurs
+// ne bougent pas, et un envoi perdu est refait au cycle suivant. Toujours
+// envoye au premier cycle apres le demarrage. Seul run() y touche, et un
+// seul cycle tourne a la fois.
+bool     g_varsCrcConfirmed = false;
+uint32_t g_varsCrc = 0U;
+
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -926,6 +937,22 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
             static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
 
+        // Absent en mode maintenance (variables non relues : des zeros
+        // passeraient pour un releve).
+        bool varsSent = false;
+        uint32_t varsCrc = 0U;
+        if (ScriptGlobals::started()) {
+            int32_t vals[ScriptGlobals::COUNT];
+            varsCrc = ScriptGlobals::snapshot(vals);
+            if (!g_varsCrcConfirmed || varsCrc != g_varsCrc) {
+                JsonObject vars = payload["variables"].to<JsonObject>();
+                vars["crc"] = varsCrc;
+                JsonArray v = vars["valeurs"].to<JsonArray>();
+                for (uint8_t i = 0U; i < ScriptGlobals::COUNT; ++i) v.add(vals[i]);
+                varsSent = true;
+            }
+        }
+
         String body;
         serializeJson(doc, body);
 
@@ -937,6 +964,12 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
             return result;
         }
         result.reportSuccess = (status >= 200 && status < 300);
+        if (result.reportSuccess && varsSent) {
+            g_varsCrcConfirmed = true;
+            g_varsCrc = varsCrc;
+            EventLog::log(LOG_INFO, "[GVAR] valeurs remontees (crc %08lx)",
+                          static_cast<unsigned long>(varsCrc));
+        }
         if (!result.reportSuccess) {
             char detail[64];
             snprintf(detail, sizeof(detail), "rapport: http=%d", status);

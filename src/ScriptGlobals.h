@@ -42,6 +42,11 @@ bool started();
 int32_t get(uint8_t i);
 bool set(uint8_t i, int32_t value);
 
+// Copie les COUNT valeurs d'un seul tenant (meme verrou) et rend leur CRC32 :
+// sert a ne remonter les valeurs vers l'espace en ligne que lorsqu'elles ont
+// change (CloudSync, rapport de telemetrie).
+uint32_t snapshot(int32_t out[COUNT]);
+
 // Copie le nom de la variable i (vide si aucun) dans out, borne a n.
 void name(uint8_t i, char* out, size_t n);
 // Remplace les 16 noms d'un coup (chaque entree deja validee en amont,
