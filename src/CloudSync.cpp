@@ -453,6 +453,10 @@ void buildConfigPayload(const ConfigManager& cm, JsonObject payload) {
         // de zone, arroser N) -- distinct de l'index i (decision D014).
         zone["id"]           = cm.zoneId(z);
         zone["name"]         = src.name;
+        // Couleur d'identite ("#rrggbb"), la meme que les cartes et le
+        // planning du module : l'espace utilisateur la reprend telle quelle.
+        // Lecture seule cote serveur -- config.apply ne la modifie pas.
+        zone["color"]        = cm.zoneColor(z);
         zone["mode"]         = src.mode;
         zone["intervalDays"] = src.intervalDays;
 
