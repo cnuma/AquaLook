@@ -72,6 +72,10 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .cat-boucle{--cat:var(--purple);--cat-dim:var(--purple-dim)}
 .cat-info{--cat:var(--slate);--cat-dim:var(--slate-dim)}
 .cat-script{--cat:#0f7b7b;--cat-dim:#d9f0ee}
+.cat-donnee{--cat:#a1457a;--cat-dim:#f6e3ee}
+#gv-liste td.g{width:44px;font:600 12px var(--mono);color:var(--muted)}
+#gv-liste td.val{width:110px;font:12px var(--mono);text-align:right;padding-right:10px}
+#gv-liste td.nv{width:120px}
 
 .center{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 210px;gap:8px}
 .canvas{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px;background-color:var(--bg);
@@ -273,7 +277,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 }
 @media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
-body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!important}
+body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #b-variables{display:none!important}
 </style></head><body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -289,6 +293,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!imp
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
   <symbol id="i-run" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+  <symbol id="i-var" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M9 10h6M9 14h6"/></symbol>
   <symbol id="i-par" viewBox="0 0 24 24"><path d="M8 4v15M16 4v15M5 16l3 3 3-3M13 16l3 3 3-3"/></symbol>
 </svg>
 
@@ -304,6 +309,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!imp
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
     <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>
     <button class="btn edit-only" id="b-phrases" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
+    <button class="btn edit-only" id="b-variables" title="Variables partagées par tous les scripts : noms et valeurs">Variables</button>
     <button class="btn principal edit-only" id="b-save">Enregistrer</button>
   </header>
   <div id="msg">Lecture du module…</div>
@@ -375,6 +381,22 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier{display:none!imp
   <div id="msgphrases"></div>
 </div></div>
 
+<div class="voile" id="variables" hidden><div role="dialog" aria-labelledby="variables-titre">
+  <h2 id="variables-titre">Variables partagées</h2>
+  <p>Seize nombres entiers, lus et modifiés par <b>tous</b> les scripts (blocs « Variable », conditions « une variable »)
+  et conservés quand le module redémarre. Donnez un nom à celles que vous utilisez ; une nouvelle valeur ne s’applique
+  qu’aux lignes remplies.</p>
+  <table><thead><tr><td class="g"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
+  <tbody id="gv-liste"></tbody></table>
+  <div class="acts">
+    <button class="btn" id="gv-relire">Relire les valeurs</button>
+    <span class="spacer"></span>
+    <button class="btn fermer" id="gv-fermer">Fermer</button>
+    <button class="btn principal" id="gv-enregistrer">Enregistrer</button>
+  </div>
+  <div id="msgvariables"></div>
+</div></div>
+
 <div class="voile" id="texte" hidden><div role="dialog" aria-labelledby="texte-titre" class="large">
   <h2 id="texte-titre">Texte du script</h2>
   <p>C’est ce texte que le module reçoit. « Appliquer » le compile puis le redessine. S’il utilise une tournure que le schéma
@@ -400,7 +422,7 @@ const ico = (id) => '<svg class="ic"><use href="#' + id + '"/></svg>';
 // Memes valeurs que ScriptStore::TRIGGER_* cote firmware.
 const TRIG = {1:"le changement d'une entrée", 2:"le démarrage d'une zone", 3:"l'arrêt d'une zone", 0:'rien (lancement manuel)'};
 const PALETTE = [['Arrosage',['arroser','arreter','suspendre','reprendre']],['Temps',['attendre']],
-  ['Conditions et boucles',['si','repeter','tantque']],['Informer',['notifier','message']],['Scripts',['lancer','parallele']]];
+  ['Conditions et boucles',['si','repeter','tantque']],['Variables',['variable']],['Informer',['notifier','message']],['Scripts',['lancer','parallele']]];
 
 // Ce que CE module offre.
 let ZONES = [], ENTREES = [], BIBLIO = [];
@@ -421,7 +443,13 @@ const entreeNom = (id) => { const e = ENTREES.find((o) => o.id === id); return e
 const phraseNom = (c) => { const p = BIBLIO.find((o) => o.code === c); return p ? p.texte : 'code ' + c; };
 const scriptSlot = (no) => SLOTS[no - 1];
 const scriptNom = (no) => { const s = scriptSlot(no); return no + ' — ' + (s && s.utilise ? s.nom : 'vide'); };
-const NAMES = { zone: zoneNom, input: entreeNom, phrase: phraseNom, script: scriptNom };
+// Variables partagees g1..g16 : [{i, nom, valeur}], relues du module
+// (/api/script-globals). Vide (espace en ligne, ancien firmware) : on
+// affiche « g3 ».
+let GLOBALES = [];
+const globaleNom = (i) => { const g = GLOBALES.find((o) => o.i === i); return g && g.nom ? g.nom : 'g' + i; };
+const CMP_TXT = { '==': '=', '!=': '≠', '<': '<', '>': '>', '<=': '≤', '>=': '≥' };
+const NAMES = { zone: zoneNom, input: entreeNom, phrase: phraseNom, script: scriptNom, globale: globaleNom };
 
 // Le script ouvert. body = liste de blocs (voir script-schema.js).
 let doc = { nom: '', actif: true, trigger: { t: 0, target: 0 }, body: [] };
@@ -470,7 +498,9 @@ function warnings(n) {
   if (n.cond) n.cond.terms.forEach((t) => {
     if (t.k === 'entree' && !ENTREES.some((e) => e.id === t.id)) w.push('L’entrée ' + t.id + ' n’est pas déclarée sur ce module.');
     if (t.k === 'zoneactive' && !ZONES.some((z) => z.id === t.id)) w.push('La zone ' + t.id + ' n’existe pas sur ce module.');
+    if (t.k === 'globale' && GLOBALES.length && globaleNom(t.id) === 'g' + t.id) w.push('La variable g' + t.id + ' n’a pas de nom : bouton « Variables ».');
   });
+  if (n.t === 'variable' && GLOBALES.length && globaleNom(n.g) === 'g' + n.g) w.push('La variable g' + n.g + ' n’a pas de nom : bouton « Variables ».');
   if (n.t === 'lancer') {
     const c = scriptSlot(n.script);
     if (n.script === slot() + 1) w.push('Un script ne peut pas se lancer lui-même : le module ignorera ce bloc.');
@@ -485,6 +515,7 @@ function warnings(n) {
 
 // ── Libelles ───────────────────────────────────────────────────────────
 function termLabel(t) {
+  if (t.k === 'globale') return globaleNom(t.id) + ' ' + CMP_TXT[t.cmp] + ' ' + t.v;
   return t.k === 'entree' ? entreeNom(t.id) + (t.v ? ' est actif' : ' est inactif')
                           : zoneNom(t.id) + (t.v ? ' arrose' : ' n’arrose pas');
 }
@@ -497,6 +528,7 @@ function subOf(n) {
     case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
     case 'lancer': return scriptNom(n.script) + ' · en parallèle';
     case 'si': return condLabel(n.cond) + ' ?';
+    case 'variable': return globaleNom(n.g) + (n.op === '=' ? ' = ' : n.op === '-' ? ' − ' : ' + ') + n.v;
     case 'parallele': return n.mode === 'ou' ? 'Ou : reprend dès la 1re finie' : 'Et : attend les deux branches';
     case 'repeter': return n.n + ' fois';
     case 'tantque': return condLabel(n.cond);
@@ -648,6 +680,10 @@ const optsList = (list, v, vide) => list.length
   ? list.map((o) => '<option value="' + o.id + '"' + (o.id === v ? ' selected' : '') + '>' + esc(o.nom) + '</option>').join('')
     + (list.some((o) => o.id === v) ? '' : '<option value="' + v + '" selected>' + v + ' (inconnue)</option>')
   : '<option value="' + v + '">' + esc(vide) + '</option>';
+// Entier signe 32 bits saisi (vide ou invalide : 0).
+const entier = (s) => { const v = parseInt(s, 10); return Number.isFinite(v) ? Math.max(-2147483648, Math.min(2147483647, v)) : 0; };
+const globaleOpts = (sel) => Array.from({ length: S.GLOBAL_COUNT }, (_, k) => k + 1).map((i) =>
+  '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + esc('g' + i + (globaleNom(i) !== 'g' + i ? ' — ' + globaleNom(i) : '')) + '</option>').join('');
 const optsMap = (o, v) => Object.entries(o).map(([k, l]) => '<option value="' + k + '"' + (String(k) === String(v) ? ' selected' : '') + '>' + esc(l) + '</option>').join('');
 const zoneOpts = (v) => optsList(ZONES, v, 'aucune zone');
 const entreeOpts = (v) => optsList(ENTREES, v, 'aucune entrée déclarée');
@@ -673,11 +709,16 @@ function condFields(c) {
       + '" aria-label="Lien entre les conditions ' + i + ' et ' + (i + 1) + '">' + optsMap({et:'et', ou:'ou'}, c.ops[i - 1]) + '</select></div>';
     h += '<div class="term" data-tbox="' + i + '">'
       + '<div class="row">' + (c.terms.length > 1 ? '<span class="grip" title="Glisser pour déplacer cette condition">⠿</span>' : '')
-      + '<select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone'}, t.k) + '</select>'
+      + '<select data-term="' + i + '" data-tf="k" aria-label="Sur">' + optsMap({entree:'une entrée', zoneactive:'une zone', globale:'une variable'}, t.k) + '</select>'
       + (i ? '<button class="btn x" data-up-term="' + i + '" title="Monter cette condition" aria-label="Monter cette condition">↑</button>' : '')
       + (c.terms.length > 1 ? '<button class="btn x danger" data-del-term="' + i + '" title="Retirer cette condition" aria-label="Retirer cette condition">×</button>' : '') + '</div>'
-      + '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + (t.k === 'entree' ? entreeOpts(t.id) : zoneOpts(t.id)) + '</select>'
-      + '<select data-term="' + i + '" data-tf="v" aria-label="État">' + optsMap(t.k === 'entree' ? {1:'est actif', 0:'est inactif'} : {1:'arrose', 0:'n’arrose pas'}, t.v) + '</select>'
+      + (t.k === 'globale'
+        ? '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + globaleOpts(t.id) + '</select>'
+          + '<div class="row"><select data-term="' + i + '" data-tf="cmp" aria-label="Comparaison">'
+          + optsMap({'==':'= égale à', '!=':'≠ différente de', '>':'> plus que', '>=':'≥ au moins', '<':'< moins que', '<=':'≤ au plus'}, t.cmp)
+          + '</select><input type="number" data-term="' + i + '" data-tf="v" value="' + t.v + '" aria-label="Valeur" style="width:90px"></div>'
+        : '<select data-term="' + i + '" data-tf="id" aria-label="Laquelle">' + (t.k === 'entree' ? entreeOpts(t.id) : zoneOpts(t.id)) + '</select>'
+          + '<select data-term="' + i + '" data-tf="v" aria-label="État">' + optsMap(t.k === 'entree' ? {1:'est actif', 0:'est inactif'} : {1:'arrose', 0:'n’arrose pas'}, t.v) + '</select>')
       + '</div>';
   });
   if (c.terms.length > 1) {
@@ -726,6 +767,15 @@ function renderProps() {
     warnings(n).forEach((w) => { h += '<div class="alert">' + esc(w) + '</div>'; });
     if ('zone' in n) h += '<div class="f"><label for="p-z">Zone</label><select id="p-z" data-f="zone">' + zoneOpts(n.zone) + '</select></div>';
     if ('sec' in n) h += dureeField(n.sec);
+    if (n.t === 'variable') {
+      h += '<div class="f"><label for="p-g">Variable</label><select id="p-g" data-f="g">' + globaleOpts(n.g) + '</select></div>'
+        + '<div class="f"><label for="p-op">Action</label><select id="p-op" data-f="op">'
+        + optsMap({ '=': 'prend la valeur', '+': 'augmente de', '-': 'diminue de' }, n.op) + '</select></div>'
+        + '<div class="f"><label for="p-gv">Valeur</label><input id="p-gv" type="number" data-f="gv" value="' + n.v + '"'
+        + (n.op === '=' ? '' : ' min="0"') + '></div>'
+        + '<div class="hint">Partagée par tous les scripts et conservée au redémarrage (enregistrée au plus une fois par minute : '
+        + 'une coupure de courant peut faire perdre la dernière minute). Noms et valeurs : bouton « Variables ».</div>';
+    }
     if (n.t === 'parallele') {
       const ou = n.mode === 'ou';
       h += '<div class="f"><label for="p-mode">La suite du script reprend</label><select id="p-mode" data-f="mode">'
@@ -780,8 +830,13 @@ function wireProps(p) {
       if (f.dataset.tf) {
         const t = n.cond.terms[+f.dataset.term];
         change(() => {
-          if (f.dataset.tf === 'k') { t.k = f.value; t.id = (t.k === 'entree' ? (ENTREES[0] || {id:1}) : (ZONES[0] || {id:1})).id; t.v = 1; }
-          else t[f.dataset.tf] = parseInt(f.value, 10) || 0;
+          if (f.dataset.tf === 'k') {
+            t.k = f.value;
+            if (t.k === 'globale') { t.id = 1; t.cmp = '>'; t.v = 0; }
+            else { delete t.cmp; t.id = (t.k === 'entree' ? (ENTREES[0] || {id:1}) : (ZONES[0] || {id:1})).id; t.v = 1; }
+          }
+          else if (f.dataset.tf === 'cmp') t.cmp = f.value;
+          else t[f.dataset.tf] = entier(f.value);
         }, true);
         return;
       }
@@ -794,6 +849,9 @@ function wireProps(p) {
       else if (k === 'actif') change(() => { doc.actif = f.value === '1'; }, true);
       else if (k === 'attente') change(() => { n.attente = f.checked; }, true);
       else if (k === 'mode') change(() => { n.mode = f.value === 'ou' ? 'ou' : 'et'; }, true);
+      else if (k === 'g') change(() => { n.g = Math.min(16, Math.max(1, parseInt(f.value, 10) || 1)); }, true);
+      else if (k === 'op') change(() => { n.op = ['=', '+', '-'].indexOf(f.value) >= 0 ? f.value : '='; if (n.op !== '=') n.v = Math.abs(n.v); }, true);
+      else if (k === 'gv') change(() => { n.v = entier(f.value); if (n.op !== '=') n.v = Math.abs(n.v); }, false);
       else if (k === 'duree') change(() => {
         const v = Math.max(1, Math.round(parseFloat($('p-d').value) || 1));
         n.sec = Math.min(86400, v * parseInt($('p-u').value, 10));
@@ -1031,7 +1089,13 @@ async function essai() {
   running = true; stopReq = false; tab('run'); $('log').innerHTML = '';
   $('b-essai').lastChild.textContent = 'Arrêter l’essai';
   const active = new Set();
-  const evalTerm = (t) => (t.k === 'entree' ? ($('sim' + t.id) && $('sim' + t.id).checked ? 1 : 0) : (active.has(t.id) ? 1 : 0)) === t.v;
+  // Variables : on part des valeurs lues sur le module, que l'essai modifie
+  // sans jamais les renvoyer.
+  const gsim = {};
+  GLOBALES.forEach((g) => { gsim[g.i] = g.valeur; });
+  const gval = (i) => gsim[i] || 0;
+  const cmpOk = (a, c, b) => ({ '==': a === b, '!=': a !== b, '<': a < b, '>': a > b, '<=': a <= b, '>=': a >= b })[c];
+  const evalTerm = (t) => t.k === 'globale' ? cmpOk(gval(t.id), t.cmp, t.v) : (t.k === 'entree' ? ($('sim' + t.id) && $('sim' + t.id).checked ? 1 : 0) : (active.has(t.id) ? 1 : 0)) === t.v;
   const evalCond = (c) => S.condEval(c, evalTerm);
   log('Départ : ' + trigText()); await flash('start');
   const fond = [];   // branches des blocs « ou », que la fin du script attend
@@ -1051,6 +1115,10 @@ async function essai() {
         case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
         case 'message': log('Journal : « ' + phraseNom(n.code) + ' »'); break;
         case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
+        case 'variable':
+          gsim[n.g] = n.op === '=' ? n.v : gval(n.g) + (n.op === '-' ? -n.v : n.v);
+          log(globaleNom(n.g) + ' vaut maintenant ' + gsim[n.g] + ' (essai : rien n’est envoyé)');
+          break;
         case 'parallele':
           log('Les deux branches partent ensemble');
           if (n.mode === 'ou') {
@@ -1103,7 +1171,15 @@ async function lireModule() {
       BIBLIO_LEN = d.lenMax || BIBLIO_LEN;
     }
   } catch (e) { BIBLIO = []; }
+  await lireGlobales();
   renderSim();
+}
+async function lireGlobales() {
+  if (CLOUD) { GLOBALES = []; return; }
+  try {
+    const r = await fetch('/api/script-globals');
+    GLOBALES = r.ok ? ((await r.json()).vars || []) : [];
+  } catch (e) { GLOBALES = []; }
 }
 async function listeSlots() {
   const d = await (await fetch('/api/scripts')).json();
@@ -1419,6 +1495,64 @@ $('ph-enregistrer').onclick = async () => {
       direPhrases('Refusé par le module : ' + (d.error || 'raison inconnue') + '. La bibliothèque précédente est intacte.', 'ko');
     }
   } catch (e) { direPhrases('Module injoignable : rien n’a été enregistré.', 'ko'); }
+};
+// ── Variables partagees ────────────────────────────────────────────────
+function direVariables(t, e) { const m = $('msgvariables'); m.textContent = t || ''; m.className = e || ''; }
+function rendreVariables() {
+  $('gv-liste').innerHTML = Array.from({ length: S.GLOBAL_COUNT }, (_, k) => k + 1).map((i) => {
+    const g = GLOBALES.find((o) => o.i === i) || { nom: '', valeur: 0 };
+    return '<tr><td class="g">g' + i + '</td>'
+      + '<td><input type="text" maxlength="23" data-gn="' + i + '" value="' + esc(g.nom) + '" aria-label="Nom de g' + i + '"></td>'
+      + '<td class="val">' + g.valeur + '</td>'
+      + '<td class="nv"><input type="number" data-gv="' + i + '" placeholder="inchangée" aria-label="Nouvelle valeur de g' + i + '"></td></tr>';
+  }).join('');
+}
+$('b-variables').onclick = async () => { await lireGlobales(); rendreVariables(); direVariables(''); $('variables').hidden = false; };
+$('gv-relire').onclick = async () => {
+  // Garder les noms en cours de saisie : seules les valeurs sont relues.
+  const saisis = {};
+  $('gv-liste').querySelectorAll('input[data-gn]').forEach((el) => { saisis[el.dataset.gn] = el.value; });
+  await lireGlobales(); rendreVariables();
+  $('gv-liste').querySelectorAll('input[data-gn]').forEach((el) => { el.value = saisis[el.dataset.gn]; });
+  direVariables('Valeurs relues sur le module.', 'ok');
+};
+$('gv-fermer').onclick = () => { $('variables').hidden = true; };
+$('gv-enregistrer').onclick = async () => {
+  const noms = [], vus = new Set(), fixe = [];
+  for (let i = 1; i <= S.GLOBAL_COUNT; i++) {
+    const nom = $('gv-liste').querySelector('input[data-gn="' + i + '"]').value.trim();
+    if (new TextEncoder().encode(nom).length > 23) { direVariables('g' + i + ' : nom trop long (23 octets au plus).', 'ko'); return; }
+    if (/[#|\u0000-\u001f]/.test(nom)) { direVariables('g' + i + ' : caractère interdit (# ou |).', 'ko'); return; }
+    if (nom && vus.has(nom.toLowerCase())) { direVariables('Nom « ' + nom + ' » en double.', 'ko'); return; }
+    if (nom) vus.add(nom.toLowerCase());
+    noms.push(nom);
+    const nv = $('gv-liste').querySelector('input[data-gv="' + i + '"]').value.trim();
+    if (nv !== '') {
+      if (!/^-?\d+$/.test(nv)) { direVariables('g' + i + ' : la valeur doit être un nombre entier.', 'ko'); return; }
+      fixe.push({ i: i, v: entier(nv) });
+    }
+  }
+  try {
+    const etat = await prochainNonce();
+    if (!etat.configure) { direVariables('Le module n’a pas de secret : posez-en un (bouton « Secret ») avant d’enregistrer.', 'ko'); return; }
+    // Forme canonique : voir WebManager::handleSaveScriptGlobals.
+    const canon = 'script-globals|' + etat.nonce + '|' + noms.map((n) => n + '\n').join('') + '|'
+      + fixe.map((f) => f.i + '=' + f.v + ';').join('');
+    const sig = await signer(canon);
+    if (!sig) { direVariables('Secret requis pour enregistrer.', 'ko'); return; }
+    const r = await fetch('/api/script-globals', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noms: noms, fixe: fixe, nonce: etat.nonce, sig: sig })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d.ok) {
+      await lireGlobales(); rendreVariables();
+      direVariables('Enregistré : noms à jour' + (d.fixees ? ', ' + d.fixees + ' valeur(s) fixée(s).' : '.'), 'ok');
+      refresh(true);   // les blocs affichent les nouveaux noms
+    } else {
+      direVariables('Refusé par le module : ' + (d.error || 'raison inconnue') + '. Les variables sont inchangées.', 'ko');
+    }
+  } catch (e) { direVariables('Module injoignable : rien n’a été enregistré.', 'ko'); }
 };
 $('b-save').onclick = enregistrer;
 $('b-lancer').onclick = lancer;

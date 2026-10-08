@@ -106,6 +106,31 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   try{ AquaScript.compile('parallele ou\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'ou imbrique accepte a tort'); }
   catch(e){ ok(e.line===2,'ou imbrique refuse a la compilation'); }
 }
+// 2g. Variables globales g1..g16 (8 oct. 2026)
+{
+  const names2=Object.assign({},names,{globale:i=>'V'+i});
+  const v1=mk('variable'); ok(v1.g===1 && v1.op==='=' && v1.v===0,'nouveau bloc Variable : g1 = 0');
+  const vs=[['=',7],['=',-3],['+',2],['-',5]].map(([op,v],k)=>{const n=mk('variable'); n.g=k+3; n.op=op; n.v=v; return n;});
+  const g=S.generate(vs,names2).text;
+  ok(/^g3 = 7   # V3/.test(g) && /\ng4 = -3/.test(g) && /\ng5 = g5 \+ 2/.test(g) && /\ng6 = g6 - 5/.test(g),'texte : = valeur, = negatif, + et -\n'+g);
+  rt(vs,'variables : = + -');
+  const c=AquaScript.compile('g16 = g16 + 1');
+  ok(c[0]===5 && c[1]===15 && c[c.length-3]===6 && c[c.length-2]===15,'bytecode : GLOAD 15 ... GSTORE 15');
+  try{ AquaScript.compile('g17 = 1'); ok(false,'g17 accepte a tort'); } catch(e){ ok(e.line===1,'g17 refuse a la compilation'); }
+  ok(AquaScript.compile('g = 1')[5]===3,'« g » seul reste la variable locale (STORE)');
+  ['==','!=','<','>','<=','>='].forEach((cmp)=>{
+    const s=mk('si'); s.cond={terms:[{k:'globale',id:2,cmp:cmp,v:10}],ops:[]};
+    const tx=S.generate([s],names2).text;
+    ok(tx.indexOf('si g2 '+cmp+' 10 alors')===0,'condition '+cmp+' : texte');
+    rt([s],'condition variable '+cmp);
+  });
+  const neg=S.parse('si non g2 > 5 alors\nfinsi\n'); ok(neg[0].cond.terms[0].cmp==='<=','« non g2 > 5 » relu en g2 <= 5');
+  const mixte=S.parse('si entree(1) == 1 et g4 >= -2 alors\nfinsi\n'); ok(mixte[0].cond.terms[1].k==='globale' && mixte[0].cond.terms[1].v===-2,'condition mixte entree + variable, valeur negative');
+  try{ S.parse('si g2 alors\nfinsi\n'); ok(false,'g2 sans comparaison relu a tort'); } catch(e){ ok(e instanceof S.Unsupported,'g2 sans comparaison : mode texte'); }
+  try{ S.parse('g2 = g3 + 1\n'); ok(false,'g2 = g3 + 1 relu a tort'); } catch(e){ ok(e instanceof S.Unsupported,'g2 = g3 + 1 : mode texte'); }
+  const tq=mk('tantque'); tq.cond={terms:[{k:'globale',id:1,cmp:'<',v:3}],ops:[]}; const inc=mk('variable'); inc.op='+'; inc.v=1; tq.body=[inc,mk('attendre')];
+  rt([tq],'tant que g1 < 3 : g1 + 1');
+}
 // 2e. « et » / « ou » entre chaque condition, « et » avant « ou » (7 oct. 2026)
 {
   const T=(id)=>({k:'entree',id:id,v:1});

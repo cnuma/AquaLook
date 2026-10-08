@@ -17,6 +17,10 @@
 // modifiable dans l'editeur texte. Le traduire « a peu pres » changerait son
 // comportement sans le dire -- exactement ce qu'un arrosage ne doit pas faire.
 //
+// Variables globales g1..g16 (8 oct. 2026) : le bloc « Variable » s'ecrit
+// « gN = v », « gN = gN + v » ou « gN = gN - v », et une condition sur une
+// variable « gN <cmp> v » ; toute autre tournure reste du texte.
+//
 // Equivalences exactes sur lesquelles la relecture s'appuie : entree() et
 // zoneactive() valent toujours 0 ou 1 (ScriptHostRuntime::readInput/
 // zoneActive), donc « entree(1) », « entree(1) != 0 » et « entree(1) == 1 »
@@ -38,8 +42,17 @@
     notifier:  { label: 'Notifier',         cat: 'info',    icon: 'i-bell',   desc: 'Envoie une notification au téléphone' },
     message:   { label: 'Noter au journal', cat: 'info',    icon: 'i-note',   desc: 'Ajoute une ligne au journal du module' },
     lancer:    { label: 'Lancer un script', cat: 'script',  icon: 'i-run',    desc: 'Démarre un autre script, qui tourne en parallèle' },
-    parallele: { label: 'En parallèle',     cat: 'script',  icon: 'i-par',    desc: 'Deux suites de blocs qui partent ensemble' }
+    parallele: { label: 'En parallèle',     cat: 'script',  icon: 'i-par',    desc: 'Deux suites de blocs qui partent ensemble' },
+    variable:  { label: 'Variable',         cat: 'donnee',  icon: 'i-var',    desc: 'Donne, ajoute ou retire une valeur à une variable partagée' }
   };
+  const GLOBAL_COUNT = 16;
+  // g1..g16 -> 1..16, sinon 0. « g » seul reste la variable locale.
+  function globalNo(w) {
+    const m = /^g([1-9]|1[0-6])$/.exec(w || '');
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  // « non » devant une comparaison de variable : la comparaison contraire.
+  const CMP_INV = { '==': '!=', '!=': '==', '<': '>=', '>=': '<', '>': '<=', '<=': '>' };
 
   const VARS = 'abcdefgh';
   const ZONE_ACTIONS = ['arreter', 'suspendre', 'reprendre'];
@@ -64,6 +77,7 @@
       case 'si': n.cond = { terms: [{ k: 'entree', id: e, v: 1 }], ops: [] }; n.oui = []; n.non = []; break;
       case 'repeter': n.n = 3; n.body = []; break;
       case 'tantque': n.cond = { terms: [{ k: 'zoneactive', id: z, v: 1 }], ops: [] }; n.body = []; break;
+      case 'variable': n.g = 1; n.op = '='; n.v = 0; break;
     }
     return n;
   }
@@ -83,6 +97,7 @@
 
   // ── Texte ──────────────────────────────────────────────────────────────
   function termCode(t) {
+    if (t.k === 'globale') return 'g' + t.id + ' ' + t.cmp + ' ' + t.v;
     return (t.k === 'entree' ? 'entree(' : 'zoneactive(') + t.id + ') == ' + (t.v ? 1 : 0);
   }
   // Une condition = des termes, et entre deux termes voisins un mot « et »
@@ -183,6 +198,13 @@
             walk(n.b, d + 1, loopDepth);
             add(d, ou ? 'finparallele   # l’autre branche continue' : 'finparallele   # attend la fin des deux branches', n.id);
             break;
+          case 'variable': {
+            const g = 'g' + n.g;
+            const nom = names.globale ? names.globale(n.g) : g;
+            const val = n.op === '=' ? String(n.v) : g + ' ' + (n.op === '-' ? '-' : '+') + ' ' + n.v;
+            add(d, g + ' = ' + val + '   # ' + nom, n.id);
+            break;
+          }
           case 'tantque':
             add(d, 'tantque ' + condCode(n.cond) + ' faire', n.id);
             walk(n.body, d + 1, loopDepth);
@@ -242,6 +264,11 @@
     }
     // Apres une valeur fixe, rien d'autre qu'une fin d'instruction : un
     // « attendre 60 * a » serait sinon lu « attendre 60 » sans rien dire.
+    // Nombre eventuellement precede de « - » (valeur d'une variable).
+    function signedNumber() {
+      if (peek() === '-') { next(); return -number(); }
+      return number();
+    }
     function noArith() {
       if (['+', '-', '*', '/', '%'].indexOf(peek()) >= 0) {
         throw new Unsupported('calcul « ' + toks[i].v + ' » : seul un nombre fixe se dessine', line());
@@ -288,7 +315,8 @@
         next();
         const g = unaryGroups();
         if (g.length !== 1 || g[0].length !== 1) throw new Unsupported('« non » devant plusieurs conditions', ln);
-        g[0][0].v = g[0][0].v ? 0 : 1;
+        if (g[0][0].k === 'globale') g[0][0].cmp = CMP_INV[g[0][0].cmp];
+        else g[0][0].v = g[0][0].v ? 0 : 1;
         return g;
       }
       if (peek() === '(') { next(); const g = orGroups(); expect(')'); return g; }
@@ -296,6 +324,18 @@
     }
     function term() {
       const w = peek();
+      const gn = globalNo(w);
+      if (gn) {
+        next();
+        const cmp = peek();
+        if (['==', '!=', '<', '>', '<=', '>='].indexOf(cmp) < 0) {
+          throw new Unsupported('variable g' + gn + ' sans comparaison : écrivez par exemple « g' + gn + ' > 0 »', line());
+        }
+        next();
+        const t = { k: 'globale', id: gn, cmp: cmp, v: signedNumber() };
+        noArith();
+        return t;
+      }
       if (w !== 'entree' && w !== 'zoneactive') {
         throw new Unsupported('condition « ' + (toks[i].v || 'fin du script') + ' » : seules les entrées et l’état des zones se dessinent', line());
       }
@@ -392,6 +432,18 @@
         next(); expect('zone');
         return { id: newId(), t: w, zone: number() };
       }
+      const gn = globalNo(w);
+      if (gn) {
+        next(); expect('=');
+        const n = { id: newId(), t: 'variable', g: gn, op: '=', v: 0 };
+        if (globalNo(peek()) === gn && (toks[i + 1].low === '+' || toks[i + 1].low === '-')) {
+          next(); n.op = next().low; n.v = number();
+        } else {
+          n.v = signedNumber();
+        }
+        noArith();
+        return n;
+      }
       if (w && VARS.indexOf(w) >= 0 && w.length === 1) {
         throw new Unsupported('variable « ' + toks[i].v + ' » : le schéma ne gère pas les variables', ln);
       }
@@ -411,6 +463,7 @@
   global.AquaSchema = {
     TYPES: TYPES, make: make, childKeys: childKeys, reId: reId,
     generate: generate, parse: parse, duree: duree, Unsupported: Unsupported,
-    condGroups: condGroups, condText: condText, condEval: condEval
+    condGroups: condGroups, condText: condText, condEval: condEval,
+    GLOBAL_COUNT: GLOBAL_COUNT
   };
 })(window);

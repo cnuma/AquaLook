@@ -31,6 +31,9 @@
 //                                    l'une est finie, l'autre continue ; le
 //                                    script ne finit qu'avec elle
 //   <var> = <expr>
+//   g<n> = <expr>                    -- variable GLOBALE n (1..16) : partagee
+//                                       par tous les scripts, conservee au
+//                                       redemarrage (ScriptGlobals)
 //
 //   Expressions : nombres, variables a..h, entree(<id>), zoneactive(<id>),
 //   reste(<id>), + - * / %, == != < <= > >=, et / ou / non, parentheses.
@@ -43,7 +46,7 @@
   'use strict';
 
   const OP = {
-    HALT: 0, PUSH: 1, LOAD: 2, STORE: 3, DROP: 4,
+    HALT: 0, PUSH: 1, LOAD: 2, STORE: 3, DROP: 4, GLOAD: 5, GSTORE: 6,
     ADD: 16, SUB: 17, MUL: 18, DIV: 19, MOD: 20, NEG: 21,
     EQ: 32, NE: 33, LT: 34, LE: 35, GT: 36, GE: 37,
     AND: 38, OR: 39, NOT: 40,
@@ -144,6 +147,12 @@
       out[hole + 1] = (target >> 8) & 0xFF;
     }
 
+    // g1..g16 -> 0..15, sinon -1. Teste AVANT les variables locales a..h :
+    // « g » seul reste la variable locale.
+    function globalIndex(name) {
+      const m = /^g([1-9]|1[0-6])$/.exec(String(name).toLowerCase());
+      return m ? parseInt(m[1], 10) - 1 : -1;
+    }
     function varIndex(name) {
       const idx = VARS.indexOf(String(name).toLowerCase());
       if (idx < 0) {
@@ -215,6 +224,7 @@
       if (word === 'entree') { next(); emit(OP.READ_INPUT); emitU16(callArg()); return; }
       if (word === 'zoneactive') { next(); emit(OP.ZONE_ACTIVE); emitU16(callArg()); return; }
       if (word === 'reste') { next(); emit(OP.ZONE_REMAIN); emitU16(callArg()); return; }
+      if (globalIndex(word) >= 0) { next(); emit(OP.GLOAD, globalIndex(word)); return; }
       if (VARS.indexOf(word) >= 0) { next(); emit(OP.LOAD, varIndex(word)); return; }
 
       throw new CompileError('expression attendue, trouvé « ' + (t || 'fin du script') + ' »', line());
@@ -374,6 +384,14 @@
         emit(OP.PUSH); emitI32(0);
         emit(OP.ACTION, ACTION.SCRIPT_RUN);
         emitU16(n);
+        return;
+      }
+
+      if (globalIndex(word) >= 0) {
+        const gv = globalIndex(next());
+        expect('=');
+        expression();
+        emit(OP.GSTORE, gv);
         return;
       }
 

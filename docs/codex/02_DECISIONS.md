@@ -71,3 +71,15 @@ Décision du propriétaire. Le périmètre de `config.apply` (`docs/architecture
 - **Rien ne se lance à distance** : pas de « Lancer maintenant », pas de pose ni de changement du secret HMAC. Un script modifié à distance ne part que sur un déclencheur local.
 - **Le module ne fait pas confiance au bytecode reçu** : il le revalide (`validateScriptProgram`) avec les mêmes règles que `/api/script-save`. Un script en cours d’exécution n’est pas modifiable à distance.
 - **Une commande = un emplacement ou le catalogue de phrases.** La réponse de `/v1/pending-command` peut atteindre 16 Ko (au lieu de 4 Ko).
+
+## D015 — Variables globales des scripts et bloc « En parallèle » en Et / Ou (8 oct. 2026)
+
+Décision du propriétaire, choix arbitrés le 8 octobre 2026.
+
+- **Seize variables globales `g1`..`g16`**, entiers signés 32 bits, lues et écrites par tous les scripts (opcodes `GLOAD` 5 / `GSTORE` 6). Les variables locales `a`..`h` restent inchangées.
+- **Persistance en NVS, espace `aqlvars`, à part de la configuration** : une variable qui change ne fait pas monter `configRevision` et ne touche pas le bloc `ALOK`. Blocs versionnés `{magic, version, nombre, …, crc32}` ; un bloc illisible est ignoré (valeurs à 0, noms vides) avec un message `[GVAR]`, jamais d’échec de démarrage.
+- **Usure de la flash maîtrisée** : les valeurs sont écrites au plus une fois par minute, et tout de suite avant chaque redémarrage voulu (`BootLoopGuard::restartDeliberately`). Une coupure de courant peut perdre la dernière minute ; c’est accepté.
+- **Noms libres** (23 octets au plus, sans `#` ni `|`), rangés en NVS avec les valeurs, pas sur la SD : les variables restent utilisables sans carte. Le bytecode ne transporte qu’un numéro ; le nom n’est qu’un libellé.
+- **Écriture locale signée** (`POST /api/script-globals`, HMAC `ApiAuth`) ; lecture libre (`GET`). Une valeur n’est fixée depuis l’éditeur que si l’utilisateur l’a saisie, pour ne pas écraser ce qu’un script vient d’écrire.
+- **Hors périmètre pour l’instant** : remontée et modification des variables par CloudSync / l’espace en ligne. L’éditeur en ligne affiche `g3` sans nom et masque le bouton « Variables ».
+- **« En parallèle » en Et / en Ou** : « Et » (défaut, octet pour octet comme avant) attend les deux branches ; « Ou » reprend dès que l’une est finie, l’autre continue et le script ne se termine qu’avec elle (`JOINANY` 87, `JOIN` avant le `HALT` final). Un firmware antérieur refuse ces opcodes à l’enregistrement.
