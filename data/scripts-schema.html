@@ -73,11 +73,11 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 .cat-info{--cat:var(--slate);--cat-dim:var(--slate-dim)}
 .cat-script{--cat:#0f7b7b;--cat-dim:#d9f0ee}
 .cat-donnee{--cat:#a1457a;--cat-dim:#f6e3ee}
-#gv-liste td.g{width:44px;font:600 12px var(--mono);color:var(--muted)}
-#gv-liste td.val{width:110px;font:12px var(--mono);text-align:right;padding-right:10px}
-#gv-liste td.nv{width:120px}
+#p-var td.g{width:34px;font:600 12px var(--mono);color:var(--muted)}
+#p-var td.val{width:64px;font:12px var(--mono);text-align:right;padding-right:10px}
+#p-var td.nv{width:96px}
 
-.center{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 210px;gap:8px}
+.center{min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 250px;gap:8px}
 .canvas{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:8px;background-color:var(--bg);
   background-image:radial-gradient(var(--grid) 1.3px,transparent 1.4px);background-size:22px 22px;cursor:grab}
 .canvas.panning{cursor:grabbing}
@@ -234,7 +234,24 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .empty ol{padding-left:18px;margin:8px 0}
 .sec-acts{border-top:1px solid var(--border);margin-top:14px;padding-top:12px}
 
-.bottom{display:flex;flex-direction:column}
+/* Zone du bas en deux (8 oct. 2026) : le texte genere a gauche, a droite
+   les onglets Essai a blanc / Phrases / Variables (avant : deux fenetres
+   ouvertes par des boutons de l'en-tete). */
+.bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;min-height:0}
+.bottom>.panel{display:flex;flex-direction:column;min-height:0}
+.tabs .ttl{padding:9px 4px;font:600 13px var(--sans);color:var(--green)}
+.tabform{padding:8px 12px;overflow:auto;font-size:13px}
+.tabform table{width:100%;border-collapse:collapse}
+.tabform td{padding:2px 6px 2px 0}
+.tabform td.code{width:90px}
+.tabform td.x{width:1%}
+.tabform input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:4px 7px;background:var(--bg1);color:var(--text);font:inherit}
+.tabform .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tabform .aide{margin:0 0 6px;color:var(--text2);font-size:12px}
+/* Bouton « Enregistrer » : orange qui respire tant que le script n'est pas
+   enregistre (demande du 8 oct. 2026). */
+#b-save.a-enregistrer{background:var(--amber);border-color:var(--amber);animation:respire 1.2s ease-in-out infinite alternate}
+@keyframes respire{to{box-shadow:0 0 0 4px rgba(168,107,11,.25)}}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);padding:0 8px;flex:none;align-items:center}
 .tabs button{border:0;background:none;padding:9px 12px;cursor:pointer;color:var(--muted);font:600 13px var(--sans);
   border-bottom:2px solid transparent}
@@ -249,7 +266,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .cl .cm{color:var(--muted)}
 .cl .kw{color:var(--purple);font-weight:600}
 .cl.hl{background:var(--blue-dim)}
-.runwrap{display:grid;grid-template-columns:240px 1fr;height:100%}
+.runwrap{display:grid;grid-template-columns:170px 1fr;height:100%}
 .sim{border-right:1px solid var(--border);padding:10px 14px;font-size:13px;overflow:auto}
 .sim h4{margin:0 0 8px;font:600 12px var(--sans);color:var(--text2)}
 .sim label{display:flex;gap:8px;align-items:center;margin-bottom:6px}
@@ -275,9 +292,9 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
   .app{grid-template-rows:auto auto auto minmax(420px,1fr)}
   .nomwrap{max-width:none;flex-basis:100%}
 }
-@media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty{animation:none}}
+@media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,#b-save.a-enregistrer{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
-body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #b-variables{display:none!important}
+body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-var{display:none!important}
 </style></head><body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -308,8 +325,6 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #b-va
     <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
     <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>
-    <button class="btn edit-only" id="b-phrases" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
-    <button class="btn edit-only" id="b-variables" title="Variables partagées par tous les scripts : noms et valeurs">Variables</button>
     <button class="btn principal edit-only" id="b-save">Enregistrer</button>
   </header>
   <div id="msg">Lecture du module…</div>
@@ -340,21 +355,53 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #b-va
           </div>
         </div></div>
       </div>
-      <div class="panel bottom">
-        <div class="tabs" role="tablist">
-          <button role="tab" id="t-code" aria-selected="true">Texte généré</button>
-          <button role="tab" id="t-run" aria-selected="false">Essai à blanc</button>
+      <div class="bottom">
+       <div class="panel">
+        <div class="tabs">
+          <span class="ttl">Texte généré</span>
           <button class="btn tx-btn" id="b-modif-texte" title="Modifier directement le texte que le module reçoit">Modifier le texte</button>
           <span class="note" id="taille"></span>
         </div>
         <div class="tabbody" id="p-code"><div class="code" id="code"></div></div>
-        <div class="tabbody" id="p-run" hidden>
+       </div>
+       <div class="panel">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="t-run" aria-selected="true">Essai à blanc</button>
+          <button role="tab" id="t-phr" aria-selected="false" title="Textes envoyés par les blocs Notifier et Noter au journal">Phrases</button>
+          <button role="tab" id="t-var" aria-selected="false" title="Variables partagées par tous les scripts : noms et valeurs">Variables</button>
+        </div>
+        <div class="tabbody" id="p-run">
           <div class="runwrap">
             <div class="sim"><h4>Entrées simulées</h4><div id="simins"></div>
               <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Rien n'est envoyé au module : l'essai parcourt seulement le schéma.</p></div>
             <div class="log" id="log"><div class="t">« Essai à blanc » parcourt le script bloc par bloc, avec les entrées cochées à gauche.</div></div>
           </div>
         </div>
+        <div class="tabbody tabform" id="p-phr" hidden>
+          <p class="aide">Phrases citées par « Notifier » et « Noter au journal », par leur code : corrigée ici, une phrase change dans tous les scripts. Rangées sur la carte SD du module.</p>
+          <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier » n’enverront rien. « Noter au journal » n’est pas concerné.</p>
+          <table><tbody id="phrases-liste"></tbody></table>
+          <div class="acts">
+            <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
+            <span class="spacer"></span>
+            <button class="btn" id="ph-fermer">Annuler les modifications</button>
+            <button class="btn principal" id="ph-enregistrer">Enregistrer les phrases</button>
+          </div>
+          <div id="msgphrases"></div>
+        </div>
+        <div class="tabbody tabform" id="p-var" hidden>
+          <p class="aide">Seize nombres entiers partagés par <b>tous</b> les scripts et conservés au redémarrage. Une nouvelle valeur ne s’applique qu’aux lignes remplies.</p>
+          <table><thead><tr><td class="g"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
+          <tbody id="gv-liste"></tbody></table>
+          <div class="acts">
+            <button class="btn" id="gv-relire">Relire les valeurs</button>
+            <span class="spacer"></span>
+            <button class="btn" id="gv-fermer">Annuler les modifications</button>
+            <button class="btn principal" id="gv-enregistrer">Enregistrer les variables</button>
+          </div>
+          <div id="msgvariables"></div>
+        </div>
+       </div>
       </div>
     </section>
 
@@ -365,37 +412,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #b-va
   </div>
 </div>
 
-<div class="voile" id="phrases" hidden><div role="dialog" aria-labelledby="phrases-titre">
-  <h2 id="phrases-titre">Bibliothèque de phrases</h2>
-  <p>Les blocs « Notifier » et « Noter au journal » envoient l’une de ces phrases, désignée par son code.
-  Corrigez une phrase ici une fois : tous les scripts qui la citent en profitent. Rangée sur la carte SD du module.</p>
-  <p class="notif-off" id="ph-notif" hidden>Notifications désactivées sur le module : les blocs « Notifier » n’enverront rien.
-  « Noter au journal » n’est pas concerné.</p>
-  <table><tbody id="phrases-liste"></tbody></table>
-  <div class="acts">
-    <button class="btn" id="ph-ajouter">+ Ajouter une phrase</button>
-    <span class="spacer"></span>
-    <button class="btn fermer" id="ph-fermer">Fermer</button>
-    <button class="btn principal" id="ph-enregistrer">Enregistrer la bibliothèque</button>
-  </div>
-  <div id="msgphrases"></div>
-</div></div>
 
-<div class="voile" id="variables" hidden><div role="dialog" aria-labelledby="variables-titre">
-  <h2 id="variables-titre">Variables partagées</h2>
-  <p>Seize nombres entiers, lus et modifiés par <b>tous</b> les scripts (blocs « Variable », conditions « une variable »)
-  et conservés quand le module redémarre. Donnez un nom à celles que vous utilisez ; une nouvelle valeur ne s’applique
-  qu’aux lignes remplies.</p>
-  <table><thead><tr><td class="g"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
-  <tbody id="gv-liste"></tbody></table>
-  <div class="acts">
-    <button class="btn" id="gv-relire">Relire les valeurs</button>
-    <span class="spacer"></span>
-    <button class="btn fermer" id="gv-fermer">Fermer</button>
-    <button class="btn principal" id="gv-enregistrer">Enregistrer</button>
-  </div>
-  <div id="msgvariables"></div>
-</div></div>
 
 <div class="voile" id="texte" hidden><div role="dialog" aria-labelledby="texte-titre" class="large">
   <h2 id="texte-titre">Texte du script</h2>
@@ -462,7 +479,7 @@ let arret = null;           // bloc du dernier arret signale par le module
 // ── Etat et annulation ─────────────────────────────────────────────────
 const snap = () => JSON.stringify(doc);
 function pushUndo(s) { undo.push(s || snap()); if (undo.length > 80) undo.shift(); $('b-undo').disabled = false; }
-function setDirty(v) { dirty = v; $('dirty').hidden = !v; }
+function setDirty(v) { dirty = v; $('dirty').hidden = !v; $('b-save').classList.toggle('a-enregistrer', !!v); }
 function doUndo() {
   const s = undo.pop(); if (!s) return;
   doc = JSON.parse(s);
@@ -498,9 +515,9 @@ function warnings(n) {
   if (n.cond) n.cond.terms.forEach((t) => {
     if (t.k === 'entree' && !ENTREES.some((e) => e.id === t.id)) w.push('L’entrée ' + t.id + ' n’est pas déclarée sur ce module.');
     if (t.k === 'zoneactive' && !ZONES.some((z) => z.id === t.id)) w.push('La zone ' + t.id + ' n’existe pas sur ce module.');
-    if (t.k === 'globale' && GLOBALES.length && globaleNom(t.id) === 'g' + t.id) w.push('La variable g' + t.id + ' n’a pas de nom : bouton « Variables ».');
+    if (t.k === 'globale' && GLOBALES.length && globaleNom(t.id) === 'g' + t.id) w.push('La variable g' + t.id + ' n’a pas de nom : onglet « Variables », en bas.');
   });
-  if (n.t === 'variable' && GLOBALES.length && globaleNom(n.g) === 'g' + n.g) w.push('La variable g' + n.g + ' n’a pas de nom : bouton « Variables ».');
+  if (n.t === 'variable' && GLOBALES.length && globaleNom(n.g) === 'g' + n.g) w.push('La variable g' + n.g + ' n’a pas de nom : onglet « Variables », en bas.');
   if (n.t === 'lancer') {
     const c = scriptSlot(n.script);
     if (n.script === slot() + 1) w.push('Un script ne peut pas se lancer lui-même : le module ignorera ce bloc.');
@@ -774,7 +791,7 @@ function renderProps() {
         + '<div class="f"><label for="p-gv">Valeur</label><input id="p-gv" type="number" data-f="gv" value="' + n.v + '"'
         + (n.op === '=' ? '' : ' min="0"') + '></div>'
         + '<div class="hint">Partagée par tous les scripts et conservée au redémarrage (enregistrée au plus une fois par minute : '
-        + 'une coupure de courant peut faire perdre la dernière minute). Noms et valeurs : bouton « Variables ».</div>';
+        + 'une coupure de courant peut faire perdre la dernière minute). Noms et valeurs : onglet « Variables », en bas.</div>';
     }
     if (n.t === 'parallele') {
       const ou = n.mode === 'ou';
@@ -797,7 +814,7 @@ function renderProps() {
     }
     if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
       + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
-      + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : ajoutez-en avec le bouton « Phrases » en haut de la page.</div>');
+      + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : ajoutez-en dans l’onglet « Phrases », en bas.</div>');
     if (n.t === 'message') {
       h += '<div class="f"><label for="p-gvar">Ajouter la valeur de</label><select id="p-gvar" data-f="gvar">'
         + '<option value="0"' + (n.gvar ? '' : ' selected') + '>(aucune variable)</option>' + globaleOpts(n.gvar || 0) + '</select></div>'
@@ -1063,12 +1080,21 @@ $('z-fit').onclick = fit;
 window.addEventListener('resize', fit);
 $('code').addEventListener('click', (e) => { const l = e.target.closest('.cl'); if (l && l.dataset.id) choisir(l.dataset.id); });
 
-function tab(which) {
-  $('t-code').setAttribute('aria-selected', which === 'code'); $('t-run').setAttribute('aria-selected', which === 'run');
-  $('p-code').hidden = which !== 'code'; $('p-run').hidden = which !== 'run';
+// Onglets de droite. Passer d'un onglet a l'autre ne perd rien : le
+// contenu de Phrases / Variables n'est prepare qu'a la premiere ouverture,
+// puis apres Enregistrer, Annuler ou Relire.
+let phrPret = false, varPret = false;
+async function tab(which) {
+  ['run', 'phr', 'var'].forEach((k) => {
+    $('t-' + k).setAttribute('aria-selected', which === k);
+    $('p-' + k).hidden = which !== k;
+  });
+  if (which === 'phr' && !phrPret) { biblioAvant = JSON.stringify(BIBLIO); rendrePhrases(); direPhrases(''); phrPret = true; }
+  if (which === 'var' && !varPret) { await lireGlobales(); rendreVariables(); direVariables(''); varPret = true; }
 }
-$('t-code').onclick = () => tab('code');
 $('t-run').onclick = () => tab('run');
+$('t-phr').onclick = () => tab('phr');
+$('t-var').onclick = () => tab('var');
 
 // ── Essai a blanc ──────────────────────────────────────────────────────
 // Parcourt le SCHEMA ici, sans le module : montre l'ordre des blocs et le
@@ -1444,14 +1470,10 @@ function lirePhrases() {
 // Premier code libre a partir de 900.
 function codeLibre() { const pris = new Set(BIBLIO.map((o) => o.code)); let c = 900; while (pris.has(c) && c < 65535) c++; return c; }
 let biblioAvant = null;
-$('b-phrases').onclick = () => {
-  biblioAvant = JSON.stringify(BIBLIO);
-  rendrePhrases(); direPhrases(''); $('phrases').hidden = false;
-};
 $('ph-fermer').onclick = () => {
-  // Fermer sans enregistrer : rien n'est parti vers le module, revenir a la liste lue.
+  // Annuler : rien n'est parti vers le module, revenir a la liste lue.
   if (biblioAvant !== null) BIBLIO = JSON.parse(biblioAvant);
-  $('phrases').hidden = true;
+  rendrePhrases(); direPhrases('Modifications annulées.', '');
 };
 $('ph-ajouter').onclick = () => {
   lirePhrases();
@@ -1513,7 +1535,7 @@ function rendreVariables() {
       + '<td class="nv"><input type="number" data-gv="' + i + '" placeholder="inchangée" aria-label="Nouvelle valeur de g' + i + '"></td></tr>';
   }).join('');
 }
-$('b-variables').onclick = async () => { await lireGlobales(); rendreVariables(); direVariables(''); $('variables').hidden = false; };
+
 $('gv-relire').onclick = async () => {
   // Garder les noms en cours de saisie : seules les valeurs sont relues.
   const saisis = {};
@@ -1522,7 +1544,7 @@ $('gv-relire').onclick = async () => {
   $('gv-liste').querySelectorAll('input[data-gn]').forEach((el) => { el.value = saisis[el.dataset.gn]; });
   direVariables('Valeurs relues sur le module.', 'ok');
 };
-$('gv-fermer').onclick = () => { $('variables').hidden = true; };
+$('gv-fermer').onclick = () => { rendreVariables(); direVariables('Modifications annulées.', ''); };
 $('gv-enregistrer').onclick = async () => {
   const noms = [], vus = new Set(), fixe = [];
   for (let i = 1; i <= S.GLOBAL_COUNT; i++) {
@@ -1650,7 +1672,6 @@ $('tx-fermer').onclick = () => {
 window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', (e) => {
   const inField = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
-  if (e.key === 'Escape' && !$('phrases').hidden) { $('ph-fermer').click(); return; }
   if (e.key === 'Escape' && !$('texte').hidden) { $('tx-fermer').click(); return; }
   if (e.key === 'Escape') { closeMenu(); choisir(null); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !inField) { e.preventDefault(); doUndo(); }
@@ -1714,8 +1735,11 @@ if (CLOUD) {
     const liste = enAttente(c) ? c.command.phrases : (ph ? ph.entries || [] : []);
     BIBLIO = liste.map((o) => ({ id: o.code, code: o.code, texte: o.texte }));
     if (ph) { BIBLIO_MAX = ph.max || BIBLIO_MAX; BIBLIO_LEN = ph.lenMax || BIBLIO_LEN; }
-    $('b-phrases').disabled = !ph;
-    $('b-phrases').textContent = enAttente(c) ? 'Phrases (en attente)' : 'Phrases';
+    $('t-phr').disabled = !ph;
+    $('t-phr').textContent = enAttente(c) ? 'Phrases (en attente)' : 'Phrases';
+    // Relu depuis l'espace en ligne : l'onglet repart de cette liste.
+    phrPret = false;
+    if (!$('p-phr').hidden) tab('phr');
     renderSim();
   };
 
