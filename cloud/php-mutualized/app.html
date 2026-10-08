@@ -728,6 +728,58 @@ function resumeZonesSauvegarde(zones){
   }).join('<br>');
 }
 
+// Scripts d'une sauvegarde (miroir payload.scripts) : emplacements occupes.
+function resumeScriptsSauvegarde(sc){
+  const occ = ((sc && sc.emplacements) || []).filter(e => e.nom !== undefined);
+  if (!occ.length) return '<span class="hint" style="margin:0">Aucun script.</span>';
+  return occ.map(e => '<b>' + (e.i + 1) + '</b> &mdash; ' + esc(e.nom || 'Sans nom')
+    + ' (' + (e.actif ? 'actif' : 'inactif') + ')').join('<br>');
+}
+
+// Ce qui distingue une sauvegarde de la PRECEDENTE. Une sauvegarde est prise
+// a chaque changement du miroir, quel qu'il soit : sans ce resume, un etat
+// cree par l'effacement d'un script ne montrait que des creneaux identiques
+// a la sauvegarde d'avant (constate le 8 oct. 2026).
+function diffSauvegardes(cur, prev){
+  const out = [];
+  const zc = (cur && cur.zones) || [], zp = (prev && prev.zones) || [];
+  for (let i = 0; i < Math.max(zc.length, zp.length); i++) {
+    const nom = esc((zc[i] || zp[i]).name || ('Zone ' + (i + 1)));
+    if (!zp[i]) out.push('zone <b>' + nom + '</b> ajoutée');
+    else if (!zc[i]) out.push('zone <b>' + nom + '</b> retirée');
+    else if (JSON.stringify(zc[i]) !== JSON.stringify(zp[i])) out.push('zone <b>' + nom + '</b> modifiée');
+  }
+  const ec = ((cur && cur.scripts && cur.scripts.emplacements) || []);
+  const ep = ((prev && prev.scripts && prev.scripts.emplacements) || []);
+  const parI = (l, i) => l.find(e => e.i === i) || { i: i };
+  const n = Math.max(ec.length, ep.length);
+  for (let i = 0; i < n; i++) {
+    const a = parI(ep, i), b = parI(ec, i);
+    const avant = a.nom !== undefined, apres = b.nom !== undefined;
+    const lib = (e) => 'script ' + (i + 1) + ' <b>« ' + esc(e.nom || 'Sans nom') + ' »</b>';
+    if (!avant && apres) out.push(lib(b) + ' créé');
+    else if (avant && !apres) out.push(lib(a) + ' effacé');
+    else if (avant && apres) {
+      const quoi = [];
+      if (a.nom !== b.nom) quoi.push('renommé (avant : « ' + esc(a.nom) + ' »)');
+      if (!!a.actif !== !!b.actif) quoi.push(b.actif ? 'activé' : 'désactivé');
+      if (a.source !== b.source || a.declencheur !== b.declencheur || a.cible !== b.cible
+          || a.octets !== b.octets) quoi.push('modifié');
+      if (quoi.length) out.push(lib(b) + ' ' + quoi.join(', '));
+    }
+  }
+  const nc = cur && cur.scripts ? cur.scripts.notifications : undefined;
+  const np = prev && prev.scripts ? prev.scripts.notifications : undefined;
+  if (typeof nc === 'boolean' && typeof np === 'boolean' && nc !== np) {
+    out.push('notifications ' + (nc ? 'activées' : 'coupées'));
+  }
+  const rc = (cur && cur.settings) || {}, rp = (prev && prev.settings) || {};
+  Object.keys(LIB_REG).forEach(k => {
+    if (JSON.stringify(rc[k]) !== JSON.stringify(rp[k])) out.push('réglage « ' + LIB_REG[k] + ' » modifié');
+  });
+  return out;
+}
+
 async function ouvrirSauvegarde(id){
   let s;
   try {
@@ -736,6 +788,17 @@ async function ouvrirSauvegarde(id){
 
   const zones = (s.payload && s.payload.zones) || [];
   const reg   = (s.payload && s.payload.settings) || null;
+
+  // Sauvegarde precedente (SAUV : de la plus recente a la plus ancienne),
+  // lue a part : son absence (elaguee, premiere sauvegarde, erreur reseau)
+  // ne doit pas empecher d'ouvrir celle-ci.
+  const k = SAUV.findIndex(x => x.id === id);
+  let prec = null;
+  if (k >= 0 && k + 1 < SAUV.length) {
+    try {
+      prec = await api('/app/backup?moduleId=' + encodeURIComponent(MOD) + '&id=' + SAUV[k + 1].id);
+    } catch (e) { prec = null; }
+  }
 
   // Nombre de creneaux actifs : c'est ce qui distingue reellement deux
   // sauvegardes aux yeux de quelqu'un qui cherche laquelle restaurer.
@@ -752,6 +815,13 @@ async function ouvrirSauvegarde(id){
         + '<p class="sous">Enregistrée ' + esc(depuis(s.capturedAt)) + ' &middot; '
         + zones.length + ' zone(s) &middot; ' + actifs + ' créneau(x) actif(s).</p>';
 
+  if (prec) {
+    const d = diffSauvegardes(s.payload, prec.payload);
+    h += '<div class="note" style="margin:0 0 12px"><b>Par rapport à l&rsquo;état précédent :</b> '
+       + (d.length ? d.join(' &middot; ') : 'aucune différence dans les zones, les scripts ni les réglages affichés')
+       + '.</div>';
+  }
+
   // Ce que la restauration APPLIQUERAIT, en clair, avant le bouton --
   // jusqu'ici seul un compte ("37 créneaux actifs") le disait, sans montrer
   // lesquels. Demande explicite : on doit pouvoir juger une sauvegarde sans
@@ -759,6 +829,13 @@ async function ouvrirSauvegarde(id){
   // modifications, pour rester coherent avec un format deja connu.
   h += '<div class="card" style="padding:12px;margin:0 0 12px;background:var(--green-dim)">'
      + '<div class="demande">' + resumeZonesSauvegarde(zones) + '</div></div>';
+
+  const scSauv = s.payload && s.payload.scripts;
+  if (scSauv) {
+    h += '<p class="hint" style="margin:0 0 4px"><b>Scripts</b> (consultation)</p>'
+       + '<div class="card" style="padding:12px;margin:0 0 12px">'
+       + '<div class="demande">' + resumeScriptsSauvegarde(scSauv) + '</div></div>';
+  }
 
   // Reglages systeme : secondaires pour la decision "je restaure ou pas",
   // repliés par defaut plutot que juges "inutiles" et supprimés -- ils
@@ -781,7 +858,7 @@ async function ouvrirSauvegarde(id){
   // Dire ce que la restauration ne fait pas : une sauvegarde en laquelle on
   // croit a tort est pire qu'une sauvegarde dont on connait les limites.
   h += '<div class="note warn">Le bouton ci-dessous renvoie <b>exactement les créneaux '
-     + 'listés plus haut</b> au module. Les réglages système repliés au-dessus sont conservés '
+     + 'listés plus haut</b> au module. Les scripts et les réglages système sont conservés '
      + 'pour consultation, mais le module ne sait pas encore les recevoir : ils se '
      + 'ressaisissent depuis son interface.</div>'
      + '<div class="note">Le mot de passe WiFi, la clé météo et le jeton de notification '
