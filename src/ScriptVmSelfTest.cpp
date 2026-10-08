@@ -39,6 +39,8 @@ struct FakeHost {
     // Rendez-vous « ou » : forks acceptes, et une branche du bloc finie.
     uint8_t forks = 0U;
     bool anyDone = false;
+    // Variables globales jouets (le vrai magasin est ScriptGlobals, en NVS).
+    int32_t globals[16] = {};
 };
 
 bool hostReadInput(void* ctx, uint16_t, int32_t& v) {
@@ -87,10 +89,21 @@ bool hostJoinAny(void* ctx, bool inlineDone) {
     return true;
 }
 
+bool hostGlobalGet(void* ctx, uint8_t i, int32_t& v) {
+    if (i >= 16U) return false;
+    v = static_cast<FakeHost*>(ctx)->globals[i];
+    return true;
+}
+bool hostGlobalSet(void* ctx, uint8_t i, int32_t v) {
+    if (i >= 16U) return false;
+    static_cast<FakeHost*>(ctx)->globals[i] = v;
+    return true;
+}
+
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
     hostAction, hostNotify, hostAlert, hostNow,
-    hostFork, hostBranches, hostJoinAny
+    hostFork, hostBranches, hostJoinAny, hostGlobalGet, hostGlobalSet
 };
 
 // Bloc parallele assemble comme script-lang.js le compile :
@@ -506,6 +519,29 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
         snprintf(detail, sizeof(detail), "attente=%d rendez-vous=%d branche=%d",
                  waited ? 1 : 0, joined ? 1 : 0, branchOk ? 1 : 0);
         record(cases, "parallele : attente et branche", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11f. Variables globales : g4 = g4 + 5 lit et ecrit chez l'hote, et
+    // une globale hors bornes (n°16, soit g17) est refusee au validateur.
+    {
+        total++;
+        FakeHost h; h.globals[3] = 10;
+        Asm a;
+        a.op(ScriptOp::GLOAD).u8v(3).push(5).op(ScriptOp::ADD).op(ScriptOp::GSTORE).u8v(3)
+         .op(ScriptOp::GLOAD).u8v(3).op(ScriptOp::STORE).u8v(0).op(ScriptOp::HALT);
+        ScriptVm vm;
+        vm.load(a.program(), &HOST_OPS, &h);
+        run(vm, 10U);
+        Asm bad;
+        bad.op(ScriptOp::GLOAD).u8v(16).op(ScriptOp::HALT);
+        const bool refuse = validateScriptProgram(bad.program()) == ScriptAbort::BAD_VARIABLE;
+        const bool ok = validateScriptProgram(a.program()) == ScriptAbort::NONE &&
+                        vm.status() == ScriptStatus::FINISHED && h.globals[3] == 15 &&
+                        vm.variable(0) == 15 && refuse;
+        snprintf(detail, sizeof(detail), "g4=%ld var0=%ld refus g17=%d",
+                 (long)h.globals[3], (long)vm.variable(0), refuse ? 1 : 0);
+        record(cases, "variables globales", ok, detail);
         if (ok) passed++;
     }
 

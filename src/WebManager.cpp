@@ -10,6 +10,7 @@
 #include "ScriptAdmin.h"
 #include "ScriptStore.h"
 #include "ScriptMessageCatalogue.h"
+#include "ScriptGlobals.h"
 #include "EventLogCatalogue.h"
 #include "SystemDiagnostics.h"
 #include "TimeUtils.h"
@@ -463,6 +464,7 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/script-erase", handleEraseScript);
     POST_JSON("/api/script-run",   handleRunScript);
     POST_JSON("/api/script-messages", handleSaveScriptMessages);
+    POST_JSON("/api/script-globals", handleSaveScriptGlobals);
     POST_JSON("/api/zoneName",      handleSetZoneName);
     POST_JSON("/api/zoneIdentify",  handleZoneIdentify);
     POST_JSON("/api/webAssetsUrl", handleSetWebAssetsUrl);
@@ -779,6 +781,27 @@ void WebManager::setupRoutes() {
         if (!ScriptMessageCatalogue::load(doc)) {
             sendError(req, "carte SD illisible", 503);
             return;
+        }
+        String body;
+        serializeJson(doc, body);
+        req->send(200, "application/json", body);
+    });
+
+    // Variables globales des scripts (g1..g16) : { count, nameMax,
+    // vars:[{i,nom,valeur}] } avec i de 1 a 16. Lecture libre ; l'ecriture
+    // est signee (POST /api/script-globals, handleSaveScriptGlobals).
+    _server.on("/api/script-globals", HTTP_GET, [](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        doc["count"] = ScriptGlobals::COUNT;
+        doc["nameMax"] = ScriptGlobals::NAME_LEN_MAX;
+        JsonArray vars = doc["vars"].to<JsonArray>();
+        char nom[ScriptGlobals::NAME_LEN_MAX + 1U];
+        for (uint8_t i = 0U; i < ScriptGlobals::COUNT; ++i) {
+            ScriptGlobals::name(i, nom, sizeof(nom));
+            JsonObject v = vars.add<JsonObject>();
+            v["i"] = i + 1U;
+            v["nom"] = nom;
+            v["valeur"] = ScriptGlobals::get(i);
         }
         String body;
         serializeJson(doc, body);
@@ -2131,6 +2154,75 @@ void WebManager::handleSaveScriptMessages(AsyncWebServerRequest* req, JsonDocume
     JsonDocument out;
     out["ok"] = true;
     out["entrees"] = nSeen;
+    sendJson(req, out, 200);
+}
+
+// Corps : { noms:[16 chaines], fixe:[{i,v}...], nonce, sig }. Les 16 noms
+// sont toujours envoyes en entier ; « fixe » ne porte que les valeurs que
+// l'utilisateur a modifiees, pour ne pas ecraser ce qu'un script en cours
+// vient d'ecrire dans les autres. Message signe :
+//   script-globals|<nonce>|<nom1>\n...<nom16>\n|<i>=<v>;...
+void WebManager::handleSaveScriptGlobals(AsyncWebServerRequest* req, JsonDocument& doc) {
+    JsonArrayConst noms = doc["noms"].as<JsonArrayConst>();
+    if (noms.isNull() || noms.size() != ScriptGlobals::COUNT) {
+        sendError(req, "noms : 16 entrees attendues");
+        return;
+    }
+    String canonical = "script-globals|";
+    canonical += static_cast<uint32_t>(doc["nonce"] | 0U);
+    canonical += '|';
+    const char* lus[ScriptGlobals::COUNT] = {};
+    for (uint8_t i = 0U; i < ScriptGlobals::COUNT; ++i) {
+        const char* n = noms[i] | "";
+        const size_t len = strlen(n);
+        if (len > ScriptGlobals::NAME_LEN_MAX) { sendError(req, "nom trop long (23 octets au plus)"); return; }
+        for (size_t k = 0U; k < len; ++k) {
+            const uint8_t c = static_cast<uint8_t>(n[k]);
+            if (c < 0x20U || c == '#' || c == '|') {
+                sendError(req, "nom : caractere interdit (# | ou controle)");
+                return;
+            }
+        }
+        lus[i] = n;
+        canonical += n;
+        canonical += '\n';
+    }
+    canonical += '|';
+    JsonArrayConst fixe = doc["fixe"].as<JsonArrayConst>();
+    if (!fixe.isNull()) {
+        if (fixe.size() > ScriptGlobals::COUNT) { sendError(req, "fixe : 16 entrees au plus"); return; }
+        for (JsonObjectConst f : fixe) {
+            const uint8_t i = f["i"] | 0U;
+            if (i < 1U || i > ScriptGlobals::COUNT || !f["v"].is<int32_t>()) {
+                sendError(req, "fixe : {i:1..16, v:entier} attendu");
+                return;
+            }
+            canonical += i;
+            canonical += '=';
+            canonical += static_cast<int32_t>(f["v"].as<int32_t>());
+            canonical += ';';
+        }
+    }
+    if (!ApiAuth::verify(canonical, doc["nonce"] | 0U, doc["sig"] | "")) {
+        sendError(req, "signature refusee : variables inchangees", 403);
+        return;
+    }
+    if (!ScriptGlobals::setNames(lus)) {
+        sendError(req, "ecriture NVS des noms echouee : variables inchangees", 500);
+        return;
+    }
+    uint8_t fixees = 0U;
+    if (!fixe.isNull()) {
+        for (JsonObjectConst f : fixe) {
+            ScriptGlobals::set(static_cast<uint8_t>((f["i"] | 1U) - 1U), f["v"].as<int32_t>());
+            fixees++;
+        }
+    }
+    EventLog::log(LOG_INFO, "[GVAR] noms enregistres, %u valeur(s) fixee(s) depuis l'editeur",
+                  static_cast<unsigned>(fixees));
+    JsonDocument out;
+    out["ok"] = true;
+    out["fixees"] = fixees;
     sendJson(req, out, 200);
 }
 

@@ -45,6 +45,10 @@ enum class ScriptOp : uint8_t {
     LOAD = 2,        // + u8    : empile la variable n
     STORE = 3,       // + u8    : depile vers la variable n
     DROP = 4,        //           depile et jette
+    // Variables GLOBALES (8 oct. 2026) : partagees par tous les scripts et
+    // conservees d'un redemarrage a l'autre, par l'hote (ScriptGlobals).
+    GLOAD = 5,       // + u8    : empile la variable globale n (0..15)
+    GSTORE = 6,      // + u8    : depile vers la variable globale n
 
     ADD = 16, SUB = 17, MUL = 18, DIV = 19, MOD = 20, NEG = 21,
 
@@ -169,6 +173,9 @@ struct ScriptHostOps {
     // branches ne doivent pas debloquer un bloc « ou » suivant. Absent
     // (nullptr) : JOINANY attend toutes les branches, comme JOIN.
     bool (*joinAny)(void* ctx, bool inlineDone);
+    // Variables globales. Absents (nullptr) ou refus : arret BAD_VARIABLE.
+    bool (*globalGet)(void* ctx, uint8_t index, int32_t& value);
+    bool (*globalSet)(void* ctx, uint8_t index, int32_t value);
 };
 
 struct ScriptProgram {
@@ -198,6 +205,7 @@ class ScriptVm {
 public:
     static constexpr uint8_t STACK_CAPACITY = 24U;
     static constexpr uint8_t VAR_COUNT = 8U;
+    static constexpr uint8_t GLOBAL_COUNT = 16U;   // = ScriptGlobals::COUNT
 
     ScriptVm() = default;
 

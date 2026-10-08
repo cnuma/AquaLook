@@ -4,7 +4,11 @@
 
 #include "EventLog.h"
 #include "NotificationManager.h"
+#include "ScriptGlobals.h"
 #include "ScriptStore.h"
+
+static_assert(AquaLook::Domain::ScriptVm::GLOBAL_COUNT == ScriptGlobals::COUNT,
+              "la machine et le magasin de variables globales doivent compter pareil");
 
 namespace {
 
@@ -229,9 +233,19 @@ bool joinAny(void* raw, bool inlineDone) {
     return true;
 }
 
+bool globalGet(void*, uint8_t index, int32_t& value) {
+    if (index >= ScriptGlobals::COUNT) return false;
+    value = ScriptGlobals::get(index);
+    return true;
+}
+
+bool globalSet(void*, uint8_t index, int32_t value) {
+    return ScriptGlobals::set(index, value);
+}
+
 const ScriptHostOps OPS = {
     readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs,
-    fork, branchesRunning, joinAny
+    fork, branchesRunning, joinAny, globalGet, globalSet
 };
 
 } // namespace

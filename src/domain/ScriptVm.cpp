@@ -32,6 +32,7 @@ static int8_t operandBytes(ScriptOp op) {
         case ScriptOp::JOIN: case ScriptOp::ENDBRANCH: case ScriptOp::JOINANY:
             return 0;
         case ScriptOp::LOAD: case ScriptOp::STORE:
+        case ScriptOp::GLOAD: case ScriptOp::GSTORE:
             return 1;
         case ScriptOp::JMP: case ScriptOp::JZ: case ScriptOp::JNZ:
         case ScriptOp::READ_INPUT: case ScriptOp::ZONE_ACTIVE:
@@ -70,6 +71,11 @@ ScriptAbort validateScriptProgram(const ScriptProgram& program) {
         }
         if (op == ScriptOp::LOAD || op == ScriptOp::STORE) {
             if (program.code[pc + 1U] >= ScriptVm::VAR_COUNT) {
+                return ScriptAbort::BAD_VARIABLE;
+            }
+        }
+        if (op == ScriptOp::GLOAD || op == ScriptOp::GSTORE) {
+            if (program.code[pc + 1U] >= ScriptVm::GLOBAL_COUNT) {
                 return ScriptAbort::BAD_VARIABLE;
             }
         }
@@ -233,6 +239,24 @@ ScriptStatus ScriptVm::tick() {
                 if (u8 >= VAR_COUNT) { fail(ScriptAbort::BAD_VARIABLE); return _status; }
                 if (!pop(a)) return _status;
                 _vars[u8] = a;
+                break;
+
+            case ScriptOp::GLOAD:
+                if (!fetch8(u8)) return _status;
+                if (u8 >= GLOBAL_COUNT || !_host->globalGet ||
+                    !_host->globalGet(_hostCtx, u8, a)) {
+                    fail(ScriptAbort::BAD_VARIABLE); return _status;
+                }
+                if (!push(a)) return _status;
+                break;
+
+            case ScriptOp::GSTORE:
+                if (!fetch8(u8)) return _status;
+                if (u8 >= GLOBAL_COUNT) { fail(ScriptAbort::BAD_VARIABLE); return _status; }
+                if (!pop(a)) return _status;
+                if (!_host->globalSet || !_host->globalSet(_hostCtx, u8, a)) {
+                    fail(ScriptAbort::BAD_VARIABLE); return _status;
+                }
                 break;
 
             case ScriptOp::DROP:

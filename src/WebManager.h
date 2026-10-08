@@ -636,6 +636,7 @@ private:
     void handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSaveScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSaveScriptMessages(AsyncWebServerRequest* req, JsonDocument& doc);
+    void handleSaveScriptGlobals(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleEraseScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleRunScript(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc);

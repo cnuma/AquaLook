@@ -5,6 +5,7 @@
 #include "EventLog.h"
 #include "FaultManager.h"
 #include "NotificationManager.h"
+#include "ScriptGlobals.h"
 
 // Namespace NVS dedie, volontairement minuscule et independant de tout le
 // reste : ce compteur doit rester lisible et inscriptible meme quand le module
@@ -249,6 +250,10 @@ bool BootLoopGuard::clearDegraded() {
 }
 
 void BootLoopGuard::restartDeliberately(const char* reason) {
+    // Variables globales des scripts : leur ecriture est regroupee (au plus
+    // une par minute) ; ne pas perdre la derniere minute sur un redemarrage
+    // voulu.
+    ScriptGlobals::flush();
     Preferences prefs;
     if (prefs.begin(NVS_NAMESPACE, false)) {
         prefs.putBool(KEY_EXPECTED, true);

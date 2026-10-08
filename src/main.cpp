@@ -16,6 +16,7 @@
 #include "PausedWateringStore.h"
 #include "ScriptRunner.h"
 #include "ScriptMessageCatalogue.h"
+#include "ScriptGlobals.h"
 #include "EventLogCatalogue.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
@@ -781,6 +782,9 @@ void setup() {
     webMgr.setInputSampler(&inputSampler);
     scheduleMgr.setPauseObserver(persistPauses);
     restorePauses();
+    // Variables globales des scripts (NVS, a part de la configuration) :
+    // relues avant que le premier script puisse tourner.
+    ScriptGlobals::begin();
     scriptRunner.begin(&inputSampler, &scheduleMgr, &configMgr);
     webMgr.setScriptRunner(&scriptRunner);
 
@@ -893,6 +897,8 @@ void loop() {
     // Apres l'echantillonneur : un script declenche par une entree doit voir
     // la valeur qui l'a declenche, pas celle du tour precedent.
     scriptRunner.update();
+    // Ecriture NVS regroupee des variables globales (au plus une par minute).
+    ScriptGlobals::update(millis());
     RuntimeProfiler::stop(RuntimeProfiler::Component::SCRIPT_RUNNER, startedUs);
 
     startedUs = RuntimeProfiler::start();
