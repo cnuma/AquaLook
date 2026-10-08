@@ -39,7 +39,9 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
    `cleanup.php`, registre de soak) ont été commités et poussés ; **le banc
    N16R8 et le badge n'ont toujours pas été validés sur matériel**.
 
-3. **`AGENTS.md` est partiellement obsolète sur le point central du build.**
+3. **[Résolu le 8 octobre 2026 : `AGENTS.md` impose désormais la chaîne
+   `ProgrammeArrosage_s3` décrite au §5.]** Historique :
+   **`AGENTS.md` était partiellement obsolète sur le point central du build.**
    Il impose de compiler `ProgrammeArrosage_legacy` comme référence et de
    flasher `ProgrammeArrosage_v4`. Or le moteur historique a été **supprimé**
    le 8 septembre (commit `2750866`) : V4 est le seul moteur. `_legacy` et
@@ -597,7 +599,7 @@ des chapitres `08`, `15`, `18` du manuel (identifiants `INV-*`).
   coexistent (LCD liste / grille, Web, page Santé) ; vérifier ce qui est
   réellement à l'écran dans la configuration testée.
 
-### Proposition de mise à jour d'`AGENTS.md` (à décider par le propriétaire)
+### Proposition de mise à jour d'`AGENTS.md` (appliquée le 8 octobre 2026)
 
 - remplacer la chaîne `legacy` + `v4` par `ProgrammeArrosage_s3` comme cible
   de validation, `ProgrammeArrosage` restant compilé si la CYD est encore

@@ -16,9 +16,8 @@ Toute intervention automatisée ou assistée par Codex doit préserver en priori
 
 - Dépôt : `cnuma/AquaLook`
 - Branche stable : `main`
-- Base inspectée pour ce socle : commit `a2cf490aa446c7006557f8df62e1f995f6767359`
-- Checkpoint associé : `AquaLook_2026-06-27_main_checkpoint_complet_a2cf490.zip`
-- Date du socle : 28 juin 2026
+- Point d’entrée de reprise : `docs/REPRISE_INGENIEUR.md`, puis le checkpoint le plus récent de `docs/checkpoints/`
+- Socle historique de ce document : commit `a2cf490` (28 juin 2026) ; mis en cohérence avec la chaîne de build réelle le 8 octobre 2026
 
 Ne jamais reconstruire un fichier depuis un ancien extrait, un souvenir ou une version locale non vérifiée si le dépôt contient une version plus récente.
 
@@ -138,19 +137,13 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 - Avant livraison, identifier pour chaque demande le fichier, la fonction, le point d’appel et le résultat attendu.
 - Si la vérification matérielle n’a pas été effectuée, le signaler explicitement.
 
-### Qualification Legacy / V4
+### Cible de build
 
-Pendant la migration du backend d’exécution :
+Le moteur historique a été supprimé le 8 septembre 2026 (commit `2750866`) : V4 est le seul moteur d’exécution. `ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` ne sont plus que deux alias de `ProgrammeArrosage` (carte CYD historique, en cours d’abandon).
 
-- `ProgrammeArrosage_legacy` est la référence historique et la solution de repli ;
-- `ProgrammeArrosage_v4` est le profil à qualifier en priorité pour les nouveaux développements ;
-- une compilation V4 réussie ne signifie jamais que la fonction est validée en V4 ;
-- une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que si son chemin V4 est réellement instancié, appelé et testé sur la carte avec un effet observable ;
-- tant que `V4RelayPhysicalBackend` n’est pas câblé dans `main.cpp` pour la fonction ou la zone concernée, indiquer explicitement que le test V4 n’est pas représentatif, même si la compilation réussit ;
-- les essais matériels courants doivent être réalisés avec `ProgrammeArrosage_v4` dès que le chemin concerné est actif ;
-- le firmware Legacy ne doit être chargé que pour comparaison, diagnostic de régression, campagne de non-régression ou retour temporaire à la référence stable ;
-- toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée ;
-- ne pas accumuler de nouvelles évolutions importantes tant que les fonctions V4 déjà intégrées n’ont pas été testées.
+- La cible de production et de validation est `ProgrammeArrosage_s3` (ESP32-S3, module de test `192.168.1.141`).
+- `ProgrammeArrosage` (CYD) n’est compilé que si le support de cette carte est explicitement demandé.
+- Une compilation réussie ne signifie jamais qu’une fonction est validée : son chemin doit être réellement instancié, appelé et testé sur la carte avec un effet observable.
 
 Avant la première compilation, le premier téléversement ou l’ouverture du moniteur série d’une nouvelle session, demander explicitement à l’utilisateur sur quel port COM la carte est connectée. Ne jamais supposer que le port de `platformio.ini`, d’une autre machine ou d’une ancienne session est encore valable. Tant que le port n’est pas confirmé, utiliser le marqueur `<PORT_COM>` dans les commandes et proposer `pio device list` si nécessaire.
 
@@ -158,12 +151,12 @@ Pour tout nouveau code embarqué destiné à être testé sur matériel, la cha�
 
 ```powershell
 git diff --check
-pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
-pio device monitor -p <PORT_COM> -b 115200
+python tools/soak/announce_reboot.py
+pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200 --dtr 1 --rts 0
 ```
 
-La cible `upload` compile automatiquement V4 avant le téléversement. Ne pas lancer une compilation V4 séparée juste avant cette commande, sauf besoin explicite de diagnostic. Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_v4` pour la validation de compilation.
+La cible `upload` compile automatiquement avant le téléversement (build S3 complet : environ 5 minutes). Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_s3` pour la validation de compilation. Sur le S3 (USB natif), `--dtr 1` est obligatoire : sans lui le moniteur reste muet. Fermer le moniteur avant un téléversement (il tient le port). `announce_reboot.py` ouvre la fenêtre de maintenance de la campagne de soak avant tout flash de `.141`.
 
 Consigner le profil réellement flashé, le port série utilisé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
 
@@ -172,8 +165,8 @@ Consigner le profil réellement flashé, le port série utilisé, le point d’e
 - `data/` contient les ressources complètes destinées notamment à la carte SD.
 - `littlefs/` contient uniquement les secours techniques embarqués réellement nécessaires et constitue le `data_dir` PlatformIO.
 - Ne jamais déposer dans `littlefs/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
-- Après toute modification de `littlefs/`, exécuter obligatoirement `pio run -e ProgrammeArrosage_v4 -t buildfs`.
-- Avant checkpoint ou livraison nécessitant un repli complet, valider aussi `pio run -e ProgrammeArrosage_legacy -t buildfs`.
+- Après toute modification de `littlefs/`, exécuter obligatoirement `pio run -e ProgrammeArrosage_s3 -t buildfs`.
+- Les pages Web servies par le module vivent sur la carte SD (`data/`). Toute modification de `data/scripts-schema.html`, `data/script-schema.js` ou `data/style-base.css` se recopie aussi dans `/editeur/` sur AlwaysData ; une publication des ressources Web passe par `tools/publish_web_assets.py` (fichiers d’abord, manifeste en dernier).
 - Un changement Web doit avoir un bilan de taille maîtrisé. La partition est proche de sa limite.
 
 ### Persistance
@@ -213,14 +206,14 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 
 - La sortie série de démarrage doit identifier explicitement le produit, la version fonctionnelle, la cible ou le profil matériel actif, l’environnement PlatformIO, le numéro de build, le SHA Git court et, lorsque disponible, la branche Git.
 - Ces informations doivent provenir de la source unique d’identité de build définie par le projet ; il est interdit de conserver ou d’ajouter un numéro de version, une cible ou un nom d’environnement écrit en dur dans `main.cpp`, un splash, un log ou une page Web.
-- Le splash doit afficher au minimum le nom du produit, la version fonctionnelle, la cible active (`LEGACY`, `V4` ou futur profil explicite), l’identifiant de build ou le SHA court, l’étape courante et une progression lisible.
+- Le splash doit afficher au minimum le nom du produit, la version fonctionnelle, la cible active (profil matériel et moteur, par exemple `S3` / `V4`), l’identifiant de build ou le SHA court, l’étape courante et une progression lisible.
 - Chaque étape significative du boot doit produire une information cohérente sur le splash et dans la sortie série, avec un état distinguant au minimum : en cours, réussi, dégradé et échec.
 - Un mode dégradé ou un fallback matériel doit être nommé explicitement ; il ne doit jamais être présenté comme un démarrage nominal.
 - La fin du boot doit produire un bilan synthétique comprenant au minimum la version, la cible active, la durée de démarrage, l’état réseau ou l’adresse IP lorsqu’elle est disponible, le nombre de zones et la mémoire libre utile.
 - Les messages de boot doivent permettre de diagnostiquer rapidement où le démarrage s’est arrêté, sans exiger l’activation de logs de développement supplémentaires.
 - Toute nouvelle étape d’initialisation ajoutée au runtime doit être intégrée à cette progression de boot ou être explicitement documentée comme volontairement silencieuse.
 - Aucun délai long ou non borné ne doit être ajouté uniquement pour l’esthétique. Une temporisation courte de lisibilité du splash est autorisée lorsqu’elle est explicitement demandée ou configurée, documentée dans le code, bornée par une constante et appliquée uniquement pendant `setup()`, sans retarder une action de sécurité ni le contrôle des relais.
-- Avant livraison, vérifier les sorties des environnements `ProgrammeArrosage` et `ProgrammeArrosage_v4` afin de confirmer que l’identité affichée correspond réellement au binaire compilé.
+- Avant livraison, vérifier sur la carte (sortie série ou `/api/diagnostics`, champ `build`) que l’identité affichée correspond réellement au binaire compilé de `ProgrammeArrosage_s3`.
 
 ### Validation obligatoire des fichiers livrés
 
@@ -240,14 +233,14 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 4. Faire la modification minimale.
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
 6. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
-7. Exécuter `git diff --check`, puis `pio run -e ProgrammeArrosage_legacy`.
-8. Si un essai matériel V4 est prévu, exécuter directement `pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>` ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_v4`.
-9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_v4 -t buildfs` ; avant checkpoint ou livraison de repli, valider aussi le buildfs Legacy.
-10. Pour une modification matérielle ciblée, utiliser `pio run -e calibration`, `pio run -e test_relais` ou `pio run -e test_execution_engine` selon le périmètre.
-11. Pour tout nouveau chemin V4 actif, ouvrir le moniteur série sur `<PORT_COM>` et effectuer le test matériel correspondant.
+7. Exécuter `git diff --check`.
+8. Si un essai matériel est prévu, exécuter directement `pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>` (précédé de `python tools/soak/announce_reboot.py`) ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_s3`.
+9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_s3 -t buildfs`.
+10. Pour une modification matérielle ciblée, utiliser le banc `test_*_s3` correspondant (par exemple `test_relay_s3`, `test_sd_s3`).
+11. Pour tout nouveau chemin actif, ouvrir le moniteur série sur `<PORT_COM>` avec `--dtr 1 --rts 0` et effectuer le test matériel correspondant.
 12. Examiner le diff final et rechercher duplication HTML/CSS/JS, IDs dupliqués, blocs ajoutés plusieurs fois, changement hors périmètre et hausse anormale de taille.
 13. Valider avec l’outil cible tout patch, script, archive ou fichier de transformation destiné à l’utilisateur.
-14. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut des compilations Legacy et V4, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
+14. Documenter les fichiers modifiés, fichiers volontairement non modifiés, statut de compilation `ProgrammeArrosage_s3`, port et profil flashé, statut LittleFS, tests matériels réalisés et restant à faire, risques et incertitudes.
 
 ## Livrables
 
