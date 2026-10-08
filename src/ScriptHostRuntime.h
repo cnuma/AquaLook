@@ -59,6 +59,11 @@ struct ScriptRuntimeContext {
     uint16_t forkPc = NO_FORK;
     uint8_t branchesRunning = 0U;
     bool isBranch = false;
+    // Rendez-vous « ou » : generation du bloc parallele en cours (les
+    // branches en heritent a leur depart) et fin d'une de ses branches. Une
+    // branche d'un bloc deja clos ne debloque pas le suivant.
+    uint8_t branchGen = 0U;
+    bool genDone = false;
 };
 
 const AquaLook::Domain::ScriptHostOps& scriptHostOps();

@@ -220,9 +220,18 @@ uint8_t branchesRunning(void* raw) {
     return ctx ? ctx->branchesRunning : 0U;
 }
 
+bool joinAny(void* raw, bool inlineDone) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    if (!ctx) return true;
+    if (!inlineDone && !ctx->genDone) return false;
+    ctx->branchGen++;      // clot le bloc : ses branches restantes ne comptent plus
+    ctx->genDone = false;
+    return true;
+}
+
 const ScriptHostOps OPS = {
     readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs,
-    fork, branchesRunning
+    fork, branchesRunning, joinAny
 };
 
 } // namespace

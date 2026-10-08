@@ -36,6 +36,9 @@ struct FakeHost {
     bool acceptFork = false;
     uint16_t forkPc = 0U;
     uint8_t branches = 0U;
+    // Rendez-vous « ou » : forks acceptes, et une branche du bloc finie.
+    uint8_t forks = 0U;
+    bool anyDone = false;
 };
 
 bool hostReadInput(void* ctx, uint16_t, int32_t& v) {
@@ -73,14 +76,21 @@ bool hostFork(void* ctx, uint16_t pc) {
     if (!h->acceptFork) return false;
     h->forkPc = pc;
     h->branches = 1U;
+    h->forks++;
     return true;
 }
 uint8_t hostBranches(void* ctx) { return static_cast<FakeHost*>(ctx)->branches; }
+bool hostJoinAny(void* ctx, bool inlineDone) {
+    FakeHost* h = static_cast<FakeHost*>(ctx);
+    if (!inlineDone && !h->anyDone) return false;
+    h->anyDone = false;
+    return true;
+}
 
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
     hostAction, hostNotify, hostAlert, hostNow,
-    hostFork, hostBranches
+    hostFork, hostBranches, hostJoinAny
 };
 
 // Bloc parallele assemble comme script-lang.js le compile :
@@ -116,6 +126,39 @@ ParallelProgram assembleParallel() {
     u8((uint8_t)ScriptOp::HALT);
     c[forkAt] = (uint8_t)(p.branch2 & 0xFF); c[forkAt + 1] = (uint8_t)(p.branch2 >> 8);
     c[jmpAt] = (uint8_t)(fin & 0xFF);        c[jmpAt + 1] = (uint8_t)(fin >> 8);
+    return p;
+}
+
+
+// Bloc « parallele ou » assemble comme script-lang.js le compile :
+//   FORK L1 ; FORK L2 ; JOINANY ; JMP fin ; L1: var0 = 1 ; ENDBRANCH ;
+//   L2: var1 = 2 ; ENDBRANCH ; fin: var2 = 7 ; JOIN ; HALT
+ParallelProgram assembleParallelOu() {
+    ParallelProgram p;
+    uint8_t* c = p.code;
+    uint16_t& n = p.n;
+    auto u8 = [&](uint8_t v) { c[n++] = v; };
+    auto u16 = [&](uint16_t v) { c[n++] = (uint8_t)(v & 0xFF); c[n++] = (uint8_t)(v >> 8); };
+    auto push = [&](int32_t v) {
+        u8((uint8_t)ScriptOp::PUSH);
+        const uint32_t r = (uint32_t)v;
+        for (uint8_t i = 0U; i < 4U; ++i) u8((uint8_t)((r >> (8U * i)) & 0xFFU));
+    };
+    u8((uint8_t)ScriptOp::FORK); const uint16_t f1 = n; u16(0);
+    u8((uint8_t)ScriptOp::FORK); const uint16_t f2 = n; u16(0);
+    u8((uint8_t)ScriptOp::JOINANY);
+    u8((uint8_t)ScriptOp::JMP); const uint16_t jmpAt = n; u16(0);
+    const uint16_t l1 = n;
+    push(1); u8((uint8_t)ScriptOp::STORE); u8(0); u8((uint8_t)ScriptOp::ENDBRANCH);
+    p.branch2 = n;
+    push(2); u8((uint8_t)ScriptOp::STORE); u8(1); u8((uint8_t)ScriptOp::ENDBRANCH);
+    const uint16_t fin = n;
+    push(7); u8((uint8_t)ScriptOp::STORE); u8(2);
+    u8((uint8_t)ScriptOp::JOIN);
+    u8((uint8_t)ScriptOp::HALT);
+    c[f1] = (uint8_t)(l1 & 0xFF);         c[f1 + 1] = (uint8_t)(l1 >> 8);
+    c[f2] = (uint8_t)(p.branch2 & 0xFF);  c[f2 + 1] = (uint8_t)(p.branch2 >> 8);
+    c[jmpAt] = (uint8_t)(fin & 0xFF);     c[jmpAt + 1] = (uint8_t)(fin >> 8);
     return p;
 }
 
@@ -463,6 +506,48 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
         snprintf(detail, sizeof(detail), "attente=%d rendez-vous=%d branche=%d",
                  waited ? 1 : 0, joined ? 1 : 0, branchOk ? 1 : 0);
         record(cases, "parallele : attente et branche", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11d. « parallele ou » avec places : deux branches parties ailleurs,
+    // la suite attend la PREMIERE finie, puis le HALT attend la restante.
+    {
+        total++;
+        FakeHost h; h.acceptFork = true;
+        const ParallelProgram p = assembleParallelOu();
+        const ScriptProgram prog(p.code, p.n);
+        ScriptVm vm;
+        vm.load(prog, &HOST_OPS, &h);
+        run(vm, 6U, &h, 100U);
+        const bool waitAny = vm.status() == ScriptStatus::WAITING && h.forks == 2U &&
+                             vm.variable(2) == 0 && vm.variable(0) == 0;
+        h.anyDone = true;                 // une branche finie, l'autre tourne
+        run(vm, 6U, &h, 300U);
+        const bool suite = vm.variable(2) == 7 && vm.status() == ScriptStatus::WAITING;
+        h.branches = 0U;                  // la restante finit
+        run(vm, 6U, &h, 300U);
+        const bool fini = vm.status() == ScriptStatus::FINISHED;
+        const bool ok = validateScriptProgram(prog) == ScriptAbort::NONE && waitAny && suite && fini;
+        snprintf(detail, sizeof(detail), "attente=%d suite=%d fin=%d forks=%u",
+                 waitAny ? 1 : 0, suite ? 1 : 0, fini ? 1 : 0, (unsigned)h.forks);
+        record(cases, "parallele ou : premiere finie", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11e. « parallele ou » sans place : les deux branches faites sur place,
+    // l'une apres l'autre, puis la suite -- rien n'est perdu ni bloque.
+    {
+        total++;
+        FakeHost h;   // acceptFork = false
+        const ParallelProgram p = assembleParallelOu();
+        ScriptVm vm;
+        vm.load(ScriptProgram(p.code, p.n), &HOST_OPS, &h);
+        run(vm, 20U);
+        const bool ok = vm.status() == ScriptStatus::FINISHED && vm.variable(0) == 1 &&
+                        vm.variable(1) == 2 && vm.variable(2) == 7;
+        snprintf(detail, sizeof(detail), "var0=%ld var1=%ld var2=%ld (attendu 1, 2, 7)",
+                 (long)vm.variable(0), (long)vm.variable(1), (long)vm.variable(2));
+        record(cases, "parallele ou : repli sur place", ok, detail);
         if (ok) passed++;
     }
 

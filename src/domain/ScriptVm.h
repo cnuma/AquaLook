@@ -83,6 +83,15 @@ enum class ScriptOp : uint8_t {
     JOIN = 85,       // rend la main tant que la branche 2 tourne ailleurs
     ENDBRANCH = 86,  // fin de branche 2 : termine la machine-branche, ou
                      // revient apres FORK quand la branche a ete faite ici
+    // Bloc « parallele ou » (8 oct. 2026) : la suite reprend des que l'UNE
+    // des deux branches est finie, l'autre continue. Forme compilee :
+    // FORK L1 ; FORK L2 ; JOINANY ; JMP fin ; L1: [1] ENDBRANCH ;
+    // L2: [2] ENDBRANCH ; fin: -- et un JOIN avant le HALT final, pour que
+    // la branche restante ne soit pas arretee avec le script. Chaque FORK
+    // accepte rend la main, pour que l'hote demarre la branche avant le
+    // FORK suivant. Une branche faite sur place (pas de place libre) compte
+    // comme finie.
+    JOINANY = 87,    // rend la main tant qu'aucune branche du bloc n'est finie
 };
 
 // Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
@@ -153,6 +162,13 @@ struct ScriptHostOps {
     // Absents (nullptr) : FORK execute toujours la branche sur place.
     bool (*fork)(void* ctx, uint16_t pc);
     uint8_t (*branchesRunning)(void* ctx);
+    // Rendez-vous « ou » et cloture de bloc. Retourne true -- et clot le bloc
+    // en cours, dont les branches restantes ne compteront plus -- si une
+    // branche du bloc est finie ou si inlineDone ; false sinon. Appele avec
+    // inlineDone=true au passage d'un JOIN, pour clore le bloc « et » : ses
+    // branches ne doivent pas debloquer un bloc « ou » suivant. Absent
+    // (nullptr) : JOINANY attend toutes les branches, comme JOIN.
+    bool (*joinAny)(void* ctx, bool inlineDone);
 };
 
 struct ScriptProgram {
@@ -240,6 +256,9 @@ private:
     static constexpr uint32_t JOIN_POLL_MS = 250U;
     uint16_t _returnPc = NO_RETURN;
     bool _isBranch = false;
+    // Une branche a ete faite sur place depuis le dernier rendez-vous : pour
+    // JOINANY, elle est finie.
+    bool _inlineDone = false;
 
     ScriptStatus _status = ScriptStatus::READY;
     ScriptAbort _abort = ScriptAbort::NONE;

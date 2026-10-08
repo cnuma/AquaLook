@@ -60,7 +60,7 @@
       case 'attendre': n.sec = 300; break;
       case 'notifier': case 'message': n.code = c; break;
       case 'lancer': n.script = ctx && ctx.scriptNo ? ctx.scriptNo : 1; break;
-      case 'parallele': n.a = []; n.b = []; break;
+      case 'parallele': n.a = []; n.b = []; n.mode = 'et'; break;
       case 'si': n.cond = { terms: [{ k: 'entree', id: e, v: 1 }], ops: [] }; n.oui = []; n.non = []; break;
       case 'repeter': n.n = 3; n.body = []; break;
       case 'tantque': n.cond = { terms: [{ k: 'zoneactive', id: z, v: 1 }], ops: [] }; n.body = []; break;
@@ -174,11 +174,14 @@
             add(d, 'finpour', n.id);
             break;
           case 'parallele':
-            add(d, 'parallele   # les deux branches partent ensemble', n.id);
+            // mode absent (schema anterieur au 8 oct. 2026) = « et ».
+            const ou = n.mode === 'ou';
+            add(d, ou ? 'parallele ou   # la suite reprend dès qu’une branche est finie'
+              : 'parallele   # les deux branches partent ensemble', n.id);
             walk(n.a, d + 1, loopDepth);
             add(d, 'avec', n.id);
             walk(n.b, d + 1, loopDepth);
-            add(d, 'finparallele   # attend la fin des deux branches', n.id);
+            add(d, ou ? 'finparallele   # l’autre branche continue' : 'finparallele   # attend la fin des deux branches', n.id);
             break;
           case 'tantque':
             add(d, 'tantque ' + condCode(n.cond) + ' faire', n.id);
@@ -335,7 +338,8 @@
         if (inParallel) throw new Unsupported('bloc « parallele » dans un autre', ln);
         next();
         inParallel = true;
-        const n = { id: newId(), t: 'parallele', a: [], b: [] };
+        const n = { id: newId(), t: 'parallele', a: [], b: [], mode: 'et' };
+        if (peek() === 'ou') { next(); n.mode = 'ou'; } else if (peek() === 'et') next();
         n.a = block(['avec']);
         expect('avec');
         n.b = block(['finparallele', 'finparallèle']);

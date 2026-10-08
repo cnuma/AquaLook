@@ -86,6 +86,10 @@ private:
         // qui tourne dans la place parentSlot.
         bool isBranch = false;
         uint8_t parentSlot = 0xFF;
+        // Generation du bloc parallele qui l'a ouverte (ctx.branchGen du
+        // parent au depart) : seule une branche du bloc en cours debloque
+        // un rendez-vous « ou ».
+        uint8_t gen = 0U;
         uint16_t codeSize = 0U;
         char name[ScriptStore::MAX_NAME] = {};
         uint8_t code[ScriptStore::MAX_BYTECODE] = {};

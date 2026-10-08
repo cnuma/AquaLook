@@ -29,7 +29,7 @@ static int8_t operandBytes(ScriptOp op) {
         case ScriptOp::LE:  case ScriptOp::GT:  case ScriptOp::GE:
         case ScriptOp::AND: case ScriptOp::OR:  case ScriptOp::NOT:
         case ScriptOp::WAIT:
-        case ScriptOp::JOIN: case ScriptOp::ENDBRANCH:
+        case ScriptOp::JOIN: case ScriptOp::ENDBRANCH: case ScriptOp::JOINANY:
             return 0;
         case ScriptOp::LOAD: case ScriptOp::STORE:
             return 1;
@@ -115,6 +115,7 @@ void ScriptVm::load(const ScriptProgram& program,
     _wakeAtMs = 0U;
     _returnPc = NO_RETURN;
     _isBranch = false;
+    _inlineDone = false;
     _startedMs = (host && host->nowMs) ? host->nowMs(hostContext) : 0U;
     _abort = ScriptAbort::NONE;
     _status = (program.code && program.size > 0U)
@@ -367,7 +368,10 @@ ScriptStatus ScriptVm::tick() {
             case ScriptOp::FORK: {
                 if (!fetch16(u16)) return _status;
                 if (u16 >= _program.size) { fail(ScriptAbort::BAD_JUMP); return _status; }
-                if (_host->fork && _host->fork(_hostCtx, u16)) break;   // branche 2 ailleurs
+                // Branche ailleurs : rendre la main, pour que l'hote la
+                // demarre avant un eventuel second FORK (bloc « ou »), qu'il
+                // refuserait sinon dans le meme tour.
+                if (_host->fork && _host->fork(_hostCtx, u16)) return _status;
                 // Pas de place : faire la branche 2 ici, puis revenir. Un
                 // second retour en attente voudrait dire un bloc imbrique,
                 // que le compilateur refuse -- ne pas l'executer de travers.
@@ -386,7 +390,20 @@ ScriptStatus ScriptVm::tick() {
                     _status = ScriptStatus::WAITING;
                     return _status;
                 }
+                if (_host->joinAny) _host->joinAny(_hostCtx, true);   // clot le bloc
+                _inlineDone = false;
                 break;
+
+            case ScriptOp::JOINANY:
+                if (_host->joinAny ? _host->joinAny(_hostCtx, _inlineDone)
+                                   : !(_host->branchesRunning && _host->branchesRunning(_hostCtx) > 0U)) {
+                    _inlineDone = false;
+                    break;
+                }
+                _pc = here;
+                _wakeAtMs = now + JOIN_POLL_MS;
+                _status = ScriptStatus::WAITING;
+                return _status;
 
             case ScriptOp::ENDBRANCH:
                 if (_isBranch) {
@@ -396,6 +413,7 @@ ScriptStatus ScriptVm::tick() {
                 if (_returnPc != NO_RETURN) {
                     _pc = _returnPc;
                     _returnPc = NO_RETURN;
+                    _inlineDone = true;
                     break;
                 }
                 // Atteint sans FORK prealable : programme mal forme.

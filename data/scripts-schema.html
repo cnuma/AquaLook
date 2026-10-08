@@ -497,7 +497,7 @@ function subOf(n) {
     case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
     case 'lancer': return scriptNom(n.script) + ' · en parallèle';
     case 'si': return condLabel(n.cond) + ' ?';
-    case 'parallele': return 'les deux branches partent ensemble';
+    case 'parallele': return n.mode === 'ou' ? 'Ou : reprend dès la 1re finie' : 'Et : attend les deux branches';
     case 'repeter': return n.n + ' fois';
     case 'tantque': return condLabel(n.cond);
   }
@@ -574,7 +574,7 @@ function nodeEl(n) {
       w.appendChild(f);
     } else {
       const fin = document.createElement('div'); fin.className = 'chip par join';
-      fin.textContent = 'attend les deux';
+      fin.textContent = n.mode === 'ou' ? 'Ou : reprend dès la 1re finie, l’autre continue' : 'Et : attend les deux';
       w.appendChild(fin);
     }
     return w;
@@ -727,10 +727,15 @@ function renderProps() {
     if ('zone' in n) h += '<div class="f"><label for="p-z">Zone</label><select id="p-z" data-f="zone">' + zoneOpts(n.zone) + '</select></div>';
     if ('sec' in n) h += dureeField(n.sec);
     if (n.t === 'parallele') {
-      h += '<div class="hint">Les blocs de la <b>branche 1</b> et de la <b>branche 2</b> partent en même temps ; '
-        + 'la suite du script attend que les deux soient finies. Les deux branches occupent deux des '
-        + SIMULT + ' places du module : s’il n’en reste qu’une, la branche 2 s’exécute après la branche 1, '
-        + 'et le journal le signale.</div>';
+      const ou = n.mode === 'ou';
+      h += '<div class="f"><label for="p-mode">La suite du script reprend</label><select id="p-mode" data-f="mode">'
+        + optsMap({ et: 'script en Et : quand les deux branches sont finies', ou: 'script en Ou : dès que l’une est finie' }, ou ? 'ou' : 'et')
+        + '</select></div>'
+        + '<div class="hint">Les blocs de la <b>branche 1</b> et de la <b>branche 2</b> partent en même temps. '
+        + (ou ? 'Dès que l’une est finie, la suite du script part ; l’autre continue jusqu’au bout, et le script ne se termine qu’avec elle. '
+              + 'Le bloc occupe trois des ' + SIMULT + ' places du module (le script et ses deux branches)'
+              : 'La suite du script attend que les deux soient finies. Le bloc occupe deux des ' + SIMULT + ' places du module')
+        + ' : faute de place, une branche s’exécute à la suite de l’autre, et le journal le signale.</div>';
     }
     if (n.t === 'lancer') {
       h += '<div class="f"><label for="p-s">Script à lancer</label><select id="p-s" data-f="script">'
@@ -788,6 +793,7 @@ function wireProps(p) {
       else if (k === 'target') change(() => { doc.trigger.target = parseInt(f.value, 10) || 0; }, false);
       else if (k === 'actif') change(() => { doc.actif = f.value === '1'; }, true);
       else if (k === 'attente') change(() => { n.attente = f.checked; }, true);
+      else if (k === 'mode') change(() => { n.mode = f.value === 'ou' ? 'ou' : 'et'; }, true);
       else if (k === 'duree') change(() => {
         const v = Math.max(1, Math.round(parseFloat($('p-d').value) || 1));
         n.sec = Math.min(86400, v * parseInt($('p-u').value, 10));
@@ -1028,6 +1034,7 @@ async function essai() {
   const evalTerm = (t) => (t.k === 'entree' ? ($('sim' + t.id) && $('sim' + t.id).checked ? 1 : 0) : (active.has(t.id) ? 1 : 0)) === t.v;
   const evalCond = (c) => S.condEval(c, evalTerm);
   log('Départ : ' + trigText()); await flash('start');
+  const fond = [];   // branches des blocs « ou », que la fin du script attend
   async function exec(list) {
     for (const n of list) {
       if (stopReq) return;
@@ -1046,8 +1053,16 @@ async function essai() {
         case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
         case 'parallele':
           log('Les deux branches partent ensemble');
-          await Promise.all([exec(n.a), exec(n.b)]);
-          log('Les deux branches sont finies : la suite reprend');
+          if (n.mode === 'ou') {
+            // L'autre branche continue ; le script ne finit qu'avec elle.
+            const deux = [exec(n.a), exec(n.b)];
+            fond.push(...deux);
+            await Promise.race(deux);
+            log('Une branche est finie : la suite reprend, l’autre continue');
+          } else {
+            await Promise.all([exec(n.a), exec(n.b)]);
+            log('Les deux branches sont finies : la suite reprend');
+          }
           break;
         case 'si': { const r = evalCond(n.cond); log(condLabel(n.cond) + ' ? ' + (r ? 'oui' : 'non')); await exec(r ? n.oui : n.non); break; }
         case 'repeter': for (let k = 1; k <= n.n && !stopReq; k++) { log('Tour ' + k + ' sur ' + n.n); await exec(n.body); } break;
@@ -1060,6 +1075,7 @@ async function essai() {
     }
   }
   await exec(doc.body);
+  if (fond.length) { log('Attend les branches encore en cours'); await Promise.all(fond); }
   log(stopReq ? 'Essai interrompu' : 'Fin du script');
   running = false; $('b-essai').lastChild.textContent = 'Essai à blanc'; markSel();
 }

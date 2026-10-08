@@ -121,6 +121,7 @@ bool ScriptRunner::startBranch(uint8_t parentSlot, uint16_t pc) {
     b.index = parent.index;
     b.isBranch = true;
     b.parentSlot = parentSlot;
+    b.gen = parent.ctx.branchGen;
     b.active = true;
     b.vm.load(ScriptProgram(b.code, b.codeSize), &scriptHostOps(), &b.ctx);
     b.vm.startBranch(pc);
@@ -259,6 +260,7 @@ void ScriptRunner::update() {
             Job& parent = _jobs[job.parentSlot];
             if (parent.active && !parent.isBranch && parent.ctx.branchesRunning > 0U) {
                 parent.ctx.branchesRunning--;
+                if (job.gen == parent.ctx.branchGen) parent.ctx.genDone = true;
             }
             EventLog::log(LOG_INFO, "Script %u : branche parallele terminee",
                           (unsigned)(job.index + 1U));
@@ -312,6 +314,9 @@ void ScriptRunner::update() {
             // rien n'a demarre entre le tick et ici.
             if (!startBranch(s, forkPc)) {
                 if (job.ctx.branchesRunning > 0U) job.ctx.branchesRunning--;
+                // Sans quoi un rendez-vous « ou » l'attendrait jusqu'au
+                // plafond de duree : l'erreur est journalisee ci-dessous.
+                job.ctx.genDone = true;
                 EventLog::log(LOG_ERROR, "Script %u : branche parallele non demarree",
                               (unsigned)(job.index + 1U));
             }

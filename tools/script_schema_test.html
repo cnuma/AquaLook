@@ -81,6 +81,31 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   try{ S.parse('parallele\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'parallele imbrique relu a tort'); }
   catch(e){ ok(e instanceof S.Unsupported,'parallele imbrique refuse a la relecture'); }
 }
+// 2f. « En parallele » en Et / en Ou (8 oct. 2026)
+{
+  const p=mk('parallele'); ok(p.mode==='et','nouveau bloc : en Et par defaut');
+  const z1=mk('arroser'); z1.zone=1; z1.sec=60; const z2=mk('arroser'); z2.zone=2; z2.sec=60;
+  p.a=[z1]; p.b=[z2];
+  const gEt=S.generate([p],names).text;
+  // schema anterieur (sans champ mode) : meme texte, meme bytecode qu'en Et
+  const old=JSON.parse(JSON.stringify(p)); delete old.mode;
+  ok(S.generate([old],names).text===gEt,'schema sans champ mode : texte identique a Et');
+  ok(JSON.stringify(AquaScript.compile('parallele et\navec\nfinparallele').slice())===JSON.stringify(AquaScript.compile('parallele\navec\nfinparallele').slice()),'« parallele et » = « parallele »');
+  p.mode='ou';
+  const g=S.generate([p,mk('notifier')],names).text;
+  ok(/^parallele ou/.test(g),'texte : parallele ou');
+  const c=AquaScript.compile(g);
+  // FORK L1 ; FORK L2 ; JOINANY ; JMP fin ; L1: [1] ENDBRANCH ; L2: [2] ENDBRANCH ; fin: ... JOIN ; HALT
+  const l1=c[1]|(c[2]<<8), l2=c[4]|(c[5]<<8), fin=c[8]|(c[9]<<8);
+  ok(c[0]===84 && c[3]===84 && c[6]===87 && c[7]===48,'ou : FORK, FORK, JOINANY, JMP');
+  ok(l1===10 && c[l2-1]===86 && c[fin-1]===86,'ou : branches closes par ENDBRANCH');
+  ok(c[c.length-2]===85 && c[c.length-1]===0,'ou : JOIN juste avant le HALT final');
+  rt([p,mk('notifier')],'parallele ou + suite');
+  ok(S.parse(g)[0].mode==='ou','relecture : mode ou');
+  const cEt=AquaScript.compile(gEt); ok(cEt[cEt.length-1]===0 && cEt[cEt.length-2]===86,'Et seul : pas de JOIN final ajoute');
+  try{ AquaScript.compile('parallele ou\nparallele\navec\nfinparallele\navec\nfinparallele'); ok(false,'ou imbrique accepte a tort'); }
+  catch(e){ ok(e.line===2,'ou imbrique refuse a la compilation'); }
+}
 // 2e. « et » / « ou » entre chaque condition, « et » avant « ou » (7 oct. 2026)
 {
   const T=(id)=>({k:'entree',id:id,v:1});

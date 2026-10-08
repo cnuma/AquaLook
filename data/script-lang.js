@@ -25,7 +25,11 @@
 //   message <code>                   -- une ligne dans le journal
 //   notifier <code>                  -- une vraie notification, si configuree
 //   lancer script <n>                -- demarre le script n (1..6) en parallele
-//   parallele ... avec ... finparallele  -- deux branches qui partent ensemble
+//   parallele [et] ... avec ... finparallele  -- deux branches qui partent
+//                                    ensemble ; la suite attend les deux
+//   parallele ou ... avec ... finparallele     -- la suite reprend des que
+//                                    l'une est finie, l'autre continue ; le
+//                                    script ne finit qu'avec elle
 //   <var> = <expr>
 //
 //   Expressions : nombres, variables a..h, entree(<id>), zoneactive(<id>),
@@ -46,7 +50,7 @@
     JMP: 48, JZ: 49, JNZ: 50,
     READ_INPUT: 64, ZONE_ACTIVE: 65, ZONE_REMAIN: 66,
     ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83,
-    FORK: 84, JOIN: 85, ENDBRANCH: 86
+    FORK: 84, JOIN: 85, ENDBRANCH: 86, JOINANY: 87
   };
 
   const ACTION = {
@@ -105,6 +109,9 @@
     // Un seul bloc « parallele » a la fois : la machine ne garde qu'un retour
     // pour le cas ou elle doit faire la branche 2 elle-meme (ScriptVm FORK).
     let inParallel = false;
+    // Au moins un bloc « parallele ou » : JOIN avant le HALT final, sinon
+    // l'hote arreterait la branche restante a la fin du script (ScriptRunner).
+    let ouUsed = false;
 
     const peek = () => toks[i].v;
     const line = () => toks[i].line;
@@ -250,7 +257,29 @@
           throw new CompileError('un bloc « parallele » ne peut pas en contenir un autre', line());
         }
         next();
+        const ou = lower(peek()) === 'ou';
+        if (ou || lower(peek()) === 'et') next();
         inParallel = true;
+        if (ou) {
+          // FORK L1 ; FORK L2 ; JOINANY ; JMP fin ; L1: [1] ENDBRANCH ;
+          // L2: [2] ENDBRANCH ; fin: -- voir ScriptVm.h, JOINANY.
+          ouUsed = true;
+          emit(OP.FORK); const toB1 = out.length; emitU16(0);
+          emit(OP.FORK); const toB2 = out.length; emitU16(0);
+          emit(OP.JOINANY);
+          const toEndOu = emitJump(OP.JMP);
+          patch(toB1, out.length);
+          block(['avec']);
+          expect('avec');
+          emit(OP.ENDBRANCH);
+          patch(toB2, out.length);
+          block(['finparallele', 'finparallèle']);
+          expect(['finparallele', 'finparallèle']);
+          emit(OP.ENDBRANCH);
+          patch(toEndOu, out.length);
+          inParallel = false;
+          return;
+        }
         emit(OP.FORK);
         const toBranch2 = out.length;
         emitU16(0);
@@ -367,6 +396,7 @@
     }
 
     block([]);
+    if (ouUsed) emit(OP.JOIN);
     emit(OP.HALT);
     // Propriete ajoutee sur le TABLEAU retourne, pas un second element : tout
     // appelant qui traite le resultat comme un simple tableau d'octets
