@@ -22,9 +22,10 @@
 /* Nom de zone du planning : fond teinte, liseret et pastille dans la
    couleur de la zone (--zc, posee par app.js depuis sa definition) --
    la meme que les cartes Zones et le cloud. Mode intervalle : hachures,
-   dans cette meme couleur et non plus en violet fixe. La pastille est
-   pleine, le nom en noir ou blanc selon le contraste (--zt, zoneTextHex()
-   dans app.js) : jamais de vert sur vert ni de noir sur noir. */
+   dans cette meme couleur et non plus en violet fixe. La pastille prend
+   la couleur adoucie (--zp, zonePastelHex()), le nom noir ou blanc selon
+   le contraste sur ce fond (--zt, zoneTextHex()) : jamais de vert sur
+   vert ni de noir sur noir. */
 .planning-grid>.pg-header.zone-hdr{
   --zc:#6633cc;
   padding-left:5px;
@@ -38,13 +39,21 @@
     color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
     color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px);
 }
+/* Pastille pleine cellule : meme taille pour toutes les zones, quel que
+   soit le nom ; le "/Nj" du mode intervalle est dans la pastille. */
 .zone-hdr>.zn{
-  display:inline-block;
+  flex:1 1 auto;
+  align-self:stretch;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  align-content:center;
+  margin:3px 3px 3px 0;
   padding:1px 5px;
   border-radius:3px;
-  background:var(--zc);
+  background:var(--zp,var(--zc));
   color:var(--zt,#000);
-  box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 60%,#000);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 45%,transparent);
 }
 
 /* Jours non prevus en mode intervalle. */

@@ -74,20 +74,29 @@ label{color:var(--muted);font-size:13px}
       background:var(--green-dim);border:1px solid var(--line);border-radius:8px;padding:6px}
 .jour:hover{border-color:var(--green);background:#d8ecdd}
 .jour.vide{background:var(--bg);color:var(--muted);text-align:center;padding-top:22px}
-/* Nom de zone : meme dessin que le planning du module (data/style.css,
-   .zone-hdr) -- fond teinte, liseret et pastille dans la couleur de la zone
-   (--zc), hachures pour le mode "tous les N jours". */
-.znom{--zc:#6633cc;border:none;font-weight:600;text-align:left;
-      padding:6px 8px 6px 9px;white-space:nowrap;color:var(--text);border-radius:5px;
+/* La couleur de la zone court sur toute la ligne, comme sur le planning du
+   module : jours programmes teintes, et la CELLULE du nom porte fond,
+   liseret et hachures (mode "tous les N jours"). Une cellule prend toujours
+   la hauteur de sa ligne, dans tous les navigateurs -- etirer le bouton par
+   height:100% ne marchait que sous Chrome (bandeau ecrase ailleurs). */
+.plan tr[style] .jour:not(.vide){background:color-mix(in srgb,var(--zc) 9%,var(--surface));
+      border-color:color-mix(in srgb,var(--zc) 30%,var(--line))}
+.plan tr[style] .jour:hover{border-color:var(--zc)}
+.plan tr[style] .jour.vide{background:color-mix(in srgb,var(--zc) 3%,var(--bg))}
+.plan tr[style]>td:first-child{vertical-align:middle;border-radius:5px;
       background:color-mix(in srgb,var(--zc) 8%,transparent);
       box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent)}
-.znom.inter{background:repeating-linear-gradient(135deg,
+.plan tr.inter>td:first-child{background:repeating-linear-gradient(135deg,
       color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
       color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px)}
-/* Pastille pleine, nom en noir ou blanc selon le contraste (--zt,
-   texteZone()) : lisible quelle que soit la couleur choisie. */
-.znom .zn{display:inline-block;padding:1px 6px;border-radius:3px;background:var(--zc);
-      color:var(--zt,#000);box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 60%,#000)}
+.znom{display:block;width:100%;border:none;background:transparent;font-weight:600;
+      text-align:left;padding:6px 8px 6px 9px;white-space:nowrap;color:var(--text)}
+/* Pastille en couleur adoucie (--zp, pastelZone()), nom noir ou blanc
+   selon le contraste sur ce fond (--zt, texteZone()) : lisible quelle que
+   soit la couleur choisie. Pleine largeur : meme taille pour toutes les
+   zones, comme sur le module. */
+.znom .zn{display:block;padding:2px 6px;border-radius:3px;background:var(--zp,var(--zc));
+      color:var(--zt,#000);box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 45%,transparent)}
 .znom:hover .zn{text-decoration:underline}
 .znom small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
 .jc{display:block}
@@ -937,6 +946,17 @@ function couleurZone(z, i){
 // le meilleur contraste (luminance relative WCAG). Une couleur de texte
 // fixe deviendrait illisible pour certaines zones (noir sur une zone
 // noire, vert sur vert...) : le choix suit donc chaque couleur.
+// Fond de la pastille du nom : la couleur de la zone adoucie (40 % de la
+// couleur, 60 % de blanc). Les couleurs d'identite sont saturees (#00fc00...)
+// et "petaient" en aplat ; le liseret garde la couleur franche.
+function pastelZone(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return '#e8e8e8';
+  const n = parseInt(m[1], 16);
+  return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255]
+    .map(v => Math.round(v * 0.4 + 255 * 0.6).toString(16).padStart(2, '0')).join('');
+}
+
 function texteZone(hex) {
   const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
   if (!m) return '#000000';
@@ -956,8 +976,9 @@ function rendrePlanning(){
 
   zones.forEach((z, i) => {
     const mode = (Number(z.mode) === 1) ? 1 : 0;
-    h += '<tr><td><button class="znom' + ((mode === 1) ? ' inter' : '') + '" data-z="' + i + '"'
-       + ' style="--zc:' + couleurZone(z, i) + ';--zt:' + texteZone(couleurZone(z, i)) + '">'
+    const zc = couleurZone(z, i), zp = pastelZone(zc);
+    h += '<tr' + ((mode === 1) ? ' class="inter"' : '') + ' style="--zc:' + zc + ';--zp:' + zp + ';--zt:' + texteZone(zp) + '">'
+       + '<td><button class="znom" data-z="' + i + '">'
        + '<span class="zn">' + esc(z.name || ('Zone ' + (i+1))) + '</span>'
        + '<small>' + ((mode === 1) ? 'tous les ' + esc(z.intervalDays || 1) + ' j'
                                    : 'jours fixes') + '</small></button></td>';
