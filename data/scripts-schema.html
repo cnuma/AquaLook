@@ -331,7 +331,9 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 }
 @media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,.a-enregistrer{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
-body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-var{display:none!important}
+body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud.sansvars #t-var{display:none!important}
+/* Variables en ligne : lecture seule (D015), pas de saisie ni d'envoi */
+body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv-enregistrer{display:none!important}
 </style></head><body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -428,7 +430,7 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
           </div>
         </div>
         <div class="tabbody tabform" id="p-var" hidden>
-          <table><thead><tr><td class="g"></td><td class="u"></td><td>Nom</td><td class="val">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
+          <table><thead><tr><td class="g"></td><td class="u"></td><td>Nom</td><td class="val" id="gv-releve">Valeur</td><td class="nv">Nouvelle valeur</td></tr></thead>
           <tbody id="gv-liste"></tbody></table>
           <div class="pied">
           <div class="acts">
@@ -1259,7 +1261,7 @@ async function lireModule() {
   renderSim();
 }
 async function lireGlobales() {
-  if (CLOUD) { GLOBALES = []; return; }
+  if (CLOUD) { GLOBALES = (MIROIR.scripts || {}).variables || []; return; }
   try {
     const r = await fetch('/api/script-globals');
     GLOBALES = r.ok ? ((await r.json()).vars || []) : [];
@@ -1682,7 +1684,7 @@ function rendreVariables() {
   $('gv-liste').innerHTML = Array.from({ length: S.GLOBAL_COUNT }, (_, k) => k + 1).map((i) => {
     const g = GLOBALES.find((o) => o.i === i) || { nom: '', valeur: 0 };
     return '<tr><td class="g">g' + i + '</td><td class="u"><span class="nb" data-nb>…</span></td>'
-      + '<td><input type="text" maxlength="23" data-gn="' + i + '" value="' + esc(g.nom) + '" aria-label="Nom de g' + i + '"></td>'
+      + '<td><input type="text" maxlength="23" data-gn="' + i + '" value="' + esc(g.nom) + '"' + (CLOUD ? ' readonly' : '') + ' aria-label="Nom de g' + i + '"></td>'
       + '<td class="val">' + g.valeur + '</td>'
       + '<td class="nv"><input type="number" data-gv="' + i + '" placeholder="inchangée" aria-label="Nouvelle valeur de g' + i + '"></td></tr>';
   }).join('');
@@ -1904,6 +1906,17 @@ if (CLOUD) {
     if (ph) { BIBLIO_MAX = ph.max || BIBLIO_MAX; BIBLIO_LEN = ph.lenMax || BIBLIO_LEN; }
     $('t-phr').disabled = !ph;
     $('t-phr').textContent = enAttente(c) ? 'Phrases (en attente)' : 'Phrases';
+    // Variables (D015) : noms et releve des valeurs, en lecture seule. Un
+    // firmware anterieur ne les remonte pas : l'onglet reste masque.
+    GLOBALES = sc.variables || [];
+    document.body.classList.toggle('sansvars', !sc.variables);
+    const quand = d.config && d.config.updatedAt ? new Date(d.config.updatedAt.replace(' ', 'T') + 'Z') : null;
+    $('gv-releve').textContent = quand && !isNaN(quand)
+      ? 'Valeur au ' + quand.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Valeur';
+    $('gv-releve').title = 'Relevé envoyé par le module avec sa configuration : une valeur changée par un script depuis n’apparaît pas encore.';
+    $('t-var').title = 'Seize nombres entiers partagés par tous les scripts. En lecture seule ici : les noms se changent dans l’éditeur du module.';
+    varPret = false;
+    if (!$('p-var').hidden) tab('var');
     // Relu depuis l'espace en ligne : l'onglet repart de cette liste.
     phrPret = false;
     if (!$('p-phr').hidden) tab('phr');

@@ -34,6 +34,7 @@ int32_t g_values[COUNT] = {};
 char    g_names[COUNT][NAME_LEN_MAX + 1U] = {};
 bool     g_dirty = false;
 uint32_t g_lastSaveMs = 0U;
+bool     g_started = false;   // begin() passe : valeurs et noms relus
 portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // Meme CRC32 que ConfigManager (polynome reflechi 0xEDB88320).
@@ -81,6 +82,7 @@ bool saveValues() {
 }  // namespace
 
 void begin() {
+    g_started = true;
     Preferences prefs;
     if (!prefs.begin(NVS_NAMESPACE, true)) {
         // Espace absent : premier demarrage avec cette fonction.
@@ -116,6 +118,8 @@ void begin() {
     EventLog::log(LOG_INFO, "[GVAR] variables relues : valeurs %s, noms %s",
                   valuesOk ? "ok" : "a 0", namesOk ? "ok" : "vides");
 }
+
+bool started() { return g_started; }
 
 int32_t get(uint8_t i) {
     if (i >= COUNT) return 0;

@@ -23,6 +23,7 @@
 #include "WiFiManager.h"
 #include "RelayTopology.h"
 #include "ScriptAdmin.h"
+#include "ScriptGlobals.h"
 #include "ScriptMessageCatalogue.h"
 #include "ScriptRunner.h"
 #include "ScriptStore.h"
@@ -592,6 +593,25 @@ void buildScriptsPayload(JsonObject out, const RelaisManager* relais,
     if (storage) {
         JsonDocument phrases;
         if (ScriptMessageCatalogue::load(phrases)) out["phrases"] = phrases;
+    }
+
+    // Variables globales g1..g16 (decision D015) : memes champs que GET
+    // /api/script-globals, pour l'onglet Variables de l'editeur en ligne, en
+    // lecture seule. Les noms ne changent que par l'editeur local, qui fait
+    // renvoyer ce miroir ; les valeurs ne sont qu'un releve a la date
+    // d'envoi (une valeur ne fait pas monter la revision). Absentes en mode
+    // maintenance, ou ScriptGlobals n'est pas relu : des noms vides
+    // effaceraient ceux du miroir.
+    if (ScriptGlobals::started()) {
+        JsonArray vars = out["variables"].to<JsonArray>();
+        char nom[ScriptGlobals::NAME_LEN_MAX + 1U];
+        for (uint8_t i = 0U; i < ScriptGlobals::COUNT; ++i) {
+            ScriptGlobals::name(i, nom, sizeof(nom));
+            JsonObject v = vars.add<JsonObject>();
+            v["i"] = i + 1U;
+            v["nom"] = nom;
+            v["valeur"] = ScriptGlobals::get(i);
+        }
     }
 }
 

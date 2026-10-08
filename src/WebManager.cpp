@@ -2221,6 +2221,8 @@ void WebManager::handleSaveScriptGlobals(AsyncWebServerRequest* req, JsonDocumen
     }
     EventLog::log(LOG_INFO, "[GVAR] noms enregistres, %u valeur(s) fixee(s) depuis l'editeur",
                   static_cast<unsigned>(fixees));
+    // Les noms remontent dans le miroir de l'espace en ligne (D015).
+    if (_config) _config->noteExternalChange();
     JsonDocument out;
     out["ok"] = true;
     out["fixees"] = fixees;

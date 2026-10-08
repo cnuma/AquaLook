@@ -34,6 +34,9 @@ constexpr uint32_t SAVE_INTERVAL_MS = 60000UL;
 
 // A appeler une fois au demarrage : relit valeurs et noms en NVS.
 void begin();
+// Vrai apres begin(). Le mode maintenance ne l'appelle pas : noms et valeurs
+// y sont vides, et ne doivent pas etre presentes comme ceux du module.
+bool started();
 
 // i de 0 a COUNT-1. get() rend 0 hors bornes ; set() rend false hors bornes.
 int32_t get(uint8_t i);
