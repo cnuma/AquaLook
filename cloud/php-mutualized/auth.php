@@ -273,6 +273,14 @@ function store_module_config(string $moduleId, array $payload): bool
         return false;   // sans revision, l'instantane ne sert a rien : elle est
                          // la reference du verrouillage optimiste.
     }
+    // Un miroir neuf porte des valeurs de variables aussi fraiches que lui :
+    // le suivi par la telemetrie (merge_module_variables) reste valable.
+    if (isset($payload['scripts']['variables']) && is_array($payload['scripts']['variables'])) {
+        $avant = module_config($moduleId);
+        if (!empty($avant['payload']['scripts']['variablesSuivies'])) {
+            $payload['scripts']['variablesSuivies'] = true;
+        }
+    }
     $stmt = db()->prepare(
         'INSERT INTO module_config (module_id, revision, payload, updated_at) VALUES (?, ?, ?, ?) '
         . 'ON DUPLICATE KEY UPDATE revision = VALUES(revision), payload = VALUES(payload), '
@@ -281,6 +289,53 @@ function store_module_config(string $moduleId, array $payload): bool
     $stmt->execute([$moduleId, $revision, json_encode($payload, JSON_UNESCAPED_UNICODE), utc_now()]);
 
     return capture_config_backup($moduleId, $revision, $payload);
+}
+
+/**
+ * Reporte dans le miroir les valeurs des variables g1..g16 qu'un rapport
+ * "diag" porte (decision D015) : le module ne les y met que lorsque leur CRC
+ * a change depuis son dernier envoi confirme. Seules les valeurs du miroir
+ * changent -- ni la revision, ni updated_at, ni les sauvegardes : une valeur
+ * qui bouge n'est pas un changement de configuration.
+ *
+ * Pose scripts.variablesSuivies : des lors, l'absence de variables dans un
+ * rapport veut dire "rien n'a bouge", et l'editeur en ligne peut dater les
+ * valeurs du dernier contact du module plutot que du miroir. Sans miroir
+ * portant deja les variables (firmware anterieur), rien n'est ecrit.
+ */
+function merge_module_variables(string $moduleId, $vars): void
+{
+    $valeurs = is_array($vars) ? ($vars['valeurs'] ?? null) : null;
+    if (!is_array($valeurs) || count($valeurs) > 64) return;
+    foreach ($valeurs as $v) {
+        if (!is_int($v)) return;   // forme inattendue : ne rien toucher
+    }
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT payload FROM module_config WHERE module_id = ? FOR UPDATE');
+        $stmt->execute([$moduleId]);
+        $json = $stmt->fetchColumn();
+        $payload = $json === false ? null : json_decode((string)$json, true);
+        if (!is_array($payload) || !isset($payload['scripts']['variables'])
+            || !is_array($payload['scripts']['variables'])) {
+            $pdo->rollBack();
+            return;
+        }
+        foreach ($payload['scripts']['variables'] as $k => $g) {
+            $i = is_array($g) ? ($g['i'] ?? null) : null;
+            if (is_int($i) && $i >= 1 && $i <= count($valeurs)) {
+                $payload['scripts']['variables'][$k]['valeur'] = $valeurs[$i - 1];
+            }
+        }
+        $payload['scripts']['variablesSuivies'] = true;
+        $upd = $pdo->prepare('UPDATE module_config SET payload = ? WHERE module_id = ?');
+        $upd->execute([json_encode($payload, JSON_UNESCAPED_UNICODE), $moduleId]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('merge_module_variables: ' . $e->getMessage());
+    }
 }
 
 /**

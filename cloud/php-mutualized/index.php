@@ -214,6 +214,9 @@ try {
             }
         } else {
             insert_message($moduleId, PROTO_VERSION, $msgType, $correlationId, $payload);
+            if ($msgType === 'diag' && isset($payload['variables'])) {
+                merge_module_variables($moduleId, $payload['variables']);
+            }
         }
 
         // La version est prise dans TOUT message qui en porte une, et non dans

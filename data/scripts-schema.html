@@ -1910,10 +1910,16 @@ if (CLOUD) {
     // firmware anterieur ne les remonte pas : l'onglet reste masque.
     GLOBALES = sc.variables || [];
     document.body.classList.toggle('sansvars', !sc.variables);
-    const quand = d.config && d.config.updatedAt ? new Date(d.config.updatedAt.replace(' ', 'T') + 'Z') : null;
+    // Suivies (le serveur reporte chaque changement signale par le module) :
+    // valeurs a jour au dernier contact. Sinon : releve a la date du miroir.
+    const suivies = !!sc.variablesSuivies;
+    const brut = suivies ? (d.presence || {}).last_seen : (d.config || {}).updatedAt;
+    const quand = brut ? new Date(String(brut).replace(' ', 'T') + 'Z') : null;
     $('gv-releve').textContent = quand && !isNaN(quand)
       ? 'Valeur au ' + quand.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Valeur';
-    $('gv-releve').title = 'Relevé envoyé par le module avec sa configuration : une valeur changée par un script depuis n’apparaît pas encore.';
+    $('gv-releve').title = suivies
+      ? 'À jour au dernier contact du module : il signale chaque changement de valeur à sa synchronisation.'
+      : 'Relevé envoyé par le module avec sa configuration : une valeur changée par un script depuis n’apparaît pas encore.';
     $('t-var').title = 'Seize nombres entiers partagés par tous les scripts. En lecture seule ici : les noms se changent dans l’éditeur du module.';
     varPret = false;
     if (!$('p-var').hidden) tab('var');
