@@ -2208,7 +2208,16 @@ void WebManager::handleSaveScriptGlobals(AsyncWebServerRequest* req, JsonDocumen
         sendError(req, "signature refusee : variables inchangees", 403);
         return;
     }
-    if (!ScriptGlobals::setNames(lus)) {
+    // Noms identiques (seules des valeurs fixees) : ni ecriture NVS, ni
+    // renvoi du miroir -- il porterait une sauvegarde de configuration de
+    // plus cote serveur ; les valeurs remontent par la telemetrie (D015).
+    bool nomsChanges = false;
+    char actuel[ScriptGlobals::NAME_LEN_MAX + 1U];
+    for (uint8_t i = 0U; i < ScriptGlobals::COUNT && !nomsChanges; ++i) {
+        ScriptGlobals::name(i, actuel, sizeof(actuel));
+        nomsChanges = strcmp(actuel, lus[i]) != 0;
+    }
+    if (nomsChanges && !ScriptGlobals::setNames(lus)) {
         sendError(req, "ecriture NVS des noms echouee : variables inchangees", 500);
         return;
     }
@@ -2219,10 +2228,10 @@ void WebManager::handleSaveScriptGlobals(AsyncWebServerRequest* req, JsonDocumen
             fixees++;
         }
     }
-    EventLog::log(LOG_INFO, "[GVAR] noms enregistres, %u valeur(s) fixee(s) depuis l'editeur",
-                  static_cast<unsigned>(fixees));
+    EventLog::log(LOG_INFO, "[GVAR] noms %s, %u valeur(s) fixee(s) depuis l'editeur",
+                  nomsChanges ? "enregistres" : "inchanges", static_cast<unsigned>(fixees));
     // Les noms remontent dans le miroir de l'espace en ligne (D015).
-    if (_config) _config->noteExternalChange();
+    if (nomsChanges && _config) _config->noteExternalChange();
     JsonDocument out;
     out["ok"] = true;
     out["fixees"] = fixees;
