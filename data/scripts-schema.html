@@ -244,7 +244,18 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
    prend la place (8 oct. 2026). */
 .center.replie{grid-template-rows:minmax(0,1fr) auto}
 .center.replie .bottom .tabbody{display:none!important}
-.tabs .replier{margin-left:8px}
+/* Bouton de repli : petite pastille posee sur la jonction du « T » (limite
+   schema / zone du bas et separation des deux panneaux), au centre des
+   gouttieres de 8px ; triangle bas = replier, haut = deplier. Avant : un ▾
+   en fin de barre, peu visible (demande du 8 oct. 2026). */
+.bottom{position:relative}
+.bottom>.replier{position:absolute;left:50%;top:-4px;transform:translate(-50%,-50%);z-index:5;
+  width:30px;height:16px;padding:0;border:0;border-radius:8px;background:var(--green);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.bottom>.replier:hover{background:var(--green-mid)}
+.bottom>.replier:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.bottom>.replier::before{content:'';border:5px solid transparent;border-bottom:0;border-top:6px solid #fff;margin-top:1px}
+.center.replie .bottom>.replier::before{border-top:0;border-bottom:6px solid #fff;margin:0 0 1px}
 .bottom .tabs>*{white-space:nowrap;flex:none}
 .tabform{padding:8px 12px;overflow:auto;font-size:13px}
 .tabform table{width:100%;border-collapse:collapse}
@@ -362,12 +373,12 @@ body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud #t-va
         </div></div>
       </div>
       <div class="bottom">
+       <button class="replier" id="b-replier" title="Replier ou déplier la zone du bas" aria-expanded="true" aria-label="Replier la zone du bas"></button>
        <div class="panel">
         <div class="tabs">
           <span class="ttl">Texte généré</span>
           <button class="btn tx-btn" id="b-modif-texte" title="Modifier directement le texte que le module reçoit">Modifier le texte</button>
           <span class="note" id="taille"></span>
-          <button class="btn tx-btn replier" id="b-replier" title="Replier ou déplier la zone du bas" aria-expanded="true" aria-label="Replier la zone du bas">▾</button>
         </div>
         <div class="tabbody" id="p-code"><div class="code" id="code"></div></div>
        </div>
@@ -1105,7 +1116,6 @@ $('t-run').onclick = () => tab('run');
 // Replier la zone du bas : preference de ce navigateur seulement.
 function replier(oui) {
   document.querySelector('.center').classList.toggle('replie', oui);
-  $('b-replier').textContent = oui ? '▴' : '▾';
   $('b-replier').setAttribute('aria-label', oui ? 'Déplier la zone du bas' : 'Replier la zone du bas');
   $('b-replier').setAttribute('aria-expanded', !oui);
   try { localStorage.setItem('aqualook-bas-replie', oui ? '1' : '0'); } catch (e) {}
