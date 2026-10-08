@@ -23,6 +23,9 @@
 //   suspendre zone <id>
 //   reprendre zone <id>
 //   message <code>                   -- une ligne dans le journal
+//   message <code> avec g<n>         -- la meme, suivie du nom et de la
+//                                       valeur de la variable globale n
+//                                       (code 0 : sans phrase)
 //   notifier <code>                  -- une vraie notification, si configuree
 //   lancer script <n>                -- demarre le script n (1..6) en parallele
 //   parallele [et] ... avec ... finparallele  -- deux branches qui partent
@@ -52,7 +55,7 @@
     AND: 38, OR: 39, NOT: 40,
     JMP: 48, JZ: 49, JNZ: 50,
     READ_INPUT: 64, ZONE_ACTIVE: 65, ZONE_REMAIN: 66,
-    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83,
+    ACTION: 80, NOTIFY: 81, WAIT: 82, ALERT: 83, NOTIFY_VAR: 88,
     FORK: 84, JOIN: 85, ENDBRANCH: 86, JOINANY: 87
   };
 
@@ -343,7 +346,20 @@
       }
 
       if (word === 'attendre') { next(); expression(); emit(OP.WAIT); return; }
-      if (word === 'message') { next(); emit(OP.NOTIFY); emitU16(number()); return; }
+      if (word === 'message') {
+        next();
+        const code = number();
+        if (lower(peek()) === 'avec') {
+          next();
+          const ln = line();
+          const gv = globalIndex(next());
+          if (gv < 0) throw new CompileError('« avec » attend une variable g1 à g16', ln);
+          emit(OP.NOTIFY_VAR); emitU16(code); emit(gv);
+          return;
+        }
+        emit(OP.NOTIFY); emitU16(code);
+        return;
+      }
       // « notifier » reveille quelqu'un ; « message » ecrit une ligne. Deux
       // mots distincts parce que ce sont deux gestes distincts : confondre
       // les deux ferait envoyer une alerte a chaque trace de mise au point.

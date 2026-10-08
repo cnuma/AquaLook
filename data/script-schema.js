@@ -170,7 +170,12 @@
             add(d, 'attendre ' + n.sec + '   # ' + duree(n.sec), n.id);
             break;
           case 'notifier': case 'message':
-            add(d, n.t + ' ' + n.code + '   # ' + names.phrase(n.code), n.id);
+            if (n.t === 'message' && n.gvar) {
+              add(d, 'message ' + n.code + ' avec g' + n.gvar + '   # ' + (n.code ? names.phrase(n.code) + ', ' : '')
+                + (names.globale ? names.globale(n.gvar) : 'g' + n.gvar), n.id);
+            } else {
+              add(d, n.t + ' ' + n.code + '   # ' + names.phrase(n.code), n.id);
+            }
             break;
           case 'lancer':
             add(d, 'lancer script ' + n.script + '   # ' + (names.script ? names.script(n.script) : 'script ' + n.script), n.id);
@@ -417,7 +422,18 @@
         return n;
       }
       if (w === 'attendre') { next(); const n = { id: newId(), t: 'attendre', sec: number() }; noArith(); return n; }
-      if (w === 'notifier' || w === 'message') { next(); return { id: newId(), t: w, code: number() }; }
+      if (w === 'notifier' || w === 'message') {
+        next();
+        const n = { id: newId(), t: w, code: number() };
+        if (w === 'message' && peek() === 'avec') {
+          next();
+          const gn = globalNo(peek());
+          if (!gn) throw new Unsupported('« avec » attend une variable g1 à g16', ln);
+          next();
+          n.gvar = gn;
+        }
+        return n;
+      }
       if (w === 'lancer') { next(); expect('script'); return { id: newId(), t: 'lancer', script: number() }; }
       if (w === 'demarrer') {
         next(); expect('zone');

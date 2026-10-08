@@ -525,7 +525,7 @@ function subOf(n) {
     case 'arroser': return zoneNom(n.zone) + ' · ' + S.duree(n.sec) + (n.attente ? '' : ' · sans attendre');
     case 'arreter': case 'suspendre': case 'reprendre': return zoneNom(n.zone);
     case 'attendre': return S.duree(n.sec);
-    case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »';
+    case 'notifier': case 'message': return '« ' + phraseNom(n.code) + ' »' + (n.gvar ? ' + ' + globaleNom(n.gvar) : '');
     case 'lancer': return scriptNom(n.script) + ' · en parallèle';
     case 'si': return condLabel(n.cond) + ' ?';
     case 'variable': return globaleNom(n.g) + (n.op === '=' ? ' = ' : n.op === '-' ? ' − ' : ' + ') + n.v;
@@ -798,6 +798,11 @@ function renderProps() {
     if ('code' in n) h += '<div class="f"><label for="p-c">' + (n.t === 'notifier' ? 'Notification envoyée' : 'Ligne écrite au journal')
       + '</label><select id="p-c" data-f="code">' + phraseOpts(n.code) + '</select></div>'
       + (BIBLIO.length ? '' : '<div class="hint">Aucune phrase dans la bibliothèque : ajoutez-en avec le bouton « Phrases » en haut de la page.</div>');
+    if (n.t === 'message') {
+      h += '<div class="f"><label for="p-gvar">Ajouter la valeur de</label><select id="p-gvar" data-f="gvar">'
+        + '<option value="0"' + (n.gvar ? '' : ' selected') + '>(aucune variable)</option>' + globaleOpts(n.gvar || 0) + '</select></div>'
+        + (n.gvar ? '<div class="hint">Le journal portera la phrase puis « ' + esc(globaleNom(n.gvar)) + ' = valeur », lue au moment où le bloc s’exécute.</div>' : '');
+    }
     if ('n' in n) h += '<div class="f"><label for="p-n">Nombre de fois</label><input id="p-n" type="number" min="1" max="1000" data-f="n" value="' + n.n + '"></div>';
     if (n.cond) h += condFields(n.cond);
     if (n.t === 'si') h += '<div class="hint">Les blocs sous <b>Oui</b> s’exécutent si la condition est vraie, ceux sous <b>Non</b> sinon. Une branche peut rester vide.</div>';
@@ -849,6 +854,7 @@ function wireProps(p) {
       else if (k === 'actif') change(() => { doc.actif = f.value === '1'; }, true);
       else if (k === 'attente') change(() => { n.attente = f.checked; }, true);
       else if (k === 'mode') change(() => { n.mode = f.value === 'ou' ? 'ou' : 'et'; }, true);
+      else if (k === 'gvar') change(() => { const g = parseInt(f.value, 10) || 0; if (g >= 1 && g <= 16) n.gvar = g; else delete n.gvar; }, true);
       else if (k === 'g') change(() => { n.g = Math.min(16, Math.max(1, parseInt(f.value, 10) || 1)); }, true);
       else if (k === 'op') change(() => { n.op = ['=', '+', '-'].indexOf(f.value) >= 0 ? f.value : '='; if (n.op !== '=') n.v = Math.abs(n.v); }, true);
       else if (k === 'gv') change(() => { n.v = entier(f.value); if (n.op !== '=') n.v = Math.abs(n.v); }, false);
@@ -1113,7 +1119,7 @@ async function essai() {
         case 'reprendre': log('Relance ' + zoneNom(n.zone)); break;
         case 'attendre': log('Attend ' + S.duree(n.sec)); break;
         case 'notifier': log('Notification : « ' + phraseNom(n.code) + ' »'); break;
-        case 'message': log('Journal : « ' + phraseNom(n.code) + ' »'); break;
+        case 'message': log('Journal : « ' + phraseNom(n.code) + ' »' + (n.gvar ? ' -- ' + globaleNom(n.gvar) + ' = ' + gval(n.gvar) : '')); break;
         case 'lancer': log('Lance le script ' + scriptNom(n.script) + ', qui tourne en parallèle'); break;
         case 'variable':
           gsim[n.g] = n.op === '=' ? n.v : gval(n.g) + (n.op === '-' ? -n.v : n.v);

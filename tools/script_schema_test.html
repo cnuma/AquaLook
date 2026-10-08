@@ -131,6 +131,20 @@ for(const [k,t] of Object.entries(hand)){ try{ const b=S.parse(t); const g=S.gen
   const tq=mk('tantque'); tq.cond={terms:[{k:'globale',id:1,cmp:'<',v:3}],ops:[]}; const inc=mk('variable'); inc.op='+'; inc.v=1; tq.body=[inc,mk('attendre')];
   rt([tq],'tant que g1 < 3 : g1 + 1');
 }
+// 2h. « Noter au journal » avec la valeur d'une variable (8 oct. 2026)
+{
+  const names2=Object.assign({},names,{globale:i=>'V'+i});
+  const m=mk('message'); m.code=900; m.gvar=4;
+  const g=S.generate([m],names2).text;
+  ok(g.indexOf('message 900 avec g4   # P900, V4')===0,'texte : message 900 avec g4\n'+g);
+  const c=AquaScript.compile(g);
+  ok(c[0]===88 && (c[1]|(c[2]<<8))===900 && c[3]===3,'bytecode : NOTIFY_VAR 900, g4 -> 3');
+  rt([m],'message avec variable');
+  ok(S.parse(g)[0].gvar===4,'relecture : gvar=4');
+  const m2=mk('message'); ok(!m2.gvar && AquaScript.compile(S.generate([m2],names2).text)[0]===81,'message sans variable : NOTIFY inchange');
+  try{ AquaScript.compile('message 900 avec a'); ok(false,'avec a accepte a tort'); } catch(e){ ok(e.line===1,'« avec a » refuse a la compilation'); }
+  try{ S.parse('notifier 900 avec g1\n'); ok(false,'notifier avec relu a tort'); } catch(e){ ok(e instanceof S.Unsupported,'notifier ... avec : non dessinable'); }
+}
 // 2e. « et » / « ou » entre chaque condition, « et » avant « ou » (7 oct. 2026)
 {
   const T=(id)=>({k:'entree',id:id,v:1});

@@ -3,6 +3,10 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #include "EventLog.h"
 #include "StorageManager.h"
 
@@ -10,6 +14,12 @@ namespace ScriptMessageCatalogue {
 namespace {
 
 StorageManager* g_storage = nullptr;
+
+// Contenu du fichier, termine par '\0' (nullptr : pas encore lu). Lu par la
+// boucle (scripts) et par la tache des notifications, remplace depuis la
+// tache AsyncTCP ou CloudSync : chaque acces passe par g_lock.
+char* g_cache = nullptr;
+SemaphoreHandle_t g_lock = nullptr;
 
 // Taille maximale du fichier : MAX_ENTRIES lignes, chacune au plus
 // "65535" + TAB + MAX_PHRASE + "\n". Marge pour le terminateur.
@@ -26,7 +36,9 @@ char* slurp() {
     FsFile f;
     if (!g_storage->openRead(PATH, f)) return nullptr;  // absent => nullptr
 
-    char* buf = static_cast<char*>(malloc(FILE_CAP));
+    // PSRAM si elle existe : la RAM interne reste aux piles et au reseau.
+    char* buf = static_cast<char*>(heap_caps_malloc(FILE_CAP, MALLOC_CAP_SPIRAM));
+    if (!buf) buf = static_cast<char*>(malloc(FILE_CAP));
     if (!buf) { g_storage->closeFile(f); return nullptr; }
 
     size_t total = 0U;
@@ -62,33 +74,63 @@ bool parseLine(char* line, uint16_t* code, char** texte) {
     return true;
 }
 
+// Relit le fichier et remplace le cache. En cas d'echec (SD absente,
+// fichier absent), l'ancien cache est garde : mieux vaut une phrase d'avant
+// que le code nu.
+bool refreshCache() {
+    char* fresh = slurp();
+    if (!fresh) return false;
+    char* old = nullptr;
+    if (g_lock) xSemaphoreTake(g_lock, portMAX_DELAY);
+    old = g_cache;
+    g_cache = fresh;
+    if (g_lock) xSemaphoreGive(g_lock);
+    free(old);
+    return true;
+}
+
+// Cherche `code` dans le texte du cache SANS le modifier (il est partage) et
+// copie la phrase dans out. Meme regles que parseLine().
+bool findInCache(const char* text, uint16_t code, char* out, size_t n) {
+    const char* line = text;
+    while (line && *line) {
+        const char* eol = strchr(line, '\n');
+        const char* tab = static_cast<const char*>(memchr(line, '\t', eol ? static_cast<size_t>(eol - line) : strlen(line)));
+        if (tab) {
+            char* end = nullptr;
+            const long v = strtol(line, &end, 10);
+            if (end == tab && v == static_cast<long>(code)) {
+                const char* txt = tab + 1;
+                size_t len = eol ? static_cast<size_t>(eol - txt) : strlen(txt);
+                while (len > 0U && (txt[len - 1U] == '\r')) len--;
+                if (len == 0U) return false;
+                const size_t m = len < n - 1U ? len : n - 1U;
+                memcpy(out, txt, m);
+                out[m] = '\0';
+                return true;
+            }
+        }
+        line = eol ? eol + 1 : nullptr;
+    }
+    return false;
+}
+
 }  // namespace
 
 void begin(StorageManager* storage) {
     g_storage = storage;
+    if (!g_lock) g_lock = xSemaphoreCreateMutex();
+    refreshCache();
 }
 
 bool phrase(uint16_t code, char* out, size_t n) {
-    if (!g_storage || !out || n == 0U) return false;
-    // 0 = « pas de phrase » : inutile d'aller jusqu'a la carte.
-    if (code == 0U) return false;
-
-    char* buf = slurp();
-    if (!buf) return false;
-
-    bool found = false;
-    char* save = nullptr;
-    for (char* line = strtok_r(buf, "\n", &save);
-         line != nullptr && !found;
-         line = strtok_r(nullptr, "\n", &save)) {
-        uint16_t c = 0U;
-        char* txt = nullptr;
-        if (parseLine(line, &c, &txt) && c == code) {
-            strlcpy(out, txt, n);
-            found = true;
-        }
-    }
-    free(buf);
+    if (!out || n == 0U) return false;
+    out[0] = '\0';
+    // 0 = « pas de phrase ».
+    if (code == 0U || !g_lock) return false;
+    xSemaphoreTake(g_lock, portMAX_DELAY);
+    const bool found = g_cache != nullptr && findInCache(g_cache, code, out, n);
+    xSemaphoreGive(g_lock);
     return found;
 }
 
@@ -147,7 +189,9 @@ bool store(const String& body) {
         g_storage->deleteOnSd(tmp.c_str());
         return false;
     }
-    return g_storage->renameOnSd(tmp.c_str(), PATH);
+    if (!g_storage->renameOnSd(tmp.c_str(), PATH)) return false;
+    refreshCache();
+    return true;
 }
 
 }  // namespace ScriptMessageCatalogue

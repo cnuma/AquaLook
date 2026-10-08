@@ -5,6 +5,7 @@
 #include "EventLog.h"
 #include "NotificationManager.h"
 #include "ScriptGlobals.h"
+#include "ScriptMessageCatalogue.h"
 #include "ScriptStore.h"
 
 static_assert(AquaLook::Domain::ScriptVm::GLOBAL_COUNT == ScriptGlobals::COUNT,
@@ -171,9 +172,16 @@ bool action(void* raw, ScriptAction act, uint16_t target, int32_t arg) {
 bool notify(void* raw, uint16_t code) {
     ScriptRuntimeContext* ctx = ctxOf(raw);
     if (ctx) ctx->lastNotify = code;
-    // [SCRIPT-NOTIFY] : code choisi par l'utilisateur dans l'editeur de
-    // scripts (commande "message"), pas resolu ici. Voir /logs/messages.tsv.
-    EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u", (unsigned)code);
+    // [SCRIPT-NOTIFY] : bloc « Noter au journal » (commande "message"). La
+    // phrase vient du cache en RAM de la bibliotheque (jamais de lecture SD
+    // ici) ; introuvable, la ligne garde le code nu, comme avant le 8 oct.
+    char texte[ScriptMessageCatalogue::MAX_PHRASE + 1U];
+    if (ScriptMessageCatalogue::phrase(code, texte, sizeof(texte))) {
+        EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u script %u : %s", (unsigned)code,
+                      ctx ? (unsigned)(ctx->selfIndex + 1U) : 0U, texte);
+    } else {
+        EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u", (unsigned)code);
+    }
     return true;
 }
 
@@ -243,9 +251,31 @@ bool globalSet(void*, uint8_t index, int32_t value) {
     return ScriptGlobals::set(index, value);
 }
 
+// « message <code> avec gN » : phrase (si code et trouvee), puis nom et
+// valeur de la variable. Nom vide : « gN ».
+bool notifyVar(void* raw, uint16_t code, uint8_t index) {
+    ScriptRuntimeContext* ctx = ctxOf(raw);
+    if (index >= ScriptGlobals::COUNT) return false;
+    if (ctx) ctx->lastNotify = code;
+    char nom[ScriptGlobals::NAME_LEN_MAX + 1U];
+    ScriptGlobals::name(index, nom, sizeof(nom));
+    if (nom[0] == '\0') snprintf(nom, sizeof(nom), "g%u", (unsigned)(index + 1U));
+    const long valeur = static_cast<long>(ScriptGlobals::get(index));
+    const unsigned no = ctx ? (unsigned)(ctx->selfIndex + 1U) : 0U;
+    char texte[ScriptMessageCatalogue::MAX_PHRASE + 1U];
+    if (code != 0U && ScriptMessageCatalogue::phrase(code, texte, sizeof(texte))) {
+        EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u script %u : %s -- %s = %ld",
+                      (unsigned)code, no, texte, nom, valeur);
+    } else {
+        EventLog::log(LOG_INFO, "[SCRIPT-NOTIFY] code=%u script %u : %s = %ld",
+                      (unsigned)code, no, nom, valeur);
+    }
+    return true;
+}
+
 const ScriptHostOps OPS = {
     readInput, zoneActive, zoneRemainingSec, action, notify, alert, nowMs,
-    fork, branchesRunning, joinAny, globalGet, globalSet
+    fork, branchesRunning, joinAny, globalGet, globalSet, notifyVar
 };
 
 } // namespace

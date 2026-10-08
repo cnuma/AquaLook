@@ -96,6 +96,10 @@ enum class ScriptOp : uint8_t {
     // FORK suivant. Une branche faite sur place (pas de place libre) compte
     // comme finie.
     JOINANY = 87,    // rend la main tant qu'aucune branche du bloc n'est finie
+    // « message <code> avec gN » (8 oct. 2026) : comme NOTIFY, plus le nom et
+    // la valeur de la variable globale N, que l'hote lit lui-meme -- le
+    // journal dit ainsi QUELLE variable, pas seulement un nombre.
+    NOTIFY_VAR = 88, // + u16 code (0 = sans phrase), + u8 globale (0..15)
 };
 
 // Actions demandees a l'hote. Le script DEMANDE, l'hote dispose.
@@ -176,6 +180,8 @@ struct ScriptHostOps {
     // Variables globales. Absents (nullptr) ou refus : arret BAD_VARIABLE.
     bool (*globalGet)(void* ctx, uint8_t index, int32_t& value);
     bool (*globalSet)(void* ctx, uint8_t index, int32_t value);
+    // Ligne de journal avec la valeur d'une globale. Absent : NOTIFY simple.
+    bool (*notifyVar)(void* ctx, uint16_t messageCode, uint8_t globalIndex);
 };
 
 struct ScriptProgram {

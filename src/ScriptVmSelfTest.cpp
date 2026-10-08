@@ -41,6 +41,7 @@ struct FakeHost {
     bool anyDone = false;
     // Variables globales jouets (le vrai magasin est ScriptGlobals, en NVS).
     int32_t globals[16] = {};
+    uint8_t lastNotifyVar = 0xFFU;
 };
 
 bool hostReadInput(void* ctx, uint16_t, int32_t& v) {
@@ -100,10 +101,17 @@ bool hostGlobalSet(void* ctx, uint8_t i, int32_t v) {
     return true;
 }
 
+bool hostNotifyVar(void* ctx, uint16_t code, uint8_t i) {
+    FakeHost* h = static_cast<FakeHost*>(ctx);
+    h->lastNotify = code;
+    h->lastNotifyVar = i;
+    return true;
+}
+
 const ScriptHostOps HOST_OPS = {
     hostReadInput, hostZoneActive, hostZoneRemain,
     hostAction, hostNotify, hostAlert, hostNow,
-    hostFork, hostBranches, hostJoinAny, hostGlobalGet, hostGlobalSet
+    hostFork, hostBranches, hostJoinAny, hostGlobalGet, hostGlobalSet, hostNotifyVar
 };
 
 // Bloc parallele assemble comme script-lang.js le compile :
@@ -542,6 +550,28 @@ bool runScriptVmSelfTest(JsonDocument& doc) {
         snprintf(detail, sizeof(detail), "g4=%ld var0=%ld refus g17=%d",
                  (long)h.globals[3], (long)vm.variable(0), refuse ? 1 : 0);
         record(cases, "variables globales", ok, detail);
+        if (ok) passed++;
+    }
+
+    // 11g. « message 900 avec g4 » : l'hote recoit le code ET le numero de
+    // la variable ; une globale hors bornes est refusee au validateur.
+    {
+        total++;
+        FakeHost h;
+        Asm a;
+        a.op(ScriptOp::NOTIFY_VAR).u16v(900).u8v(3).op(ScriptOp::HALT);
+        ScriptVm vm;
+        vm.load(a.program(), &HOST_OPS, &h);
+        run(vm, 5U);
+        Asm bad;
+        bad.op(ScriptOp::NOTIFY_VAR).u16v(900).u8v(16).op(ScriptOp::HALT);
+        const bool refuse = validateScriptProgram(bad.program()) == ScriptAbort::BAD_VARIABLE;
+        const bool ok = validateScriptProgram(a.program()) == ScriptAbort::NONE &&
+                        vm.status() == ScriptStatus::FINISHED && h.lastNotify == 900U &&
+                        h.lastNotifyVar == 3U && refuse;
+        snprintf(detail, sizeof(detail), "code=%u var=%u refus g17=%d",
+                 (unsigned)h.lastNotify, (unsigned)h.lastNotifyVar, refuse ? 1 : 0);
+        record(cases, "journal avec variable", ok, detail);
         if (ok) passed++;
     }
 
