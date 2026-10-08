@@ -55,6 +55,20 @@ couleur.</p>
   <ul class=faults id=faults></ul>
 </div>
 
+<!-- Memes lignes que la page « A propos » des reglages de l'ecran
+     (DisplayManager::drawAdminPageAPropos). Lecture seule, sans admin. -->
+<div class=card>
+  <h2>A propos</h2>
+  <div class=row><span class=k>Produit</span><span class=v id=ap-produit>&hellip;</span></div>
+  <div class=row><span class=k>Version</span><span class=v id=ap-version>&hellip;</span></div>
+  <div class=row><span class=k>Build</span><span class=v id=ap-build>&hellip;</span></div>
+  <div class=row><span class=k>Branche</span><span class=v id=ap-branche>&hellip;</span></div>
+  <div class=row><span class=k>Compile le</span><span class=v id=ap-date>&hellip;</span></div>
+  <div class=row><span class=k>Pages Web</span><span class=v id=ap-web>&hellip;</span></div>
+  <div class=row><span class=k>MAJ firmware</span><span class=v id=ap-majfw>&hellip;</span></div>
+  <div class=row><span class=k>MAJ pages</span><span class=v id=ap-majweb>&hellip;</span></div>
+</div>
+
 <div class=bar id=actions></div>
 
 <a class=back href=/index.html>Retour a AquaLook</a>
@@ -144,7 +158,61 @@ async function charger() {
   }
 }
 
+function ecrire(id, t, c) {
+  const el = $(id);
+  el.textContent = t;
+  el.className = 'v ' + (c || '');
+}
+
+async function lireJson(url) {
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+
+// Une seule fois : rien de tout cela ne change sans redemarrage. Sources :
+// /api/diagnostics.build (meme macros que le LCD), /assets-version.json
+// (pages installees), /api/maintenance/last-result (meme lecture que /ota).
+async function chargerAPropos() {
+  const [diag, web, res] = await Promise.all([
+    lireJson('/api/diagnostics'),
+    lireJson('/assets-version.json'),
+    lireJson('/api/maintenance/last-result')
+  ]);
+  const b = (diag && diag.build) || null;
+  if (b) {
+    ecrire('ap-produit', 'AquaLook - ' + (b.productLine || '?'));
+    ecrire('ap-version', b.version || '?');
+    ecrire('ap-build', (b.number || '?') + ' (SHA ' + (b.gitSha || '?') + ')');
+    ecrire('ap-branche', b.gitBranch || '?');
+    ecrire('ap-date', (b.compiledDate || '') + ' ' + (b.compiledTime || ''));
+  } else {
+    ['ap-produit', 'ap-version', 'ap-build', 'ap-branche', 'ap-date']
+      .forEach(function (id) { ecrire(id, 'injoignable', 'warn'); });
+  }
+  const wv = web && (web.version || web.gitSha);
+  ecrire('ap-web', wv || 'inconnue', wv ? '' : 'warn');
+
+  if (!(res && res.valid && res.command === 'check_version')) {
+    ecrire('ap-majfw', 'pas de verif. recente');
+    ecrire('ap-majweb', 'pas de verif. recente');
+    return;
+  }
+  if (res.updateAvailable && res.availableVersion) {
+    ecrire('ap-majfw', res.availableVersion + ' disponible', 'warn');
+  } else {
+    ecrire('ap-majfw', 'a jour', 'ok');
+  }
+  if (res.webAssetsUpdateAvailable && res.webAssetsAvailableVersion) {
+    ecrire('ap-majweb', res.webAssetsAvailableVersion + ' disponible', 'warn');
+  } else {
+    ecrire('ap-majweb', 'a jour', 'ok');
+  }
+}
+
 charger();
+chargerAPropos();
 setInterval(charger, 4000);
 </script>
 </body></html>

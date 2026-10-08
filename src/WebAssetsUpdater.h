@@ -102,6 +102,11 @@ public:
     // (lue dans /www/assets-version.json). Ne modifie rien.
     static CheckResult checkForUpdate(StorageManager* storage);
 
+    // Version des ressources Web deployees (/www/assets-version.json), la
+    // meme lecture que checkForUpdate(). Chaine vide si SD absente, fichier
+    // manquant ou illisible. Lecture seule ; sert a la page A propos du LCD.
+    static void installedVersion(StorageManager* storage, char* out, size_t outSize);
+
     // url doit etre une URL https:// vers un hote GitHub autorise (release
     // asset). expectedSha256Hex : 64 caracteres hexadecimaux minuscules.
     // Le corps telecharge n'est jamais conserve, seulement haché au vol.

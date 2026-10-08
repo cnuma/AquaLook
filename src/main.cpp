@@ -760,6 +760,7 @@ void setup() {
 
     displayMgr.setOutputAdapter(&outputAdapter);
     displayMgr.setCloudSync(&cloudSyncScheduler);
+    displayMgr.setStorage(&storageMgr);   // page A propos : version des pages Web
     displayMgr.begin(
         &ntpMgr,
         &weatherMgr,

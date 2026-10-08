@@ -7,6 +7,11 @@
 #include "IncidentManager.h"       // page Sante : etat incident SD
 #include "RuntimeProfiler.h"       // sous-composants de update(), voir la note du 27/09/2026
 #include "EventLog.h"
+#include "OtaBuildIdentity.h"       // page A propos : identite du build
+#include "MaintenanceResult.h"      // page A propos : dernieres versions connues
+#include "WebAssetsUpdater.h"       // page A propos : version des pages installees
+#include "StorageManager.h"
+#include "SystemDiagnostics.h"      // page A propos : date de compilation, source unique
 #include "esp_log.h"
 #include <WiFi.h>
 
@@ -787,6 +792,7 @@ const char* DisplayManager::adminPageName(AdminPage p) {
         case AdminPage::SYSTEM: return "Systeme";
         case AdminPage::LOGS:   return "Logs";
         case AdminPage::SANTE:  return "Sante";
+        case AdminPage::APROPOS: return "A propos";
         default:                return "?";
     }
 }
@@ -3771,6 +3777,7 @@ void DisplayManager::drawAdminPageContent() {
         case AdminPage::SYSTEM: drawAdminPageSystem(); break;
         case AdminPage::LOGS:   drawAdminPageLogs();   break;
         case AdminPage::SANTE:  drawAdminPageSante();  break;
+        case AdminPage::APROPOS: drawAdminPageAPropos(); break;
         default: break;
     }
 }
@@ -3948,6 +3955,80 @@ void DisplayManager::drawAdminPageSystem() {
                armed ? "Confirmer ? (retaper ici)" : "Oublier le secret API",
                armed ? Theme::AMBER : Theme::SURFACE,
                armed ? 0x0000 : Theme::TEXT);
+}
+
+// ─────────────────────────────────────────────
+//  Page ADMIN : A PROPOS (invariant F12)
+//  Identite du firmware reellement execute -- les memes macros que
+//  /api/diagnostics.build, issues de VERSION via tools/version_build.py --,
+//  puis la version des pages Web installees et les dernieres versions
+//  disponibles connues (resultat de la derniere verification, en NVS). Rien
+//  n'est verifie ni telecharge ici : la page ne fait que lire.
+// ─────────────────────────────────────────────
+void DisplayManager::drawAdminPageAPropos() {
+    int y = ADM_CONTENT_Y + 8;
+    _tft.setTextSize(1);
+
+    auto row = [&](const char* label, const char* val, uint16_t color) {
+        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        _tft.drawString(label, 10, y);
+        _tft.setTextColor(color, Theme::SURFACE);
+        _tft.drawString(val, 110, y);
+        y += 17;
+    };
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s - %s",
+             OtaBuildIdentity::PRODUCT, OtaBuildIdentity::PRODUCT_LINE);
+    row("Produit :", buf, Theme::TEXT);
+    row("Version :", OtaBuildIdentity::VERSION, Theme::CYAN);
+    snprintf(buf, sizeof(buf), "%s (SHA %s)",
+             OtaBuildIdentity::BUILD_NUMBER, OtaBuildIdentity::GIT_SHA);
+    row("Build :", buf, Theme::TEXT);
+    row("Branche :", OtaBuildIdentity::GIT_BRANCH, Theme::TEXT);
+    snprintf(buf, sizeof(buf), "%s %s",
+             SystemDiagnostics::compiledDate(), SystemDiagnostics::compiledTime());
+    row("Compile le :", buf, Theme::TEXT);
+    snprintf(buf, sizeof(buf), "%s / V4", OtaBuildIdentity::PLATFORMIO_ENVIRONMENT);
+    row("Cible :", buf, Theme::TEXT);
+
+    // Pages Web : relues sur la SD au plus toutes les ABOUT_WEB_CACHE_MS.
+    const uint32_t now = millis();
+    if (_aboutWebVersionAt == 0 || now - _aboutWebVersionAt > ABOUT_WEB_CACHE_MS) {
+        _aboutWebVersion[0] = ' ';
+        if (_storage && _storage->isSdAvailable()) {
+            WebAssetsUpdater::installedVersion(_storage, _aboutWebVersion,
+                                               sizeof(_aboutWebVersion));
+        }
+        _aboutWebVersionAt = now ? now : 1;
+    }
+    const char* web = _aboutWebVersion[0] ? _aboutWebVersion
+                    : ((_storage && _storage->isSdAvailable()) ? "inconnue" : "SD absente");
+    row("Pages Web :", web, _aboutWebVersion[0] ? Theme::TEXT : Theme::AMBER);
+
+    // Dernieres versions disponibles : meme lecture que la page /ota
+    // (data/app.js) -- seul un resultat de CHECK_VERSION les renseigne.
+    const MaintenanceResult res = MaintenanceResultStore::load();
+    const bool checked = res.valid && strcmp(res.command, "check_version") == 0;
+    // Le dernier resultat peut etre une autre operation (installation des
+    // pages, telechargement...) qui ecrase celui de la verification : on
+    // ne sait alors rien de recent, ce qui n'est pas "jamais".
+    if (!checked) {
+        row("Mises a jour :", "pas de verif. recente", Theme::MUTED);
+        return;
+    }
+    if (res.updateAvailable && res.availableVersion[0]) {
+        snprintf(buf, sizeof(buf), "%s disponible", res.availableVersion);
+        row("MAJ firmware :", buf, Theme::AMBER);
+    } else {
+        row("MAJ firmware :", "a jour", Theme::GREEN);
+    }
+    if (res.webAssetsUpdateAvailable && res.webAssetsAvailableVersion[0]) {
+        snprintf(buf, sizeof(buf), "%s disponible", res.webAssetsAvailableVersion);
+        row("MAJ pages :", buf, Theme::AMBER);
+    } else {
+        row("MAJ pages :", "a jour", Theme::GREEN);
+    }
 }
 
 // ─────────────────────────────────────────────

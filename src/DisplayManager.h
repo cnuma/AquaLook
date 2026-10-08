@@ -23,6 +23,8 @@
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "CloudSync.h"
 
+class StorageManager;
+
 // ═══════════════════════════════════════════════════════════════
 //  Layout HOME 320×240 (rotation 1)
 //
@@ -70,7 +72,11 @@ enum class AdminPage : uint8_t {
     // même quand le bandeau reste gris nominal, et pas seulement en tapant
     // dessus quand il signale déjà un problème.
     SANTE  = 6,
-    _COUNT = 7
+    // Versions installees (firmware, ressources Web) et mises a jour
+    // connues -- invariant F12. Ajoutee en dernier : les numeros des pages
+    // existantes ne bougent pas.
+    APROPOS = 7,
+    _COUNT = 8
 };
 
 class DisplayManager {
@@ -129,6 +135,10 @@ public:
     // renderCloudSprite()) -- nullptr tolere, l'icone reste alors masquee
     // comme si la synchro etait desactivee.
     void setCloudSync(CloudSyncScheduler* cloudSync) { _cloudSync = cloudSync; }
+
+    // Page A propos : version des ressources Web lue sur la SD -- nullptr
+    // tolere, la ligne affiche alors "SD absente".
+    void setStorage(StorageManager* storage) { _storage = storage; }
 
     static constexpr uint8_t SPLASH_STEPS = 8;
 
@@ -264,6 +274,7 @@ private:
     // Lecture seule : DisplayManager n'ecrit jamais dans CloudSyncScheduler,
     // juste ses accesseurs const pour la pastille du bandeau HOME.
     CloudSyncScheduler* _cloudSync = nullptr;
+    StorageManager*  _storage  = nullptr;   // lecture seule, page A propos
     ScreenManager    _screenMgr;  // veille + LED
 
     // ── État UI ───────────────────────────────
@@ -300,6 +311,13 @@ private:
     // ApiAuth.h, seul un doigt sur CET ecran peut declencher l'action).
     uint32_t  _forgetSecretArmedAt = 0;
     static constexpr uint32_t FORGET_SECRET_CONFIRM_MS = 5000UL;
+
+    // Page A propos : version Web relue sur la SD au plus une fois par
+    // ABOUT_WEB_CACHE_MS, pour qu'un redraw complet (displayDirty) ne
+    // repasse pas a chaque fois par le mutex SD depuis loop().
+    char      _aboutWebVersion[24] = "";
+    uint32_t  _aboutWebVersionAt   = 0;   // 0 = jamais lue
+    static constexpr uint32_t ABOUT_WEB_CACHE_MS = 30000UL;
 
     // ── Cache HOME (invariant I16 — redraw boutons seuil 2%) ──
     struct HomeCache {
@@ -606,6 +624,7 @@ private:
     void drawAdminPageSystem();
     void drawAdminPageLogs();    // journal EventLog — liste scrollable
     void drawAdminPageSante();   // resume + bouton vers Screen::HEALTH
+    void drawAdminPageAPropos(); // versions installees, invariant F12
 
     // ── Icônes météo vectorielles ──────────────
     void drawWeatherIcon(TFT_eSprite& spr, uint16_t x, uint16_t y,

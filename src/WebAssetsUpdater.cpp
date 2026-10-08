@@ -374,6 +374,10 @@ void readInstalledVersion(StorageManager* storage, char* out, size_t outSize) {
 
 }  // namespace
 
+void WebAssetsUpdater::installedVersion(StorageManager* storage, char* out, size_t outSize) {
+    readInstalledVersion(storage, out, outSize);
+}
+
 namespace {
 // Recuperation bornee, sans empreinte attendue : reservee au manifeste.
 WebAssetVerifyResult fetchUnverified(const char* url, uint32_t maxBytes,

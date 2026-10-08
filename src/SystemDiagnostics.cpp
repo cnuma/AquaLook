@@ -444,8 +444,8 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["gitBranch"] = AQUALOOK_GIT_BRANCH;
     build["relayBackend"] = "v4";
     build["productLine"] = AQUALOOK_PRODUCT_LINE;
-    build["compiledDate"] = __DATE__;
-    build["compiledTime"] = __TIME__;
+    build["compiledDate"] = compiledDate();
+    build["compiledTime"] = compiledTime();
 
     JsonObject memory = doc["memory"].to<JsonObject>();
     memory["heapFree"] = ESP.getFreeHeap();
@@ -549,3 +549,6 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
 
     RuntimeProfiler::fillJson(doc);
 }
+
+const char* SystemDiagnostics::compiledDate() { return __DATE__; }
+const char* SystemDiagnostics::compiledTime() { return __TIME__; }

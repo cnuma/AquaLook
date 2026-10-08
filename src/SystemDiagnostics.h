@@ -28,6 +28,13 @@ public:
 
     static void fillJson(JsonDocument& doc, const WiFiManager* wifi);
 
+    // Date et heure de compilation publiees dans /api/diagnostics.build.
+    // Source unique (F14) : la page A propos du LCD lit celles-ci plutot que
+    // ses propres __DATE__/__TIME__, qui suivent la derniere recompilation
+    // de DisplayManager.cpp et divergeraient de la page Sante du Web.
+    static const char* compiledDate();
+    static const char* compiledTime();
+
 private:
     static portMUX_TYPE _mux;
 
