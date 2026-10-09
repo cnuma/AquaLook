@@ -75,10 +75,11 @@ Décisions :
 4. Premier lot : un essai d'envoi depuis l'administration (`POST /admin/mail-test`)
    et le relevé du score dans l'historique AlwaysData.
 
-**Ouvert (M1)** — domaine d'expédition : la boîte peut-elle exister sur
-`aqualook.alwaysdata.net` (sous-domaine par défaut), ou faut-il un domaine
-propre (meilleure délivrabilité, DMARC maîtrisé) ? À vérifier dans le panneau
-AlwaysData.
+**Tranché (M1), 9 oct. 2026** : expéditeur `aqualook@alwaysdata.net`, boîte
+créée par le propriétaire ; SMTP `smtp-aqualook.alwaysdata.net` (465 TLS).
+Le domaine `alwaysdata.net` appartient à l'hébergeur : SPF, DKIM et DMARC sont
+les siens, nous ne les réglons pas. Un domaine propre reste une évolution
+possible si la délivrabilité le demande.
 
 ## 4. Identité et unicité des modules
 
@@ -225,7 +226,7 @@ test sur `.141`, checkpoint.
 
 | Lot | Contenu | Côté | Prérequis |
 |---|---|---|---|
-| A | `mail.php`, `mail_log`, `/admin/mail-test` ; essai réel, score Rspamd relevé | serveur | M1 tranché, boîte créée |
+| A | `mail.php`, `mail_log`, `/admin/mail-test` ; essai réel, score Rspamd relevé | serveur | boîte créée (fait), mot de passe dans le `.env` du serveur |
 | B | Mot de passe oublié, changement de mot de passe, invitation | serveur + `app.html` | A |
 | C | `hw_id` dans le rapport, liaison au premier usage, colonne unique | firmware + serveur | — |
 | D | Enrôlement par code court, écran LCD « En ligne », désenrôlement, transfert | firmware + serveur | C (et E pour la protection PIN) |
