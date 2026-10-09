@@ -242,6 +242,16 @@ console (`.env` en repli ; seuls `DB_*` et `ADMIN_TOKEN` y restent). Côté
 module, les adresses de serveur restent en NVS (c'est déjà le cas de l'hôte
 CloudSync) ; aucun lot ne doit en écrire une en dur dans le firmware ou une page.
 
+Lot C : **validé de bout en bout le 9 oct. 2026**. Firmware `d2891f9`
+(build 1307) flashé sur `.141` (COM4) : `build.hwId` = `aql-44bd8d7acb88`
+(= `wifi.mac`), ligne de démarrage du journal avec `hw=…`, cycle CloudSync
+`rapport=ok` avant comme après le déploiement serveur ; `schema-v5` importé,
+console : « Identifiant matériel aql-44bd8d7acb88 », sans conflit. Banc
+serveur local 8/8. Constats antérieurs au lot, non corrigés : la bannière
+série de démarrage est perdue sur le S3 (imprimée avant la réouverture du
+port USB natif), et la ligne de démarrage affiche `target=unsupported` pour
+le S3.
+
 Lot A : **validé en production le 9 oct. 2026** (banc local 27/27 ; fichiers
 publiés, `schema-v4` importé, réglages saisis dans la console, `/health`
 `mail: true`, essai reçu). **Délivrabilité à reprendre** : le mail d'essai est
