@@ -400,6 +400,13 @@ async function selectModule(id) {
     + '<span class="mono" style="color:var(--muted)">' + esc(m.firmware || 'firmware inconnu') + '</span></div>'
     + '<div class="row"><label>Dernier contact</label><span class="mono">'
     + stamp(m.last_seen) + ' &nbsp;(' + ago(m.last_seen) + ')</span></div>'
+    // Identifiant materiel (D016, lot C) ; absent tant que schema-v5 n'est
+    // pas importe ou que le module n'a pas remonte un firmware qui le porte.
+    + '<div class="row"><label>Identifiant matériel</label><span class="mono">'
+    + (m.hw_id ? esc(m.hw_id) : 'pas encore annoncé') + '</span>'
+    + (m.hw_id_conflict ? ' <span class="tag refused" title="Le module annonce un autre identifiant, '
+        + 'ou un identifiant déjà lié à un autre module">conflit : ' + esc(m.hw_id_conflict) + '</span>' : '')
+    + '</div>'
     + '<div class="row"><button id="btn-token">Régénérer le jeton du module</button></div>'
     + '<div id="token-out"></div>'
     + '</div>'

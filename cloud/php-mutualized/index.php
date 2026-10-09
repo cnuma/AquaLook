@@ -240,6 +240,11 @@ try {
             $firmware = null;
         }
         touch_module($moduleId, $firmware);
+        // Identifiant materiel (D016, lot C), porte par le rapport diag.
+        $hwId = $payload['hwId'] ?? null;
+        if (is_string($hwId)) {
+            bind_module_hw_id($moduleId, $hwId);
+        }
         send_json(200, ['ok' => true]);
     }
 

@@ -105,10 +105,71 @@ function touch_module(string $moduleId, ?string $firmware): void
 
 function list_modules(): array
 {
-    $stmt = db()->query(
-        'SELECT module_id, label, firmware, last_seen FROM module ORDER BY module_id'
-    );
+    // SELECT * et non une liste de colonnes : hw_id et hw_id_conflict
+    // (schema-v5) apparaissent des que la migration est importee, et la
+    // console continue de fonctionner tant qu'elle ne l'est pas.
+    $stmt = db()->query('SELECT * FROM module ORDER BY module_id');
     return $stmt->fetchAll();
+}
+
+/** Forme produite par DeviceIdentity::hwId() cote firmware. */
+const HW_ID_PATTERN = '/^aql-[0-9a-f]{12}$/';
+
+/**
+ * Lie l'identifiant materiel annonce au module (D016, lot C).
+ *
+ * Premier rapport qui le porte : hw_id est pose, puis fige. Ensuite, un
+ * identifiant different -- ou deja pris par un autre module -- est note
+ * dans hw_id_conflict sans refuser le rapport : couper la synchronisation
+ * d'un jardin sur un soupcon ferait plus de mal que de bien, et le jeton
+ * reste l'authentification. Le bon identifiant efface le conflit.
+ *
+ * Silencieux si la migration schema-v5 n'est pas encore importee : un
+ * rapport ne doit jamais echouer pour une colonne absente.
+ */
+function bind_module_hw_id(string $moduleId, string $hwId): void
+{
+    if (!preg_match(HW_ID_PATTERN, $hwId)) {
+        return;
+    }
+    $pdo = db();
+    try {
+        $stmt = $pdo->prepare('SELECT hw_id, hw_id_conflict FROM module WHERE module_id = ?');
+        $stmt->execute([$moduleId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return;
+        }
+        if ($row['hw_id'] === $hwId) {
+            if ($row['hw_id_conflict'] !== null) {
+                $pdo->prepare('UPDATE module SET hw_id_conflict = NULL WHERE module_id = ?')
+                    ->execute([$moduleId]);
+            }
+            return;
+        }
+        if ($row['hw_id'] === null) {
+            try {
+                $pdo->prepare('UPDATE module SET hw_id = ?, hw_id_conflict = NULL WHERE module_id = ? AND hw_id IS NULL')
+                    ->execute([$hwId, $moduleId]);
+                return;
+            } catch (PDOException $e) {
+                if ($e->getCode() !== '23000') {
+                    throw $e;
+                }
+                // Deja lie a un autre module : on tombe dans le conflit.
+            }
+        }
+        if ($row['hw_id_conflict'] !== $hwId) {
+            $pdo->prepare('UPDATE module SET hw_id_conflict = ? WHERE module_id = ?')
+                ->execute([$hwId, $moduleId]);
+            error_log('AquaLook: conflit hw_id module=' . $moduleId . ' annonce=' . $hwId);
+        }
+    } catch (PDOException $e) {
+        // 42S22 : colonne inconnue (schema-v5 pas importe).
+        if ($e->getCode() !== '42S22') {
+            throw $e;
+        }
+    }
 }
 
 // ── Messages (telemetrie, etats, evenements, diagnostics) ──────────────────
