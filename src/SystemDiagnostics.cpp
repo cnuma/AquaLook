@@ -10,6 +10,7 @@ static constexpr uint32_t MIN_OTA_PARTITION_SIZE = 0x1E0000UL;
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include "EventLog.h"
+#include "DeviceIdentity.h"
 #include "TimeUtils.h"
 #include "RuntimeProfiler.h"
 #include "FaultManager.h"
@@ -444,6 +445,8 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["gitBranch"] = AQUALOOK_GIT_BRANCH;
     build["relayBackend"] = "v4";
     build["productLine"] = AQUALOOK_PRODUCT_LINE;
+    // Identifiant materiel (D016) : celui que le serveur rattache au module.
+    build["hwId"] = DeviceIdentity::hwId();
     build["compiledDate"] = compiledDate();
     build["compiledTime"] = compiledTime();
 

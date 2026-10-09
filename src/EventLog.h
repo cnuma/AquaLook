@@ -3,6 +3,7 @@
 #include <time.h>
 #include "FaultManager.h"
 #include "OtaBuildIdentity.h"
+#include "DeviceIdentity.h"
 
 enum LogLevel : uint8_t {
     LOG_INFO  = 0,
@@ -75,6 +76,7 @@ public:
             Serial.printf("Git SHA       : %s\n", OtaBuildIdentity::GIT_SHA);
             Serial.printf("Branche       : %s\n", OtaBuildIdentity::GIT_BRANCH);
             Serial.printf("Carte         : %s\n", OtaBuildIdentity::BOARD);
+            Serial.printf("Identifiant   : %s\n", DeviceIdentity::hwId());
             Serial.println("============================================================");
         }
 

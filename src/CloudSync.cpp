@@ -10,6 +10,7 @@
 #include <lwip/sockets.h>
 
 #include "BootLoopGuard.h"
+#include "DeviceIdentity.h"
 #include "ConfigManager.h"
 #include "ScheduleManager.h"
 #include "EventBus.h"
@@ -931,6 +932,9 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         JsonObject payload = doc["payload"].to<JsonObject>();
         payload["firmware"] = AQUALOOK_VERSION;
         payload["gitSha"] = AQUALOOK_GIT_SHA;
+        // Identifiant materiel (D016, lot C) : le serveur le lie au
+        // module_id au premier rapport, puis signale tout desaccord.
+        payload["hwId"] = DeviceIdentity::hwId();
         payload["uptimeSec"] = millis() / 1000UL;
         payload["heapFree"] = static_cast<uint32_t>(AquaLook::Heap::freeBytes());
         payload["heapLargestBlock"] =
