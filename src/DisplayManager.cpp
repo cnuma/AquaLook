@@ -1032,7 +1032,17 @@ bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
 
 void DisplayManager::handleTouch() {
     uint16_t tx, ty;
-    if (!getTouchPoint(tx, ty)) return;
+    const bool touched = getTouchPoint(tx, ty);
+    // Garde apres le pave PIN (voir armTouchGuard) : tant qu'un contact est
+    // vu, l'echeance recule ; elle ne tombe qu'apres TOUCH_GUARD_MS sans
+    // aucun contact.
+    if (_touchGuard) {
+        const uint32_t t = millis();
+        if (touched) { _touchGuardUntil = t + TOUCH_GUARD_MS; return; }
+        if ((int32_t)(t - _touchGuardUntil) < 0) return;
+        _touchGuard = false;
+    }
+    if (!touched) return;
 
     // Debounce : ignorer les taps trop rapprochés (doigt maintenu)
     const uint32_t now = millis();
@@ -1432,8 +1442,11 @@ void DisplayManager::requestStart(uint8_t zone, bool returnHome) {
         if (returnHome) goTo(Screen::HOME);   // invariant I26
         return;
     }
-    _pinZone = zone;
-    openPin(PinPurpose::START_ZONE);
+    // La zone touchee n'est PAS memorisee : apres le PIN, l'ecran revient
+    // deverrouille et l'utilisateur refait son choix. Demarrer la zone du
+    // premier toucher surprenait (doigt pose pour reveiller, mauvaise
+    // tuile) -- constate sur .141 le 9 oct. 2026.
+    openPin(PinPurpose::UNLOCK);
 }
 
 void DisplayManager::openPin(PinPurpose purpose) {
@@ -1465,7 +1478,7 @@ void DisplayManager::drawPinFull() {
     const char* titre = "Code PIN";
     switch (_pinPurpose) {
         case PinPurpose::ENTER_ADMIN: titre = "Code PIN : administration"; break;
-        case PinPurpose::START_ZONE:  titre = "Code PIN : marche manuelle"; break;
+        case PinPurpose::UNLOCK:      titre = "Code PIN : deverrouiller"; break;
         case PinPurpose::SET_NEW:     titre = "Nouveau PIN (4 a 6 chiffres)"; break;
         case PinPurpose::SET_CONFIRM: titre = "Confirmer le nouveau PIN"; break;
     }
@@ -1479,9 +1492,11 @@ void DisplayManager::drawPinFull() {
     for (uint8_t i = 0; i < 12; ++i) {
         const uint16_t x = PIN_GAP + (i % 3) * (kw + PIN_GAP);
         const uint16_t y = PIN_PAD_Y + (i / 3) * (kh + PIN_GAP);
-        const bool ok = (i == 11);
-        drawButton(x, y, kw, kh, PIN_KEYS[i],
-                   ok ? Theme::GREEN : Theme::SURFACE2, ok ? 0x0000 : Theme::TEXT);
+        // Effacer (ambre) et OK (vert) se distinguent des chiffres au premier
+        // coup d'oeil (demande du 9 oct. 2026).
+        const uint16_t bg = (i == 11) ? Theme::GREEN : (i == 9) ? Theme::AMBER : Theme::SURFACE2;
+        const uint16_t fg = (i == 11 || i == 9) ? 0x0000 : Theme::TEXT;
+        drawButton(x, y, kw, kh, PIN_KEYS[i], bg, fg);
     }
     drawPinEntry();
 }
@@ -1504,7 +1519,7 @@ void DisplayManager::drawPinEntry() {
     uint16_t color = _pinMsgColor;
     const uint32_t wait = PinLock::lockoutRemainingSec();
     if (wait > 0 && (_pinPurpose == PinPurpose::ENTER_ADMIN ||
-                     _pinPurpose == PinPurpose::START_ZONE)) {
+                     _pinPurpose == PinPurpose::UNLOCK)) {
         snprintf(buf, sizeof(buf), "Trop d'essais : attendre %lu s", (unsigned long)wait);
         color = Theme::AMBER;
     } else {
@@ -1521,6 +1536,9 @@ void DisplayManager::drawPinEntry() {
 
 void DisplayManager::handleTouchPin(uint16_t tx, uint16_t ty) {
     if (hitTest(0, 0, 110, PIN_HDR_H, tx, ty)) {
+        // "Annuler" est sous le menu de l'accueil : sans garde, le meme
+        // doigt rouvrirait aussitot le pave.
+        armTouchGuard();
         _pinBuf[0] = '\0';
         goTo(_pinPurpose == PinPurpose::SET_NEW || _pinPurpose == PinPurpose::SET_CONFIRM
                  ? Screen::ADMIN : _pinReturn);
@@ -1550,6 +1568,9 @@ void DisplayManager::handleTouchPin(uint16_t tx, uint16_t ty) {
 }
 
 void DisplayManager::pinValidate() {
+    // Toutes les issues de "OK" changent d'ecran ou de saisie sous le
+    // doigt : garde avant tout (voir armTouchGuard).
+    armTouchGuard();
     auto message = [&](const char* m, uint16_t color) {
         strlcpy(_pinMsg, m, sizeof(_pinMsg));
         _pinMsgColor = color;
@@ -1562,13 +1583,12 @@ void DisplayManager::pinValidate() {
     }
     switch (_pinPurpose) {
         case PinPurpose::ENTER_ADMIN:
-        case PinPurpose::START_ZONE: {
+        case PinPurpose::UNLOCK: {
             const PinLock::Result r = PinLock::verify(_pinBuf);
             memset(_pinBuf, 0, sizeof(_pinBuf));
             if (r == PinLock::Result::OK || r == PinLock::Result::NO_PIN) {
-                if (_pinPurpose == PinPurpose::START_ZONE) {
-                    if (_schedule) _schedule->startManualWatering(_pinZone);
-                    goTo(Screen::HOME);   // invariant I26
+                if (_pinPurpose == PinPurpose::UNLOCK) {
+                    goTo(_pinReturn);   // rien n'est lance : nouveau geste attendu
                 } else {
                     goTo(Screen::ADMIN);
                 }
@@ -1645,6 +1665,8 @@ void DisplayManager::pinRecoveryGesture() {
         }
         delay(50);
     }
+    // Le doigt est encore sur l'ecran quand l'accueil s'affiche.
+    armTouchGuard();
     _tft.setTextDatum(TL_DATUM);
     _tft.setTextSize(1);
 }

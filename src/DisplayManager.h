@@ -55,7 +55,9 @@ enum class Screen : uint8_t {
 // Ce que la saisie du PIN debloque ou enregistre.
 enum class PinPurpose : uint8_t {
     ENTER_ADMIN,   // entrer dans ADMIN
-    START_ZONE,    // demarrer a la main la zone _pinZone
+    UNLOCK,        // deverrouiller avant une marche manuelle : rien n'est
+                   // lance ensuite, l'utilisateur refait son geste
+                   // (demande du 9 oct. 2026, comme un telephone)
     SET_NEW,       // nouveau PIN, premiere saisie
     SET_CONFIRM    // nouveau PIN, confirmation
 };
@@ -328,7 +330,6 @@ private:
     // debloque, et l'ecran ou revenir sur "Annuler".
     PinPurpose _pinPurpose = PinPurpose::ENTER_ADMIN;
     Screen     _pinReturn  = Screen::HOME;
-    uint8_t    _pinZone    = 0;
     char       _pinBuf[8]   = {0};
     char       _pinFirst[8] = {0};   // premiere saisie d'un nouveau PIN
     char       _pinMsg[48]  = {0};
@@ -337,6 +338,15 @@ private:
     uint32_t   _removePinArmedAt = 0;
     // Geste d'effacement au demarrage : appui maintenu, borne.
     static constexpr uint32_t PIN_RECOVERY_HOLD_MS = 10000UL;
+    // Garde de toucher apres le pave (et apres le geste d'effacement) : le
+    // doigt encore pose -- ou tout proche, la dalle capacitive le detecte --
+    // etait lu comme un appui sur la page suivante et lancait un arrosage
+    // (constate le 9 oct. 2026). Aucun appui n'est pris en compte tant que
+    // le doigt n'est pas releve, puis pendant TOUCH_GUARD_MS sans contact.
+    bool       _touchGuard = false;
+    uint32_t   _touchGuardUntil = 0;
+    static constexpr uint32_t TOUCH_GUARD_MS = 600UL;
+    void armTouchGuard() { _touchGuard = true; _touchGuardUntil = millis() + TOUCH_GUARD_MS; }
 
     // Page A propos : version Web relue sur la SD au plus une fois par
     // ABOUT_WEB_CACHE_MS, pour qu'un redraw complet (displayDirty) ne
