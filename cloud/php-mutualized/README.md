@@ -127,6 +127,21 @@ par Let's Encrypt, sur le domaine `*.alwaysdata.net`.
    (jamais purgée : valeur de traçabilité, voir `SYSTEM_ARCHITECTURE.md`
    §7) — ces deux-là restent hors du périmètre de `cleanup.php`,
    délibérément.
+8. **Paramètres et mails (D016, lot A)** — importer
+   `schema-v4-parametres-mails.sql` dans phpMyAdmin (rejouable : tables
+   `app_setting` et `mail_log`). Puis, dans la console (`/admin.html`), bouton
+   **Paramètres** : serveur SMTP (`smtp-<compte>.alwaysdata.net`, port 465),
+   identifiant et mot de passe de la boîte, adresse et nom d'expédition,
+   plafonds d'envoi. Pris en compte à la requête suivante, sans redéploiement ;
+   le `.env` n'est qu'un repli (voir `.env.example`). Envoyer un essai depuis
+   la même page, puis relever le score anti-spam dans *E-mails → Historique*
+   (au-delà de 3, l'hébergeur bloque). `/health` rend `config.mail` à `true`
+   quand les réglages indispensables sont présents.
+
+   Restent **uniquement** dans le `.env` : `DB_*` et `ADMIN_TOKEN` (il faut
+   les connaître avant de pouvoir lire la base). Le mot de passe SMTP réglé
+   depuis la console est stocké en base : l'API ne le relit jamais, mais une
+   sauvegarde de la base le contient.
 
 Le site sert déjà les ressources Web sous `/web/v<version>/`. L'API et la
 console cohabitent avec elles sans conflit : le `.htaccess` ne réécrit que ce

@@ -74,12 +74,32 @@ function purge_expired_sessions(PDO $pdo): int
     return $stmt->rowCount();
 }
 
+// Le journal des mails ne sert qu'aux plafonds (une heure, un jour) et au
+// diagnostic recent. Table absente (schema-v4 pas importe) : rien a purger,
+// et ce n'est pas une raison de faire echouer les autres purges.
+const MAIL_LOG_RETENTION_DAYS = 30;
+
+function purge_old_mail_log(PDO $pdo): int
+{
+    try {
+        $stmt = $pdo->prepare('DELETE FROM mail_log WHERE ts < (UTC_TIMESTAMP(3) - INTERVAL ? DAY)');
+        $stmt->execute([MAIL_LOG_RETENTION_DAYS]);
+        return $stmt->rowCount();
+    } catch (PDOException $e) {
+        if ($e->getCode() === '42S02') {
+            return 0;
+        }
+        throw $e;
+    }
+}
+
 $pdo = db();
 $messages = purge_old_messages($pdo);
 $attempts = purge_old_login_attempts($pdo);
 $sessions = purge_expired_sessions($pdo);
+$mails = purge_old_mail_log($pdo);
 
 fwrite(STDOUT, sprintf(
-    "[%s] purge : %d message(s), %d tentative(s) de connexion, %d session(s) expiree(s)\n",
-    utc_now(), $messages, $attempts, $sessions
+    "[%s] purge : %d message(s), %d tentative(s) de connexion, %d session(s) expiree(s), %d mail(s) journalise(s)\n",
+    utc_now(), $messages, $attempts, $sessions, $mails
 ));

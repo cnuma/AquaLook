@@ -33,6 +33,7 @@ ini_set('log_errors', '1');
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/mail.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -164,6 +165,8 @@ try {
                 'db'         => $defini('DB_HOST') && $defini('DB_NAME') && $defini('DB_USER'),
                 'dbPassword' => $defini('DB_PASSWORD'),
                 'adminToken' => strlen(env_value('ADMIN_TOKEN')) >= MIN_TOKEN_LENGTH,
+                // Base puis .env (settings.php) ; un booleen, jamais une valeur.
+                'mail'       => mail_configured(),
             ],
             'database' => database_status(),
         ]);
@@ -724,6 +727,51 @@ try {
         // Le mot de passe n'est pas renvoye : il vient de l'appelant, qui le
         // connait deja, et le rendre l'ecrirait dans des journaux.
         send_json(200, ['userId' => $userId, 'email' => $email]);
+    }
+
+    // ── Parametres du service et mails (D016) ───────────────────────────────
+
+    if ($method === 'GET' && $path === '/admin/settings') {
+        require_admin();
+        send_json(200, settings_list());
+    }
+
+    if ($method === 'POST' && $path === '/admin/settings') {
+        require_admin();
+        $body = read_json_body();
+        $values = $body['values'] ?? null;
+        if (!is_array($values) || $values === []) {
+            send_json(400, ['detail' => 'values attendu : {nom: valeur ou null}']);
+        }
+        $erreur = settings_save($values);
+        if ($erreur !== null) {
+            send_json(400, ['detail' => $erreur]);
+        }
+        send_json(200, ['ok' => true]);
+    }
+
+    if ($method === 'POST' && $path === '/admin/mail-test') {
+        require_admin();
+        $body = read_json_body();
+        $to = (string)($body['to'] ?? '');
+        $debut = microtime(true);
+        $r = send_mail(
+            $to,
+            "AquaLook : essai d'envoi",
+            "Ce message confirme que le service AquaLook sait envoyer des mails.\n\n"
+            . 'Envoye le ' . gmdate('d/m/Y H:i') . " UTC depuis la console d'administration.\n",
+            'test',
+            client_ip()
+        );
+        send_json(200, $r + ['ms' => (int)round((microtime(true) - $debut) * 1000)]);
+    }
+
+    if ($method === 'GET' && $path === '/admin/mail-log') {
+        require_admin();
+        $rows = db()->query(
+            'SELECT ts, kind, ok, error FROM mail_log ORDER BY id DESC LIMIT 50'
+        )->fetchAll();
+        send_json(200, $rows);
     }
 
     if ($method === 'POST' && $path === '/admin/module/owner') {

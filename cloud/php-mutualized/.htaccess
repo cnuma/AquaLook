@@ -13,7 +13,9 @@ RewriteRule ^ index.php [L]
 # HTTP ne doit jamais declencher une purge (le script se protege aussi lui-meme
 # via PHP_SAPI, en ceinture).
 # Les .md sont de la documentation de developpement, sans interet public.
-<FilesMatch "^(\.env.*|schema\.sql|router\.php|cleanup\.php|.*\.md)$">
+# schema*.sql couvre aussi les migrations (schema-v2..., schema-v4...), que
+# l'ancien motif schema\.sql laissait servir.
+<FilesMatch "^(\.env.*|schema.*\.sql|router\.php|cleanup\.php|.*\.md)$">
     Require all denied
 </FilesMatch>
 

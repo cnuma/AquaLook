@@ -218,6 +218,7 @@ function renderModules() {
   const head = '<div class="row" style="margin-bottom:10px">'
     + '<button id="btn-refresh">Actualiser</button>'
     + '<button id="btn-users">Comptes</button>'
+    + '<button id="btn-settings">Paramètres</button>'
     + '<button id="btn-new">Nouveau module</button></div>';
   if (!MODULES.length) {
     el.innerHTML = head + '<div class="empty">Aucun module enregistré. '
@@ -234,7 +235,81 @@ function renderModules() {
   $('btn-refresh').onclick = () => loadModules().then(() => { if (CURRENT) selectModule(CURRENT); });
   $('btn-new').onclick = newModule;
   $('btn-users').onclick = voirComptes;
+  $('btn-settings').onclick = voirParametres;
   el.querySelectorAll('.mod').forEach(b => { b.onclick = () => selectModule(b.dataset.id); });
+}
+
+// ── Parametres du service (D016) ────────────────────────────────────────
+//
+// Le formulaire est construit a partir de la liste que rend le serveur
+// (registre de settings.php) : aucun nom de serveur, aucune adresse ni
+// limite n'est ecrit dans cette page. Un secret n'est jamais relu ; son
+// champ vide signifie "ne pas changer".
+const SOURCES = { base: 'console', env: '.env', defaut: 'défaut' };
+
+async function voirParametres() {
+  CURRENT = null;
+  renderModules();
+  const d = $('detail');
+  let items = [], journal = [];
+  try {
+    items = await api('/admin/settings');
+    journal = await api('/admin/mail-log').catch(() => []);
+  } catch (e) { toast(e.message, true); return; }
+
+  const lignes = items.map(s => '<div class="row"><label style="min-width:230px">' + esc(s.label) + '</label>'
+    + '<input data-n="' + esc(s.name) + '" style="flex:1" autocomplete="off"'
+    + (s.secret ? ' type="password" placeholder="' + (s.defined ? 'défini — laisser vide pour conserver' : 'non défini') + '"'
+                : ' value="' + esc(s.value) + '"')
+    + '><span class="mono" style="min-width:60px">' + esc(SOURCES[s.source] || s.source) + '</span>'
+    + (s.source === 'base' ? '<button data-raz="' + esc(s.name) + '" title="Revenir au .env ou au défaut">×</button>' : '')
+    + '</div>').join('');
+
+  const histo = journal.length
+    ? journal.map(j => '<tr><td class="mono">' + esc(stamp(j.ts)) + '</td><td>' + esc(j.kind) + '</td>'
+        + '<td>' + (Number(j.ok) ? '<span class="tag accepted">envoyé</span>'
+                                 : '<span class="tag refused">' + esc(j.error || 'échec') + '</span>') + '</td></tr>').join('')
+    : '<tr><td colspan="3" class="empty">Aucun envoi.</td></tr>';
+
+  d.innerHTML = '<div class="card"><h2>Paramètres du service</h2>' + lignes
+    + '<button class="primary" id="p-save">Enregistrer</button>'
+    + '<div class="hint">Pris en compte à la requête suivante, sans redéploiement. Colonne de droite : '
+    + 'provenance de la valeur en service. Les accès à la base et le jeton administrateur restent dans le .env.</div></div>'
+    + '<div class="card"><h2>Essai d&rsquo;envoi</h2>'
+    + '<div class="row"><label>Destinataire</label><input id="p-to" type="email" style="flex:1" autocomplete="off">'
+    + '<button id="p-test">Envoyer un essai</button></div>'
+    + '<div class="hint">Vérifier ensuite le score anti-spam dans le panneau de l&rsquo;hébergeur (E-mails &gt; Historique).</div></div>'
+    + '<div class="card"><h2>50 derniers envois</h2><table><tr><th>Date</th><th>Type</th><th>Résultat</th></tr>'
+    + histo + '</table></div>';
+
+  const enregistrer = async values => {
+    try {
+      await api('/admin/settings', { method: 'POST', body: JSON.stringify({ values: values }) });
+      toast('Paramètres enregistrés');
+      voirParametres();
+    } catch (e) { toast('Refusé : ' + e.message, true); }
+  };
+  $('p-save').onclick = () => {
+    const values = {};
+    d.querySelectorAll('input[data-n]').forEach(i => {
+      const s = items.find(x => x.name === i.dataset.n);
+      const v = i.value.trim();
+      if (s.secret ? v !== '' : v !== (s.value || '')) values[s.name] = v;
+    });
+    if (!Object.keys(values).length) { toast('Rien à enregistrer'); return; }
+    enregistrer(values);
+  };
+  d.querySelectorAll('button[data-raz]').forEach(b => {
+    b.onclick = () => enregistrer({ [b.dataset.raz]: null });
+  });
+  $('p-test').onclick = async () => {
+    try {
+      const r = await api('/admin/mail-test', { method: 'POST', body: JSON.stringify({ to: $('p-to').value.trim() }) });
+      if (r.ok) toast('Accepté par le serveur SMTP (' + r.ms + ' ms)');
+      else toast('Échec : ' + r.error + ' (' + r.ms + ' ms)', true);
+      voirParametres();
+    } catch (e) { toast(e.message, true); }
+  };
 }
 
 // ── Comptes utilisateurs ────────────────────────────────────────────────
