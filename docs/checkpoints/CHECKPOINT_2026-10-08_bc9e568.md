@@ -122,6 +122,17 @@ existants (ajout de `gv-releve` seulement), format NVS (`aqlvars` inchangé),
 7. **Sécurité locale du module (demande de l'utilisateur, 9 oct. 2026)** :
    code PIN sur le LCD et accès sécurisé à l'interface Web du module — voir
    §12.
+8. **Erreur SD à examiner (demande de l'utilisateur, 9 oct. 2026)** :
+   `/api/faults` sur `.141` (`bc9e568`) rend `unacknowledged: true`,
+   `active: false`, `lastErrorMessage` = « Stockage: SD indisponible
+   raison=health_check_failed chemin=/www/index.html ». Journal : épisode
+   isolé vers 17:46:30, `SD recuperee essai=1 lentes=0 indisponible=2s`,
+   `ressources Web SD validees dans /www`, « Incident SD: recupere (episode
+   isole, sans notification) » ; la ligne d'origine était déjà sortie du
+   tampon HTTP. À examiner : ce qui déclenche le contrôle de santé sur
+   `/www/index.html`, l'activité concurrente à cet instant (requêtes Web,
+   éditeur, CloudSync), et si une erreur récupérée en 2 s doit rester « non
+   acquittée ». Capture série recommandée pour le prochain épisode.
 
 ## 9. Procédure exacte de reprise
 
