@@ -117,6 +117,8 @@ existants (ajout de `gv-releve` seulement), format NVS (`aqlvars` inchangé),
    (`'abcdefgh'.indexOf(mot)` accepte `ab`, `gh`…).
 5. Reste de la TODO `fade726` §8 (jeton admin de production, CloudSync 8 s
    sur plusieurs heures, CI, migration Ubuntu 26 le 19 oct.).
+6. **Prochaine session (demande de l'utilisateur, 9 oct. 2026)** : gestion
+   des modules et des comptes depuis l'interface Web AlwaysData — voir §11.
 
 ## 9. Procédure exacte de reprise
 
@@ -160,3 +162,80 @@ git show 6df198d                     # fusion serveur + date du dernier contact
 git show bc9e568                     # noms inchangés : pas de renvoi du miroir
 git tag -l 'archive/*'               # branches archivées
 ```
+
+## 11. Prochaine session — gestion des modules et des comptes (espace en ligne)
+
+Demande de l'utilisateur, ajoutée le 9 oct. 2026. Évolution significative :
+commencer par une décision documentée (D016) avant tout code.
+
+### État actuel (vérifié dans `cloud/php-mutualized/`)
+
+- Comptes créés **par l'administrateur seulement** (`/admin/user`) ; tables
+  `app_user`, `app_session`, `login_attempt` (`schema-v2-comptes.sql`).
+- Rattachement module → compte par l'administrateur
+  (`/admin/module/owner`, colonne `module.owner_user_id`).
+- Jeton du module émis par `/admin/module-token`, **recopié à la main**
+  dans le module (CloudSync, NVS).
+- Ni inscription, ni réinitialisation de mot de passe, ni envoi de mail.
+
+### Demandé
+
+1. **Enrôlement et suppression des modules par l'utilisateur** depuis
+   l'interface Web.
+2. **Enregistrement unique des modules** dans la base AlwaysData (identifiant
+   stable, contrainte d'unicité, transfert d'un compte à l'autre maîtrisé).
+3. **Identifiant et poignée de main depuis le LCD** : l'utilisateur lit sur
+   l'écran de quoi rattacher *ce* module à *son* compte, sans se tromper de
+   module.
+4. **Mot de passe oublié et réinitialisation** depuis l'interface Web.
+5. **Analyser la documentation AlwaysData** pour l'envoi de mails
+   (réinitialisation, premier enrôlement) : `mail()` PHP ou SMTP du compte,
+   adresse d'expédition, SPF/DKIM du domaine, limites d'envoi.
+
+### Pistes de conception à évaluer
+
+- **Enrôlement « code court » (modèle *device authorization*, RFC 8628)** :
+  le module, jamais enrôlé ou réinitialisé, appelle `POST /v1/enroll/start`
+  avec son identifiant matériel (MAC eFuse / ID puce) ; le serveur rend un
+  code utilisateur court (8 caractères, sans ambiguïté O/0, I/1) valable
+  ~10 min et usage unique ; le LCD l'affiche avec l'identifiant du module ;
+  l'utilisateur le saisit dans son espace ; le module interroge
+  `POST /v1/enroll/poll` et reçoit **son jeton** — plus de copie manuelle.
+  Limiter les tentatives (comme `login_attempt`), ne stocker que des
+  empreintes (SHA-256) des codes et jetons.
+- **Suppression / désenrôlement** : révoquer le jeton côté serveur, choix
+  explicite entre conserver ou purger l'historique et les sauvegardes ;
+  pendant symétrique sur le LCD (« oublier le compte en ligne »).
+- **Mot de passe** : table de jetons de réinitialisation (empreinte, expiration
+  30-60 min, usage unique) ; réponse identique que le compte existe ou non
+  (pas d'énumération des adresses) ; fermer toutes les sessions après
+  réinitialisation ; limite de demandes par adresse et par IP.
+- **Inscription** : libre avec vérification de l'adresse mail, ou sur
+  invitation — à décider.
+
+### Autres services proposés (à arbitrer par l'utilisateur)
+
+- Alertes par mail : module hors ligne depuis X heures, défaut signalé
+  (`FaultManager`), arrosage annulé ou en échec ; réglables par module.
+- Partage d'un module avec un autre compte (lecture seule ou gestion).
+- Sessions actives visibles, avec déconnexion à distance ; historique des
+  connexions.
+- Double authentification (TOTP) optionnelle.
+- Journal d'audit : qui a envoyé quelle commande, quand, avec quel résultat.
+- Renommer un module, lui donner un lieu et un fuseau horaire.
+- Rotation du jeton d'un module depuis l'espace.
+- Annonce d'une nouvelle version firmware/Web disponible (**information
+  seulement** : la mise à jour reste déclenchée par l'utilisateur sur le
+  module, invariant).
+- Export de ses données et suppression de compte (RGPD).
+
+### Points d'attention
+
+- Le dépôt est public : aucun identifiant SMTP ni secret dans Git (`.env` du
+  serveur seulement).
+- L'interface locale du module n'a toujours pas d'authentification
+  (`REPRISE_INGENIEUR.md` §1.5) : l'enrôlement ne doit pas permettre à un
+  poste du LAN de rattacher le module à un autre compte sans action visible
+  sur le LCD.
+- Le firmware actuel ne connaît que le jeton manuel : garder ce chemin
+  pendant la transition (modules déjà enrôlés, mode maintenance).
