@@ -1460,59 +1460,96 @@ void DisplayManager::openPin(PinPurpose purpose) {
 }
 
 // Geometrie du pave, partagee entre dessin et toucher.
+//
+// Disposition en paysage, sur le modele des ecrans de verrouillage Android
+// (demande du 9 oct. 2026 : touches trop larges et trop basses, manque
+// d'harmonie) : a gauche le titre, les points et le message, a droite un
+// pave compact de touches rondes. "Annuler" passe en bas a gauche, loin du
+// menu de l'accueil qu'il recouvrait.
 namespace {
-constexpr uint16_t PIN_HDR_H  = 28;
-constexpr uint16_t PIN_DOTS_Y = 32;
-constexpr uint16_t PIN_DOTS_H = 52;   // points + ligne de message
-constexpr uint16_t PIN_PAD_Y  = PIN_HDR_H + PIN_DOTS_H + 6;
-constexpr uint16_t PIN_GAP    = 4;
+constexpr uint16_t PIN_M       = 8;    // marge exterieure
+constexpr uint16_t PIN_PITCH_Y = (DisplayManager::SCREEN_H - 2 * PIN_M) / 4;
+constexpr uint16_t PIN_D       = (PIN_PITCH_Y - 8 < 56) ? PIN_PITCH_Y - 8 : 56;  // diametre
+constexpr uint16_t PIN_PITCH_X = PIN_D + 18;
+constexpr uint16_t PIN_PAD_X   = DisplayManager::SCREEN_W - PIN_M - 3 * PIN_PITCH_X;
+constexpr uint16_t PIN_LEFT_W  = PIN_PAD_X - 2 * PIN_M;   // panneau d'information
+constexpr uint16_t PIN_DOTS_Y  = DisplayManager::SCREEN_H / 2 - 24;
+constexpr uint16_t PIN_MSG_Y   = PIN_DOTS_Y + 26;
+constexpr uint16_t PIN_CANCEL_H = 40;
+constexpr uint16_t PIN_CANCEL_W = (PIN_LEFT_W < 160) ? PIN_LEFT_W : 160;
+constexpr uint16_t PIN_CANCEL_X = PIN_M + (PIN_LEFT_W - PIN_CANCEL_W) / 2;
+constexpr uint16_t PIN_CANCEL_Y = DisplayManager::SCREEN_H - PIN_M - PIN_CANCEL_H;
 const char* const PIN_KEYS[12] = {"1","2","3","4","5","6","7","8","9","<","0","OK"};
+
+// Case tactile de la touche i (toute la cellule, plus genereuse que le rond).
+inline uint16_t pinCellX(uint8_t i) { return PIN_PAD_X + (i % 3) * PIN_PITCH_X; }
+inline uint16_t pinCellY(uint8_t i) { return PIN_M + (i / 3) * PIN_PITCH_Y; }
 }
 
 void DisplayManager::drawPinFull() {
-    _tft.fillRect(0, 0, SCREEN_W, PIN_HDR_H, Theme::SURFACE);
-    _tft.drawFastHLine(0, PIN_HDR_H - 1, SCREEN_W, Theme::BORDER);
-    _tft.setTextSize(1);
-    _tft.setTextColor(Theme::CYAN, Theme::SURFACE);
-    _tft.drawString("<- Annuler", 4, 10);
     const char* titre = "Code PIN";
     switch (_pinPurpose) {
-        case PinPurpose::ENTER_ADMIN: titre = "Code PIN : administration"; break;
-        case PinPurpose::UNLOCK:      titre = "Code PIN : deverrouiller"; break;
-        case PinPurpose::SET_NEW:     titre = "Nouveau PIN (4 a 6 chiffres)"; break;
-        case PinPurpose::SET_CONFIRM: titre = "Confirmer le nouveau PIN"; break;
+        case PinPurpose::ENTER_ADMIN: titre = "Administration"; break;
+        case PinPurpose::UNLOCK:      titre = "Deverrouiller"; break;
+        case PinPurpose::SET_NEW:     titre = "Nouveau code PIN"; break;
+        case PinPurpose::SET_CONFIRM: titre = "Confirmer le code"; break;
     }
-    _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
-    _tft.setTextDatum(TR_DATUM);
-    _tft.drawString(titre, SCREEN_W - 6, 10);
+    const uint16_t cx = PIN_M + PIN_LEFT_W / 2;
+    _tft.setTextDatum(TC_DATUM);
+    _tft.setFreeFont(THEME_FONT_TITLE);
+    _tft.setTextSize(1);
+    _tft.setTextColor(Theme::TEXT, Theme::BG);
+    _tft.drawString(titre, cx, PIN_M + 14);
+    _tft.setFreeFont(nullptr);
+    _tft.setTextColor(Theme::MUTED, Theme::BG);
+    _tft.drawString(_pinPurpose == PinPurpose::SET_NEW ? "4 a 6 chiffres" : "Saisir le code",
+                    cx, PIN_M + 44);
     _tft.setTextDatum(TL_DATUM);
 
-    const uint16_t kw = (SCREEN_W - 4 * PIN_GAP) / 3;
-    const uint16_t kh = (SCREEN_H - PIN_PAD_Y - 4 * PIN_GAP) / 4;
+    // Separation discrete entre les deux panneaux.
+    _tft.drawFastVLine(PIN_PAD_X - PIN_M, PIN_M * 2, SCREEN_H - PIN_M * 4, Theme::BORDER);
+
+    drawButton(PIN_CANCEL_X, PIN_CANCEL_Y, PIN_CANCEL_W, PIN_CANCEL_H, "Annuler",
+               Theme::SURFACE, Theme::TEXT);
+
+    const uint16_t r = PIN_D / 2;
     for (uint8_t i = 0; i < 12; ++i) {
-        const uint16_t x = PIN_GAP + (i % 3) * (kw + PIN_GAP);
-        const uint16_t y = PIN_PAD_Y + (i / 3) * (kh + PIN_GAP);
+        const uint16_t kx = pinCellX(i) + PIN_PITCH_X / 2;
+        const uint16_t ky = pinCellY(i) + PIN_PITCH_Y / 2;
         // Effacer (ambre) et OK (vert) se distinguent des chiffres au premier
         // coup d'oeil (demande du 9 oct. 2026).
         const uint16_t bg = (i == 11) ? Theme::GREEN : (i == 9) ? Theme::AMBER : Theme::SURFACE2;
         const uint16_t fg = (i == 11 || i == 9) ? 0x0000 : Theme::TEXT;
-        drawButton(x, y, kw, kh, PIN_KEYS[i], bg, fg);
+        _tft.fillCircle(kx, ky, r, bg);
+        if (i != 9 && i != 11) {
+            _tft.drawRoundRect(kx - r, ky - r, 2 * r + 1, 2 * r + 1, r, Theme::BORDER);
+        }
+        _tft.setTextColor(fg, bg);
+        _tft.setTextDatum(MC_DATUM);
+        _tft.setFreeFont(THEME_FONT_TITLE);
+        _tft.drawString(PIN_KEYS[i], kx, ky);
+        _tft.setFreeFont(nullptr);
+        _tft.setTextDatum(TL_DATUM);
     }
     drawPinEntry();
 }
 
 void DisplayManager::drawPinEntry() {
-    _tft.fillRect(0, PIN_DOTS_Y, SCREEN_W, PIN_DOTS_H, Theme::BG);
+    // Seule la bande points + message est redessinee (pas de fillScreen, I4).
+    _tft.fillRect(PIN_M, PIN_DOTS_Y - 12, PIN_LEFT_W, PIN_MSG_Y + 14 - (PIN_DOTS_Y - 12), Theme::BG);
     // Points : un par chiffre saisi, cases vides jusqu'a 6.
     const uint8_t n = (uint8_t)strlen(_pinBuf);
-    const uint16_t step = 26;
-    const uint16_t x0 = (SCREEN_W - (PinLock::MAX_DIGITS - 1) * step) / 2;
+    const uint16_t step = (PIN_LEFT_W - 16) / PinLock::MAX_DIGITS < 28
+                              ? (PIN_LEFT_W - 16) / PinLock::MAX_DIGITS : 28;
+    const uint16_t rad = step / 2 > 9 ? 7 : step / 2 - 2;
+    const uint16_t x0 = PIN_M + (PIN_LEFT_W - (PinLock::MAX_DIGITS - 1) * step) / 2;
     for (uint8_t i = 0; i < PinLock::MAX_DIGITS; ++i) {
-        const uint16_t cx = x0 + i * step;
-        if (i < n) _tft.fillCircle(cx, PIN_DOTS_Y + 14, 7, Theme::TEXT);
+        const uint16_t dx = x0 + i * step;
+        if (i < n) _tft.fillCircle(dx, PIN_DOTS_Y, rad, Theme::CYAN);
         // Pas de drawCircle dans la couche TFT_eSPI du S3 : un rectangle a
-        // coins de rayon 7 sur 14 px donne le meme cercle vide.
-        else       _tft.drawRoundRect(cx - 7, PIN_DOTS_Y + 7, 14, 14, 7, Theme::BORDER);
+        // coins de rayon egal a la demi-largeur donne le meme cercle vide.
+        else       _tft.drawRoundRect(dx - rad, PIN_DOTS_Y - rad, 2 * rad + 1, 2 * rad + 1,
+                                      rad, Theme::BORDER);
     }
     // Message : attente en cours (prioritaire, decompte), sinon le dernier.
     char buf[48];
@@ -1520,7 +1557,7 @@ void DisplayManager::drawPinEntry() {
     const uint32_t wait = PinLock::lockoutRemainingSec();
     if (wait > 0 && (_pinPurpose == PinPurpose::ENTER_ADMIN ||
                      _pinPurpose == PinPurpose::UNLOCK)) {
-        snprintf(buf, sizeof(buf), "Trop d'essais : attendre %lu s", (unsigned long)wait);
+        snprintf(buf, sizeof(buf), "Trop d'essais : %lu s", (unsigned long)wait);
         color = Theme::AMBER;
     } else {
         strlcpy(buf, _pinMsg, sizeof(buf));
@@ -1529,28 +1566,22 @@ void DisplayManager::drawPinEntry() {
         _tft.setTextSize(1);
         _tft.setTextColor(color, Theme::BG);
         _tft.setTextDatum(TC_DATUM);
-        _tft.drawString(buf, SCREEN_W / 2, PIN_DOTS_Y + 32);
+        _tft.drawString(buf, PIN_M + PIN_LEFT_W / 2, PIN_MSG_Y);
         _tft.setTextDatum(TL_DATUM);
     }
 }
 
 void DisplayManager::handleTouchPin(uint16_t tx, uint16_t ty) {
-    if (hitTest(0, 0, 110, PIN_HDR_H, tx, ty)) {
-        // "Annuler" est sous le menu de l'accueil : sans garde, le meme
-        // doigt rouvrirait aussitot le pave.
+    if (hitTest(PIN_CANCEL_X, PIN_CANCEL_Y, PIN_CANCEL_W, PIN_CANCEL_H, tx, ty)) {
+        // Garde : le meme doigt ne doit pas agir sur l'ecran de retour.
         armTouchGuard();
         _pinBuf[0] = '\0';
         goTo(_pinPurpose == PinPurpose::SET_NEW || _pinPurpose == PinPurpose::SET_CONFIRM
                  ? Screen::ADMIN : _pinReturn);
         return;
     }
-    if (ty < PIN_PAD_Y) return;
-    const uint16_t kw = (SCREEN_W - 4 * PIN_GAP) / 3;
-    const uint16_t kh = (SCREEN_H - PIN_PAD_Y - 4 * PIN_GAP) / 4;
     for (uint8_t i = 0; i < 12; ++i) {
-        const uint16_t x = PIN_GAP + (i % 3) * (kw + PIN_GAP);
-        const uint16_t y = PIN_PAD_Y + (i / 3) * (kh + PIN_GAP);
-        if (!hitTest(x, y, kw, kh, tx, ty)) continue;
+        if (!hitTest(pinCellX(i), pinCellY(i), PIN_PITCH_X, PIN_PITCH_Y, tx, ty)) continue;
         const size_t n = strlen(_pinBuf);
         if (i == 9) {                       // effacer
             if (n > 0) _pinBuf[n - 1] = '\0';
