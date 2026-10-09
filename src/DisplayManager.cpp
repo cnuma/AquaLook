@@ -1787,6 +1787,38 @@ void DisplayManager::renderCloudSprite() {
         _sprCloud.fillCircle(16, 8, 3, col);
     }
     _sprCloud.pushSprite(HDR_CLOUD_X, 6);
+    // Meme cycle de vie que la pastille : chaque rendu du bandeau la
+    // redessine, le cadenas aussi.
+    renderLockIcon();
+}
+
+uint8_t DisplayManager::lockIconState() const {
+    if (!PinLock::hasPin()) return 0;
+    return PinLock::isUnlocked() ? 2 : 1;
+}
+
+// Dessine directement (16x17 px, pas de sprite : rien a animer, et pas de
+// tampon de plus). Primitives du shim S3 seulement.
+void DisplayManager::renderLockIcon() {
+#if AQUALOOK_BOARD_S3
+    const uint8_t state = lockIconState();
+    const uint16_t x = HDR_LOCK_X, y = 5;
+    _tft.fillRect(x, y, HDR_LOCK_W, 17, Theme::SURFACE);
+    if (state == 0) return;
+    const uint16_t col = (state == 2) ? Theme::GREEN : Theme::MUTED;
+    if (state == 1) {
+        // Anse fermee : arc centre au-dessus du corps, deux traits d'epaisseur.
+        _tft.drawRoundRect(x + 3, y + 1, 10, 12, 4, col);
+        _tft.drawRoundRect(x + 4, y + 2, 8, 10, 3, col);
+    } else {
+        // Anse ouverte : relevee et decalee a droite, une jambe libre.
+        _tft.drawRoundRect(x + 7, y, 9, 10, 4, col);
+        _tft.drawRoundRect(x + 8, y + 1, 7, 8, 3, col);
+        _tft.fillRect(x + 13, y + 5, 3, 5, Theme::SURFACE);
+    }
+    _tft.fillRoundRect(x + 1, y + 8, 14, 9, 2, col);
+    _tft.fillRect(x + 7, y + 11, 2, 3, Theme::SURFACE);   // trou de serrure
+#endif
 }
 
 void DisplayManager::renderPlanSprite() {
@@ -2976,7 +3008,13 @@ void DisplayManager::updateHomeDynamic_list() {
     // redessiner que si l'etat affiche (masque/a jour/en attente) change
     // reellement, pas a chaque appel.
     const uint8_t cloud = cloudSyncState();
-    if (cloud != _hc.cloudState) { _hc.cloudState = cloud; renderCloudSprite(); }
+    // Le cadenas change aussi quand la fenetre de 5 min du PIN se referme.
+    const uint8_t lockS = lockIconState();
+    if (cloud != _hc.cloudState || lockS != _hc.lockState) {
+        _hc.cloudState = cloud;
+        _hc.lockState = lockS;
+        renderCloudSprite();
+    }
 
     // Planning (uniquement si visible)
     if (_nbZones <= 4 || !_listShowForce) {

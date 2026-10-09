@@ -371,6 +371,8 @@ private:
         // 0=masquee(desactivee) 1=a jour 2=en attente -- 255 force le
         // premier rendu. Voir renderCloudSprite().
         uint8_t cloudState = 255;
+        // 0=pas de PIN 1=verrouille 2=deverrouille, 255 force le rendu.
+        uint8_t lockState = 255;
     } _hc;
 
     // ── Constantes layout HOME ─────────────────
@@ -453,6 +455,11 @@ private:
     // se confondait avec les indicateurs de zone.
     static constexpr uint16_t HDR_CLOUD_W  = 20;
     static constexpr uint16_t HDR_CLOUD_X  = HDR_TIME_X - HDR_CLOUD_W - 12;
+    // Cadenas du code PIN (D016, lot E), a gauche de la pastille cloud :
+    // ferme = PIN pose et verrouille, ouvert = deverrouille, rien = pas de
+    // PIN. S3 seulement : sur le 320x240 il tomberait sous le titre.
+    static constexpr uint16_t HDR_LOCK_W   = 16;
+    static constexpr uint16_t HDR_LOCK_X   = HDR_CLOUD_X - HDR_LOCK_W - 8;
     // Boutons zones (1-2 zones, sprites larges)
 #if AQUALOOK_BOARD_S3
     // Deux cartes de 228 px separees et bordees de 8 px de marge :
@@ -675,6 +682,8 @@ private:
     void handleTouchPin(uint16_t tx, uint16_t ty);
     void pinValidate();
     void pinRecoveryGesture();    // appele une fois a la fin de begin()
+    uint8_t lockIconState() const;
+    void renderLockIcon();        // cadenas du bandeau, voir HDR_LOCK_X
 
     // ── Icônes météo vectorielles ──────────────
     void drawWeatherIcon(TFT_eSprite& spr, uint16_t x, uint16_t y,
