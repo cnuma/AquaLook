@@ -242,6 +242,17 @@ console (`.env` en repli ; seuls `DB_*` et `ADMIN_TOKEN` y restent). Côté
 module, les adresses de serveur restent en NVS (c'est déjà le cas de l'hôte
 CloudSync) ; aucun lot ne doit en écrire une en dur dans le firmware ou une page.
 
+Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
+1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
+uniques `requestAdmin()` / `requestStart()`, arrêt toujours libre, page ADMIN
+« Sécurité », pavé paysage à touches rondes, cadenas dans le bandeau (S3),
+geste d'effacement au démarrage. Écarts voulus par le propriétaire pendant le
+test : après le PIN, **rien n'est lancé** (la zone touchée n'est pas
+mémorisée, l'écran revient déverrouillé) ; garde de toucher (doigt relevé
+puis 600 ms) après OK, Annuler et le geste. Non confirmés explicitement : le geste
+d'effacement au démarrage, le décompte au-delà de la 1re attente, la CYD.
+Le cadenas n'a pas encore été vu à l'écran par le propriétaire.
+
 Lot C : **validé de bout en bout le 9 oct. 2026**. Firmware `d2891f9`
 (build 1307) flashé sur `.141` (COM4) : `build.hwId` = `aql-44bd8d7acb88`
 (= `wifi.mac`), ligne de démarrage du journal avec `hw=…`, cycle CloudSync
