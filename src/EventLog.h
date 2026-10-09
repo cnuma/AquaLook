@@ -58,12 +58,16 @@ public:
             snprintf(
                 buf,
                 sizeof(buf),
-                "%s %s demarrage target=%s build=%s sha=%s",
+                "%s %s demarrage target=%s build=%s sha=%s hw=%s",
                 OtaBuildIdentity::PRODUCT,
                 OtaBuildIdentity::VERSION,
                 OtaBuildIdentity::OTA_TARGET,
                 OtaBuildIdentity::BUILD_NUMBER,
-                OtaBuildIdentity::GIT_SHA
+                OtaBuildIdentity::GIT_SHA,
+                // Aussi ici et pas seulement dans la banniere : sur le S3
+                // (USB natif) la banniere part avant que le PC ait rouvert le
+                // port, cette ligne-ci reste lisible dans /api/logs.txt.
+                DeviceIdentity::hwId()
             );
 
             Serial.println();
