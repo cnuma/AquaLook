@@ -119,6 +119,9 @@ existants (ajout de `gv-releve` seulement), format NVS (`aqlvars` inchangé),
    sur plusieurs heures, CI, migration Ubuntu 26 le 19 oct.).
 6. **Prochaine session (demande de l'utilisateur, 9 oct. 2026)** : gestion
    des modules et des comptes depuis l'interface Web AlwaysData — voir §11.
+7. **Sécurité locale du module (demande de l'utilisateur, 9 oct. 2026)** :
+   code PIN sur le LCD et accès sécurisé à l'interface Web du module — voir
+   §12.
 
 ## 9. Procédure exacte de reprise
 
@@ -239,3 +242,68 @@ commencer par une décision documentée (D016) avant tout code.
   sur le LCD.
 - Le firmware actuel ne connaît que le jeton manuel : garder ce chemin
   pendant la transition (modules déjà enrôlés, mode maintenance).
+
+## 12. Sécurité locale du module : PIN sur le LCD, accès Web sécurisé
+
+Demande de l'utilisateur, ajoutée le 9 oct. 2026. Liée à §11 (l'enrôlement
+doit s'appuyer sur une action protégée sur le LCD) et au trou de sécurité
+assumé de `REPRISE_INGENIEUR.md` §1.5. Commencer par une décision documentée
+(D017, ou D016 commune avec §11).
+
+### État actuel
+
+- **LCD** : écran `ADMIN` accessible sans code ; démarrage et arrêt manuel des
+  zones depuis l'écran sans protection.
+- **Web local** : verrou **visuel** seulement dans `data/index.html`
+  (`sessionStorage` `aqualook-admin-unlocked`, mot de passe `1598753` écrit
+  en clair dans la page) — n'est pas une authentification.
+- Routes `/api/*` ouvertes à tout poste du LAN (`/api/resetConfig`,
+  `/api/zone`, Wi-Fi…) ; seules quelques écritures récentes (scripts,
+  câblage, variables, redémarrage) sont signées HMAC par `ApiAuth`
+  (secret partagé posé depuis le navigateur, effaçable depuis ADMIN >
+  Système).
+
+### Demandé
+
+1. **Code PIN sur le LCD** pour agir sur la configuration et pour la gestion
+   directe des zones (démarrage/arrêt manuel).
+2. **Accès sécurisé à l'interface Web de gestion du module.**
+
+### Pistes de conception à évaluer
+
+- **PIN LCD** : 4 à 6 chiffres sur un pavé tactile ; stocké en NVS sous forme
+  d'empreinte salée (jamais en clair) ; temporisation croissante après
+  échecs ; déverrouillage valable N minutes ou jusqu'à la mise en veille ;
+  périmètre réglable (ADMIN seul, ou ADMIN + actions manuelles sur les
+  zones) ; consultation (état, planning, météo) toujours libre.
+  **Sécurité relais** : un arrêt d'urgence d'une zone en cours doit rester
+  possible sans PIN.
+- **Récupération d'un PIN oublié** : procédure physique (bouton au
+  démarrage, ou geste sur le LCD pendant le splash) ou depuis l'espace en
+  ligne pour un module enrôlé — jamais par une route Web locale ouverte.
+- **Web local** : remplacer le verrou visuel par une vraie session —
+  mot de passe (ou le même PIN) vérifié **par le module**, jeton de session
+  en cookie `HttpOnly`, expiration, limitation des essais ; toutes les
+  routes d'écriture exigent la session (lecture d'état éventuellement
+  libre) ; retirer le mot de passe écrit en clair de `index.html`.
+  Articuler avec `ApiAuth` (HMAC) : garder la signature pour les écritures
+  sensibles ou la remplacer par la session — à décider.
+- **HTTP en clair sur le LAN** : un mot de passe circulerait en clair ;
+  évaluer un défi-réponse (nonce + HMAC, déjà le principe d'`ApiAuth`)
+  plutôt qu'un envoi du mot de passe, HTTPS local étant lourd sur l'ESP32.
+- **Premier démarrage / portail captif** : définir le PIN et le mot de passe
+  à la configuration initiale ; ne pas bloquer un module déjà installé lors
+  de la mise à jour (PIN absent = comportement actuel jusqu'à ce que
+  l'utilisateur en pose un, avec un rappel visible).
+
+### Points d'attention
+
+- Persistance : nouvelle clé NVS versionnée, hors du bloc `ALOK`
+  (`AGENTS.md` §Persistance) ; réinitialisation de la configuration ≠ oubli
+  du PIN, à trancher.
+- IDs et routes existants à conserver (F5, F6) ; `/api/diagnostics` et
+  `/api/logs.txt` restent utiles au diagnostic : décider s'ils restent
+  lisibles sans session.
+- L'outillage de banc (`tools/`, dépôt direct sur la SD `/api/debug/*`,
+  `announce_reboot.py`) devra s'authentifier ou disposer d'un accès de
+  développement explicite, désactivé en production.
