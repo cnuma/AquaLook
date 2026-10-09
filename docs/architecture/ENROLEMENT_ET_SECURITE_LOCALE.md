@@ -242,8 +242,15 @@ console (`.env` en repli ; seuls `DB_*` et `ADMIN_TOKEN` y restent). Côté
 module, les adresses de serveur restent en NVS (c'est déjà le cas de l'hôte
 CloudSync) ; aucun lot ne doit en écrire une en dur dans le firmware ou une page.
 
-Lot A : code écrit le 9 oct. 2026 (branche `feature/mails-alwaysdata`), banc
-local 27/27 (faux SMTP TLS + MariaDB), essai réel sur AlwaysData à faire.
+Lot A : **validé en production le 9 oct. 2026** (banc local 27/27 ; fichiers
+publiés, `schema-v4` importé, réglages saisis dans la console, `/health`
+`mail: true`, essai reçu). **Délivrabilité à reprendre** : le mail d'essai est
+arrivé dans les indésirables de Gmail, alors que SPF et DKIM passent et sont
+alignés (« envoyé par / signé par alwaysdata.net »). Facteurs restants :
+réputation partagée du domaine `alwaysdata.net`, premier envoi court sans
+historique. Piste retenue, décision reportée par le propriétaire : domaine
+d'expédition propre (SPF/DKIM/DMARC à notre nom), à changer depuis la console
+seule. À trancher avant le lot B (mot de passe oublié).
 
 Ordre proposé : A → C → E → D → B → F → G (les lots serveur A/B peuvent avancer
 pendant les essais firmware). Version proposée à la fin de E + F : `5.12.0`.
