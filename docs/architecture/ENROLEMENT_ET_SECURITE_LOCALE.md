@@ -63,10 +63,11 @@ Décisions :
 
 1. Une seule fonction serveur `send_mail(to, subject, text)` dans un nouveau
    `mail.php`, **texte brut**, en-têtes minimaux, `From` = enveloppe.
-2. Transport par **SMTP authentifié** sur une boîte dédiée (`noreply@…`),
-   identifiants dans le `.env` du serveur seulement (`MAIL_SMTP_HOST`,
-   `MAIL_SMTP_PORT`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`, `MAIL_FROM`) — jamais
-   dans Git (dépôt public). Client SMTP minimal écrit dans le projet (TLS
+2. Transport par **SMTP authentifié** sur une boîte dédiée. Paramètres
+   (`MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`,
+   `MAIL_FROM`, `MAIL_FROM_NAME`, plafonds) réglés depuis la console
+   d'administration et rangés en base (`app_setting`), `.env` en repli —
+   jamais dans Git (dépôt public), jamais écrits dans une page. Client SMTP minimal écrit dans le projet (TLS
    implicite, `AUTH LOGIN`), sans Composer, comme le reste du serveur. `mail()`
    n'est gardé que comme repli si l'essai montre qu'il passe mieux.
 3. Limites côté application, **avant** l'envoi : par adresse destinataire et par
@@ -233,6 +234,16 @@ test sur `.141`, checkpoint.
 | E | PIN LCD (`aqlsec`, pavé, temporisation, geste au splash) | firmware | — |
 | F | Session Web locale, retrait du verrou visuel, outillage de banc | firmware + `data/` | E conseillé |
 | G | Effacement du PIN depuis l'espace en ligne | firmware + serveur | B, D, E |
+
+**Principe ajouté le 9 oct. 2026 (propriétaire)** : tout paramètre du service
+(boîte mail, serveurs, plafonds…) se règle sans recompilation ni redéploiement.
+Côté serveur, registre `settings.php` + table `app_setting`, édité depuis la
+console (`.env` en repli ; seuls `DB_*` et `ADMIN_TOKEN` y restent). Côté
+module, les adresses de serveur restent en NVS (c'est déjà le cas de l'hôte
+CloudSync) ; aucun lot ne doit en écrire une en dur dans le firmware ou une page.
+
+Lot A : code écrit le 9 oct. 2026 (branche `feature/mails-alwaysdata`), banc
+local 27/27 (faux SMTP TLS + MariaDB), essai réel sur AlwaysData à faire.
 
 Ordre proposé : A → C → E → D → B → F → G (les lots serveur A/B peuvent avancer
 pendant les essais firmware). Version proposée à la fin de E + F : `5.12.0`.
