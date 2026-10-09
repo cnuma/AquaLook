@@ -133,6 +133,14 @@ existants (ajout de `gv-releve` seulement), format NVS (`aqlvars` inchangé),
    `/www/index.html`, l'activité concurrente à cet instant (requêtes Web,
    éditeur, CloudSync), et si une erreur récupérée en 2 s doit rester « non
    acquittée ». Capture série recommandée pour le prochain épisode.
+9. **Éditeur de scripts sur tablette (demande de l'utilisateur, 9 oct.
+   2026)** : dans `data/scripts-schema.html`, rendre repliables les deux
+   volets latéraux — palette de blocs (`aside.palette`, à gauche) et
+   réglages du bloc (`aside.props-panel`, à droite) — avec le même triangle
+   que la zone du bas (`#b-replier`, classe `.replie`, préférence mémorisée
+   dans le navigateur). Sur un écran type iPad, les deux volets prennent
+   trop de largeur et la zone du bas devient difficile à utiliser. Toute
+   modification se recopie dans `/editeur/` sur AlwaysData.
 
 ## 9. Procédure exacte de reprise
 
