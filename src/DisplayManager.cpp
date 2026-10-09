@@ -1,5 +1,6 @@
 #include "DisplayManager.h"
 #include "ApiAuth.h"                // page Systeme : oublier le secret API
+#include "PinLock.h"                // code PIN : ADMIN et demarrage manuel (D016)
 #include "RainSchedule.h"
 #include "EventBus.h"
 #include "BootLoopGuard.h"
@@ -466,6 +467,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     createSprites();
     _screenMgr.begin(_config);
     _needsFullRedraw = true;
+    pinRecoveryGesture();
     Serial.printf("[Display] Heap libre : %u octets, %d zones, mode=%d\n",
                   ESP.getFreeHeap(), _nbZones, (uint8_t)_homeMode);
     Serial.println("[Display] OK");
@@ -643,6 +645,14 @@ void DisplayManager::update() {
         // connexions paralleles pour charger une page.
         suspendForMemoryRelief();
 
+        // Code PIN (D016) : la veille referme la session, et l'ecran ne
+        // doit pas se rallumer sur ADMIN ou sur le pave.
+        PinLock::lock();
+        if (_screen == Screen::ADMIN || _screen == Screen::PIN) {
+            _screen = Screen::HOME;
+            _needsFullRedraw = true;
+        }
+
         if (now - _lastTouch >= 80) {
             _lastTouch = now;
             uint16_t tx, ty;
@@ -722,6 +732,7 @@ void DisplayManager::update() {
             case Screen::SYSTEM: drawSystemFull();            break;
             case Screen::ADMIN:  drawAdminFull();             break;
             case Screen::HEALTH: drawHealthFull();            break;
+            case Screen::PIN:    drawPinFull();               break;
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_FULLREDRAW, t0);
         // Le rendu complet contient déjà toutes les informations dynamiques.
@@ -731,7 +742,8 @@ void DisplayManager::update() {
         return;
     }
 
-    uint32_t interval = anyActive ? _refreshActMs : _refreshNomMs;
+    // Pave PIN : le decompte d'attente apres echecs doit avancer a la seconde.
+    uint32_t interval = (anyActive || _screen == Screen::PIN) ? _refreshActMs : _refreshNomMs;
 
 #if AQUALOOK_BOARD_S3
     // Encart meteo ouvert : ne rien redessiner dessous, le rendu periodique
@@ -749,6 +761,7 @@ void DisplayManager::update() {
             case Screen::SYSTEM: updateSystemDynamic();            break;
             case Screen::ADMIN:  updateAdminDynamic();             break;
             case Screen::HEALTH: updateHealthDynamic();            break;
+            case Screen::PIN:    if (PinLock::lockoutRemainingSec() > 0) drawPinEntry(); break;
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_DYNAMIC, t0);
     }
@@ -793,6 +806,7 @@ const char* DisplayManager::adminPageName(AdminPage p) {
         case AdminPage::LOGS:   return "Logs";
         case AdminPage::SANTE:  return "Sante";
         case AdminPage::APROPOS: return "A propos";
+        case AdminPage::SECURITE: return "Securite";
         default:                return "?";
     }
 }
@@ -1022,7 +1036,9 @@ void DisplayManager::handleTouch() {
 
     // Debounce : ignorer les taps trop rapprochés (doigt maintenu)
     const uint32_t now = millis();
-    if (now - _lastTap < 500) return;
+    // Pave PIN : 250 ms suffisent a ecarter un doigt maintenu, et 500 ms
+    // rendaient la saisie de six chiffres penible.
+    if (now - _lastTap < (_screen == Screen::PIN ? 250U : 500U)) return;
     _lastTap = now;
 
     // Tout tap réinitialise le timer de veille
@@ -1033,7 +1049,7 @@ void DisplayManager::handleTouch() {
     // pas seulement depuis SYSTEM. ADMIN et HEALTH gèrent leur bandeau
     // eux-mêmes (flèche retour, pas de sortie vers soi-même).
     if (_screen != Screen::ADMIN && _screen != Screen::HEALTH &&
-        handleHeaderTouch(tx, ty)) {
+        _screen != Screen::PIN && handleHeaderTouch(tx, ty)) {
         return;
     }
 
@@ -1044,6 +1060,7 @@ void DisplayManager::handleTouch() {
         case Screen::SYSTEM: handleTouchSystem(tx, ty); break;
         case Screen::ADMIN:  handleTouchAdmin(tx, ty);  break;
         case Screen::HEALTH: handleTouchHealth(tx, ty); break;
+        case Screen::PIN:    handleTouchPin(tx, ty);    break;
     }
 }
 
@@ -1051,7 +1068,7 @@ void DisplayManager::handleTouchHome(uint16_t tx, uint16_t ty) {
     // Sur l'ecran "non cable" aucune tuile n'existe : seul le menu reste
     // actif, sans quoi l'utilisateur serait enferme sur cet ecran.
     if (homeUnwired()) {
-        if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) goTo(Screen::ADMIN);
+        if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) requestAdmin();
         return;
     }
     switch (_homeMode) {
@@ -1193,7 +1210,7 @@ void DisplayManager::handleTouchHome_list(uint16_t tx, uint16_t ty) {
     if (handleWeatherPopupTouch(tx, ty)) return;
 #endif
     // [≡] menu → ADMIN
-    if (hitTest(0, 0, 28, 28, tx, ty)) { goTo(Screen::ADMIN); return; }
+    if (hitTest(0, 0, 28, 28, tx, ty)) { requestAdmin(); return; }
 
     // Calcul btnY dynamique (cohérent avec drawHomeFull_list)
     uint16_t planH = _planHdrH + min(_nbZones, (uint8_t)4) * _planZoneH;
@@ -1220,7 +1237,7 @@ void DisplayManager::handleTouchHome_list(uint16_t tx, uint16_t ty) {
                         if (_relais && _relais->getState(z)) {
                             if (_schedule) _schedule->stopManualWatering(z);
                         } else {
-                            if (_schedule) _schedule->startManualWatering(z);
+                            requestStart(z, false);
                         }
                         EventBus::displayDirty = true;
                         return;
@@ -1234,7 +1251,7 @@ void DisplayManager::handleTouchHome_list(uint16_t tx, uint16_t ty) {
                         if (_relais && _relais->getState(z)) {
                             if (_schedule) _schedule->stopManualWatering(z);
                         } else {
-                            if (_schedule) _schedule->startManualWatering(z);
+                            requestStart(z, false);
                         }
                         EventBus::displayDirty = true; return;
                     }
@@ -1282,7 +1299,7 @@ void DisplayManager::handleTouchHome_list(uint16_t tx, uint16_t ty) {
                         if (_relais && _relais->getState(zone)) {
                             if (_schedule) _schedule->stopManualWatering(zone);
                         } else {
-                            if (_schedule) _schedule->startManualWatering(zone);
+                            requestStart(zone, false);
                         }
                         EventBus::displayDirty = true;
                     }
@@ -1303,8 +1320,9 @@ void DisplayManager::handleTouchZone(uint16_t tx, uint16_t ty) {
         } else {
             // Démarrage arrosage manuel : retour HOME automatique (invariant I26)
             // Le refresh 1s sur HOME affichera le temps restant en temps réel
-            if (_schedule) _schedule->startManualWatering(_selectedZone);
-            goTo(Screen::HOME);
+            // Porte PIN (D016) : sans PIN valide, passe par le pave, qui
+            // revient lui aussi a HOME apres le demarrage.
+            requestStart(_selectedZone, true);
         }
         return;
     }
@@ -1375,6 +1393,260 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
             goTo(Screen::HEALTH);
         }
     }
+    // Page Securite -- coordonnees partagees avec drawAdminPageSecurite().
+    // Les deux actions exigent une session deverrouillee : la fenetre de
+    // 5 min a pu se refermer pendant qu'on restait dans ADMIN.
+    if (_adminPage == AdminPage::SECURITE) {
+        if (hitTest(10, ADM_CONTENT_Y + 70, SCREEN_W - 20, 34, tx, ty)) {
+            if (PinLock::isUnlocked()) openPin(PinPurpose::SET_NEW);
+            else                       openPin(PinPurpose::ENTER_ADMIN);
+            return;
+        }
+        if (PinLock::hasPin() &&
+            hitTest(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34, tx, ty)) {
+            if (!PinLock::isUnlocked()) { openPin(PinPurpose::ENTER_ADMIN); return; }
+            const uint32_t now = millis();
+            if (_removePinArmedAt != 0 &&
+                now - _removePinArmedAt <= FORGET_SECRET_CONFIRM_MS) {
+                PinLock::remove();
+                _removePinArmedAt = 0;
+            } else {
+                _removePinArmedAt = now;
+            }
+            _needsFullRedraw = true;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Code PIN (D016, lot E) -- voir PinLock.h
+// ═══════════════════════════════════════════════════════════════
+void DisplayManager::requestAdmin() {
+    if (PinLock::isUnlocked()) { goTo(Screen::ADMIN); return; }
+    openPin(PinPurpose::ENTER_ADMIN);
+}
+
+void DisplayManager::requestStart(uint8_t zone, bool returnHome) {
+    if (PinLock::isUnlocked()) {
+        if (_schedule) _schedule->startManualWatering(zone);
+        if (returnHome) goTo(Screen::HOME);   // invariant I26
+        return;
+    }
+    _pinZone = zone;
+    openPin(PinPurpose::START_ZONE);
+}
+
+void DisplayManager::openPin(PinPurpose purpose) {
+    // Le retour se fait vers l'ecran d'ou l'on vient, sauf en cours de
+    // pose (SET_CONFIRM revient a SET_NEW, pas au pave lui-meme).
+    if (_screen != Screen::PIN) _pinReturn = _screen;
+    _pinPurpose = purpose;
+    _pinBuf[0] = '\0';
+    _pinMsg[0] = '\0';
+    goTo(Screen::PIN);
+}
+
+// Geometrie du pave, partagee entre dessin et toucher.
+namespace {
+constexpr uint16_t PIN_HDR_H  = 28;
+constexpr uint16_t PIN_DOTS_Y = 32;
+constexpr uint16_t PIN_DOTS_H = 52;   // points + ligne de message
+constexpr uint16_t PIN_PAD_Y  = PIN_HDR_H + PIN_DOTS_H + 6;
+constexpr uint16_t PIN_GAP    = 4;
+const char* const PIN_KEYS[12] = {"1","2","3","4","5","6","7","8","9","<","0","OK"};
+}
+
+void DisplayManager::drawPinFull() {
+    _tft.fillRect(0, 0, SCREEN_W, PIN_HDR_H, Theme::SURFACE);
+    _tft.drawFastHLine(0, PIN_HDR_H - 1, SCREEN_W, Theme::BORDER);
+    _tft.setTextSize(1);
+    _tft.setTextColor(Theme::CYAN, Theme::SURFACE);
+    _tft.drawString("<- Annuler", 4, 10);
+    const char* titre = "Code PIN";
+    switch (_pinPurpose) {
+        case PinPurpose::ENTER_ADMIN: titre = "Code PIN : administration"; break;
+        case PinPurpose::START_ZONE:  titre = "Code PIN : marche manuelle"; break;
+        case PinPurpose::SET_NEW:     titre = "Nouveau PIN (4 a 6 chiffres)"; break;
+        case PinPurpose::SET_CONFIRM: titre = "Confirmer le nouveau PIN"; break;
+    }
+    _tft.setTextColor(Theme::TEXT, Theme::SURFACE);
+    _tft.setTextDatum(TR_DATUM);
+    _tft.drawString(titre, SCREEN_W - 6, 10);
+    _tft.setTextDatum(TL_DATUM);
+
+    const uint16_t kw = (SCREEN_W - 4 * PIN_GAP) / 3;
+    const uint16_t kh = (SCREEN_H - PIN_PAD_Y - 4 * PIN_GAP) / 4;
+    for (uint8_t i = 0; i < 12; ++i) {
+        const uint16_t x = PIN_GAP + (i % 3) * (kw + PIN_GAP);
+        const uint16_t y = PIN_PAD_Y + (i / 3) * (kh + PIN_GAP);
+        const bool ok = (i == 11);
+        drawButton(x, y, kw, kh, PIN_KEYS[i],
+                   ok ? Theme::GREEN : Theme::SURFACE2, ok ? 0x0000 : Theme::TEXT);
+    }
+    drawPinEntry();
+}
+
+void DisplayManager::drawPinEntry() {
+    _tft.fillRect(0, PIN_DOTS_Y, SCREEN_W, PIN_DOTS_H, Theme::BG);
+    // Points : un par chiffre saisi, cases vides jusqu'a 6.
+    const uint8_t n = (uint8_t)strlen(_pinBuf);
+    const uint16_t step = 26;
+    const uint16_t x0 = (SCREEN_W - (PinLock::MAX_DIGITS - 1) * step) / 2;
+    for (uint8_t i = 0; i < PinLock::MAX_DIGITS; ++i) {
+        const uint16_t cx = x0 + i * step;
+        if (i < n) _tft.fillCircle(cx, PIN_DOTS_Y + 14, 7, Theme::TEXT);
+        // Pas de drawCircle dans la couche TFT_eSPI du S3 : un rectangle a
+        // coins de rayon 7 sur 14 px donne le meme cercle vide.
+        else       _tft.drawRoundRect(cx - 7, PIN_DOTS_Y + 7, 14, 14, 7, Theme::BORDER);
+    }
+    // Message : attente en cours (prioritaire, decompte), sinon le dernier.
+    char buf[48];
+    uint16_t color = _pinMsgColor;
+    const uint32_t wait = PinLock::lockoutRemainingSec();
+    if (wait > 0 && (_pinPurpose == PinPurpose::ENTER_ADMIN ||
+                     _pinPurpose == PinPurpose::START_ZONE)) {
+        snprintf(buf, sizeof(buf), "Trop d'essais : attendre %lu s", (unsigned long)wait);
+        color = Theme::AMBER;
+    } else {
+        strlcpy(buf, _pinMsg, sizeof(buf));
+    }
+    if (buf[0]) {
+        _tft.setTextSize(1);
+        _tft.setTextColor(color, Theme::BG);
+        _tft.setTextDatum(TC_DATUM);
+        _tft.drawString(buf, SCREEN_W / 2, PIN_DOTS_Y + 32);
+        _tft.setTextDatum(TL_DATUM);
+    }
+}
+
+void DisplayManager::handleTouchPin(uint16_t tx, uint16_t ty) {
+    if (hitTest(0, 0, 110, PIN_HDR_H, tx, ty)) {
+        _pinBuf[0] = '\0';
+        goTo(_pinPurpose == PinPurpose::SET_NEW || _pinPurpose == PinPurpose::SET_CONFIRM
+                 ? Screen::ADMIN : _pinReturn);
+        return;
+    }
+    if (ty < PIN_PAD_Y) return;
+    const uint16_t kw = (SCREEN_W - 4 * PIN_GAP) / 3;
+    const uint16_t kh = (SCREEN_H - PIN_PAD_Y - 4 * PIN_GAP) / 4;
+    for (uint8_t i = 0; i < 12; ++i) {
+        const uint16_t x = PIN_GAP + (i % 3) * (kw + PIN_GAP);
+        const uint16_t y = PIN_PAD_Y + (i / 3) * (kh + PIN_GAP);
+        if (!hitTest(x, y, kw, kh, tx, ty)) continue;
+        const size_t n = strlen(_pinBuf);
+        if (i == 9) {                       // effacer
+            if (n > 0) _pinBuf[n - 1] = '\0';
+        } else if (i == 11) {               // valider
+            pinValidate();
+            return;
+        } else if (n < PinLock::MAX_DIGITS) {
+            _pinBuf[n] = PIN_KEYS[i][0];
+            _pinBuf[n + 1] = '\0';
+        }
+        _pinMsg[0] = '\0';
+        drawPinEntry();
+        return;
+    }
+}
+
+void DisplayManager::pinValidate() {
+    auto message = [&](const char* m, uint16_t color) {
+        strlcpy(_pinMsg, m, sizeof(_pinMsg));
+        _pinMsgColor = color;
+        _pinBuf[0] = '\0';
+        drawPinEntry();
+    };
+    if (strlen(_pinBuf) < PinLock::MIN_DIGITS) {
+        message("4 chiffres au moins", Theme::AMBER);
+        return;
+    }
+    switch (_pinPurpose) {
+        case PinPurpose::ENTER_ADMIN:
+        case PinPurpose::START_ZONE: {
+            const PinLock::Result r = PinLock::verify(_pinBuf);
+            memset(_pinBuf, 0, sizeof(_pinBuf));
+            if (r == PinLock::Result::OK || r == PinLock::Result::NO_PIN) {
+                if (_pinPurpose == PinPurpose::START_ZONE) {
+                    if (_schedule) _schedule->startManualWatering(_pinZone);
+                    goTo(Screen::HOME);   // invariant I26
+                } else {
+                    goTo(Screen::ADMIN);
+                }
+            } else if (r == PinLock::Result::LOCKED) {
+                message("", Theme::AMBER);   // le decompte s'affiche seul
+            } else {
+                message("Code incorrect", Theme::RED);
+            }
+            return;
+        }
+        case PinPurpose::SET_NEW:
+            strlcpy(_pinFirst, _pinBuf, sizeof(_pinFirst));
+            memset(_pinBuf, 0, sizeof(_pinBuf));
+            _pinPurpose = PinPurpose::SET_CONFIRM;
+            _pinMsg[0] = '\0';
+            _needsFullRedraw = true;   // nouveau titre
+            return;
+        case PinPurpose::SET_CONFIRM: {
+            const bool same = strcmp(_pinFirst, _pinBuf) == 0;
+            const bool ok = same && PinLock::set(_pinBuf);
+            memset(_pinFirst, 0, sizeof(_pinFirst));
+            memset(_pinBuf, 0, sizeof(_pinBuf));
+            if (ok) {
+                _adminPage = AdminPage::SECURITE;
+                goTo(Screen::ADMIN);
+                return;
+            }
+            _pinPurpose = PinPurpose::SET_NEW;
+            strlcpy(_pinMsg, same ? "Enregistrement impossible" : "Les deux codes different",
+                    sizeof(_pinMsg));
+            _pinMsgColor = Theme::RED;
+            _needsFullRedraw = true;
+            return;
+        }
+    }
+}
+
+// Effacement du PIN oublie : appui maintenu sur l'ecran a la fin du
+// demarrage. Seulement si un PIN est pose ET qu'un doigt est deja sur
+// l'ecran : un demarrage normal n'attend rien. Borne a
+// PIN_RECOVERY_HOLD_MS ; relacher annule. Aucun relais n'est touche.
+void DisplayManager::pinRecoveryGesture() {
+    if (!PinLock::hasPin()) return;
+    uint16_t tx, ty;
+    if (!getTouchPoint(tx, ty)) return;
+
+    const uint32_t t0 = millis();
+    uint32_t lastShown = UINT32_MAX;
+    _tft.setTextSize(2);
+    _tft.setTextDatum(MC_DATUM);
+    while (true) {
+        const uint32_t held = millis() - t0;
+        if (held >= PIN_RECOVERY_HOLD_MS) {
+            PinLock::clear();
+            _tft.fillRect(0, SCREEN_H / 2 - 30, SCREEN_W, 60, Theme::SURFACE);
+            _tft.setTextColor(Theme::GREEN, Theme::SURFACE);
+            _tft.drawString("Code PIN efface", SCREEN_W / 2, SCREEN_H / 2);
+            delay(1500);
+            break;
+        }
+        if (!getTouchPoint(tx, ty)) {
+            EventLog::log(LOG_INFO, "[SEC] PIN: effacement annule (relache a %lu ms)",
+                          (unsigned long)held);
+            break;
+        }
+        const uint32_t left = (PIN_RECOVERY_HOLD_MS - held + 999UL) / 1000UL;
+        if (left != lastShown) {
+            lastShown = left;
+            char buf[40];
+            snprintf(buf, sizeof(buf), "Effacer le PIN : %lu s", (unsigned long)left);
+            _tft.fillRect(0, SCREEN_H / 2 - 30, SCREEN_W, 60, Theme::SURFACE);
+            _tft.setTextColor(Theme::AMBER, Theme::SURFACE);
+            _tft.drawString(buf, SCREEN_W / 2, SCREEN_H / 2);
+        }
+        delay(50);
+    }
+    _tft.setTextDatum(TL_DATUM);
+    _tft.setTextSize(1);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3181,7 +3453,7 @@ void DisplayManager::updateHomeDynamic_grid2() {
 
 void DisplayManager::handleTouchHome_grid2(uint16_t tx, uint16_t ty) {
     // [≡] menu
-    if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) { goTo(Screen::ADMIN); return; }
+    if (hitTest(0, 0, 40, G2_HDR_H, tx, ty)) { requestAdmin(); return; }
 
     // Colonne droite uniquement : grille → toggle arrosage direct
     if (tx >= _g2GridX) {
@@ -3195,7 +3467,7 @@ void DisplayManager::handleTouchHome_grid2(uint16_t tx, uint16_t ty) {
                 if (_relais && _relais->getState(z)) {
                     if (_schedule) _schedule->stopManualWatering(z);
                 } else {
-                    if (_schedule) _schedule->startManualWatering(z);
+                    requestStart(z, false);
                 }
                 EventBus::displayDirty = true;
                 return;
@@ -3327,7 +3599,7 @@ void DisplayManager::updateHomeDynamic_grid4() {
 
 void DisplayManager::handleTouchHome_grid4(uint16_t tx, uint16_t ty) {
     // [≡] menu
-    if (hitTest(0, 0, 40, G4_HDR_H, tx, ty)) { goTo(Screen::ADMIN); return; }
+    if (hitTest(0, 0, 40, G4_HDR_H, tx, ty)) { requestAdmin(); return; }
 
     // Bouton bascule bas — cycle entre les 3 vues
     if (ty >= G4_TAB_Y) {
@@ -3348,7 +3620,7 @@ void DisplayManager::handleTouchHome_grid4(uint16_t tx, uint16_t ty) {
                 if (_relais && _relais->getState(z)) {
                     if (_schedule) _schedule->stopManualWatering(z);
                 } else {
-                    if (_schedule) _schedule->startManualWatering(z);
+                    requestStart(z, false);
                 }
                 EventBus::displayDirty = true;
                 return;
@@ -3778,6 +4050,7 @@ void DisplayManager::drawAdminPageContent() {
         case AdminPage::LOGS:   drawAdminPageLogs();   break;
         case AdminPage::SANTE:  drawAdminPageSante();  break;
         case AdminPage::APROPOS: drawAdminPageAPropos(); break;
+        case AdminPage::SECURITE: drawAdminPageSecurite(); break;
         default: break;
     }
 }
@@ -3955,6 +4228,43 @@ void DisplayManager::drawAdminPageSystem() {
                armed ? "Confirmer ? (retaper ici)" : "Oublier le secret API",
                armed ? Theme::AMBER : Theme::SURFACE,
                armed ? 0x0000 : Theme::TEXT);
+}
+
+// ─────────────────────────────────────────────
+//  Page ADMIN : SECURITE (code PIN, D016 lot E)
+//  Coordonnees des boutons partagees avec handleTouchAdmin().
+// ─────────────────────────────────────────────
+void DisplayManager::drawAdminPageSecurite() {
+    int y = ADM_CONTENT_Y + 10;
+    _tft.setTextSize(1);
+    const bool has = PinLock::hasPin();
+    if (has) {
+        _tft.setTextColor(Theme::GREEN, Theme::SURFACE);
+        _tft.drawString("Code PIN pose.", 12, y);
+    } else {
+        // Le rappel voulu par D016 : sans PIN, rien n'est protege.
+        _tft.setTextColor(Theme::AMBER, Theme::SURFACE);
+        _tft.drawString("Aucun code PIN : tout est accessible.", 12, y);
+    }
+    y += 16;
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    _tft.drawString("Protege : admin, marche manuelle. Arret libre.", 12, y);
+    y += 14;
+    _tft.drawString("Oubli : maintenir l'ecran 10 s au demarrage.", 12, y);
+
+    drawButton(10, ADM_CONTENT_Y + 70, SCREEN_W - 20, 34,
+               has ? "Changer le PIN" : "Poser un PIN", Theme::SURFACE, Theme::TEXT);
+    if (has) {
+        if (_removePinArmedAt != 0 &&
+            millis() - _removePinArmedAt > FORGET_SECRET_CONFIRM_MS) {
+            _removePinArmedAt = 0;
+        }
+        const bool armed = _removePinArmedAt != 0;
+        drawButton(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34,
+                   armed ? "Confirmer ? (retaper ici)" : "Retirer le PIN",
+                   armed ? Theme::AMBER : Theme::SURFACE,
+                   armed ? 0x0000 : Theme::TEXT);
+    }
 }
 
 // ─────────────────────────────────────────────

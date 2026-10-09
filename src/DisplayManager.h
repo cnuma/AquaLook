@@ -48,7 +48,16 @@ class StorageManager;
 
 // ── Écrans disponibles ─────────────────────────
 enum class Screen : uint8_t {
-    HOME, ZONE, STATUS, SYSTEM, ADMIN, HEALTH
+    HOME, ZONE, STATUS, SYSTEM, ADMIN, HEALTH,
+    PIN   // pave de saisie du code PIN (D016, lot E)
+};
+
+// Ce que la saisie du PIN debloque ou enregistre.
+enum class PinPurpose : uint8_t {
+    ENTER_ADMIN,   // entrer dans ADMIN
+    START_ZONE,    // demarrer a la main la zone _pinZone
+    SET_NEW,       // nouveau PIN, premiere saisie
+    SET_CONFIRM    // nouveau PIN, confirmation
 };
 
 // ── Mode layout HOME selon nb zones ───────────
@@ -76,7 +85,10 @@ enum class AdminPage : uint8_t {
     // connues -- invariant F12. Ajoutee en dernier : les numeros des pages
     // existantes ne bougent pas.
     APROPOS = 7,
-    _COUNT = 8
+    // Code PIN du LCD (D016, lot E) : etat, pose, changement, retrait.
+    // Ajoutee en dernier pour la meme raison qu'A propos.
+    SECURITE = 8,
+    _COUNT = 9
 };
 
 class DisplayManager {
@@ -311,6 +323,20 @@ private:
     // ApiAuth.h, seul un doigt sur CET ecran peut declencher l'action).
     uint32_t  _forgetSecretArmedAt = 0;
     static constexpr uint32_t FORGET_SECRET_CONFIRM_MS = 5000UL;
+
+    // Code PIN (D016, lot E) -- voir PinLock.h. Saisie en cours, ce qu'elle
+    // debloque, et l'ecran ou revenir sur "Annuler".
+    PinPurpose _pinPurpose = PinPurpose::ENTER_ADMIN;
+    Screen     _pinReturn  = Screen::HOME;
+    uint8_t    _pinZone    = 0;
+    char       _pinBuf[8]   = {0};
+    char       _pinFirst[8] = {0};   // premiere saisie d'un nouveau PIN
+    char       _pinMsg[48]  = {0};
+    uint16_t   _pinMsgColor = 0;
+    // Retrait du PIN (page Securite) : deux appuis, comme le secret API.
+    uint32_t   _removePinArmedAt = 0;
+    // Geste d'effacement au demarrage : appui maintenu, borne.
+    static constexpr uint32_t PIN_RECOVERY_HOLD_MS = 10000UL;
 
     // Page A propos : version Web relue sur la SD au plus une fois par
     // ABOUT_WEB_CACHE_MS, pour qu'un redraw complet (displayDirty) ne
@@ -625,6 +651,20 @@ private:
     void drawAdminPageLogs();    // journal EventLog — liste scrollable
     void drawAdminPageSante();   // resume + bouton vers Screen::HEALTH
     void drawAdminPageAPropos(); // versions installees, invariant F12
+    void drawAdminPageSecurite(); // code PIN (D016, lot E)
+
+    // ── Code PIN (D016, lot E) ─────────────────
+    // Portes uniques : TOUT acces a ADMIN et TOUT demarrage manuel depuis
+    // l'ecran passent par elles. L'arret d'une zone ne passe jamais par une
+    // porte (securite relais).
+    void requestAdmin();
+    void requestStart(uint8_t zone, bool returnHome);
+    void openPin(PinPurpose purpose);
+    void drawPinFull();
+    void drawPinEntry();          // points + message, sans fillScreen
+    void handleTouchPin(uint16_t tx, uint16_t ty);
+    void pinValidate();
+    void pinRecoveryGesture();    // appele une fois a la fin de begin()
 
     // ── Icônes météo vectorielles ──────────────
     void drawWeatherIcon(TFT_eSprite& spr, uint16_t x, uint16_t y,
