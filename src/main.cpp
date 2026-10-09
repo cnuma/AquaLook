@@ -17,6 +17,7 @@
 #include "ScriptRunner.h"
 #include "ScriptMessageCatalogue.h"
 #include "ScriptGlobals.h"
+#include "PinLock.h"
 #include "EventLogCatalogue.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
@@ -762,6 +763,10 @@ void setup() {
     displayMgr.setOutputAdapter(&outputAdapter);
     displayMgr.setCloudSync(&cloudSyncScheduler);
     displayMgr.setStorage(&storageMgr);   // page A propos : version des pages Web
+    // PIN du LCD (D016, lot E) : lu avant l'affichage, qui en a besoin des
+    // le premier toucher (et pour le geste d'effacement au demarrage).
+    // Etape breve, sans etape de splash propre : sa ligne [SEC] suffit.
+    PinLock::begin();
     displayMgr.begin(
         &ntpMgr,
         &weatherMgr,
