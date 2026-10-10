@@ -236,6 +236,9 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
     // s'il sait la revalider — pas de cout reel sur un reseau local.
     response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     response->addHeader("X-AquaLook-Storage", "SD");
+    // Ni cadre (piege au clic depuis un autre site), ni devinette de type.
+    response->addHeader("X-Frame-Options", "DENY");
+    response->addHeader("X-Content-Type-Options", "nosniff");
     request->send(response);
 }
 

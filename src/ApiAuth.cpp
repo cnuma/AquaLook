@@ -1,6 +1,7 @@
 #include "ApiAuth.h"
 
 #include <Preferences.h>
+#include <nvs.h>
 #include <mbedtls/md.h>
 #include <string.h>
 
@@ -85,10 +86,21 @@ bool computeHmacHex(const char* secret, const String& message, char* outHex) {
 } // namespace
 
 bool hasSecret() {
-    if (g_hasSecret < 0) {
-        char secret[MAX_SECRET + 1] = {};
-        g_hasSecret = readSecret(secret, sizeof(secret)) ? 1 : 0;
-    }
+    if (g_hasSecret >= 0) return g_hasSecret == 1;
+    // Lecture directe par l'API NVS pour distinguer « pas de secret » d'une
+    // NVS illisible. Une erreur de lecture repond « secret present », sans
+    // la garder en cache : le filtre de session reste ferme au lieu d'ouvrir
+    // tout le module sur un incident passager (echec ferme).
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) { g_hasSecret = 0; return false; }
+    if (err != ESP_OK) return true;
+    size_t len = 0U;
+    err = nvs_get_str(h, KEY_SECRET, nullptr, &len);
+    nvs_close(h);
+    if (err == ESP_ERR_NVS_NOT_FOUND) { g_hasSecret = 0; return false; }
+    if (err != ESP_OK) return true;
+    g_hasSecret = len > 1U ? 1 : 0;
     return g_hasSecret == 1;
 }
 

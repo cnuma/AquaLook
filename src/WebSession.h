@@ -38,10 +38,15 @@ constexpr uint32_t IDLE_TIMEOUT_MS = 30UL * 60UL * 1000UL;
 constexpr uint8_t MAX_CHALLENGES = 4;
 constexpr uint32_t CHALLENGE_TTL_MS = 60UL * 1000UL;
 // Cinq essais libres, puis attente de 30 s doublee a chaque nouvel echec,
-// plafonnee a 15 min -- meme progression que le PIN du LCD.
+// plafonnee a 15 min -- meme progression que le PIN du LCD. Compte PAR
+// ADRESSE IP : un poste malveillant du reseau ne doit pas pouvoir tenir le
+// proprietaire dehors en echouant expres. Un compteur sans nouvel echec
+// pendant une heure est oublie.
 constexpr uint8_t FREE_FAILURES = 5;
 constexpr uint32_t FIRST_LOCK_SEC = 30UL;
 constexpr uint32_t MAX_LOCK_SEC = 15UL * 60UL;
+constexpr uint8_t MAX_TRACKED_IPS = 8;
+constexpr uint32_t FAILURE_MEMORY_MS = 60UL * 60UL * 1000UL;
 constexpr uint8_t TOKEN_HEX_LEN = 32;   // 128 bits
 constexpr const char* COOKIE_NAME = "aqls";
 
@@ -57,8 +62,10 @@ enum class LoginResult : uint8_t {
 bool newChallenge(char out[TOKEN_HEX_LEN + 1]);
 
 // Verifie la reponse au defi et ouvre une session. Le defi est consomme dans
-// tous les cas. outToken recoit le jeton a poser en cookie.
+// tous les cas. outToken recoit le jeton a poser en cookie. clientIp sert au
+// comptage des echecs (adresse IPv4, ordre de IPAddress).
 LoginResult login(const char* challengeHex, const char* signatureHex,
+                  uint32_t clientIp,
                   char outToken[TOKEN_HEX_LEN + 1], uint32_t& retryInSec);
 
 // Ouvre une session sans defi. Reserve au cas ou la requete vient de prouver

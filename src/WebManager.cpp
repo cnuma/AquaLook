@@ -39,6 +39,28 @@ static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Mode de secours : saisissez manuellement le nom exact de votre reseau.</p><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" placeholder="Mot de passe"><button type="button" onclick="saveWifi()">Enregistrer et connecter</button><div id="msg"></div></main><script>const $=x=>document.getElementById(x);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value.trim(),m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}</script></body></html>
 )rawhtml";
 
+// Page de connexion integree au firmware (D016 lot F). Elle ne depend pas de
+// la carte SD : un module dont les pages sont anciennes, absentes ou
+// illisibles reste administrable. Le HMAC-SHA256 y est calcule en JS pur
+// (crypto.subtle n'existe pas en HTTP simple), verifie contre Python.
+static const char LOGIN_HTML[] PROGMEM = R"rawlogin(
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Connexion</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:420px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{color:#bed0dc;font-size:14px;line-height:1.5}input,button{box-sizing:border-box;width:100%;padding:10px;margin-top:10px;border-radius:7px;font-size:15px}button{border:0;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}#o{background:#526d80;color:#fff}#m{margin-top:12px;min-height:19px;color:#ffd88b}a{display:block;margin-top:14px;color:#9fd8f5}</style></head><body><main><h1>AquaLook - Connexion</h1><p>Page integree au module : elle fonctionne meme si la carte SD est absente ou ancienne. Le mot de passe ne quitte pas ce navigateur.</p><form id="f"><input id="p" type="password" autocomplete="current-password" placeholder="Mot de passe Web"><button>Se connecter</button></form><button id="o" type="button">Se deconnecter</button><div id="m"></div><a href="/index.html">Retour a AquaLook</a></main><script>
+const K=[],I=[];(()=>{let n=2,c=0;const fr=x=>(x-Math.floor(x))*4294967296|0;while(c<64){let p=1;for(let d=2;d*d<=n;d++)if(n%d==0){p=0;break}if(p){if(c<8)I[c]=fr(Math.pow(n,.5));K[c++]=fr(Math.pow(n,1/3))}n++}})();
+function sha(b){const l=b.length,L=((l+9+63)>>6)<<6,m=new Uint8Array(L),w=new Int32Array(64),H=I.slice();m.set(b);m[l]=128;const n=l*8;m[L-1]=n&255;m[L-2]=n>>>8&255;m[L-3]=n>>>16&255;m[L-4]=n>>>24&255;
+for(let o=0;o<L;o+=64){for(let i=0;i<16;i++)w[i]=m[o+4*i]<<24|m[o+4*i+1]<<16|m[o+4*i+2]<<8|m[o+4*i+3];
+for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2];w[i]=w[i-16]+((x>>>7|x<<25)^(x>>>18|x<<14)^(x>>>3))+w[i-7]+((y>>>17|y<<15)^(y>>>19|y<<13)^(y>>>10))|0}
+let[a,b,c,d,e,f,g,h]=H;
+for(let i=0;i<64;i++){const t=h+((e>>>6|e<<26)^(e>>>11|e<<21)^(e>>>25|e<<7))+((e&f)^(~e&g))+K[i]+w[i]|0,u=((a>>>2|a<<30)^(a>>>13|a<<19)^(a>>>22|a<<10))+((a&b)^(a&c)^(b&c))|0;h=g;g=f;f=e;e=d+t|0;d=c;c=b;b=a;a=t+u|0}
+H[0]=H[0]+a|0;H[1]=H[1]+b|0;H[2]=H[2]+c|0;H[3]=H[3]+d|0;H[4]=H[4]+e|0;H[5]=H[5]+f|0;H[6]=H[6]+g|0;H[7]=H[7]+h|0}
+const r=new Uint8Array(32);for(let i=0;i<8;i++){r[4*i]=H[i]>>>24;r[4*i+1]=H[i]>>>16;r[4*i+2]=H[i]>>>8;r[4*i+3]=H[i]}return r}
+function hm(k,s){const E=new TextEncoder();k=E.encode(k);if(k.length>64)k=sha(k);const ip=new Uint8Array(64),op=new Uint8Array(64);for(let i=0;i<64;i++){const v=i<k.length?k[i]:0;ip[i]=v^54;op[i]=v^92}const q=E.encode(s),x=new Uint8Array(64+q.length);x.set(ip);x.set(q,64);const y=new Uint8Array(96);y.set(op);y.set(sha(x),64);return Array.from(sha(y),v=>v.toString(16).padStart(2,'0')).join('')}
+const M=t=>{document.getElementById('m').textContent=t};
+async function st(){try{const s=await(await fetch('/api/session/state')).json();M(!s.configure?'Aucun mot de passe pose : module ouvert.':s.active?'Session ouverte.':'Non connecte.')}catch(e){M('Module injoignable.')}}
+document.getElementById('f').onsubmit=async ev=>{ev.preventDefault();try{const c=await(await fetch('/api/session/challenge')).json();if(!c.configure){M('Aucun mot de passe pose : module ouvert.');return}const r=await fetch('/api/session/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:c.nonce,sig:hm(document.getElementById('p').value,'session|'+c.nonce)})});const j=await r.json();if(r.ok){location.href='/index.html';return}M((j.error||'refus')+(j.retryInSec?' (nouvel essai dans '+j.retryInSec+' s)':''))}catch(e){M('Module injoignable.')}};
+document.getElementById('o').onclick=async()=>{try{await fetch('/api/session/logout',{method:'POST'})}catch(e){}st()};st();
+</script></body></html>
+)rawlogin";
+
 // ───── Diffusion des pages HTML embarquees ──────────────────────────────
 //
 // Les pages /ota et /logs pesent une douzaine de kilo-octets et partent en
@@ -176,6 +198,9 @@ void WebManager::sendEmbeddedPage(AsyncWebServerRequest* req,
         200, "text/html; charset=utf-8",
         reinterpret_cast<const uint8_t*>(page), pageLength);
     response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    // Ni cadre (piege au clic depuis un autre site), ni devinette de type.
+    response->addHeader("X-Frame-Options", "DENY");
+    response->addHeader("X-Content-Type-Options", "nosniff");
     if (extraHeaderName != nullptr && extraHeaderValue != nullptr) {
         response->addHeader(extraHeaderName, extraHeaderValue);
     }
@@ -330,38 +355,121 @@ bool pathIs(const String& url, const char* base) {
     return url.startsWith(base) && (url.length() == n || url[n] == '/');
 }
 
+// Noms d'hote acceptes pour l'API (anti « DNS rebinding ») : une page
+// piegee peut faire pointer son propre nom de domaine sur l'adresse du
+// module, et devenir ainsi « meme origine » que lui. Seuls les noms qu'un
+// tiers ne peut pas acheter passent : adresse IP, nom sans point (reseau
+// local), suffixes reserves aux reseaux prives.
+bool hostAllowed(AsyncWebServerRequest* request) {
+    String host = request->host();
+    if (host.length() == 0) return true;            // HTTP/1.0, outils
+    if (host[0] == '[') return true;                // IPv6 litterale
+    const int colon = host.indexOf(':');
+    if (colon >= 0) host = host.substring(0, colon);
+    host.toLowerCase();
+    if (host.endsWith(".")) host.remove(host.length() - 1);
+    bool ipv4 = host.length() > 0;
+    uint8_t dots = 0U;
+    for (size_t i = 0; i < host.length(); ++i) {
+        const char ch = host[i];
+        if (ch == '.') ++dots;
+        else if (!isdigit((unsigned char)ch)) ipv4 = false;
+    }
+    if (ipv4 && dots == 3U) return true;
+    if (dots == 0U) return true;
+    static const char* const SUFFIXES[] = {
+        ".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain"
+    };
+    for (const char* suffix : SUFFIXES) {
+        if (host.endsWith(suffix)) return true;
+    }
+    return false;
+}
+
+// Ecriture envoyee par une page d'un AUTRE site (CSRF) : un site ouvert sur
+// un poste du reseau peut poster un formulaire vers le module. Le cookie
+// SameSite=Strict ne suffit pas tant qu'aucun mot de passe n'est pose. Les
+// navigateurs annoncent l'origine ; les outils (curl, Python) ne l'envoient
+// pas et passent.
+bool crossSiteWrite(AsyncWebServerRequest* request) {
+    const AsyncWebHeader* fetchSite = request->getHeader("Sec-Fetch-Site");
+    if (fetchSite && fetchSite->value().equalsIgnoreCase("cross-site")) return true;
+    const AsyncWebHeader* origin = request->getHeader("Origin");
+    if (!origin) return false;
+    const String& o = origin->value();
+    if (o.equalsIgnoreCase("null")) return true;    // iframe isolee, fichier
+    const int scheme = o.indexOf("://");
+    const String originHost = scheme >= 0 ? o.substring(scheme + 3) : o;
+    return !originHost.equalsIgnoreCase(request->host());
+}
+
+enum class GateBlock : uint8_t { NONE, HOST, CROSS_SITE, SESSION };
+
 class SessionGate : public AsyncWebHandler {
 public:
     explicit SessionGate(WiFiManager* const* wifi) : _wifi(wifi) {}
 
     bool canHandle(AsyncWebServerRequest* request) const override {
-        // Transition : tant qu'aucun mot de passe n'est pose, rien ne change.
-        if (!ApiAuth::hasSecret()) return false;
-        if (!needsSession(request)) return false;
-        const AsyncWebHeader* cookie = request->getHeader("Cookie");
-        return !WebSession::isValid(cookie ? cookie->value().c_str() : nullptr);
+        return blockReason(request) != GateBlock::NONE;
     }
 
     void handleRequest(AsyncWebServerRequest* request) override {
-        request->send(401, "application/json",
-                      "{\"error\":\"session requise\",\"session\":false}");
+        const GateBlock why = blockReason(request);
+        if (why == GateBlock::SESSION) {
+            request->send(401, "application/json",
+                          "{\"error\":\"session requise : se connecter sur /login\",\"session\":false}");
+            return;
+        }
+        // Journal borne : une page piegee peut repeter sa tentative en boucle.
+        static uint32_t lastLogMs = 0U;
+        const uint32_t now = millis();
+        if (lastLogMs == 0U || now - lastLogMs >= 60000UL) {
+            lastLogMs = now;
+            const IPAddress ip = request->client() ? request->client()->remoteIP() : IPAddress();
+            EventLog::log(LOG_WARN, "[WEB-GARDE] %s refuse depuis %u.%u.%u.%u (hote %s)",
+                          why == GateBlock::HOST ? "nom d'hote" : "envoi d'un autre site",
+                          ip[0], ip[1], ip[2], ip[3], request->host().c_str());
+        }
+        if (why == GateBlock::HOST) {
+            request->send(421, "application/json",
+                          "{\"error\":\"nom d'hote refuse : utiliser l'adresse IP du module\"}");
+        } else {
+            request->send(403, "application/json",
+                          "{\"error\":\"requete venant d'un autre site refusee\"}");
+        }
     }
 
 private:
     WiFiManager* const* _wifi;
 
-    bool needsSession(AsyncWebServerRequest* request) const {
+    GateBlock blockReason(AsyncWebServerRequest* request) const {
         const String& url = request->url();
+        const bool captive = _wifi && *_wifi && (*_wifi)->isCaptivePortal();
+        const WebRequestMethodComposite m = request->method();
+        const bool write = !(m == HTTP_GET || m == HTTP_HEAD);
+        // Ces deux gardes valent meme sans mot de passe pose : elles ne
+        // genent aucun usage legitime et protegent le module en transition.
+        // Le portail captif est exempte du controle de nom : les systemes y
+        // sondent des noms etrangers, rediriges vers /setup.
+        if (!captive && url.startsWith("/api/") && !hostAllowed(request)) return GateBlock::HOST;
+        if (write && crossSiteWrite(request)) return GateBlock::CROSS_SITE;
+        // Transition : tant qu'aucun mot de passe n'est pose, pas de session.
+        if (!ApiAuth::hasSecret()) return GateBlock::NONE;
+        if (!needsSession(url, write, captive)) return GateBlock::NONE;
+        const AsyncWebHeader* cookie = request->getHeader("Cookie");
+        return WebSession::isValid(cookie ? cookie->value().c_str() : nullptr)
+            ? GateBlock::NONE : GateBlock::SESSION;
+    }
+
+    static bool needsSession(const String& url, bool write, bool captive) {
         if (url.startsWith("/api/session/")) return false;
         // Portail captif (decision du proprietaire, 10 oct. 2026) : il faut
         // etre a portee radio du point d'acces pour reconfigurer le Wi-Fi.
-        const bool captive = _wifi && *_wifi && (*_wifi)->isCaptivePortal();
         if (captive && (url == "/api/wifi/scan" || url == "/api/wifi" ||
                         url == "/api/captive")) {
             return false;
         }
-        const WebRequestMethodComposite m = request->method();
-        if (m == HTTP_GET || m == HTTP_HEAD) {
+        if (!write) {
             // Lectures sous session : sujet ntfy (vaut un secret), scan
             // Wi-Fi hors captif, essai de script qui peut suspendre une zone.
             return pathIs(url, "/api/notifications") ||
@@ -834,6 +942,9 @@ void WebManager::setupRoutes() {
     });
 
     // ── Session Web locale (D016 lot F) ─────────────────────────────────
+    _server.on("/login", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedPage(req, LOGIN_HTML, sizeof(LOGIN_HTML) - 1U);
+    });
     // Noms sans prefixe commun : ESPAsyncWebServer fait repondre un handler
     // a ses sous-chemins (voir la note sur les scripts plus bas).
     _server.on("/api/session/challenge", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -874,7 +985,9 @@ void WebManager::setupRoutes() {
         const char* sig = jv["sig"] | "";
         char token[WebSession::TOKEN_HEX_LEN + 1];
         uint32_t retryIn = 0U;
-        const WebSession::LoginResult r = WebSession::login(nonce, sig, token, retryIn);
+        const uint32_t ip = req->client()
+            ? static_cast<uint32_t>(req->client()->remoteIP()) : 0U;
+        const WebSession::LoginResult r = WebSession::login(nonce, sig, ip, token, retryIn);
         if (r == WebSession::LoginResult::OK) {
             sendWithSessionCookie(req, 200, "{\"ok\":true}", token);
             return;

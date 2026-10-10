@@ -1,5 +1,6 @@
 #include "WebSession.h"
 
+#include <IPAddress.h>
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <string.h>
@@ -27,9 +28,44 @@ struct Challenge {
 portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 Slot g_sessions[MAX_SESSIONS];
 Challenge g_challenges[MAX_CHALLENGES];
-uint8_t g_failures = 0U;
-uint32_t g_lockUntilMs = 0U;
-bool g_locked = false;
+struct FailureEntry {
+    bool used = false;
+    uint32_t ip = 0U;
+    uint8_t failures = 0U;
+    bool locked = false;
+    uint32_t lockUntilMs = 0U;
+    uint32_t lastFailMs = 0U;
+};
+FailureEntry g_failures[MAX_TRACKED_IPS];
+
+// Appele sous section critique. Rend l'entree de cette adresse, en oubliant
+// au passage les compteurs restes une heure sans nouvel echec. create=false :
+// nullptr si l'adresse n'a pas d'echec en cours.
+FailureEntry* failureEntry(uint32_t ip, uint32_t now, bool create) {
+    FailureEntry* freeSlot = nullptr;
+    FailureEntry* oldest = nullptr;
+    FailureEntry* found = nullptr;
+    for (uint8_t i = 0U; i < MAX_TRACKED_IPS; ++i) {
+        FailureEntry& e = g_failures[i];
+        if (e.used && now - e.lastFailMs > FAILURE_MEMORY_MS &&
+            !(e.locked && (int32_t)(e.lockUntilMs - now) > 0)) {
+            e.used = false;
+        }
+        if (!e.used) { if (!freeSlot) freeSlot = &e; continue; }
+        if (e.ip == ip) found = &e;
+        if (!oldest || now - e.lastFailMs > now - oldest->lastFailMs) oldest = &e;
+    }
+    if (found || !create) return found;
+    // Table pleine : la plus ancienne cede la place. Un attaquant qui change
+    // d'adresse ne gagne que cinq essais par adresse, et un mot de passe de
+    // douze caracteres ne se devine pas a ce rythme.
+    FailureEntry* e = freeSlot ? freeSlot : oldest;
+    *e = FailureEntry();
+    e->used = true;
+    e->ip = ip;
+    e->lastFailMs = now;
+    return e;
+}
 
 void randomHex(char* out) {
     uint8_t raw[TOKEN_HEX_LEN / 2U];
@@ -128,6 +164,7 @@ bool newChallenge(char out[TOKEN_HEX_LEN + 1]) {
 }
 
 LoginResult login(const char* challengeHex, const char* signatureHex,
+                  uint32_t clientIp,
                   char outToken[TOKEN_HEX_LEN + 1], uint32_t& retryInSec) {
     retryInSec = 0U;
     if (!ApiAuth::hasSecret()) return LoginResult::NO_SECRET;
@@ -136,9 +173,10 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     bool challengeOk = false;
     bool locked = false;
     portENTER_CRITICAL(&g_mux);
-    if (g_locked && (int32_t)(g_lockUntilMs - now) > 0) {
+    FailureEntry* f = failureEntry(clientIp, now, false);
+    if (f && f->locked && (int32_t)(f->lockUntilMs - now) > 0) {
         locked = true;
-        retryInSec = (g_lockUntilMs - now + 999U) / 1000U;
+        retryInSec = (f->lockUntilMs - now + 999U) / 1000U;
     }
     // Le defi est consomme meme en cas de verrou : une reponse ne se rejoue
     // jamais.
@@ -153,6 +191,7 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     }
     portEXIT_CRITICAL(&g_mux);
 
+    const IPAddress ip(clientIp);
     if (locked) return LoginResult::LOCKED;
     if (!challengeOk) return LoginResult::NO_CHALLENGE;
 
@@ -160,31 +199,35 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     snprintf(message, sizeof(message), "session|%s", challengeHex);
     if (!signatureHex || !ApiAuth::verifyMessage(message, signatureHex)) {
         portENTER_CRITICAL(&g_mux);
-        if (g_failures < 255U) ++g_failures;
+        FailureEntry* e = failureEntry(clientIp, now, true);
+        if (e->failures < 255U) ++e->failures;
+        e->lastFailMs = now;
         uint32_t lockSec = 0U;
-        if (g_failures >= FREE_FAILURES) {
+        if (e->failures >= FREE_FAILURES) {
             lockSec = FIRST_LOCK_SEC;
-            for (uint8_t k = FREE_FAILURES; k < g_failures && lockSec < MAX_LOCK_SEC; ++k) {
+            for (uint8_t k = FREE_FAILURES; k < e->failures && lockSec < MAX_LOCK_SEC; ++k) {
                 lockSec *= 2U;
             }
             if (lockSec > MAX_LOCK_SEC) lockSec = MAX_LOCK_SEC;
-            g_locked = true;
-            g_lockUntilMs = now + lockSec * 1000UL;
+            e->locked = true;
+            e->lockUntilMs = now + lockSec * 1000UL;
         }
-        const uint8_t failures = g_failures;
+        const uint8_t failures = e->failures;
         portEXIT_CRITICAL(&g_mux);
         retryInSec = lockSec;
-        EventLog::log(LOG_WARN, "[WEB-SESSION] mot de passe refuse (%u echec(s), attente %lu s)",
+        EventLog::log(LOG_WARN, "[WEB-SESSION] mot de passe refuse depuis %u.%u.%u.%u (%u echec(s), attente %lu s)",
+                      ip[0], ip[1], ip[2], ip[3],
                       static_cast<unsigned>(failures), static_cast<unsigned long>(lockSec));
         return LoginResult::REFUSED;
     }
 
     portENTER_CRITICAL(&g_mux);
-    g_failures = 0U;
-    g_locked = false;
+    FailureEntry* ok = failureEntry(clientIp, now, false);
+    if (ok) ok->used = false;
     portEXIT_CRITICAL(&g_mux);
     storeSession(outToken);
-    EventLog::log(LOG_INFO, "[WEB-SESSION] session ouverte (%u active(s))",
+    EventLog::log(LOG_INFO, "[WEB-SESSION] session ouverte depuis %u.%u.%u.%u (%u active(s))",
+                  ip[0], ip[1], ip[2], ip[3],
                   static_cast<unsigned>(activeCount()));
     return LoginResult::OK;
 }
