@@ -232,7 +232,7 @@ function user_modules(int $userId): array
 function module_presence(string $moduleId): ?array
 {
     $stmt = db()->prepare(
-        'SELECT m.module_id, m.label, m.firmware, m.last_seen, c.revision, c.updated_at AS config_updated '
+        'SELECT m.module_id, m.hw_id, m.label, m.firmware, m.last_seen, c.revision, c.updated_at AS config_updated '
         . 'FROM module m LEFT JOIN module_config c ON c.module_id = m.module_id '
         . 'WHERE m.module_id = ?'
     );
