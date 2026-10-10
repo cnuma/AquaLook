@@ -15,9 +15,35 @@ RewriteRule ^ index.php [L]
 # Les .md sont de la documentation de developpement, sans interet public.
 # schema*.sql couvre aussi les migrations (schema-v2..., schema-v4...), que
 # l'ancien motif schema\.sql laissait servir.
-<FilesMatch "^(\.env.*|schema.*\.sql|router\.php|cleanup\.php|.*\.md)$">
+# *.log : un journal d'erreurs PHP ecrit dans la racine web (php.log, error.log)
+# serait servi tel quel -- la reecriture vers index.php ne s'applique pas a un
+# fichier qui existe sur disque (RewriteCond !-f). Il revelerait les chemins
+# absolus du serveur et des traces de pile. Non observe en production (le log
+# PHP est ailleurs), mais la garde coute une ligne et ferme le cas latent.
+<FilesMatch "^(\.env.*|schema.*\.sql|router\.php|cleanup\.php|.*\.md|.*\.log)$">
     Require all denied
 </FilesMatch>
+
+# En-tetes de securite (defense en profondeur). Gardes par <IfModule> : sans
+# mod_headers, ces lignes sont ignorees au lieu de provoquer une 500.
+#
+# Les pages admin.html / app.html ne chargent AUCUNE ressource externe (tout
+# est inline, meme origine) : default-src 'self' ne casse donc rien. Les
+# scripts et styles etant inline, 'unsafe-inline' reste necessaire -- c'est un
+# socle, pas une protection XSS complete : l'etape suivante est d'externaliser
+# ces scripts pour passer a une CSP par nonce/hash. En l'etat, la CSP bloque
+# deja l'injection de script externe, l'exfiltration vers une autre origine,
+# le cadrage (clickjacking) et le detournement de formulaire.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    # HSTS host-only (ni includeSubDomains ni preload : ce n'est qu'un
+    # sous-domaine d'alwaysdata.net). Le site est servi en HTTPS ; monter
+    # max-age apres verification.
+    Header always set Strict-Transport-Security "max-age=15552000"
+</IfModule>
 
 # Pas de listing de repertoire : /web/ ne doit pas enumerer les versions
 # publiees, meme si elles ne sont pas secretes.
