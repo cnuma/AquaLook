@@ -547,6 +547,13 @@ void WebManager::setupRoutes() {
 
     // Racine
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+        // Entree par l'adresse du module : sans session ouverte (et un mot de
+        // passe pose), on commence par la connexion (D016 lot F, demande du
+        // proprietaire). /login renvoie ensuite vers /index.html.
+        if (ApiAuth::hasSecret() && !WebSession::isValid(cookieOf(req))) {
+            req->redirect("/login");
+            return;
+        }
         req->redirect("/index.html");
     });
 
