@@ -41,6 +41,8 @@ public:
         char    ssid[33];
         int8_t  rssi;
         bool    secured;
+        uint8_t bssid[6];   // point d'acces precis (un mesh = un SSID, plusieurs BSSID)
+        uint8_t channel;
     };
 
     int16_t     getScanCount() const;
@@ -68,6 +70,8 @@ private:
     enum class PendingAction : uint8_t {
         NONE,
         STA_SET_MODE,
+        STA_SCAN_START,
+        STA_SCAN_WAIT,
         STA_BEGIN,
         AP_SET_MODE,
         AP_FINALIZE,
@@ -115,6 +119,18 @@ private:
 
     PendingAction _pendingAction = PendingAction::NONE;
     uint32_t _pendingDeadlineMs = 0;
+
+    // Connexion ciblee (mesh) : scan asynchrone avant WiFi.begin, puis
+    // connexion au BSSID le plus fort du SSID. Le choix interne du pilote
+    // n'est pas fiable sur un mesh au meme canal (10 oct. 2026 : -91 dBm
+    // retenu malgre un noeud a -52 et WIFI_CONNECT_AP_BY_SIGNAL).
+    uint32_t _staModeSetMs = 0;       // WiFi.mode(STA) demande
+    uint32_t _targetScanStartMs = 0;  // scan reellement lance
+    void beginTargeted(uint32_t now);
+    static constexpr uint32_t TARGET_SCAN_TIMEOUT_MS = 6000;
+    static constexpr uint32_t TARGET_SCAN_POLL_MS = 100;
+    static constexpr uint32_t TARGET_SCAN_MS_PER_CHANNEL = 150;
+    static constexpr uint32_t STA_START_TIMEOUT_MS = 2000;
 
     static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
     static constexpr uint32_t RETRY_INTERVAL_MS = 30000;

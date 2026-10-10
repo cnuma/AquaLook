@@ -944,6 +944,14 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         payload["heapLargestBlock"] =
             static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
+        // Historique du lien cote serveur (module_message), un releve par
+        // cycle : identifie le noeud du mesh associe et son signal.
+        {
+            JsonObject wifi = payload["wifi"].to<JsonObject>();
+            wifi["rssi"] = WiFi.RSSI();
+            wifi["bssid"] = WiFi.BSSIDstr();
+            wifi["channel"] = WiFi.channel();
+        }
 
         // Absent en mode maintenance (variables non relues : des zeros
         // passeraient pour un releve).
