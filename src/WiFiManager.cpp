@@ -215,8 +215,11 @@ bool WiFiManager::processPendingAction(uint32_t now) {
             // Tentatives impaires : choix du pilote, pour ne jamais rester
             // bloque sur un noeud visible qui refuserait l'association.
             // Un scan Web en cours garde la main sur le resultat du scan.
+            // Scan actif 150 ms par canal : ~2 s sur 13 canaux ; Arduino
+            // declare le scan en echec au-dela de 20 x cette duree (3 s).
             if ((_retryCount % 2U) == 0U && !_scanPending &&
-                WiFi.scanNetworks(true, false) == WIFI_SCAN_RUNNING) {
+                WiFi.scanNetworks(true, false, false, TARGET_SCAN_MS_PER_CHANNEL) ==
+                    WIFI_SCAN_RUNNING) {
                 _targetScanStartMs = now;
                 scheduleAction(PendingAction::STA_SCAN_WAIT, now + TARGET_SCAN_POLL_MS);
             } else {
@@ -305,18 +308,20 @@ void WiFiManager::beginTargeted(uint32_t now) {
         const int32_t channel = WiFi.channel(best);
         EventLog::log(
             LOG_INFO,
-            "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s))",
+            "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s), scan %lums)",
             bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
             static_cast<long>(channel), static_cast<int>(WiFi.RSSI(best)),
-            static_cast<unsigned>(seen)
+            static_cast<unsigned>(seen),
+            static_cast<unsigned long>(now - _targetScanStartMs)
         );
         WiFi.scanDelete();
         WiFi.begin(_ssid, _pwd, channel, bssid);
     } else {
         EventLog::log(
             LOG_INFO,
-            "WiFi: scan de connexion sans resultat (n=%d), choix du pilote",
-            static_cast<int>(n)
+            "WiFi: scan de connexion sans resultat (n=%d, %lums), choix du pilote",
+            static_cast<int>(n),
+            static_cast<unsigned long>(now - _targetScanStartMs)
         );
         if (n == WIFI_SCAN_RUNNING) esp_wifi_scan_stop();  // expire : liberer la radio
         else if (n >= 0) WiFi.scanDelete();

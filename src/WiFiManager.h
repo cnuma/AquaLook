@@ -127,6 +127,7 @@ private:
     void beginTargeted(uint32_t now);
     static constexpr uint32_t TARGET_SCAN_TIMEOUT_MS = 6000;
     static constexpr uint32_t TARGET_SCAN_POLL_MS = 100;
+    static constexpr uint32_t TARGET_SCAN_MS_PER_CHANNEL = 150;
 
     static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
     static constexpr uint32_t RETRY_INTERVAL_MS = 30000;
