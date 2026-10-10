@@ -94,6 +94,32 @@ Cycle nominal vérifié sur `.141` (build 1358 : rapport, config et sondage
 en 200, aucun `WARN`) ; le cas config en échec n'a pas été provoqué sur le
 matériel (il faudrait une erreur serveur).
 
+### D11 — Choix du nœud Wi-Fi sur un mesh (10 oct. 2026)
+
+Constat : sur le mesh Synology de `.141` (trois nœuds, un SSID, canal 11),
+le module s'accrochait au premier nœud qui répondait, souvent le plus
+lointain (`00:11:32:D3:9F:05`, −89 à −92 dBm), alors qu'un nœud était reçu à
+−52 dBm (`00:11:32:A4:35:15`). Un reset tirait un autre nœud au hasard, d'où
+le « ça remonte au reset ». Ni l'antenne ni le connecteur n'étaient en cause.
+
+Corrigé (branche `feature/wifi-diag-bssid`, 5.13.0) : avant chaque
+`WiFi.begin`, scan asynchrone après `STA_START` (150 ms par canal, ~1,3 s),
+puis connexion au BSSID le plus fort du SSID ; une tentative sur deux reste
+sur le choix du pilote (jamais bloqué sur un nœud qui refuserait
+l'association). Le réglage « tous canaux + tri par signal » seul ne suffit
+pas : le pilote a encore retenu le nœud à −91 dBm. Diagnostic ajouté :
+`/api/diagnostics.wifi.bssid`, `/api/wifi/scan?all=1&refresh=1` (BSSID,
+canal), BSSID dans le journal de connexion/déconnexion, `wifi {rssi, bssid,
+channel}` dans chaque rapport CloudSync (historique serveur 90 jours).
+
+Validé sur `.141` : 4 démarrages sur 4 sur le nœud proche (−54/−55 dBm),
+dont 3 resets matériels (EN par esptool). Non testé : reconnexion après
+coupure réelle (redémarrer le nœud `A4:35:15` : le module doit viser
+`CE:6F:A2`), redémarrage logiciel. Reste ouvert (point 2) : changer de
+nœud sans déconnexion si le lien se dégrade ; à décider d'après l'historique
+serveur (vérification prévue vers le 14 oct. 2026). Antérieur et inchangé :
+première association souvent refusée (`raison=202`), réussie ~1 s après.
+
 ## Limites connues
 
 - OpenWeatherMap dépend d’un service externe.
