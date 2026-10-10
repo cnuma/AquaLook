@@ -81,6 +81,7 @@ public:
 
     void registerSdStaticHandler(StorageManager* storage) {
         if (_sdStaticHandlerRegistered || !storage) return;
+        installGuards();
         _sdStaticHandlerRegistered = true;
         _storage = storage;
         _server.addHandler(new SdStaticHandler(storage));
@@ -88,6 +89,7 @@ public:
 
     void registerFaultRoutes() {
         if (_faultRoutesRegistered) return;
+        installGuards();
         _faultRoutesRegistered = true;
         NotificationManager::begin();
 
@@ -607,6 +609,11 @@ private:
 
     void setupRoutes();
     void setupCaptiveRoutes();
+    // Garde de longueur d'URL et filtre de session : premiers handlers de la
+    // liste, quel que soit l'enregistrement qui vient en premier (main.cpp
+    // appelle registerSdStaticHandler et registerFaultRoutes avant begin).
+    void installGuards();
+    bool _guardsInstalled = false;
     void handleStatus(AsyncWebServerRequest* request);
     void handleForecast(AsyncWebServerRequest* request);
     void handleZonesConfig(AsyncWebServerRequest* request);

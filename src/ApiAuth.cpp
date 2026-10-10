@@ -16,6 +16,10 @@ constexpr uint8_t MAX_SECRET = 64;
 
 uint32_t g_lastNonce = 0U;
 bool g_nonceLoaded = false;
+// Presence du secret, en cache : le filtre de session Web la consulte a
+// chaque requete, et ouvrir la NVS a chaque fois couterait sur la tache
+// async_tcp. -1 = pas encore lu ; tenu a jour par setSecret/forgetSecret.
+volatile int8_t g_hasSecret = -1;
 
 bool readSecret(char* out, size_t capacity) {
     Preferences prefs;
@@ -81,8 +85,11 @@ bool computeHmacHex(const char* secret, const String& message, char* outHex) {
 } // namespace
 
 bool hasSecret() {
-    char secret[MAX_SECRET + 1] = {};
-    return readSecret(secret, sizeof(secret));
+    if (g_hasSecret < 0) {
+        char secret[MAX_SECRET + 1] = {};
+        g_hasSecret = readSecret(secret, sizeof(secret)) ? 1 : 0;
+    }
+    return g_hasSecret == 1;
 }
 
 bool setSecret(const char* currentSecret, const char* newSecret) {
@@ -106,6 +113,7 @@ bool setSecret(const char* currentSecret, const char* newSecret) {
     const size_t written = prefs.putString(KEY_SECRET, newSecret);
     prefs.end();
     if (written == 0U) return false;
+    g_hasSecret = 1;
 
     EventLog::log(LOG_INFO, "API: secret d'authentification enregistre");
     return true;
@@ -140,6 +148,15 @@ bool verify(const String& canonicalMessage, uint32_t nonce, const String& hexSig
     return true;
 }
 
+bool verifyMessage(const char* message, const char* hexSignature) {
+    char secret[MAX_SECRET + 1] = {};
+    if (!message || !hexSignature || !readSecret(secret, sizeof(secret))) return false;
+    char expected[65];
+    if (!computeHmacHex(secret, String(message), expected)) return false;
+    return strlen(hexSignature) == 64U &&
+           equalsConstantTime(hexSignature, expected, 64U);
+}
+
 uint32_t lastNonce() {
     loadNonce();
     return g_lastNonce;
@@ -150,6 +167,7 @@ void forgetSecret() {
     if (!prefs.begin(NVS_NAMESPACE, false)) return;
     prefs.remove(KEY_SECRET);
     prefs.end();
+    g_hasSecret = 0;
     EventLog::log(LOG_WARN, "API: secret efface depuis l'ecran du module (secret oublie)");
 }
 

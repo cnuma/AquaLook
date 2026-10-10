@@ -7,6 +7,7 @@
 #include "ScriptVmSelfTest.h"
 #include "ScriptHostRuntime.h"
 #include "ApiAuth.h"
+#include "WebSession.h"
 #include "ScriptAdmin.h"
 #include "ScriptStore.h"
 #include "ScriptMessageCatalogue.h"
@@ -315,12 +316,96 @@ public:
     }
 };
 UriLengthGuard g_uriLengthGuard;
+
+// Session Web locale (D016 lot F) : classement W1,
+// docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md §8.1.
+//
+// Un seul filtre, consulte juste apres la garde de longueur : la bibliotheque
+// choisit le gestionnaire des la fin des en-tetes, donc une requete refusee
+// ici ne voit jamais son corps traite (depot SD, script, cablage). Toute
+// methode autre que GET/HEAD exige la session, sauf exceptions : une route
+// d'ecriture ajoutee plus tard est protegee sans y penser.
+bool pathIs(const String& url, const char* base) {
+    const size_t n = strlen(base);
+    return url.startsWith(base) && (url.length() == n || url[n] == '/');
+}
+
+class SessionGate : public AsyncWebHandler {
+public:
+    explicit SessionGate(WiFiManager* const* wifi) : _wifi(wifi) {}
+
+    bool canHandle(AsyncWebServerRequest* request) const override {
+        // Transition : tant qu'aucun mot de passe n'est pose, rien ne change.
+        if (!ApiAuth::hasSecret()) return false;
+        if (!needsSession(request)) return false;
+        const AsyncWebHeader* cookie = request->getHeader("Cookie");
+        return !WebSession::isValid(cookie ? cookie->value().c_str() : nullptr);
+    }
+
+    void handleRequest(AsyncWebServerRequest* request) override {
+        request->send(401, "application/json",
+                      "{\"error\":\"session requise\",\"session\":false}");
+    }
+
+private:
+    WiFiManager* const* _wifi;
+
+    bool needsSession(AsyncWebServerRequest* request) const {
+        const String& url = request->url();
+        if (url.startsWith("/api/session/")) return false;
+        // Portail captif (decision du proprietaire, 10 oct. 2026) : il faut
+        // etre a portee radio du point d'acces pour reconfigurer le Wi-Fi.
+        const bool captive = _wifi && *_wifi && (*_wifi)->isCaptivePortal();
+        if (captive && (url == "/api/wifi/scan" || url == "/api/wifi" ||
+                        url == "/api/captive")) {
+            return false;
+        }
+        const WebRequestMethodComposite m = request->method();
+        if (m == HTTP_GET || m == HTTP_HEAD) {
+            // Lectures sous session : sujet ntfy (vaut un secret), scan
+            // Wi-Fi hors captif, essai de script qui peut suspendre une zone.
+            return pathIs(url, "/api/notifications") ||
+                   pathIs(url, "/api/wifi/scan") ||
+                   pathIs(url, "/api/debug/script-dryrun");
+        }
+        return true;
+    }
+};
+
+void sendWithSessionCookie(AsyncWebServerRequest* req, int code,
+                           const char* body, const char* token) {
+    AsyncWebServerResponse* r = req->beginResponse(code, "application/json", body);
+    char cookie[96];
+    if (token) {
+        snprintf(cookie, sizeof(cookie), "%s=%s; Path=/; HttpOnly; SameSite=Strict",
+                 WebSession::COOKIE_NAME, token);
+    } else {
+        snprintf(cookie, sizeof(cookie), "%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict",
+                 WebSession::COOKIE_NAME);
+    }
+    r->addHeader("Set-Cookie", cookie);
+    r->addHeader("Cache-Control", "no-store");
+    req->send(r);
+}
+
+const char* cookieOf(AsyncWebServerRequest* req) {
+    const AsyncWebHeader* h = req->getHeader("Cookie");
+    return h ? h->value().c_str() : nullptr;
+}
 }  // namespace
 
-void WebManager::setupRoutes() {
+void WebManager::installGuards() {
+    if (_guardsInstalled) return;
+    _guardsInstalled = true;
     // Premier handler enregistre, donc premier consulte : il court-circuite les
     // URL demesurees avant tout autre routage, serveStatic compris.
     _server.addHandler(&g_uriLengthGuard);
+    // Juste apres : le filtre de session (voir SessionGate).
+    _server.addHandler(new SessionGate(&_wifi));
+}
+
+void WebManager::setupRoutes() {
+    installGuards();
 
     // ── Détection portail captif (iOS/Android/Windows) ──────────
     // Stratégie : répondre de façon à ce que chaque OS détecte un portail
@@ -746,6 +831,82 @@ void WebManager::setupRoutes() {
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);
+    });
+
+    // ── Session Web locale (D016 lot F) ─────────────────────────────────
+    // Noms sans prefixe commun : ESPAsyncWebServer fait repondre un handler
+    // a ses sous-chemins (voir la note sur les scripts plus bas).
+    _server.on("/api/session/challenge", HTTP_GET, [](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        const bool configure = ApiAuth::hasSecret();
+        doc["configure"] = configure;
+        if (configure) {
+            char nonce[WebSession::TOKEN_HEX_LEN + 1];
+            WebSession::newChallenge(nonce);
+            doc["nonce"] = nonce;
+        }
+        String body;
+        serializeJson(doc, body);
+        AsyncWebServerResponse* r = req->beginResponse(200, "application/json", body);
+        r->addHeader("Cache-Control", "no-store");
+        req->send(r);
+    });
+
+    _server.on("/api/session/state", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        JsonDocument doc;
+        const bool configure = ApiAuth::hasSecret();
+        const uint32_t left = WebSession::remainingSec(cookieOf(req));
+        doc["configure"] = configure;
+        // Sans mot de passe pose, tout est ouvert : l'interface se comporte
+        // comme avec une session, et affiche le bandeau « acces non protege ».
+        doc["active"] = !configure || left > 0U;
+        doc["expiresInSec"] = left;
+        doc["captive"] = _wifi && _wifi->isCaptivePortal();
+        String body;
+        serializeJson(doc, body);
+        AsyncWebServerResponse* r = req->beginResponse(200, "application/json", body);
+        r->addHeader("Cache-Control", "no-store");
+        req->send(r);
+    });
+
+    addJsonHandler("/api/session/login", [this](AsyncWebServerRequest* req, JsonVariant& jv) {
+        const char* nonce = jv["nonce"] | "";
+        const char* sig = jv["sig"] | "";
+        char token[WebSession::TOKEN_HEX_LEN + 1];
+        uint32_t retryIn = 0U;
+        const WebSession::LoginResult r = WebSession::login(nonce, sig, token, retryIn);
+        if (r == WebSession::LoginResult::OK) {
+            sendWithSessionCookie(req, 200, "{\"ok\":true}", token);
+            return;
+        }
+        JsonDocument out;
+        int code = 403;
+        switch (r) {
+            case WebSession::LoginResult::REFUSED:
+                out["error"] = "mot de passe refuse";
+                break;
+            case WebSession::LoginResult::LOCKED:
+                out["error"] = "trop d'essais, patienter";
+                code = 429;
+                break;
+            case WebSession::LoginResult::NO_CHALLENGE:
+                out["error"] = "defi expire, recommencer";
+                code = 409;
+                break;
+            case WebSession::LoginResult::NO_SECRET:
+                out["error"] = "aucun mot de passe pose";
+                code = 409;
+                break;
+            default:
+                break;
+        }
+        if (retryIn > 0U) out["retryInSec"] = retryIn;
+        sendJson(req, out, code);
+    });
+
+    _server.on("/api/session/logout", HTTP_POST, [](AsyncWebServerRequest* req) {
+        WebSession::close(cookieOf(req));
+        sendWithSessionCookie(req, 200, "{\"ok\":true}", nullptr);
     });
 
     // ── Scripts de l'utilisateur ────────────────────────────────────────
@@ -2074,7 +2235,14 @@ void WebManager::handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& do
             : "secret trop court (12 caracteres minimum)");
         return;
     }
-    sendOk(req);
+    // Le secret est aussi le mot de passe Web (D016 lot F) : les sessions
+    // ouvertes avec l'ancien se ferment, et celle qui vient de prouver le
+    // nouveau en recoit une, pour ne pas redemander aussitot ce qu'on a tape.
+    WebSession::closeAll();
+    char token[WebSession::TOKEN_HEX_LEN + 1];
+    WebSession::openTrusted(token);
+    EventLog::log(LOG_INFO, "[WEB-SESSION] mot de passe Web pose, sessions precedentes fermees");
+    sendWithSessionCookie(req, 200, "{\"ok\":true}", token);
 }
 
 // Enregistrement d'un script compile par le navigateur.

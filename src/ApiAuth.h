@@ -59,6 +59,11 @@ bool setSecret(const char* currentSecret, const char* newSecret);
 // redemarrage permettrait de rejouer une requete capturee.
 bool verify(const String& canonicalMessage, uint32_t nonce, const String& hexSignature);
 
+// Verifie une signature sur un message SANS toucher au compteur de nonces :
+// reserve au defi-reponse de la session Web (WebSession), dont le defi
+// aleatoire a usage unique joue deja le role anti-rejeu.
+bool verifyMessage(const char* message, const char* hexSignature);
+
 // Dernier nonce accepte, pour que le client sache ou reprendre.
 uint32_t lastNonce();
 

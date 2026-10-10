@@ -1,5 +1,6 @@
 #include "DisplayManager.h"
 #include "ApiAuth.h"                // page Systeme : oublier le secret API
+#include "WebSession.h"             // ... et fermer les sessions Web ouvertes avec lui
 #include "PinLock.h"                // code PIN : ADMIN et demarrage manuel (D016)
 #include "RainSchedule.h"
 #include "EventBus.h"
@@ -1408,6 +1409,7 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
             if (_forgetSecretArmedAt != 0 &&
                 now - _forgetSecretArmedAt <= FORGET_SECRET_CONFIRM_MS) {
                 ApiAuth::forgetSecret();
+                WebSession::closeAll();
                 _forgetSecretArmedAt = 0;
             } else {
                 _forgetSecretArmedAt = now;
@@ -4382,7 +4384,7 @@ void DisplayManager::drawAdminPageSystem() {
     }
     const bool armed = _forgetSecretArmedAt != 0;
     drawButton(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34,
-               armed ? "Confirmer ? (retaper ici)" : "Oublier le secret API",
+               armed ? "Confirmer ? (retaper ici)" : "Oublier le mot de passe Web",
                armed ? Theme::AMBER : Theme::SURFACE,
                armed ? 0x0000 : Theme::TEXT);
 }
