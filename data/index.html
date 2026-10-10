@@ -113,7 +113,7 @@
        presentes plus bas, pour qu'ajouter une rubrique n'impose pas de la
        declarer a deux endroits. Voir buildCfgMenu(). -->
   <nav id="cfg-menu"></nav>
-  <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Admin : verrouillé</button>
+  <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Options avancées du module</button>
   <div id="link-sante" style="margin:0 12px 8px">
     <a href="/sante.html"
        style="display:block;padding:8px 10px;font-family:var(--mono);
@@ -630,14 +630,17 @@
           border-radius:50%;background:#ffffff18;display:block;
           text-decoration:none" title="Journal et acquittement"></a>
 <script>
-/* Sections administrateur affichees selon la session reelle du module
-   (D016 lot F, session.js) ; plus aucun mot de passe dans la page. */
-const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin","link-urls"];
-function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")})}
-function adminShow(s){adminApply(!!(s&&s.active));let b=document.getElementById("admin-btn");b&&(b.textContent=!s?"Admin : module injoignable":s.legacy?"Admin : ouvert (module sans session Web)":!s.configure?"Admin : non protégé (définir un mot de passe)":s.active?"Admin : connecté (se déconnecter)":"Admin : verrouillé");let w=document.getElementById("unprotected-banner");if(s&&!s.configure&&!s.legacy){if(!w){w=document.createElement("div");w.id="unprotected-banner";w.textContent="Accès non protégé : définir un mot de passe Web";w.style.cssText="background:#8a5a00;color:#fff;padding:6px 12px;text-align:center;cursor:pointer;font-size:13px";w.onclick=adminSetPassword;document.body.prepend(w)}}else if(w)w.remove()}
+/* Options avancees du module (D016 lot F) : la configuration du module
+   (reseau, affichage, serveur, cablage...) reste repliee pour l'usage
+   courant et s'ouvre a la demande. Ce n'est pas un verrou : la protection
+   est la session Web, exigee par le module pour toute ecriture. */
+const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","sec-cloud","sec-upd","sec-io","sec-topo","relay-admin","link-urls"],AV="aqualook-avance";
+function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Masquer les options avancées":"Options avancées du module");typeof buildCfgMenu=="function"&&buildCfgMenu()}
+function adminShow(s){let w=document.getElementById("unprotected-banner");if(s&&!s.configure&&!s.legacy){if(!w){w=document.createElement("div");w.id="unprotected-banner";w.textContent="Accès non protégé : définir un mot de passe Web";w.style.cssText="background:#8a5a00;color:#fff;padding:6px 12px;text-align:center;cursor:pointer;font-size:13px";w.onclick=adminSetPassword;document.body.prepend(w)}}else if(w)w.remove()}
 async function adminSetPassword(){let p=await AquaSession.promptSecret("Nouveau mot de passe Web","12 caractères au moins");if(!p)return;if(await AquaSession.promptSecret("Retaper le mot de passe")!==p){alert("Les deux saisies diffèrent");return}let r=await AquaSession.setPassword("",p);alert(r.ok?"Mot de passe posé : l'interface est désormais protégée.":"Refus : "+(r.error||"module injoignable"))}
-async function adminToggle(){let s=AquaSession.state()||await AquaSession.refresh();if(!s||s.legacy)return;if(!s.configure){adminSetPassword();return}if(s.active){await AquaSession.logout();return}await AquaSession.ask()}
-document.addEventListener("DOMContentLoaded",()=>{adminApply(0);AquaSession.onChange(adminShow);AquaSession.refresh()});
+function avanceOuvert(){try{return sessionStorage.getItem(AV)==="1"}catch(e){return false}}
+async function adminToggle(){if(avanceOuvert()){try{sessionStorage.removeItem(AV)}catch(e){}adminApply(0);return}let s=AquaSession.state()||await AquaSession.refresh();if(s&&s.configure&&!s.active&&!await AquaSession.ask("Les options avancées modifient la configuration du module."))return;try{sessionStorage.setItem(AV,"1")}catch(e){}adminApply(1)}
+document.addEventListener("DOMContentLoaded",()=>{adminApply(avanceOuvert());AquaSession.onChange(adminShow);AquaSession.refresh()});
 </script>
 <!-- Signature des ecritures sensibles. crypto.subtle n'existe pas en HTTP
      simple : voir l'entete de hmac.js. -->

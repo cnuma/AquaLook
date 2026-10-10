@@ -889,15 +889,22 @@ function cfgOrphanSections() {
   const claimed = new Set(CFG_GROUPS.flatMap(g => g.sections));
   return Array.from(document.querySelectorAll('#drawer .cfg-section'))
               .map(s => s.id)
-              .filter(id => id && !claimed.has(id));
+              .filter(id => id && !claimed.has(id) &&
+                            document.getElementById(id).style.display !== 'none');
 }
 
 function buildCfgMenu() {
   const menu = document.getElementById('cfg-menu');
   if (!menu) return;
 
-  const groups = CFG_GROUPS.filter(g =>
-    g.sections.some(id => document.getElementById(id)));
+  // Une rubrique dont toutes les sections sont masquees (options avancees
+  // repliees, voir adminApply dans index.html) n'apparait pas : elle
+  // ouvrirait une page vide.
+  const visible = id => {
+    const e = document.getElementById(id);
+    return e && e.style.display !== 'none';
+  };
+  const groups = CFG_GROUPS.filter(g => g.sections.some(visible));
 
   const orphans = cfgOrphanSections().map(id => {
     const sec = document.getElementById(id);
