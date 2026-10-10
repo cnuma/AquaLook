@@ -68,6 +68,9 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
                   uint32_t clientIp,
                   char outToken[TOKEN_HEX_LEN + 1], uint32_t& retryInSec);
 
+// Consomme un defi encore valable (changement de mot de passe chiffre).
+bool consumeChallenge(const char* challengeHex);
+
 // Ouvre une session sans defi. Reserve au cas ou la requete vient de prouver
 // la connaissance du secret par un autre chemin (pose du premier secret,
 // changement du secret sous session).

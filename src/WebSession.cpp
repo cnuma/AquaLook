@@ -232,6 +232,22 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     return LoginResult::OK;
 }
 
+bool consumeChallenge(const char* challengeHex) {
+    if (!challengeHex || strlen(challengeHex) != TOKEN_HEX_LEN) return false;
+    const uint32_t now = millis();
+    bool ok = false;
+    portENTER_CRITICAL(&g_mux);
+    for (uint8_t i = 0U; i < MAX_CHALLENGES; ++i) {
+        Challenge& c = g_challenges[i];
+        if (!c.used || memcmp(c.value, challengeHex, TOKEN_HEX_LEN) != 0) continue;
+        c.used = false;
+        ok = now - c.issuedMs <= CHALLENGE_TTL_MS;
+        break;
+    }
+    portEXIT_CRITICAL(&g_mux);
+    return ok;
+}
+
 bool openTrusted(char outToken[TOKEN_HEX_LEN + 1]) {
     return storeSession(outToken);
 }

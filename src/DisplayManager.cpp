@@ -1406,10 +1406,17 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
     if (_adminPage == AdminPage::SYSTEM) {
         if (hitTest(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34, tx, ty)) {
             const uint32_t now = millis();
-            if (_forgetSecretArmedAt != 0 &&
+            if (!ApiAuth::hasSecret()) {
+                // Pas de mot de passe : un appui autorise sa pose depuis le
+                // navigateur pendant 10 min (preuve de presence physique).
+                ApiAuth::allowFirstSecret(FIRST_SECRET_WINDOW_MS);
+            } else if (_forgetSecretArmedAt != 0 &&
                 now - _forgetSecretArmedAt <= FORGET_SECRET_CONFIRM_MS) {
                 ApiAuth::forgetSecret();
                 WebSession::closeAll();
+                // Le proprietaire est devant l'ecran : il peut reposer un
+                // mot de passe tout de suite.
+                ApiAuth::allowFirstSecret(FIRST_SECRET_WINDOW_MS);
                 _forgetSecretArmedAt = 0;
             } else {
                 _forgetSecretArmedAt = now;
@@ -4383,8 +4390,15 @@ void DisplayManager::drawAdminPageSystem() {
         _forgetSecretArmedAt = 0;
     }
     const bool armed = _forgetSecretArmedAt != 0;
+    const bool hasWebPassword = ApiAuth::hasSecret();
+    const uint32_t allowLeftMs = ApiAuth::firstSecretWindowLeftMs();
+    char allowLabel[40];
+    snprintf(allowLabel, sizeof(allowLabel), "Pose autorisee (%lu min)",
+             static_cast<unsigned long>((allowLeftMs + 59999UL) / 60000UL));
     drawButton(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34,
-               armed ? "Confirmer ? (retaper ici)" : "Oublier le mot de passe Web",
+               !hasWebPassword
+                   ? (allowLeftMs > 0U ? allowLabel : "Autoriser un mot de passe Web")
+                   : armed ? "Confirmer ? (retaper ici)" : "Oublier le mot de passe Web",
                armed ? Theme::AMBER : Theme::SURFACE,
                armed ? 0x0000 : Theme::TEXT);
 }
