@@ -274,8 +274,9 @@ l'identifiant fixe). Envoi immédiat au rattachement validé le 10 oct. 2026
 09:09:12. Les flashs ne font plus monter la garde anti-boucle (empreinte de
 l'image, `d07fbb0`).
 
-Lot B : **développé le 10 oct. 2026, banc local 44/44, publication en
-attente** (branche `feature/lot-b-comptes`). Serveur : `account.php`,
+Lot B : **validé en production le 10 oct. 2026** (banc local 44/44 ;
+branche `feature/lot-b-comptes` fusionnée). Essai du propriétaire : mot de
+passe oublié, mail reçu, lien suivi, nouveau mot de passe posé, connexion. Serveur : `account.php`,
 `schema-v7-liens-compte.sql` (table `account_token`, une seule table pour les
 liens de réinitialisation et d'invitation au lieu de `password_reset` : même
 geste, seules durée et texte changent), routes `/app/password/forgot|reset|change`
@@ -285,9 +286,10 @@ et `/admin/user/invite`, paramètres `APP_BASE_URL`, `RESET_TOKEN_TTL_MIN`,
 21 ms inconnue) ; notifications exemptées des plafonds par adresse et par IP.
 `app.html` : « Mot de passe oublié ? », écran « choisir un mot de passe »
 ouvert par le lien, carte « Mon compte ». `admin.html` : « Inviter par mail »,
-lien affiché aussi à l'administrateur. Reste : publication, `schema-v7`
-importé, `APP_BASE_URL` saisi, essai réel (mail reçu, durées de `forgot` en
-production).
+lien affiché aussi à l'administrateur. Production : fichiers publiés,
+`schema-v7` importé, `APP_BASE_URL` saisi ; `forgot` sur adresse inconnue
+≈ 150 ms. Non essayés en production (banc seulement) : invitation,
+changement de mot de passe connecté, durée de `forgot` sur adresse connue.
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
