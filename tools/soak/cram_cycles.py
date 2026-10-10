@@ -19,6 +19,7 @@ A la fin, le planning de soak standard est reinstalle (40 cycles/jour).
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -115,6 +116,10 @@ def main():
     ap.add_argument('--target', type=int, default=150)
     ap.add_argument('--max-passes', type=int, default=8)
     args = ap.parse_args()
+    # Depuis D016 lot F, les ecritures exigent une session Web locale.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from module_session import install_global_session
+    install_global_session(args.host)
 
     ok0, ko0 = parity(args.host)
     print('depart : ok=%d ko=%d, cible=%d' % (ok0, ko0, args.target), flush=True)

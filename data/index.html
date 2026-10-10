@@ -630,14 +630,19 @@
           border-radius:50%;background:#ffffff18;display:block;
           text-decoration:none" title="Journal et acquittement"></a>
 <script>
-const K="aqualook-admin-unlocked",A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin","link-urls"];
-function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Admin : déverrouillé":"Admin : verrouillé")}
-function adminToggle(){let v=sessionStorage.getItem(K)==="1";if(v){sessionStorage.removeItem(K);adminApply(0);return}if(prompt("Mot de passe administrateur")!=="1598753"){alert("Mot de passe incorrect");return}sessionStorage.setItem(K,"1");adminApply(1)}
-document.addEventListener("DOMContentLoaded",()=>adminApply(sessionStorage.getItem(K)==="1"));
+/* Sections administrateur affichees selon la session reelle du module
+   (D016 lot F, session.js) ; plus aucun mot de passe dans la page. */
+const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","relay-admin","link-urls"];
+function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")})}
+function adminShow(s){adminApply(!!(s&&s.active));let b=document.getElementById("admin-btn");b&&(b.textContent=!s?"Admin : module injoignable":s.legacy?"Admin : ouvert (module sans session Web)":!s.configure?"Admin : non protégé (définir un mot de passe)":s.active?"Admin : connecté (se déconnecter)":"Admin : verrouillé");let w=document.getElementById("unprotected-banner");if(s&&!s.configure&&!s.legacy){if(!w){w=document.createElement("div");w.id="unprotected-banner";w.textContent="Accès non protégé : définir un mot de passe Web";w.style.cssText="background:#8a5a00;color:#fff;padding:6px 12px;text-align:center;cursor:pointer;font-size:13px";w.onclick=adminSetPassword;document.body.prepend(w)}}else if(w)w.remove()}
+async function adminSetPassword(){let p=prompt("Nouveau mot de passe Web (12 caractères au moins)");if(!p)return;if(prompt("Retaper le mot de passe")!==p){alert("Les deux saisies diffèrent");return}let r=await AquaSession.setPassword("",p);alert(r.ok?"Mot de passe posé : l'interface est désormais protégée.":"Refus : "+(r.error||"module injoignable"))}
+async function adminToggle(){let s=AquaSession.state()||await AquaSession.refresh();if(!s||s.legacy)return;if(!s.configure){adminSetPassword();return}if(s.active){await AquaSession.logout();return}await AquaSession.ask()}
+document.addEventListener("DOMContentLoaded",()=>{adminApply(0);AquaSession.onChange(adminShow);AquaSession.refresh()});
 </script>
 <!-- Signature des ecritures sensibles. crypto.subtle n'existe pas en HTTP
      simple : voir l'entete de hmac.js. -->
 <script src="/hmac.js"></script>
+<script src="/session.js"></script>
 <script src="/app.js"></script>
 <script src="/alarm.js?v=4"></script>
 </body>

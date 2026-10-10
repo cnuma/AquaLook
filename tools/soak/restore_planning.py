@@ -10,6 +10,7 @@ ne pas noyer l'utilisateur. Ce script remet tout exactement en etat.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -33,6 +34,10 @@ def main():
     ap.add_argument('--host', default='192.168.1.141')
     ap.add_argument('--file', default='tools/soak/backup_planning_141.json')
     args = ap.parse_args()
+    # Depuis D016 lot F, les ecritures exigent une session Web locale.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from module_session import install_global_session
+    install_global_session(args.host)
 
     with open(args.file, encoding='utf-8') as fh:
         backup = json.load(fh)

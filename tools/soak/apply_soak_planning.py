@@ -10,6 +10,7 @@ sont assures par restore_planning.py.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -37,6 +38,10 @@ def main():
     ap.add_argument('--host', default='192.168.1.141')
     ap.add_argument('--zones', type=int, default=4)
     args = ap.parse_args()
+    # Depuis D016 lot F, les ecritures exigent une session Web locale.
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from module_session import install_global_session
+    install_global_session(args.host)
 
     errors = 0
     # 1) Silence d'abord : aucun creneau ne doit notifier pendant la campagne.

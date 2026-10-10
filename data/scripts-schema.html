@@ -468,6 +468,7 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
 </div></div>
 
 <script src="hmac.js"></script>
+<script src="session.js"></script>
 <script src="script-lang.js"></script>
 <script src="script-schema.js"></script>
 <script>
@@ -1382,18 +1383,23 @@ function blocDuDernierArret(d) {
 }
 
 // ── Module : ecriture (signee) ───────────────────────────────────────
+// Le secret est aussi le mot de passe Web (D016 lot F) : il n'est plus garde
+// durablement (localStorage, lisible par tout script de la page et survivant
+// a la fermeture), seulement le temps de l'onglet. L'ancienne copie durable
+// est effacee au passage.
+try { localStorage.removeItem('aqualook-secret'); } catch (e) {}
 function secret() {
   let s = null;
-  try { s = localStorage.getItem('aqualook-secret'); } catch (e) {}
+  try { s = sessionStorage.getItem('aqualook-secret'); } catch (e) {}
   if (!s) {
-    s = prompt('Secret d’authentification du module (12 caractères minimum) :');
-    if (s) { try { localStorage.setItem('aqualook-secret', s); } catch (e) {} }
+    s = prompt('Mot de passe Web du module (12 caractères minimum) :');
+    if (s) { try { sessionStorage.setItem('aqualook-secret', s); } catch (e) {} }
   }
   return s;
 }
 function oublierSecret() {
-  try { localStorage.removeItem('aqualook-secret'); } catch (e) {}
-  dire('Secret oublié sur cet appareil. Il reste en place sur le module.', '');
+  try { sessionStorage.removeItem('aqualook-secret'); } catch (e) {}
+  dire('Mot de passe oublié dans cet onglet. Il reste en place sur le module.', '');
 }
 async function prochainNonce() {
   const d = await (await fetch('/api/auth/state')).json();
@@ -1408,14 +1414,20 @@ async function definirSecret() {
   const actuel = prompt('Secret ACTUEL (laisser vide si le module n’en a pas encore) :') || '';
   const nouveau = prompt('NOUVEAU secret (12 caractères minimum) :');
   if (!nouveau) return;
-  const r = await fetch('/api/auth-secret', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actuel: actuel, nouveau: nouveau })
-  });
-  const d = await r.json();
+  let d;
+  if (window.AquaSession) {
+    // Module : le nouveau mot de passe part chiffre par l'actuel (session.js).
+    d = await AquaSession.changePassword(actuel, nouveau);
+  } else {
+    const r = await fetch('/api/auth-secret', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actuel: actuel, nouveau: nouveau })
+    });
+    d = await r.json();
+  }
   if (d.ok) {
-    try { localStorage.setItem('aqualook-secret', nouveau); } catch (e) {}
-    dire('Secret enregistré sur le module et retenu sur cet appareil.', 'ok');
+    try { sessionStorage.setItem('aqualook-secret', nouveau); } catch (e) {}
+    dire('Mot de passe enregistré sur le module et retenu pour cet onglet.', 'ok');
   } else dire('Refusé : ' + (d.error || ''), 'ko');
 }
 
