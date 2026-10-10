@@ -156,6 +156,33 @@
     return asking;
   }
 
+  // Saisie masquee : prompt() affiche le mot de passe en clair a l'ecran.
+  // Rend la valeur saisie (chaine, eventuellement vide) ou null si Annuler.
+  function promptSecret(title, message) {
+    return new Promise((resolve) => {
+      const back = el('div', 'position:fixed;inset:0;background:#000a;z-index:9999;display:flex;align-items:center;justify-content:center;font-family:sans-serif');
+      const box = el('form', 'background:#12232e;color:#e8f7ff;padding:18px;border-radius:10px;width:min(320px,90vw);box-shadow:0 4px 20px #0008');
+      box.appendChild(el('div', 'font-weight:bold;margin-bottom:8px', title));
+      if (message) box.appendChild(el('div', 'font-size:.9em;margin-bottom:8px;opacity:.8', message));
+      const input = el('input', 'width:100%;box-sizing:border-box;padding:8px;font-size:1em;border-radius:6px;border:1px solid #456');
+      input.type = 'password';
+      input.autocomplete = 'new-password';
+      box.appendChild(input);
+      const row = el('div', 'display:flex;gap:8px;justify-content:flex-end;margin-top:12px');
+      const cancel = el('button', 'padding:6px 12px', 'Annuler');
+      cancel.type = 'button';
+      const ok = el('button', 'padding:6px 12px', 'Valider');
+      ok.type = 'submit';
+      row.appendChild(cancel); row.appendChild(ok); box.appendChild(row);
+      back.appendChild(box);
+      document.body.appendChild(back);
+      input.focus();
+      const done = (v) => { back.remove(); resolve(v); };
+      cancel.onclick = () => done(null);
+      box.onsubmit = (ev) => { ev.preventDefault(); done(input.value); };
+    });
+  }
+
   function isModuleApi(input) {
     try {
       const u = new URL(typeof input === 'string' ? input : input.url, global.location.href);
@@ -178,6 +205,7 @@
     setPassword: setPassword,
     changePassword: changePassword,
     ask: ask,
+    promptSecret: promptSecret,
     state: () => state,
     onChange: (f) => { listeners.push(f); }
   };

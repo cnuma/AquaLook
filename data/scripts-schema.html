@@ -1388,11 +1388,17 @@ function blocDuDernierArret(d) {
 // a la fermeture), seulement le temps de l'onglet. L'ancienne copie durable
 // est effacee au passage.
 try { localStorage.removeItem('aqualook-secret'); } catch (e) {}
-function secret() {
+// Saisie masquee sur le module (session.js) ; prompt() en clair ne reste
+// qu'en repli, hors module.
+function demanderSecret(titre, detail) {
+  if (window.AquaSession && AquaSession.promptSecret) return AquaSession.promptSecret(titre, detail);
+  return Promise.resolve(prompt(titre + (detail ? ' (' + detail + ')' : '') + ' :'));
+}
+async function secret() {
   let s = null;
   try { s = sessionStorage.getItem('aqualook-secret'); } catch (e) {}
   if (!s) {
-    s = prompt('Mot de passe Web du module (12 caractères minimum) :');
+    s = await demanderSecret('Mot de passe Web du module', '12 caractères minimum');
     if (s) { try { sessionStorage.setItem('aqualook-secret', s); } catch (e) {} }
   }
   return s;
@@ -1407,12 +1413,13 @@ async function prochainNonce() {
   return { nonce: NONCE, configure: d.configure };
 }
 async function signer(canonique) {
-  const s = secret();
+  const s = await secret();
   return s ? AquaHmac.hmacSha256Hex(s, canonique) : null;
 }
 async function definirSecret() {
-  const actuel = prompt('Secret ACTUEL (laisser vide si le module n’en a pas encore) :') || '';
-  const nouveau = prompt('NOUVEAU secret (12 caractères minimum) :');
+  const actuel = await demanderSecret('Mot de passe ACTUEL', 'laisser vide si le module n’en a pas encore');
+  if (actuel === null) return;
+  const nouveau = await demanderSecret('NOUVEAU mot de passe', '12 caractères minimum');
   if (!nouveau) return;
   let d;
   if (window.AquaSession) {
