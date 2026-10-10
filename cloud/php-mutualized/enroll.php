@@ -34,6 +34,29 @@ const ENROLL_CLAIM_WINDOW_MIN = 15;
 // aiderait a balayer l'espace des codes vivants.
 const ENROLL_CLAIM_REFUSED = 'code invalide ou expire';
 
+/**
+ * Parametres ENROLL_* lus, ou null si l'un manque. Un settings.php plus
+ * ancien que ce fichier les rend a 0 : chaque plafond paraissait alors
+ * atteint, et le module affichait "trop de demandes" des la premiere
+ * (constate sur AlwaysData le 10 oct. 2026). Mieux vaut le dire.
+ */
+function enroll_settings(): ?array
+{
+    $noms = ['ENROLL_CODE_TTL_S', 'ENROLL_POLL_INTERVAL_S', 'ENROLL_MAX_PER_HW_HOUR',
+             'ENROLL_MAX_PER_IP_HOUR', 'ENROLL_CLAIM_MAX_FAILURES'];
+    $v = [];
+    foreach ($noms as $n) {
+        $v[$n] = setting_int($n);
+        if ($v[$n] <= 0) {
+            error_log('AquaLook enrolement: parametre ' . $n . ' absent (settings.php a jour ?)');
+            return null;
+        }
+    }
+    return $v;
+}
+
+const ENROLL_NOT_CONFIGURED = [503, ['detail' => 'enrolement non configure sur le serveur', 'error' => 'not_configured']];
+
 function enroll_new_user_code(): string
 {
     $code = '';
@@ -78,6 +101,10 @@ function enroll_start(string $hwId, ?string $firmware, string $ip, ?string $bear
     if ($firmware !== null && ($firmware === '' || strlen($firmware) > 64)) {
         $firmware = null;
     }
+    $reglages = enroll_settings();
+    if ($reglages === null) {
+        return ENROLL_NOT_CONFIGURED;
+    }
 
     $module = enroll_module_for_hw($hwId);
     if ($module !== null && ($module['owner_user_id'] !== null || (int)$module['has_token'] === 1)) {
@@ -91,19 +118,40 @@ function enroll_start(string $hwId, ?string $firmware, string $ip, ?string $bear
         }
     }
 
+    // Pour chaque plafond : le nombre de demandes de l'heure glissante, et
+    // dans combien de secondes la plus ancienne en sortira -- c'est le
+    // delai a annoncer (exact quand le plafond vient d'etre atteint).
     $stmt = db()->prepare(
-        'SELECT SUM(hw_id = ?) AS par_hw, SUM(ip = ?) AS par_ip FROM enroll_request '
-        . 'WHERE created_at > (UTC_TIMESTAMP(3) - INTERVAL 1 HOUR)'
+        'SELECT SUM(hw_id = ?) AS par_hw, SUM(ip = ?) AS par_ip, '
+        . 'TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), MIN(IF(hw_id = ?, created_at, NULL)) + INTERVAL 1 HOUR) AS libre_hw, '
+        . 'TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), MIN(IF(ip = ?, created_at, NULL)) + INTERVAL 1 HOUR) AS libre_ip '
+        . 'FROM enroll_request WHERE created_at > (UTC_TIMESTAMP(3) - INTERVAL 1 HOUR)'
     );
-    $stmt->execute([$hwId, $ip]);
+    $stmt->execute([$hwId, $ip, $hwId, $ip]);
     $row = $stmt->fetch() ?: [];
-    if ((int)($row['par_hw'] ?? 0) >= setting_int('ENROLL_MAX_PER_HW_HOUR')
-        || ($ip !== '' && (int)($row['par_ip'] ?? 0) >= setting_int('ENROLL_MAX_PER_IP_HOUR'))) {
-        return [429, ['detail' => 'trop de demandes de code, reessayez dans une heure', 'error' => 'slow_down']];
+    $bloque = false;
+    $attente = 1;
+    if ((int)($row['par_hw'] ?? 0) >= $reglages['ENROLL_MAX_PER_HW_HOUR']) {
+        $bloque = true;
+        $attente = max($attente, (int)($row['libre_hw'] ?? 0));
+    }
+    if ($ip !== '' && (int)($row['par_ip'] ?? 0) >= $reglages['ENROLL_MAX_PER_IP_HOUR']) {
+        $bloque = true;
+        $attente = max($attente, (int)($row['libre_ip'] ?? 0));
+    }
+    if ($bloque) {
+        header('Retry-After: ' . $attente);
+        return [429, [
+            'detail'     => 'trop de demandes de code : ' . $reglages['ENROLL_MAX_PER_HW_HOUR']
+                          . ' par heure au plus, reessayez dans ' . (int)ceil($attente / 60) . ' min',
+            'error'      => 'slow_down',
+            'retryAfter' => $attente,
+            'limit'      => $reglages['ENROLL_MAX_PER_HW_HOUR'],
+        ]];
     }
 
-    $ttl = setting_int('ENROLL_CODE_TTL_S');
-    $interval = setting_int('ENROLL_POLL_INTERVAL_S');
+    $ttl = $reglages['ENROLL_CODE_TTL_S'];
+    $interval = $reglages['ENROLL_POLL_INTERVAL_S'];
     $deviceCode = bin2hex(random_bytes(32));
     $userCode = enroll_new_user_code();
 
@@ -225,8 +273,12 @@ function enroll_record_claim(int $userId, string $ip, bool $ok): void
  */
 function enroll_claim(int $userId, string $rawCode, string $ip): array
 {
+    $reglages = enroll_settings();
+    if ($reglages === null) {
+        return ENROLL_NOT_CONFIGURED;
+    }
     [$parCompte, $parIp] = enroll_claim_failures($userId, $ip);
-    $max = setting_int('ENROLL_CLAIM_MAX_FAILURES');
+    $max = $reglages['ENROLL_CLAIM_MAX_FAILURES'];
     if ($parCompte >= $max || $parIp >= 3 * $max) {
         return [429, ['detail' => 'trop de codes faux, reessayez dans ' . ENROLL_CLAIM_WINDOW_MIN . ' minutes']];
     }
