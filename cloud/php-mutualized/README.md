@@ -66,6 +66,35 @@ celui qui l'a détaché en gardant ses données — vaut **transfert** : donnée
 purgées, ancien propriétaire prévenu par mail. Durée de validité, intervalle
 et plafonds : paramètres `ENROLL_*` de la console.
 
+### Mot de passe et invitation (D016, lot B — `account.php`, `schema-v7-liens-compte.sql`)
+
+| Route | Rôle | Auth |
+|---|---|---|
+| `POST /app/password/forgot` `{email}` | envoie un lien de réinitialisation | aucune |
+| `POST /app/password/reset` `{token, password}` | consomme un lien (réinitialisation ou invitation), pose le mot de passe, ouvre une session | le jeton du lien (256 bits) |
+| `POST /app/password/change` `{current, password}` | change le mot de passe | session + mot de passe actuel |
+| `POST /admin/user/invite` `{email, label}` | crée le compte au besoin et envoie un lien d'invitation | jeton admin |
+
+- `forgot` répond **toujours** la même chose (`200`), que l'adresse existe ou
+  non, et envoie le mail **après** la réponse (`respond_then`) : ni le texte
+  ni le délai ne révèlent un compte. `503 not_configured` si le mail ou
+  `APP_BASE_URL` manque.
+- Le lien porte le jeton dans le fragment (`/app.html#reset=…`,
+  `#invite=…`) : jamais dans une URL envoyée au serveur. Seule son empreinte
+  est en base (`account_token`), usage unique ; un nouveau lien annule les
+  précédents du compte. `reset` : `400` lien invalide, `410` expiré ou déjà
+  utilisé.
+- Après réinitialisation : **toutes** les sessions du compte sont fermées,
+  une neuve est ouverte, et un mail de notification part. Après changement :
+  les **autres** sessions sont fermées, même notification. Les notifications
+  ne sont soumises qu'au plafond journalier (des demandes répétées ne doivent
+  pas pouvoir les étouffer).
+- L'invitation rend aussi le lien à l'administrateur (`link`, `expiresAt`),
+  à transmettre autrement si le mail se perd.
+- Paramètres de la console : `APP_BASE_URL` (adresse publique utilisée dans
+  les liens, `https://` obligatoire ; jamais l'en-tête `Host` de la requête),
+  `RESET_TOKEN_TTL_MIN` (30), `INVITE_TOKEN_TTL_H` (72).
+
 ## Console d'administration
 
 `admin.html` — page autonome (aucune dépendance, aucun CDN), servie en statique
@@ -99,7 +128,7 @@ si un jour nécessaire : la forme logique ne change pas.
 Migrations à importer dans l'ordre, la base sélectionnée dans phpMyAdmin :
 `schema-v2-comptes.sql`, `schema-v3-sauvegarde.sql`,
 `schema-v4-parametres-mails.sql`, `schema-v5-identifiant-materiel.sql`,
-`schema-v6-enrolement.sql` (v3 à v6 rejouables).
+`schema-v6-enrolement.sql`, `schema-v7-liens-compte.sql` (v3 à v7 rejouables).
 
 ## Sécurité
 

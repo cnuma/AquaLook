@@ -110,15 +110,31 @@ function purge_old_enroll(PDO $pdo): int
     }
 }
 
+// Liens de compte (schema-v7) : un lien vit au plus 14 jours ; une semaine
+// de plus permet encore de repondre "deja utilise" ou "expire" a un clic
+// tardif plutot que "invalide". Table absente : rien a purger.
+function purge_old_account_tokens(PDO $pdo): int
+{
+    try {
+        return (int)$pdo->exec('DELETE FROM account_token WHERE expires_at < (UTC_TIMESTAMP(3) - INTERVAL 7 DAY)');
+    } catch (PDOException $e) {
+        if ($e->getCode() === '42S02') {
+            return 0;
+        }
+        throw $e;
+    }
+}
+
 $pdo = db();
 $messages = purge_old_messages($pdo);
 $attempts = purge_old_login_attempts($pdo);
 $sessions = purge_expired_sessions($pdo);
 $mails = purge_old_mail_log($pdo);
 $enroll = purge_old_enroll($pdo);
+$liens = purge_old_account_tokens($pdo);
 
 fwrite(STDOUT, sprintf(
     "[%s] purge : %d message(s), %d tentative(s) de connexion, %d session(s) expiree(s), %d mail(s) journalise(s), "
-    . "%d trace(s) d'enrolement\n",
-    utc_now(), $messages, $attempts, $sessions, $mails, $enroll
+    . "%d trace(s) d'enrolement, %d lien(s) de compte\n",
+    utc_now(), $messages, $attempts, $sessions, $mails, $enroll, $liens
 ));

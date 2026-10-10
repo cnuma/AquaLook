@@ -35,6 +35,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail.php';
 require_once __DIR__ . '/enroll.php';
+require_once __DIR__ . '/account.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -366,6 +367,61 @@ try {
         close_session();
         set_session_cookie(null);
         send_json(200, ['ok' => true]);
+    }
+
+    // ── Mot de passe (D016, lot B -- account.php) ───────────────────────────
+
+    // Reponse IDENTIQUE que l'adresse existe ou non, envoyee AVANT le mail
+    // (voir account_forgot) : ni le texte ni le delai ne revelent un compte.
+    if ($method === 'POST' && $path === '/app/password/forgot') {
+        if (app_base_url() === null || !mail_configured()) {
+            send_json(503, ['detail' => 'service de mail non configure', 'error' => 'not_configured']);
+        }
+        $body = read_json_body();
+        $apres = account_forgot((string)($body['email'] ?? ''), client_ip());
+        respond_then(200, [
+            'ok' => true,
+            'detail' => 'si un compte existe pour cette adresse, un lien vient de lui etre envoye',
+        ], $apres);
+    }
+
+    // Lien recu par mail (reinitialisation ou invitation) : pose le mot de
+    // passe, ferme toutes les sessions du compte, puis en ouvre une neuve --
+    // l'utilisateur arrive connecte.
+    if ($method === 'POST' && $path === '/app/password/reset') {
+        $body = read_json_body();
+        [$status, $reponse, $userId] = account_token_consume(
+            (string)($body['token'] ?? ''),
+            (string)($body['password'] ?? '')
+        );
+        if ($userId === null) {
+            send_json($status, $reponse);
+        }
+        set_session_cookie(open_session($userId));
+        $email = $reponse['email'];
+        $ip = client_ip();
+        respond_then($status, $reponse, $reponse['purpose'] === 'reset'
+            ? static function () use ($email, $ip): void { account_notice_password_changed($email, $ip); }
+            : null);
+    }
+
+    if ($method === 'POST' && $path === '/app/password/change') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $ip = client_ip();
+        [$status, $reponse] = account_change_password(
+            $user,
+            (string)($body['current'] ?? ''),
+            (string)($body['password'] ?? ''),
+            $ip
+        );
+        $email = $user['email'];
+        respond_then($status, $reponse, $status === 200
+            ? static function () use ($email, $ip): void { account_notice_password_changed($email, $ip); }
+            : null);
     }
 
     if ($method === 'GET' && $path === '/app/me') {
@@ -812,6 +868,20 @@ try {
         // Le mot de passe n'est pas renvoye : il vient de l'appelant, qui le
         // connait deja, et le rendre l'ecrirait dans des journaux.
         send_json(200, ['userId' => $userId, 'email' => $email]);
+    }
+
+    // Invitation : cree le compte au besoin et envoie un lien pour choisir le
+    // mot de passe. Le lien est aussi rendu ici, a transmettre autrement si
+    // le mail n'arrive pas.
+    if ($method === 'POST' && $path === '/admin/user/invite') {
+        require_admin();
+        $body = read_json_body();
+        $label = $body['label'] ?? null;
+        if ($label !== null && !is_string($label)) {
+            send_json(400, ['detail' => 'libelle invalide']);
+        }
+        [$status, $reponse] = account_invite((string)($body['email'] ?? ''), $label, client_ip());
+        send_json($status, $reponse);
     }
 
     // ── Parametres du service et mails (D016) ───────────────────────────────

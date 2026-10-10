@@ -60,6 +60,15 @@ const SETTINGS_REGISTRY = [
         'label' => 'Demandes de code par adresse IP et par heure'],
     'ENROLL_CLAIM_MAX_FAILURES' => ['type' => 'int', 'secret' => false, 'default' => '10', 'min' => 1, 'max' => 100,
         'label' => 'Codes faux par compte en 15 minutes'],
+    // Comptes (D016, lot B, account.php). APP_BASE_URL sert a construire les
+    // liens envoyes par mail : jamais l'en-tete Host de la requete, qu'un
+    // attaquant choisit (voir account.php).
+    'APP_BASE_URL' => ['type' => 'url', 'secret' => false, 'default' => '',
+        'label' => 'Adresse publique du site, pour les liens des mails (https://...)'],
+    'RESET_TOKEN_TTL_MIN' => ['type' => 'int', 'secret' => false, 'default' => '30', 'min' => 10, 'max' => 240,
+        'label' => "Validite d'un lien mot de passe oublie (min)"],
+    'INVITE_TOKEN_TTL_H' => ['type' => 'int', 'secret' => false, 'default' => '72', 'min' => 1, 'max' => 336,
+        'label' => "Validite d'un lien d'invitation (h)"],
 ];
 
 /** Valeurs en base, lues une fois par requete. Table absente = aucune. */
@@ -124,6 +133,21 @@ function settings_list(): array
     return $out;
 }
 
+/** https obligatoire, sauf banc local : un lien de mot de passe en clair
+ *  se lirait sur le reseau. Ni chemin de requete, ni parametre, ni fragment. */
+function settings_url_ok(string $url): bool
+{
+    $p = parse_url($url);
+    if ($p === false || !isset($p['scheme'], $p['host']) || isset($p['query']) || isset($p['fragment'])
+        || isset($p['user'])) {
+        return false;
+    }
+    if ($p['scheme'] === 'https') {
+        return true;
+    }
+    return $p['scheme'] === 'http' && in_array($p['host'], ['localhost', '127.0.0.1'], true);
+}
+
 /**
  * Ecrit des parametres. null = effacer de la base (retour au .env ou au
  * defaut). Rend null si tout est valide et ecrit, sinon le message d'erreur
@@ -152,6 +176,9 @@ function settings_save(array $values): ?string
             if (!ctype_digit($value) || (int)$value < $def['min'] || (int)$value > $def['max']) {
                 return $name . ' doit etre un entier entre ' . $def['min'] . ' et ' . $def['max'];
             }
+        }
+        if ($def['type'] === 'url' && $value !== '' && !settings_url_ok($value)) {
+            return $name . ' doit etre une adresse https:// (http:// seulement pour localhost)';
         }
         if ($def['type'] === 'email' && $value !== '' && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
             return 'adresse invalide : ' . $name;

@@ -59,8 +59,15 @@ function mail_recipient_hash(string $to): string
     return hash('sha256', strtolower(trim($to)));
 }
 
-/** Rend null si l'envoi est permis, sinon la limite atteinte. */
-function mail_rate_limited(string $recipientHash, string $ip): ?string
+/**
+ * Rend null si l'envoi est permis, sinon la limite atteinte.
+ *
+ * Une notification ('notice', ex. "mot de passe modifie") n'est soumise
+ * qu'au plafond journalier : elle ne nait que d'un geste authentifie, et
+ * des demandes "mot de passe oublie" repetees ne doivent pas pouvoir
+ * l'etouffer en epuisant le plafond de l'adresse (constate au banc du lot B).
+ */
+function mail_rate_limited(string $recipientHash, string $ip, string $kind = ''): ?string
 {
     $stmt = db()->prepare(
         'SELECT '
@@ -71,10 +78,11 @@ function mail_rate_limited(string $recipientHash, string $ip): ?string
     );
     $stmt->execute([$recipientHash, $ip]);
     $row = $stmt->fetch() ?: [];
-    if ((int)($row['par_adresse'] ?? 0) >= setting_int('MAIL_MAX_PER_RECIPIENT_HOUR')) {
+    $notice = $kind === 'notice';
+    if (!$notice && (int)($row['par_adresse'] ?? 0) >= setting_int('MAIL_MAX_PER_RECIPIENT_HOUR')) {
         return 'limite_adresse';
     }
-    if ($ip !== '' && (int)($row['par_ip'] ?? 0) >= setting_int('MAIL_MAX_PER_IP_HOUR')) {
+    if (!$notice && $ip !== '' && (int)($row['par_ip'] ?? 0) >= setting_int('MAIL_MAX_PER_IP_HOUR')) {
         return 'limite_ip';
     }
     if ((int)($row['par_jour'] ?? 0) >= setting_int('MAIL_MAX_PER_DAY')) {
@@ -118,7 +126,7 @@ function send_mail(string $to, string $subject, string $text, string $kind, stri
         return ['ok' => false, 'error' => 'config'];
     }
     $hash = mail_recipient_hash($to);
-    $limite = mail_rate_limited($hash, $ip);
+    $limite = mail_rate_limited($hash, $ip, $kind);
     if ($limite !== null) {
         // Compte aussi : sinon un attaquant insisterait sans que rien ne
         // l'enregistre une fois le plafond atteint.
