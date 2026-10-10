@@ -94,6 +94,13 @@ void WiFiManager::begin(const char* ssid, const char* pwd) {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
+    // Mesh : un SSID, plusieurs noeuds sur le meme canal. Le scan rapide par
+    // defaut s'arrete au PREMIER noeud qui repond -- le 10 oct. 2026, deux
+    // redemarrages identiques de .141 ont donne -89 dBm (noeud lointain) puis
+    // -54 dBm (noeud proche). Scanner tous les canaux et retenir le plus fort ;
+    // reglage statique, valable pour toutes les reconnexions (WiFi.begin).
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 
     if (_ssid[0] == '\0') {
         EventLog::log(LOG_WARN, "WiFi: pas de SSID, portail captif");

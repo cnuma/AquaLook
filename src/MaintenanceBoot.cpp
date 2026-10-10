@@ -93,6 +93,9 @@ bool connectWifi(const ConfigManager& configManager, char* detail, size_t detail
 
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
+    // Meme choix du noeud le plus fort que WiFiManager::begin (mesh).
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
     WiFi.begin(ssid, password);
 
     const uint32_t startedAtMs = millis();
