@@ -339,9 +339,13 @@ async function voirComptes() {
     + '<div class="row"><label>Adresse</label><input id="u-mail" type="email" style="flex:1" autocomplete="off"></div>'
     + '<div class="row"><label>Nom affiche</label><input id="u-nom" style="flex:1" autocomplete="off"></div>'
     + '<div class="row"><label>Mot de passe</label><input id="u-mdp" type="password" style="flex:1" autocomplete="new-password"></div>'
-    + '<button class="primary" id="u-creer">Creer le compte</button>'
+    + '<button class="primary" id="u-creer">Creer le compte</button> '
+    + '<button id="u-inviter">Inviter par mail</button>'
     + '<div class="hint">Dix caracteres au minimum. Le mot de passe part vers le serveur en HTTPS, '
-    + 'y est hache immediatement, et n&rsquo;est jamais relisible ensuite.</div></div>'
+    + 'y est hache immediatement, et n&rsquo;est jamais relisible ensuite.</div>'
+    + '<div class="hint">Inviter par mail : laisser le mot de passe vide. La personne recoit un lien '
+    + 'pour choisir le sien. Sur un compte existant, un nouveau lien remplace le precedent.</div>'
+    + '<div id="u-lien"></div></div>'
     + '<div class="card"><h2>Rattacher un module</h2>'
     + '<div class="row"><label>Module</label><select id="o-mod" style="flex:1">'
     + MODULES.map(m => '<option>' + esc(m.module_id) + '</option>').join('') + '</select></div>'
@@ -363,6 +367,22 @@ async function voirComptes() {
       document.getElementById('u-mdp').value = '';
       toast('Compte cree (n°' + r.userId + ')');
       voirComptes();
+    } catch (e) { toast('Refuse : ' + e.message, true); }
+  };
+  // Le lien est affiche ici en plus du mail : si le mail se perd, il peut
+  // etre transmis autrement. Il est a usage unique et expire.
+  document.getElementById('u-inviter').onclick = async () => {
+    const email = document.getElementById('u-mail').value.trim();
+    const label = document.getElementById('u-nom').value.trim();
+    try {
+      const r = await api('/admin/user/invite', { method: 'POST',
+        body: JSON.stringify({ email: email, label: label }) });
+      toast(r.sent ? 'Invitation envoyee' : 'Mail non envoye (' + r.error + ') : transmettre le lien', !r.sent);
+      await voirComptes();
+      document.getElementById('u-lien').innerHTML = '<div class="hint">'
+        + (r.existing ? 'Compte existant' : 'Compte cree') + ' (n&deg;' + esc(r.userId) + '), lien valable jusqu&rsquo;au '
+        + esc(stamp(r.expiresAt)) + ' :</div><input class="mono" readonly style="width:100%" value="'
+        + esc(r.link) + '">';
     } catch (e) { toast('Refuse : ' + e.message, true); }
   };
   document.getElementById('o-lier').onclick = async () => {

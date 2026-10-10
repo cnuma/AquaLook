@@ -158,9 +158,9 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
   font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer}
 .lien-etat:hover{color:var(--green)}
 
-#login{max-width:380px;margin:60px auto}
-#login input{width:100%;margin-top:6px}
-#login .row{display:block}
+#login,#oubli,#nm{max-width:380px;margin:60px auto}
+#login input,#oubli input,#nm input{width:100%;margin-top:6px}
+#login .row,#oubli .row,#nm .row{display:block}
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
        background:var(--text);color:#fff;border-radius:8px;padding:11px 18px;opacity:0;
        transition:.2s;pointer-events:none;max-width:90vw;z-index:40;font-size:14px}
@@ -275,6 +275,27 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
     <div class="row"><label for="pass">Mot de passe</label>
       <input type="password" id="pass" autocomplete="current-password"></div>
     <div class="row"><button class="primary" id="btn-login" style="width:100%">Se connecter</button></div>
+    <div class="row"><button class="ghost" id="btn-oubli" style="width:100%">Mot de passe oublié ?</button></div>
+  </section>
+
+  <section id="oubli" class="card" hidden>
+    <h2>Mot de passe oublié</h2>
+    <p class="hint">Saisissez l&rsquo;adresse de votre compte : vous recevrez un lien pour choisir un
+      nouveau mot de passe. Pensez à regarder les indésirables.</p>
+    <div class="row"><label for="o-email">Adresse électronique</label>
+      <input type="email" id="o-email" autocomplete="username"></div>
+    <div class="row"><button class="primary" id="btn-oubli-envoyer" style="width:100%">Recevoir un lien</button></div>
+    <div class="row"><button class="ghost" id="btn-oubli-retour" style="width:100%">Retour à la connexion</button></div>
+  </section>
+
+  <section id="nm" class="card" hidden>
+    <h2 id="nm-titre">Nouveau mot de passe</h2>
+    <p class="hint">Dix caractères au minimum. Toutes les sessions ouvertes sur ce compte seront fermées.</p>
+    <div class="row"><label for="nm-pass">Mot de passe</label>
+      <input type="password" id="nm-pass" autocomplete="new-password"></div>
+    <div class="row"><label for="nm-pass2">Confirmation</label>
+      <input type="password" id="nm-pass2" autocomplete="new-password"></div>
+    <div class="row"><button class="primary" id="btn-nm" style="width:100%">Enregistrer</button></div>
   </section>
 
   <section id="liste" hidden></section>
@@ -379,10 +400,86 @@ async function deconnecter(){
   $('who').textContent = '';
 }
 
+// ── Mot de passe oublie, lien recu par mail, changement (D016, lot B) ───────
+//
+// Le jeton du lien arrive dans le fragment (#reset=... ou #invite=...) : il
+// n'est jamais envoye au serveur en GET. On le retire aussitot de la barre
+// d'adresse pour qu'il ne reste ni dans l'historique ni dans un favori.
+let LIEN = null;     // {purpose, token} lu dans le fragment
+
+function lireLien(){
+  const m = /^#(reset|invite)=([0-9a-f]{64})$/.exec(location.hash);
+  if (!m) return false;
+  LIEN = {purpose: m[1], token: m[2]};
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+
+function montrer(id){
+  ['login', 'oubli', 'nm'].forEach(s => { $(s).hidden = s !== id; });
+}
+
+async function demanderLien(){
+  const email = $('o-email').value.trim();
+  if (!email) { toast('Saisissez votre adresse', true); return; }
+  $('btn-oubli-envoyer').disabled = true;
+  try {
+    await api('/app/password/forgot', {method:'POST', body: JSON.stringify({email:email})});
+    toast('Si un compte existe pour cette adresse, un lien vient de lui être envoyé.');
+    montrer('login');
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-oubli-envoyer').disabled = false; }
+}
+
+async function poserMotDePasse(){
+  const p1 = $('nm-pass').value, p2 = $('nm-pass2').value;
+  if (p1.length < 10) { toast('Dix caractères au minimum', true); return; }
+  if (p1 !== p2) { toast('Les deux saisies diffèrent', true); return; }
+  $('btn-nm').disabled = true;
+  try {
+    await api('/app/password/reset', {method:'POST', body: JSON.stringify({token: LIEN.token, password: p1})});
+    $('nm-pass').value = ''; $('nm-pass2').value = '';
+    LIEN = null;
+    $('nm').hidden = true;
+    toast('Mot de passe enregistré');
+    await demarrer();
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-nm').disabled = false; }
+}
+
+function carteCompte(){
+  return '<details class="card"><summary><h2 style="display:inline">Mon compte</h2></summary>'
+    + '<div class="row" style="margin-top:12px"><label>Mot de passe actuel</label>'
+    + '<input type="password" id="mc-actuel" style="flex:1" autocomplete="current-password"></div>'
+    + '<div class="row"><label>Nouveau</label>'
+    + '<input type="password" id="mc-pass" style="flex:1" autocomplete="new-password"></div>'
+    + '<div class="row"><label>Confirmation</label>'
+    + '<input type="password" id="mc-pass2" style="flex:1" autocomplete="new-password"></div>'
+    + '<p class="hint">Dix caractères au minimum. Vos autres sessions (autres navigateurs, '
+    + 'téléphone) seront fermées ; celle-ci reste ouverte.</p>'
+    + '<div class="row"><button id="mc-ok">Changer le mot de passe</button></div></details>';
+}
+
+function brancherCompte(){
+  $('mc-ok').onclick = async () => {
+    const actuel = $('mc-actuel').value, p1 = $('mc-pass').value, p2 = $('mc-pass2').value;
+    if (!actuel) { toast('Saisissez le mot de passe actuel', true); return; }
+    if (p1.length < 10) { toast('Dix caractères au minimum', true); return; }
+    if (p1 !== p2) { toast('Les deux saisies diffèrent', true); return; }
+    $('mc-ok').disabled = true;
+    try {
+      await api('/app/password/change', {method:'POST', body: JSON.stringify({current: actuel, password: p1})});
+      $('mc-actuel').value = ''; $('mc-pass').value = ''; $('mc-pass2').value = '';
+      toast('Mot de passe changé');
+    } catch(e){ toast(e.message, true); }
+    finally { if ($('mc-ok')) $('mc-ok').disabled = false; }
+  };
+}
+
 async function demarrer(){
   const moi = await api('/app/me');
   $('who').textContent = moi.label || moi.email;
-  $('login').hidden = true;
+  montrer(null);
   $('btn-logout').hidden = false;
   await voirListe();
 }
@@ -398,8 +495,9 @@ async function voirListe(){
   const mods = await api('/app/modules');
   if (!mods.length) {
     el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
-      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p></div>' + carteRattacher();
+      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p></div>' + carteRattacher() + carteCompte();
     brancherRattacher();
+    brancherCompte();
     return;
   }
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
@@ -411,11 +509,12 @@ async function voirListe(){
     + '<span class="mod-s">' + (m.revision
         ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
-    + '</span></button>').join('') + '</div>' + carteRattacher();
+    + '</span></button>').join('') + '</div>' + carteRattacher() + carteCompte();
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
   });
   brancherRattacher();
+  brancherCompte();
 }
 
 // ── Rattachement par code (D016, lot D) ────────────────────────────────────
@@ -1438,6 +1537,11 @@ function rendreCommandes(cmds){
 
 $('btn-login').onclick = connecter;
 $('btn-logout').onclick = deconnecter;
+$('btn-oubli').onclick = () => { $('o-email').value = $('email').value; montrer('oubli'); };
+$('btn-oubli-retour').onclick = () => montrer('login');
+$('btn-oubli-envoyer').onclick = demanderLien;
+$('btn-nm').onclick = poserMotDePasse;
+$('nm-pass2').addEventListener('keydown', e => { if (e.key === 'Enter') poserMotDePasse(); });
 $('btn-back').onclick = () => voirListe().catch(e => toast(e.message, true));
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
 $('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
@@ -1447,7 +1551,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') fermer(); })
 // Une session peut deja etre ouverte : on tente, et on retombe sur le
 // formulaire si elle a expire. Arriver sur une page de connexion n'est pas un
 // incident, donc aucun message d'erreur.
-demarrer().catch(() => { $('login').hidden = false; });
+// Un lien recu par mail passe avant tout : meme connecte sur ce navigateur,
+// la personne est venue poser un mot de passe.
+if (lireLien()) {
+  $('nm-titre').textContent = LIEN.purpose === 'invite' ? 'Bienvenue : choisissez votre mot de passe'
+                                                        : 'Nouveau mot de passe';
+  montrer('nm');
+} else {
+  demarrer().catch(() => { montrer('login'); });
+}
 </script>
 </body>
 </html>
