@@ -64,9 +64,15 @@ Publication par le propriétaire (FTP), jamais par l’agent.
 
 ## Interface administrateur Web
 
-Le verrouillage actuel de `data/index.html` est **visuel** (`sessionStorage`,
-mot de passe temporaire `1598753`). Ce n’est pas une authentification ; son
-remplacement par une session Web locale est le lot F de D016.
+Depuis le lot F de D016 (10 octobre 2026), le module exige une **session Web
+locale** pour toute écriture : le mot de passe Web est le secret `ApiAuth`,
+la session s’ouvre par défi-réponse HMAC sur `/login` (page intégrée au
+firmware), cookie `HttpOnly; SameSite=Strict`. L’adresse du module mène à
+`/login` sans session. Le verrou visuel et `1598753` ont disparu ; le bouton
+« Options avancées du module » déplie seulement la configuration. Détail et
+classement des routes : `docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md`
+§8 et §8.1. Outils de banc : `tools/module_session.py` (mot de passe lu dans
+`.env`).
 
 ## Contraintes fortes
 

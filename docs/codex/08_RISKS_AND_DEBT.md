@@ -28,7 +28,11 @@ Mesures : NTP requis, offsets vérifiés et statut NTP exposé.
 
 ### R5 — Verrouillage admin faible
 
-Le verrouillage actuel est visuel et côté client. Une future évolution doit prévoir authentification serveur, session signée et contrôle des routes sensibles.
+Traité par le lot F de D016 (10 oct. 2026) : session Web côté module,
+filtre unique sur toutes les écritures, gardes anti-CSRF et anti « DNS
+rebinding ». Restent : HTTP en clair sur le LAN (cookie captable, risque
+assumé), première pose du mot de passe et changement en clair tant que B1/B5
+ne sont pas flashés, secret en clair dans la NVS (accès physique).
 
 ## Dette technique identifiée
 
@@ -46,7 +50,7 @@ La procédure de renommage manuel de main.cpp est fragile. Créer un filtre de s
 
 ### D4 — Protection admin côté frontend
 
-À traiter dans une branche dédiée sécurité.
+Résolue par le lot F de D016 (verrou visuel retiré, session côté module).
 
 ### D5 — IDs HTML historiques
 

@@ -266,6 +266,23 @@ Décisions du propriétaire (10 oct. 2026) :
   (l'arrêt reste libre sur l'écran, D012) ;
 - la configuration Wi-Fi reste libre pendant le portail captif seulement.
 
+Gardes ajoutées le même jour (demande du propriétaire : rien d'exploitable
+par du code malveillant), actives **même sans mot de passe posé** :
+
+- nom d'hôte : `/api/` répond 421 si l'en-tête `Host` n'est ni une adresse
+  IP, ni un nom sans point, ni un suffixe privé (`.local`, `.lan`, `.home`,
+  `.home.arpa`, `.internal`, `.localdomain`) — anti « DNS rebinding » ;
+  portail captif exempté ;
+- origine : toute écriture avec `Sec-Fetch-Site: cross-site`, `Origin: null`
+  ou un `Origin` d'un autre hôte répond 403 — anti CSRF ; les outils sans
+  `Origin` passent ;
+- `X-Frame-Options: DENY` et `nosniff` sur les pages SD et intégrées.
+
+Entrée : `GET /` mène à `/login` (page intégrée au firmware, utilisable même
+avec des pages SD anciennes) quand un mot de passe est posé et qu'aucune
+session n'est ouverte. Pas de déconnexion dans l'interface (30 min
+d'inactivité ou redémarrage).
+
 Écarts constatés avec le §2, corrigés ici : le câblage et le redémarrage ne
 sont **pas** signés aujourd'hui (seuls les scripts, phrases et variables le
 sont) ; le firmware exige un secret d'au moins **12** caractères (et non 10),
@@ -329,6 +346,26 @@ lien affiché aussi à l'administrateur. Production : fichiers publiés,
 `schema-v7` importé, `APP_BASE_URL` saisi ; `forgot` sur adresse inconnue
 ≈ 150 ms. Non essayés en production (banc seulement) : invitation,
 changement de mot de passe connecté, durée de `forgot` sur adresse connue.
+
+Lot F : **validé sur `.141` le 10 oct. 2026** (branche
+`feature/session-web-locale`, fusionnée). Firmware : `WebSession` (défi
+128 bits, 60 s, usage unique ; jeton 128 bits ; 4 sessions ; 30 min
+d'inactivité ; 5 essais par IP puis 30 s doublées, plafond 15 min, oubli
+après 1 h), filtre `SessionGate`, routes `/api/session/challenge|state|
+login|logout`, `/login`, `ApiAuth::verifyMessage`, `hasSecret()` en cache et
+en échec fermé, « Oublier le mot de passe Web » sur l'écran ferme les
+sessions. Pages : `session.js` (fenêtre de connexion, saisie masquée,
+écriture 401 rejouée après connexion, repli sur un firmware sans session),
+`index.html` sans `1598753`, « Options avancées du module », éditeur sans
+secret en `localStorage`. Outils : `tools/module_session.py`, soak branché.
+Essais : 34/34 automatisés (gardes, connexion, défi rejoué, blocage par IP,
+5 sessions, déconnexion), navigateur validé par le propriétaire (« good »),
+mot de passe de **test** posé sur `.141` (dans `.env`). Restent : B1
+(changement chiffré) et B5 (premier mot de passe autorisé sur l'écran) sur
+la branche `feature/lot-f-b1-b5`, compilés, non flashés ; phases 4 à 6 de la
+procédure de test. **Tant que B1 n'est pas flashé, « changer le secret »
+dans l'éditeur échoue** (la page envoie déjà la forme chiffrée) :
+contournement, « Oublier » sur l'écran puis bandeau « Accès non protégé ».
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
