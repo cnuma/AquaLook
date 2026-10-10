@@ -126,6 +126,18 @@ Règles :
   `login_attempt`) ; message identique pour un code faux ou expiré.
 - Le jeton n'est rendu qu'une fois, au premier `poll` qui suit l'approbation ;
   la demande est alors consommée.
+- **Preuve de possession (ajoutée au lot D, 10 oct. 2026)** : `/v1/enroll/start`
+  étant public et le `hw_id` lisible sur le LAN (`/api/diagnostics`), un tiers
+  pourrait sans cela obtenir un code pour le boîtier d'un autre et le
+  « transférer ». Si le `hw_id` appartient à un module rattaché ou muni d'un
+  jeton, la demande doit présenter ce jeton (`Authorization: Bearer`, HTTPS
+  seulement) ; sinon `403 already_enrolled`. Un module vendu garde son jeton :
+  le transfert reste possible. Un module « oublié » sur le LCD n'a plus de
+  jeton : le détacher d'abord en ligne. Pour un `hw_id` libre, le pire
+  possible est de bloquer un enrôlement, jamais d'obtenir le boîtier.
+- Le jeton n'est remplacé qu'au `poll` qui suit l'approbation (pas à la
+  saisie) : un module approuvé mais coupé avant son `poll` garde un jeton
+  valable et peut recommencer.
 - Le chemin manuel (jeton recopié depuis `/admin/module-token`) reste disponible
   pendant toute la transition et pour le mode maintenance.
 
@@ -241,6 +253,23 @@ Côté serveur, registre `settings.php` + table `app_setting`, édité depuis la
 console (`.env` en repli ; seuls `DB_*` et `ADMIN_TOKEN` y restent). Côté
 module, les adresses de serveur restent en NVS (c'est déjà le cas de l'hôte
 CloudSync) ; aucun lot ne doit en écrire une en dur dans le firmware ou une page.
+
+Lot D : **validé sur `.141` le 10 oct. 2026** (branche
+`feature/enrolement-code-court`, firmware build 1326). Serveur : `enroll.php`,
+`schema-v6-enrolement.sql` (`enroll_request`, `enroll_claim_attempt`,
+`module.released_owner_user_id`), routes `/v1/enroll/start|poll`,
+`/app/module/claim|release|label`, paramètres `ENROLL_*` dans la console ;
+banc local 58/58. Firmware : page ADMIN « En ligne » (10/10), tâche
+`cloud-enroll`, envoi immédiat de la configuration après rattachement. Testé
+par le propriétaire en production : refus « déjà rattaché » après « Oublier le
+compte », détachement + purge en ligne, rattachement par code, configuration
+visible. Constaté pendant le test : un `settings.php` non republié rendait les
+plafonds à 0 (« trop de demandes ») -- désormais `503 not_configured`, et le
+429 annonce l'heure du prochain essai. Ajouts demandés : bouton
+« Synchroniser maintenant » (page locale Synchro cloud, 60 s minimum entre
+deux tentatives), libellé « Identifiant technique » (le nom est libre,
+l'identifiant fixe). Non rejoué après le dernier changement : envoi immédiat
+au rattachement (build 1326).
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
