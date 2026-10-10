@@ -217,9 +217,9 @@ Règles :
   pendant la transition ; leur simplification sera une décision séparée.
 - Lecture libre conservée pour le diagnostic : `/api/status`,
   `/api/diagnostics`, `/api/logs.txt`, `/api/script-globals`, ressources Web.
-  **Ouvert (W1)** : liste définitive des lectures libres, à établir route par
-  route dans `WebManager.cpp` (aucune lecture libre ne doit exposer un mot de
-  passe Wi-Fi, une clé météo, un jeton CloudSync ou le secret `ApiAuth`).
+  **W1 tranché le 10 oct. 2026** : liste définitive au §8.1 (aucune lecture
+  libre n'expose un mot de passe Wi-Fi, une clé météo, un jeton CloudSync ou
+  le secret `ApiAuth`).
 - Retirer `1598753` et le verrou visuel de `data/index.html` : les sections
   administrateur s'affichent selon la session réelle.
 - **Transition** : pas de secret posé = comportement actuel + bandeau « accès non
@@ -231,6 +231,45 @@ Règles :
   ouverture de session par les outils avec le secret lu dans le `.env` local
   (jamais dans Git). Pas de porte dérobée compilée dans le firmware de
   production.
+
+### 8.1 Classement des routes (W1, lot F)
+
+Relevé route par route le 10 oct. 2026 sur `main` = `37b5921`
+(`WebManager.cpp`, `WebManager.h`, `SdStaticHandler.cpp`).
+
+**Application** : un seul filtre placé en tête du routage, juste après la
+garde de longueur d'URL. ESPAsyncWebServer choisit le gestionnaire dès la fin
+des en-têtes (`_attachHandler`) : une requête refusée par le filtre ne voit
+donc jamais son corps traité (dépôt SD, script, câblage). Le filtre ne fait
+rien tant qu'aucun secret n'est posé (transition, §8).
+
+Règle : **toute méthode autre que `GET`/`HEAD` exige la session**, sauf les
+exceptions listées ici. Un `GET` est libre sauf s'il figure dans « lectures
+sous session ». Une route ajoutée plus tard est donc protégée par défaut si
+elle écrit.
+
+| Classe | Routes |
+|---|---|
+| Lectures libres — pages | ressources Web (SD, LittleFS), `/`, `/setup`, `/logs`, `/ota`, redirections du portail captif (`/generate_204`…) |
+| Lectures libres — état | `/api/status`, `/api/zonesConfig`, `/api/zone`, `/api/forecast`, `/api/display`, `/api/io`, `/api/adminStatus` (secrets masqués), `/api/storage` |
+| Lectures libres — diagnostic | `/api/diagnostics`, `/api/health`, `/api/faults`, `/api/logs.txt`, `/api/logs`, `/api/logConfig`, `/api/incidents/storage-sd`, `/api/maintenance/last-result`, `/api/debug/heap-info`, `/api/debug/nvs-stats`, `/api/debug/script-selftest`, `/api/debug/verify-web-asset/status`, `/api/relay/topology`, `/api/relay/input` |
+| Lectures libres — scripts | `/api/scripts`, `/api/script-one`, `/api/script-source`, `/api/script-messages`, `/api/script-globals`, `/api/log-messages` |
+| Lectures libres — session | `/api/auth/state`, `/api/session/*` (défi, état) |
+| Lectures sous session | `/api/notifications` (rend le sujet ntfy, qui vaut un secret sur `ntfy.sh`), `/api/wifi/scan` (hors portail captif), `/api/debug/script-dryrun` (sa variante `action=` suspend ou reprend une zone) |
+| Écritures sous session | tous les `POST` : planning, zones, **démarrage et arrêt manuels** (`/api/manual`), réglages, notifications, câblage, maintenance et OTA, dépôt SD (`/api/debug/*`), acquittements, redémarrage, `resetConfig`, `cloudSyncNow`, `bootguard/clear` |
+| Écritures sous session **et** signées | `/api/script-save`, `/api/script-erase`, `/api/script-run`, `/api/script-messages`, `/api/script-globals` (seules routes qui appellent réellement `ApiAuth::verify`) |
+| Exceptions | `POST /api/session/*` (ouverture, fermeture) ; `POST /api/auth-secret` tant qu'**aucun** secret n'existe (premier secret, confiance au premier usage) ; **portail captif actif** : `/api/wifi/scan`, `POST /api/wifi`, `POST /api/captive` libres (décision du propriétaire, 10 oct. 2026 : il faut être à portée radio du point d'accès) |
+
+Décisions du propriétaire (10 oct. 2026) :
+
+- l'**arrêt** d'une zone depuis le Web exige la session, comme le démarrage
+  (l'arrêt reste libre sur l'écran, D012) ;
+- la configuration Wi-Fi reste libre pendant le portail captif seulement.
+
+Écarts constatés avec le §2, corrigés ici : le câblage et le redémarrage ne
+sont **pas** signés aujourd'hui (seuls les scripts, phrases et variables le
+sont) ; le firmware exige un secret d'au moins **12** caractères (et non 10),
+valeur conservée.
 
 ## 9. Découpage en lots
 
