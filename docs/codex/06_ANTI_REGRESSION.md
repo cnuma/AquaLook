@@ -41,15 +41,19 @@ Get-ChildItem .\data -File |
 ## Après modification
 
 ```powershell
-git diff --check
-pio run -e ProgrammeArrosage
+git -c core.whitespace=cr-at-eol diff --check
+pio run -e ProgrammeArrosage_s3
 ```
 
-Si `data/` a changé :
+Si `littlefs/` a changé :
 
 ```powershell
-pio run -e ProgrammeArrosage -t buildfs
+pio run -e ProgrammeArrosage_s3 -t buildfs
 ```
+
+Une page de `data/` (servie depuis la SD) ne passe pas par buildfs : elle se
+dépose sur `.141` puis se vérifie dans un navigateur (voir
+`05_BUILD_AND_TEST.md`).
 
 ## Revue du diff
 
