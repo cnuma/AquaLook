@@ -93,13 +93,32 @@ function purge_old_mail_log(PDO $pdo): int
     }
 }
 
+// Enrolement (schema-v6) : une demande ne vit que quelques minutes, un essai
+// de code ne compte que sur 15 minutes. Un jour et trente jours laissent de
+// quoi diagnostiquer un rattachement rate. Tables absentes : rien a purger.
+function purge_old_enroll(PDO $pdo): int
+{
+    try {
+        $n = $pdo->exec('DELETE FROM enroll_request WHERE created_at < (UTC_TIMESTAMP(3) - INTERVAL 1 DAY)');
+        $n += $pdo->exec('DELETE FROM enroll_claim_attempt WHERE ts < (UTC_TIMESTAMP(3) - INTERVAL 30 DAY)');
+        return (int)$n;
+    } catch (PDOException $e) {
+        if ($e->getCode() === '42S02') {
+            return 0;
+        }
+        throw $e;
+    }
+}
+
 $pdo = db();
 $messages = purge_old_messages($pdo);
 $attempts = purge_old_login_attempts($pdo);
 $sessions = purge_expired_sessions($pdo);
 $mails = purge_old_mail_log($pdo);
+$enroll = purge_old_enroll($pdo);
 
 fwrite(STDOUT, sprintf(
-    "[%s] purge : %d message(s), %d tentative(s) de connexion, %d session(s) expiree(s), %d mail(s) journalise(s)\n",
-    utc_now(), $messages, $attempts, $sessions, $mails
+    "[%s] purge : %d message(s), %d tentative(s) de connexion, %d session(s) expiree(s), %d mail(s) journalise(s), "
+    . "%d trace(s) d'enrolement\n",
+    utc_now(), $messages, $attempts, $sessions, $mails, $enroll
 ));

@@ -49,6 +49,17 @@ const SETTINGS_REGISTRY = [
         'label' => 'Mails par adresse IP et par heure'],
     'MAIL_MAX_PER_DAY' => ['type' => 'int', 'secret' => false, 'default' => '200', 'min' => 1, 'max' => 10000,
         'label' => 'Mails par jour (tout le service)'],
+    // Enrolement par code court (D016, lot D, enroll.php).
+    'ENROLL_CODE_TTL_S' => ['type' => 'int', 'secret' => false, 'default' => '600', 'min' => 120, 'max' => 3600,
+        'label' => 'Validite d\'un code de rattachement (s)'],
+    'ENROLL_POLL_INTERVAL_S' => ['type' => 'int', 'secret' => false, 'default' => '5', 'min' => 2, 'max' => 60,
+        'label' => 'Intervalle d\'interrogation du module pendant le rattachement (s)'],
+    'ENROLL_MAX_PER_HW_HOUR' => ['type' => 'int', 'secret' => false, 'default' => '5', 'min' => 1, 'max' => 100,
+        'label' => 'Demandes de code par module et par heure'],
+    'ENROLL_MAX_PER_IP_HOUR' => ['type' => 'int', 'secret' => false, 'default' => '20', 'min' => 1, 'max' => 1000,
+        'label' => 'Demandes de code par adresse IP et par heure'],
+    'ENROLL_CLAIM_MAX_FAILURES' => ['type' => 'int', 'secret' => false, 'default' => '10', 'min' => 1, 'max' => 100,
+        'label' => 'Codes faux par compte en 15 minutes'],
 ];
 
 /** Valeurs en base, lues une fois par requete. Table absente = aucune. */

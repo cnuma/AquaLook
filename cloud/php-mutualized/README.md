@@ -44,6 +44,28 @@ Routes ajoutées pour la console d'administration (lecture, sauf l'annulation) :
 module l'a alors appliquée, et réécrire son état effacerait la trace de ce qui
 s'est réellement passé. Une commande partie ne se rattrape pas côté serveur.
 
+### Enrôlement par code court (D016, lot D — `enroll.php`, `schema-v6-enrolement.sql`)
+
+| Route | Sens | Auth |
+|---|---|---|
+| `POST /v1/enroll/start` `{hwId, firmware}` | module → serveur | aucune, **jeton du module exigé si son `hwId` est déjà rattaché ou a un jeton** |
+| `POST /v1/enroll/poll` `{deviceCode}` | module → serveur | le `deviceCode` (256 bits) |
+| `POST /app/module/claim` `{userCode}` | utilisateur | session |
+| `POST /app/module/release` `{moduleId, purge}` | utilisateur | session, propriétaire |
+| `POST /app/module/label` `{moduleId, label}` | utilisateur | session, propriétaire |
+
+`start` rend `deviceCode`, `userCode` (`ABCD-EFGH`), `expiresIn`, `interval` ;
+`403 already_enrolled` si le module est rattaché et que la demande ne présente
+pas son jeton (le `hwId` est lisible sur le LAN : sans cette règle, un tiers
+obtiendrait un code pour le boîtier d'un autre) ; `429 slow_down` au-delà des
+plafonds. `poll` rend `200 pending`, puis une seule fois `200 approved`
+`{moduleId, token}` ; `410 expired` ensuite ou si le code est périmé ou
+remplacé. Le jeton précédent du module n'est remplacé qu'à ce moment-là.
+Un rattachement par un autre compte que le propriétaire courant — ou que
+celui qui l'a détaché en gardant ses données — vaut **transfert** : données
+purgées, ancien propriétaire prévenu par mail. Durée de validité, intervalle
+et plafonds : paramètres `ENROLL_*` de la console.
+
 ## Console d'administration
 
 `admin.html` — page autonome (aucune dépendance, aucun CDN), servie en statique
@@ -73,6 +95,11 @@ une invitation à l'erreur.
 `command`) que les autres implémentations, adaptées à MySQL/MariaDB (type `JSON`
 natif, `AUTO_INCREMENT`, moteur `InnoDB`). Migration triviale entre implémentations
 si un jour nécessaire : la forme logique ne change pas.
+
+Migrations à importer dans l'ordre, la base sélectionnée dans phpMyAdmin :
+`schema-v2-comptes.sql`, `schema-v3-sauvegarde.sql`,
+`schema-v4-parametres-mails.sql`, `schema-v5-identifiant-materiel.sql`,
+`schema-v6-enrolement.sql` (v3 à v6 rejouables).
 
 ## Sécurité
 

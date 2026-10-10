@@ -34,6 +34,7 @@ ini_set('log_errors', '1');
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail.php';
+require_once __DIR__ . '/enroll.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -289,6 +290,31 @@ try {
         send_json(200, ['ok' => true, 'state' => $finalState]);
     }
 
+    // ── Enrolement par code court (D016, lot D, enroll.php) ─────────────────
+    //
+    // Publiques : un module non rattache n'a pas encore de jeton. Le jeton
+    // est facultatif ici, mais exige par enroll_start() des que le hw_id
+    // appartient deja a un module rattache.
+
+    if ($method === 'POST' && $path === '/v1/enroll/start') {
+        $body = read_json_body();
+        $header = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        $bearer = str_starts_with($header, 'Bearer ') ? trim(substr($header, 7)) : null;
+        [$status, $reponse] = enroll_start(
+            (string)($body['hwId'] ?? ''),
+            is_string($body['firmware'] ?? null) ? $body['firmware'] : null,
+            client_ip(),
+            $bearer !== '' ? $bearer : null
+        );
+        send_json($status, $reponse);
+    }
+
+    if ($method === 'POST' && $path === '/v1/enroll/poll') {
+        $body = read_json_body();
+        [$status, $reponse] = enroll_poll((string)($body['deviceCode'] ?? ''));
+        send_json($status, $reponse);
+    }
+
     // ── Espace utilisateur (session par cookie) ─────────────────────────────
     //
     // Trois publics, trois mecanismes : un module parle de lui-meme avec son
@@ -356,6 +382,60 @@ try {
             send_json(401, ['detail' => 'session absente ou expiree']);
         }
         send_json(200, user_modules($user['userId']));
+    }
+
+    // Rattachement d'un module par le code affiche sur son ecran (D016, lot D).
+    if ($method === 'POST' && $path === '/app/module/claim') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        [$status, $reponse] = enroll_claim($user['userId'], (string)($body['userCode'] ?? ''), client_ip());
+        send_json($status, $reponse);
+    }
+
+    // Detachement par le proprietaire : jeton revoque, module libre. purge :
+    // efface aussi historique, configuration et sauvegardes cote serveur.
+    if ($method === 'POST' && $path === '/app/module/release') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!is_string($moduleId) || !preg_match(MODULE_ID_PATTERN, $moduleId)
+            || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        if (!is_bool($body['purge'] ?? null)) {
+            send_json(400, ['detail' => 'purge (true ou false) requis']);
+        }
+        enroll_release($moduleId, $body['purge']);
+        send_json(200, ['ok' => true]);
+    }
+
+    // Nom affiche d'un module. Les modules rattaches par code ont pour
+    // identifiant leur hw_id (aql-...) : c'est ici que l'utilisateur les nomme.
+    if ($method === 'POST' && $path === '/app/module/label') {
+        $user = current_user();
+        if ($user === null) {
+            send_json(401, ['detail' => 'session absente ou expiree']);
+        }
+        $body = read_json_body();
+        $moduleId = $body['moduleId'] ?? '';
+        if (!is_string($moduleId) || !preg_match(MODULE_ID_PATTERN, $moduleId)
+            || !user_owns_module($user['userId'], $moduleId)) {
+            send_json(404, ['detail' => 'module inconnu']);
+        }
+        $label = $body['label'] ?? null;
+        if (!is_string($label) || strlen(trim($label)) > 120 || preg_match('/[\x00-\x1f]/', $label)) {
+            send_json(400, ['detail' => 'nom invalide (120 octets au plus)']);
+        }
+        $label = trim($label);
+        db()->prepare('UPDATE module SET label = ? WHERE module_id = ?')
+            ->execute([$label !== '' ? $label : null, $moduleId]);
+        send_json(200, ['ok' => true]);
     }
 
     if ($method === 'GET' && $path === '/app/module') {
