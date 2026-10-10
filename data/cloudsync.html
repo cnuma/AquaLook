@@ -20,7 +20,9 @@ h1{font-size:21px;margin:0 0 4px;color:var(--text)}
 .vide{font-size:13px;color:var(--muted);padding:4px 0}
 a.back{display:inline-block;margin-top:4px;padding:9px 14px;border:1px solid var(--border2);
   border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
-a.ext{display:block;text-align:center;padding:9px 14px;border:1px solid var(--border2);
+button.ext{width:100%;cursor:pointer}
+button.ext:disabled{opacity:.5;cursor:default}
+a.ext,button.ext{display:block;text-align:center;padding:9px 14px;border:1px solid var(--border2);
   border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono);
   background:var(--bg2);margin-bottom:12px}
 #msg{margin:0 0 12px;padding:9px 12px;border-radius:6px;font-size:12.5px;font-family:var(--mono);
@@ -53,6 +55,7 @@ en plus detaille.</p>
   <div class=row><span class=k>Miroir serveur</span><span class="v" id=caughtUp>&hellip;</span></div>
 </div>
 
+<button class=ext id=syncNow type=button style="display:none">Synchroniser maintenant</button>
 <a class=ext id=cloudLink href="#" target="_blank" rel="noopener" style="display:none">
   Ouvrir l'espace de synchro cloud &rarr;
 </a>
@@ -102,9 +105,17 @@ function rendre(d) {
   if (!c.enabled) {
     $('cycleCard').style.display = 'none';
     $('cloudLink').style.display = 'none';
+    $('syncNow').style.display = 'none';
     return;
   }
   $('cycleCard').style.display = '';
+  // Le module reste juge du rythme (une tentative par minute au plus) :
+  // le bouton ne fait que demander, la reponse dit pourquoi si c'est non.
+  const enCours = c.syncInProgress === true || c.forcePending === true;
+  const sn = $('syncNow');
+  sn.style.display = (c.syncInProgress === undefined) ? 'none' : '';
+  sn.disabled = enCours;
+  sn.textContent = enCours ? 'Echange en cours...' : 'Synchroniser maintenant';
 
   // resultSinceBoot === false : redemarre, aucun cycle encore. La date de
   // tentative vient de la NVS (avant le boot), le reste de la RAM : ne pas
@@ -137,16 +148,40 @@ function rendre(d) {
   }
 }
 
+// N'efface que son propre message d'erreur : la reponse du bouton doit
+// rester lisible jusqu'au rafraichissement suivant.
+let erreurEtat = false;
 async function charger() {
   try {
     const r = await fetch('/api/adminStatus', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    dire('');
+    if (erreurEtat) { dire(''); erreurEtat = false; }
     rendre(await r.json());
   } catch (e) {
     dire('Etat injoignable (' + e.message + ').', 'ko');
+    erreurEtat = true;
   }
 }
+
+async function forcer() {
+  const b = $('syncNow');
+  b.disabled = true;
+  try {
+    const r = await fetch('/api/cloudSyncNow', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      dire('Synchronisation lancee, configuration complete comprise : resultat ci-dessus dans quelques secondes.');
+    } else {
+      dire((d.detail || ('HTTP ' + r.status))
+        + (d.retryInSec ? ' : reessayer dans ' + d.retryInSec + ' s.' : '.'), 'ko');
+    }
+  } catch (e) {
+    dire('Demande impossible (' + e.message + ').', 'ko');
+  }
+  setTimeout(charger, 2000);
+  setTimeout(charger, 12000);
+}
+$('syncNow').onclick = forcer;
 
 charger();
 setInterval(charger, 10000);

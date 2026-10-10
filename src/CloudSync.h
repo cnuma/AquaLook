@@ -204,6 +204,23 @@ public:
     EnrollView enrollView() const;
     bool enrollActive() const { return _enrollTaskRunning || _enrollWanted; }
 
+    // ── Synchronisation demandee par l'utilisateur ───────────────────────
+    //
+    // Page locale "Synchro cloud" (POST /api/cloudSyncNow). L'utilisateur
+    // peut forcer un cycle, configuration complete comprise ; le module
+    // reste garant du rythme : un seul cycle a la fois, et pas deux
+    // tentatives a moins de FORCE_SYNC_MIN_GAP_SEC (un hebergement mutualise
+    // martele finit par refuser, voir update()). Le cycle part a la boucle
+    // suivante, sans attendre l'intervalle ni la stabilite WiFi ; un
+    // arrosage en cours le fait seulement attendre sa fin. Appelable depuis
+    // le contexte AsyncTCP : ne fait que lire des scalaires et poser un
+    // drapeau, comme les accesseurs ci-dessous.
+    enum class ForceSyncResult : uint8_t { LANCEE, DESACTIVEE, OCCUPEE, TROP_TOT };
+    static constexpr uint32_t FORCE_SYNC_MIN_GAP_SEC = 60UL;
+    ForceSyncResult requestSyncNow(uint32_t epochSec, uint32_t& retryInSec);
+    bool forceSyncPending() const { return _forceRequested; }
+    bool syncInProgress() const { return _syncInProgress; }
+
     // ── Diagnostic du dernier cycle, pour /api/adminStatus ───────────────
     //
     // Lus sans verrou depuis le contexte AsyncTCP (WebManager) : memes
@@ -309,6 +326,9 @@ private:
     // (les deux ne tournent jamais ensemble, meme tas, meme chien de garde).
     bool             _enrollWanted      = false;
     CloudSyncConfig  _enrollCfg;
+
+    // Pose par requestSyncNow() (contexte Web), consomme par update().
+    volatile bool    _forceRequested = false;
 
     CloudSyncConfig _cfg;
     uint32_t _lastSyncEpochSec = 0U;

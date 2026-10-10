@@ -1255,6 +1255,11 @@ void CloudSyncScheduler::update(bool ntpSynced,
 
     if (!ntpSynced) return;
 
+    // Synchronisation demandee par l'utilisateur (requestSyncNow) : ni
+    // intervalle, ni premiere echeance, ni stabilite WiFi ; le reste des
+    // garde-fous (WiFi present, pas d'arrosage, memoire) s'applique.
+    const bool forced = _forceRequested;
+
     // Un accuse est du : ne pas faire attendre le serveur un intervalle
     // complet pour apprendre le sort de sa commande.
     if (_ackSyncSoon && _lastSyncEpochSec != 0U) {
@@ -1265,14 +1270,14 @@ void CloudSyncScheduler::update(bool ntpSynced,
     // Premiere execution : ne pas synchroniser immediatement, meme raison
     // qu'UpdateCheckScheduler (eviter un redemarrage surprise a l'instant
     // ou la synchro cloud est activee).
-    if (_lastSyncEpochSec == 0U) {
+    if (_lastSyncEpochSec == 0U && !forced) {
         saveLastSync(epochSec);
         EventLog::log(LOG_INFO, "CloudSync: premiere echeance dans %u min",
                       static_cast<unsigned>(_cfg.intervalMinutes));
         return;
     }
 
-    if (epochSec < _lastSyncEpochSec) {
+    if (epochSec < _lastSyncEpochSec && !forced) {
         // Horloge reculee (correction NTP) : repartir de la date courante.
         saveLastSync(epochSec);
         return;
@@ -1307,13 +1312,13 @@ void CloudSyncScheduler::update(bool ntpSynced,
     const uint32_t requiredWaitSec = allowFastRetry
         ? SYNC_SOON_SECONDS
         : static_cast<uint32_t>(_cfg.intervalMinutes) * 60UL;
-    if ((epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
+    if (!forced && (epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
 
     if (_wifiConnectedSinceMs == 0U) {
         logBlocked("pas de connexion WiFi");
         return;
     }
-    if ((nowMs - _wifiConnectedSinceMs) < WIFI_STABLE_MS) {
+    if (!forced && (nowMs - _wifiConnectedSinceMs) < WIFI_STABLE_MS) {
         logBlocked("connexion WiFi trop recente pour etre jugee stable");
         return;
     }
@@ -1334,7 +1339,14 @@ void CloudSyncScheduler::update(bool ntpSynced,
     // Lancement en tache dediee, sans redemarrage. Si la memoire manque,
     // startSync() reporte et n'enregistre rien : la prochaine tentative aura
     // lieu apres RETRY_ON_LOW_MEMORY_MS, sans perdre l'echeance.
+    // Forcee : configuration complete renvoyee, meme inchangee -- c'est ce
+    // qu'attend celui qui demande a "voir sa config en ligne".
+    if (forced) _lastSyncedRevision = 0xFFFFFFFFUL;
     if (!startSync(*config)) return;
+    if (forced) {
+        _forceRequested = false;
+        EventLog::log(LOG_INFO, "CloudSync: synchro demandee depuis la page Web, lancee");
+    }
 
     // Enregistre seulement une fois la tache lancee : un report memoire ne
     // doit pas consommer l'echeance.
@@ -2238,4 +2250,20 @@ void CloudSyncScheduler::forgetAccount() {
     _enroll = EnrollView{};
     portEXIT_CRITICAL(&g_cloudSyncMux);
     EventLog::log(LOG_INFO, "[ENROLL] compte oublie depuis l'ecran");
+}
+
+CloudSyncScheduler::ForceSyncResult CloudSyncScheduler::requestSyncNow(uint32_t epochSec,
+                                                                       uint32_t& retryInSec) {
+    retryInSec = 0U;
+    if (!_cfg.enabled) return ForceSyncResult::DESACTIVEE;
+    if (_syncInProgress || enrollActive()) return ForceSyncResult::OCCUPEE;
+    // _lastSyncEpochSec : LANCEMENT de la derniere tentative (persiste en
+    // NVS, donc aussi a travers un redemarrage). 0 et 1 sont des sentinelles.
+    if (_lastSyncEpochSec > 1U && epochSec >= _lastSyncEpochSec &&
+        epochSec - _lastSyncEpochSec < FORCE_SYNC_MIN_GAP_SEC) {
+        retryInSec = FORCE_SYNC_MIN_GAP_SEC - (epochSec - _lastSyncEpochSec);
+        return ForceSyncResult::TROP_TOT;
+    }
+    _forceRequested = true;
+    return ForceSyncResult::LANCEE;
 }

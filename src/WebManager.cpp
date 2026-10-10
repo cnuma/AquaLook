@@ -503,6 +503,34 @@ void WebManager::setupRoutes() {
     // de l'utilisateur et non un retour automatique : survivre avec la meteo
     // coupee ne prouve rien sur la meteo, et un retour automatique relancerait
     // la boucle au premier cycle suivant.
+    // Synchronisation cloud demandee par l'utilisateur (page Synchro cloud).
+    // Le module decide du rythme (CloudSyncScheduler::requestSyncNow) ;
+    // chemin distinct de /api/cloudSync, dont le gestionnaire JSON capte
+    // aussi ses sous-chemins.
+    _server.on("/api/cloudSyncNow", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        if (!_cloudSync) { sendError(req, "synchronisation cloud indisponible", 503); return; }
+        uint32_t retryIn = 0U;
+        const auto r = _cloudSync->requestSyncNow(static_cast<uint32_t>(time(nullptr)), retryIn);
+        JsonDocument out;
+        out["ok"] = (r == CloudSyncScheduler::ForceSyncResult::LANCEE);
+        switch (r) {
+            case CloudSyncScheduler::ForceSyncResult::LANCEE:
+                out["detail"] = "synchronisation lancee";
+                break;
+            case CloudSyncScheduler::ForceSyncResult::DESACTIVEE:
+                out["detail"] = "synchronisation desactivee : rattacher le module d'abord";
+                break;
+            case CloudSyncScheduler::ForceSyncResult::OCCUPEE:
+                out["detail"] = "un echange est deja en cours";
+                break;
+            case CloudSyncScheduler::ForceSyncResult::TROP_TOT:
+                out["detail"] = "derniere tentative trop recente";
+                out["retryInSec"] = retryIn;
+                break;
+        }
+        sendJson(req, out, r == CloudSyncScheduler::ForceSyncResult::LANCEE ? 200 : 409);
+    });
+
     _server.on("/api/bootguard/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
         if (!BootLoopGuard::isDegraded()) { sendOk(req); return; }
         if (!BootLoopGuard::clearDegraded()) {
@@ -1269,6 +1297,10 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         cloud["lastSuccessEpochSec"] = _cloudSync->lastSuccessEpochSec();
         cloud["lastSyncedRevision"]  = _cloudSync->lastSyncedRevision();
         cloud["resultSinceBoot"]     = _cloudSync->resultSinceBoot();
+        // Bouton "Synchroniser maintenant" de cloudsync.html.
+        cloud["syncInProgress"]      = _cloudSync->syncInProgress();
+        cloud["forcePending"]        = _cloudSync->forceSyncPending();
+        cloud["forceMinGapSec"]      = CloudSyncScheduler::FORCE_SYNC_MIN_GAP_SEC;
         // Comparee cote module, pas cote JS : _config est l'autorite locale,
         // et le sentinel (revision jamais confirmee au serveur) ne doit
         // jamais se comparer egal a une vraie revision par accident.
