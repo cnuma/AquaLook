@@ -1,9 +1,12 @@
 # AquaLook — Dossier de reprise ingénieur
 
-- Date de rédaction : 5 octobre 2026
-- Base inspectée : branche `feat/moteur-de-regles`, commit `485ce3c` (état
-  Git mis à jour après le ménage du 5 octobre, base `d83f0d5`)
-- Version fonctionnelle (`VERSION`) : `5.9.7` — dernière release publiée sur GitHub : tag `v5.9.7` (17 août 2026)
+- Date de rédaction : 5 octobre 2026 ; en-tête et §1 remis à jour le
+  10 octobre 2026. Les §2 à §13 décrivent l'état du 5 octobre : pour l'état
+  du jour, le checkpoint le plus récent de `docs/checkpoints/` fait foi.
+- Base : `main` (seule branche de travail ; `feat/moteur-de-regles` y est
+  intégrée et archivée sous `archive/feat/moteur-de-regles`)
+- Version fonctionnelle (`VERSION`) : `5.12.0` au 10 octobre — dernière
+  release publiée sur GitHub : tag `v5.9.7` (17 août 2026)
 - Public visé : ingénieur embarqué qui reprend le projet sans avoir suivi son historique
 
 Ce document est le **point d'entrée unique** pour reprendre AquaLook. Il ne
@@ -17,7 +20,10 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
 
 ## 1. À lire avant toute action — cinq alertes
 
-1. **Tout le travail vit sur `feat/moteur-de-regles`, pas sur `main`.**
+1. **[Résolu : tout le travail est dans `main` ; premier commit de `main`
+   qui contient `feat/moteur-de-regles` : `f91ac22`, 5 octobre 2026. La règle
+   ci-dessous sur le dépôt public reste valable.]** Historique :
+   **Tout le travail vit sur `feat/moteur-de-regles`, pas sur `main`.**
    La branche a plus de 400 commits d'avance sur `origin/main` ; les 272
    commits postérieurs à `v5.9.7` (portage ESP32-S3, moteur V4 seul,
    CloudSync, moteur de scripts, page Santé, correctifs réseau) n'ont jamais
@@ -28,7 +34,10 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
    **Le dépôt est public** : ne jamais y committer de secret (`.env`,
    identifiants Wi-Fi, jetons).
 
-2. **Le dépôt a été nettoyé le 5 octobre 2026.** Il ne reste que deux
+2. **Le dépôt a été nettoyé le 5 octobre 2026.** Depuis, chaque évolution
+   vit sur une branche `feature/…`, `fix/…` ou `docs/…` supprimée après
+   fusion dans `main` ; les branches abandonnées ou remplacées sont archivées
+   sous `archive/<nom>`. Au 5 octobre, il ne restait que deux
    branches, `main` et `feat/moteur-de-regles`, et aucune pull request
    ouverte. Les 25 anciennes branches distantes ont été supprimées après
    archivage sous des tags `archive/<nom-de-branche>` (vérifiés un à un sur le
@@ -51,7 +60,11 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
    identité de build, checkpoint) restent valides. Voir §5 pour la chaîne de
    build à jour, et §11 pour la proposition de mise à jour d'`AGENTS.md`.
 
-4. **La documentation de référence est figée fin juillet.** `docs/START_HERE.md`,
+4. **[Partiellement résolu le 10 octobre 2026 : `docs/codex/00_CONTEXT.md`,
+   `05_BUILD_AND_TEST.md`, `06_ANTI_REGRESSION.md` et `10_TASK_HANDOFF.md`
+   sont à jour ; `docs/START_HERE.md` et `01_PROJECT_STATUS.md` restent à
+   relire.]** Historique :
+   **La documentation de référence est figée fin juillet.** `docs/START_HERE.md`,
    `docs/engineering/01_PROJECT_STATUS.md` et `docs/codex/00_CONTEXT.md`
    décrivent encore : OTA « téléchargement seulement, `setInsecure()` »,
    notifications ntfy « en échec TLS », plate-forme unique CYD, MQTT/HiveMQ
@@ -59,7 +72,10 @@ l'ancien qui est périmé — la section 12 donne la fraîcheur de chaque famill
    `08`, `15`, `18` et `31` du manuel d'ingénierie ont été tenus à jour en
    septembre-octobre.
 
-5. **L'interface Web du module n'a aucune authentification.** Choix assumé
+5. **[Résolu par le lot F de D016, 10 octobre 2026 : session Web locale
+   obligatoire pour toute écriture, voir
+   `docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md` §8.]** Historique :
+   **L'interface Web du module n'a aucune authentification.** Choix assumé
    pendant la conception (accès direct aux routes `/api/*` pour le
    diagnostic). `/api/resetConfig`, `/api/zone`, les routes Wi-Fi sont
    ouvertes à tout poste du LAN. Les écritures sensibles récentes (scripts,

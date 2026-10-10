@@ -69,6 +69,28 @@ Isoler et tester les règles de planning : pluie, intervalle, minuit et durée m
 
 Conserver `MAX_ACTIVE_ZONES` comme garde unique et ajouter assertions et tests.
 
+### D9 — Release GitHub sans binaire S3 (relevé le 10 oct. 2026)
+
+`.github/workflows/ota-release.yml` compile `ProgrammeArrosage` et
+`ProgrammeArrosage_v4` (carte CYD) ; `tools/generate_ota_manifest.py` ne
+publie que les cibles `legacy` et `v4`, et `tools/version_build.py` donne
+`ota_target = "unsupported"` à `ProgrammeArrosage_s3`. Une mise à jour
+firmware par le manifeste GitHub ne trouverait donc pas sa cible sur `.141`
+(`target-missing`, `MaintenanceBoot.cpp`). Les alias `_legacy` et `_v4` sont
+gardés pour cette seule chaîne. À traiter comme un chantier à part : cible
+`s3` dans les trois fichiers, décision documentée, essai de mise à jour sur
+`.141`, puis retrait des alias.
+
+### D10 — Résumé CloudSync qui écrase le détail d'erreur (relevé le 10 oct. 2026)
+
+En fin de `CloudSync::run`, le résumé « ok, … » n'est conditionné qu'à
+`reportSuccess` : si la télémétrie passe mais que la configuration échoue, le
+détail utile (par exemple `config: http=500`) est remplacé, et le journal
+ment au moment où il sert. Un correctif non testé existe dans le stash du
+25 août 2026 (à archiver sous le tag `archive/stash-cloudsync-resume-detail`
+avant suppression) ; à reprendre dans une branche `fix/…` avec essai sur
+`.141`.
+
 ## Limites connues
 
 - OpenWeatherMap dépend d’un service externe.

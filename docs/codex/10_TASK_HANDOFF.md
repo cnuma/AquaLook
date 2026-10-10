@@ -2,16 +2,12 @@
 
 ## Référence de reprise courante
 
-Pour toute tâche relative à l’OTA après le 30 juillet 2026, utiliser :
+La référence est toujours `main` et le checkpoint le plus récent de
+`docs/checkpoints/` (point d’entrée : `docs/REPRISE_INGENIEUR.md`). Ce
+document ne fige plus de branche ni de commit : l’ancienne référence OTA
+(`agent/ota-3.0-download-test-v591`, 30 juillet 2026) est historique.
 
-```text
-Branche : agent/ota-3.0-download-test-v591
-Checkpoint : docs/checkpoints/CHECKPOINT_2026-07-30_OTA-3.0_DOWNLOAD_VERIFIED.md
-Document technique : docs/codex/11_OTA_3_DOWNLOAD_VALIDATION.md
-Commit code validé avant documentation : 6808f58bb0f386a17a2c24d5bb25fe0500410d43
-```
-
-Avant toute proposition, l’agent doit lire `AGENTS.md`, `docs/codex/00_CONTEXT.md`, le document OTA et le checkpoint. Un résumé de chat ne remplace jamais ces fichiers.
+Avant toute proposition, l’agent doit lire `AGENTS.md`, `docs/codex/00_CONTEXT.md`, le checkpoint et les documents propres à la tâche. Un résumé de chat ne remplace jamais ces fichiers.
 
 ## Format de mission
 
@@ -37,16 +33,16 @@ Livrables :
 
 ```text
 Titre : Préparer le contrat d’écriture de la partition OTA inactive
-Branche de base : agent/ota-3.0-download-test-v591
+Branche de base : main
 Commit de base : checkpoint documentaire courant
-Checkpoint applicable : CHECKPOINT_2026-07-30_OTA-3.0_DOWNLOAD_VERIFIED.md
+Checkpoint applicable : le plus récent de docs/checkpoints/
 Documents obligatoires lus : AGENTS.md, 00_CONTEXT.md, 03_INVARIANTS.md, 05_BUILD_AND_TEST.md, 11_OTA_3_DOWNLOAD_VALIDATION.md
 Objectif : définir puis implémenter un palier d’écriture contrôlée sans activation immédiate
 Hors périmètre : ne pas activer la nouvelle partition, ne pas supprimer le rollback, ne pas modifier les relais
 Fichiers pressentis : MaintenanceBoot, nouveau composant de staging OTA, MaintenanceResult, WebManager
-Invariants : aucune activation pendant arrosage, validation taille/SHA, Legacy compilable, V4 testé sur matériel
+Invariants : aucune activation pendant arrosage, validation taille/SHA, testé sur .141
 Critères d’acceptation : écriture partition inactive uniquement, contrôle final, erreur persistée, partition active inchangée
-Commandes : compilation Legacy et V4, upload V4 sur port confirmé, monitoring
+Commandes : upload ProgrammeArrosage_s3 sur port confirmé, monitoring
 Tests matériels : téléchargement valide, coupure réseau, SHA invalide, taille invalide, redémarrage
 Livrables : sources, documentation, checkpoint de branche
 ```
@@ -73,8 +69,7 @@ Fichiers modifiés :
 Positions et fonctions modifiées :
 Fichiers non modifiés :
 Diff hors périmètre :
-Compilation Legacy :
-Compilation V4 :
+Compilation ProgrammeArrosage_s3 :
 LittleFS :
 Tests Web :
 Tests LCD :
@@ -93,8 +88,8 @@ Checkpoint proposé :
 - Ne pas présenter `setInsecure()` comme une validation TLS de production.
 - Ne pas appeler l’API `Update` ni écrire une partition sans décision explicite du palier.
 - Ne pas confondre téléchargement validé et installation OTA validée.
-- Compiler Legacy et V4 après toute modification commune.
-- Tester le chemin V4 sur matériel.
+- Compiler `ProgrammeArrosage_s3` après toute modification.
+- Tester le chemin sur `.141`.
 - Regrouper les commandes Git, build, upload et monitor dans un seul bloc continu.
 - Ne jamais inclure une commande qui ferme le terminal en cas d’erreur.
 
