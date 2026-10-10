@@ -7,6 +7,7 @@
 #include <DNSServer.h>
 #include <WiFiClient.h>
 #include <Preferences.h>
+#include <esp_wifi.h>
 
 static DNSServer _dnsServer;
 static bool _dnsStarted = false;
@@ -210,10 +211,29 @@ bool WiFiManager::processPendingAction(uint32_t now) {
     switch (action) {
         case PendingAction::STA_SET_MODE:
             WiFi.mode(WIFI_STA);
-            scheduleAction(
-                PendingAction::STA_BEGIN,
-                now + WIFI_MODE_SETTLE_MS
-            );
+            // Tentatives paires : scan puis connexion au noeud le plus fort.
+            // Tentatives impaires : choix du pilote, pour ne jamais rester
+            // bloque sur un noeud visible qui refuserait l'association.
+            // Un scan Web en cours garde la main sur le resultat du scan.
+            if ((_retryCount % 2U) == 0U && !_scanPending &&
+                WiFi.scanNetworks(true, false) == WIFI_SCAN_RUNNING) {
+                _targetScanStartMs = now;
+                scheduleAction(PendingAction::STA_SCAN_WAIT, now + TARGET_SCAN_POLL_MS);
+            } else {
+                scheduleAction(
+                    PendingAction::STA_BEGIN,
+                    now + WIFI_MODE_SETTLE_MS
+                );
+            }
+            return true;
+
+        case PendingAction::STA_SCAN_WAIT:
+            if (WiFi.scanComplete() == WIFI_SCAN_RUNNING &&
+                (now - _targetScanStartMs) < TARGET_SCAN_TIMEOUT_MS) {
+                scheduleAction(PendingAction::STA_SCAN_WAIT, now + TARGET_SCAN_POLL_MS);
+                return true;
+            }
+            beginTargeted(now);
             return true;
 
         case PendingAction::STA_BEGIN:
@@ -264,6 +284,45 @@ bool WiFiManager::processPendingAction(uint32_t now) {
     }
 
     return false;
+}
+
+// Fin du scan de connexion : retient le BSSID le plus fort du SSID et s'y
+// connecte. Sans resultat exploitable (scan echoue ou expire, SSID absent),
+// repli sur le choix du pilote -- jamais d'attente supplementaire.
+void WiFiManager::beginTargeted(uint32_t now) {
+    const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
+    int best = -1;
+    uint8_t seen = 0;
+    for (int16_t i = 0; i < n; ++i) {
+        if (WiFi.SSID(i) != _ssid) continue;
+        ++seen;
+        if (best < 0 || WiFi.RSSI(i) > WiFi.RSSI(best)) best = i;
+    }
+
+    if (best >= 0) {
+        uint8_t bssid[6];
+        memcpy(bssid, WiFi.BSSID(best), sizeof(bssid));
+        const int32_t channel = WiFi.channel(best);
+        EventLog::log(
+            LOG_INFO,
+            "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s))",
+            bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
+            static_cast<long>(channel), static_cast<int>(WiFi.RSSI(best)),
+            static_cast<unsigned>(seen)
+        );
+        WiFi.scanDelete();
+        WiFi.begin(_ssid, _pwd, channel, bssid);
+    } else {
+        EventLog::log(
+            LOG_INFO,
+            "WiFi: scan de connexion sans resultat (n=%d), choix du pilote",
+            static_cast<int>(n)
+        );
+        if (n == WIFI_SCAN_RUNNING) esp_wifi_scan_stop();  // expire : liberer la radio
+        else if (n >= 0) WiFi.scanDelete();
+        WiFi.begin(_ssid, _pwd);
+    }
+    _lastActionMs = now;
 }
 
 void WiFiManager::handleConnecting(uint32_t now) {
