@@ -274,6 +274,21 @@ l'identifiant fixe). Envoi immédiat au rattachement validé le 10 oct. 2026
 09:09:12. Les flashs ne font plus monter la garde anti-boucle (empreinte de
 l'image, `d07fbb0`).
 
+Lot B : **développé le 10 oct. 2026, banc local 44/44, publication en
+attente** (branche `feature/lot-b-comptes`). Serveur : `account.php`,
+`schema-v7-liens-compte.sql` (table `account_token`, une seule table pour les
+liens de réinitialisation et d'invitation au lieu de `password_reset` : même
+geste, seules durée et texte changent), routes `/app/password/forgot|reset|change`
+et `/admin/user/invite`, paramètres `APP_BASE_URL`, `RESET_TOKEN_TTL_MIN`,
+`INVITE_TOKEN_TTL_H`. Jeton dans le fragment de l'URL ; réponse de
+`forgot` envoyée avant le SMTP (durées mesurées au banc : 26 ms connue,
+21 ms inconnue) ; notifications exemptées des plafonds par adresse et par IP.
+`app.html` : « Mot de passe oublié ? », écran « choisir un mot de passe »
+ouvert par le lien, carte « Mon compte ». `admin.html` : « Inviter par mail »,
+lien affiché aussi à l'administrateur. Reste : publication, `schema-v7`
+importé, `APP_BASE_URL` saisi, essai réel (mail reçu, durées de `forgot` en
+production).
+
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
 uniques `requestAdmin()` / `requestStart()`, arrêt toujours libre, page ADMIN
@@ -303,7 +318,8 @@ alignés (« envoyé par / signé par alwaysdata.net »). Facteurs restants :
 réputation partagée du domaine `alwaysdata.net`, premier envoi court sans
 historique. Piste retenue, décision reportée par le propriétaire : domaine
 d'expédition propre (SPF/DKIM/DMARC à notre nom), à changer depuis la console
-seule. À trancher avant le lot B (mot de passe oublié).
+seule. **Clos le 10 oct. 2026** : le propriétaire a corrigé le classement en
+indésirables, ce point ne conditionne plus le lot B.
 
 Ordre proposé : A → C → E → D → B → F → G (les lots serveur A/B peuvent avancer
 pendant les essais firmware). Version proposée à la fin de E + F : `5.12.0`.
