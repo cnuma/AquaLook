@@ -268,8 +268,11 @@ plafonds à 0 (« trop de demandes ») -- désormais `503 not_configured`, et le
 429 annonce l'heure du prochain essai. Ajouts demandés : bouton
 « Synchroniser maintenant » (page locale Synchro cloud, 60 s minimum entre
 deux tentatives), libellé « Identifiant technique » (le nom est libre,
-l'identifiant fixe). Non rejoué après le dernier changement : envoi immédiat
-au rattachement (build 1326).
+l'identifiant fixe). Envoi immédiat au rattachement validé le 10 oct. 2026
+(build 1328) : module détaché en ligne puis rattaché par code, « rattache » à
+09:08:53, synchro lancée dans la même seconde, cycle `rapport=ok config=ok` à
+09:09:12. Les flashs ne font plus monter la garde anti-boucle (empreinte de
+l'image, `d07fbb0`).
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
