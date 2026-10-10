@@ -328,6 +328,8 @@ private:
     // ApiAuth.h, seul un doigt sur CET ecran peut declencher l'action).
     uint32_t  _forgetSecretArmedAt = 0;
     static constexpr uint32_t FORGET_SECRET_CONFIRM_MS = 5000UL;
+    // Fenetre ouverte par l'ecran pour poser un mot de passe Web (D016 lot F).
+    static constexpr uint32_t FIRST_SECRET_WINDOW_MS = 10UL * 60UL * 1000UL;
 
     // Code PIN (D016, lot E) -- voir PinLock.h. Saisie en cours, ce qu'elle
     // debloque, et l'ecran ou revenir sur "Annuler".

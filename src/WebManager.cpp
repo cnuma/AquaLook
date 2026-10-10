@@ -2347,13 +2347,34 @@ void WebManager::handleRestart(AsyncWebServerRequest* req, JsonDocument& doc) {
 }
 
 void WebManager::handleSetApiSecret(AsyncWebServerRequest* req, JsonDocument& doc) {
-    const char* actuel = doc["actuel"] | "";
-    const char* nouveau = doc["nouveau"] | "";
-    if (!ApiAuth::setSecret(actuel, nouveau)) {
-        sendError(req, ApiAuth::hasSecret()
-            ? "secret actuel incorrect, ou nouveau secret trop court (12 caracteres minimum)"
-            : "secret trop court (12 caracteres minimum)");
-        return;
+    if (doc["enc"].is<const char*>()) {
+        // Forme chiffree (session.js) : le nouveau secret ne circule pas en
+        // clair, l'actuel non plus.
+        const char* nonce = doc["nonce"] | "";
+        if (!WebSession::consumeChallenge(nonce)) {
+            sendError(req, "defi expire, recommencer", 409);
+            return;
+        }
+        if (!ApiAuth::setSecretEncrypted(nonce, doc["enc"] | "", doc["mac"] | "")) {
+            sendError(req, "mot de passe actuel incorrect, ou nouveau invalide (12 a 64 caracteres)", 403);
+            return;
+        }
+    } else {
+        // Forme en clair : reservee a la toute premiere pose, autorisee par
+        // un geste sur l'ecran. Changer un secret existant en clair ferait
+        // circuler l'ancien et le nouveau sur le reseau.
+        if (ApiAuth::hasSecret()) {
+            sendError(req, "changement en clair refuse : recharger la page (envoi chiffre)", 400);
+            return;
+        }
+        if (ApiAuth::firstSecretWindowLeftMs() == 0U) {
+            sendError(req, "autoriser d'abord sur l'ecran du module : ADMIN > Systeme", 403);
+            return;
+        }
+        if (!ApiAuth::setSecret("", doc["nouveau"] | "")) {
+            sendError(req, "mot de passe trop court (12 caracteres minimum)");
+            return;
+        }
     }
     // Le secret est aussi le mot de passe Web (D016 lot F) : les sessions
     // ouvertes avec l'ancien se ferment, et celle qui vient de prouver le

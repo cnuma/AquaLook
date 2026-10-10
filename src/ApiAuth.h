@@ -64,6 +64,20 @@ bool verify(const String& canonicalMessage, uint32_t nonce, const String& hexSig
 // aleatoire a usage unique joue deja le role anti-rejeu.
 bool verifyMessage(const char* message, const char* hexSignature);
 
+// Premier secret (D016 lot F) : tant qu'aucun n'existe, setSecret ne
+// l'accepte que pendant une fenetre ouverte par un geste sur l'ecran du
+// module (ADMIN > Systeme). Sans cela, n'importe quel poste du reseau -- ou
+// un programme malveillant qui y tourne -- pourrait poser le sien avant le
+// proprietaire et l'enfermer dehors.
+void allowFirstSecret(uint32_t windowMs);
+uint32_t firstSecretWindowLeftMs();
+
+// Remplace le secret sans qu'il circule en clair : encHex = nouveau secret
+// XOR un flux HMAC(actuel, "aql-chg-ks|" + defi + "|0"/"|1"), macHex =
+// HMAC(actuel, "aql-chg-mac|" + defi + "|" + encHex). Le defi doit avoir ete
+// consomme par l'appelant (WebSession::consumeChallenge).
+bool setSecretEncrypted(const char* challengeHex, const char* encHex, const char* macHex);
+
 // Dernier nonce accepte, pour que le client sache ou reprendre.
 uint32_t lastNonce();
 
