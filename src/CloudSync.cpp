@@ -1108,7 +1108,13 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
 
     client->stop();
     result.valid = true;
-    if (result.reportSuccess) {
+
+    // Resume de succes seulement si rapport ET configuration ont abouti, et
+    // sans jamais ecraser un detail deja pose. La condition ne testait que
+    // reportSuccess : rapport ok + config en echec journalisait
+    // "detail ok, rien en attente" a la place de "config: http=500", au
+    // moment precis ou le detail servait au diagnostic (D10, 08_RISKS_AND_DEBT).
+    if (result.reportSuccess && result.configSuccess && result.detail[0] == '\0') {
         copyText(result.detail, sizeof(result.detail),
                 result.commandReceived ? "ok, commande recue" : "ok, rien en attente");
     }

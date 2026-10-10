@@ -81,15 +81,18 @@ gardés pour cette seule chaîne. À traiter comme un chantier à part : cible
 `s3` dans les trois fichiers, décision documentée, essai de mise à jour sur
 `.141`, puis retrait des alias.
 
-### D10 — Résumé CloudSync qui écrase le détail d'erreur (relevé le 10 oct. 2026)
+### D10 — Résumé CloudSync qui écrasait le détail d'erreur (corrigé le 10 oct. 2026)
 
 En fin de `CloudSync::run`, le résumé « ok, … » n'est conditionné qu'à
 `reportSuccess` : si la télémétrie passe mais que la configuration échoue, le
 détail utile (par exemple `config: http=500`) est remplacé, et le journal
-ment au moment où il sert. Un correctif non testé existe dans le stash du
-25 août 2026 (à archiver sous le tag `archive/stash-cloudsync-resume-detail`
-avant suppression) ; à reprendre dans une branche `fix/…` avec essai sur
-`.141`.
+ment au moment où il sert.
+
+Corrigé le 10 oct. 2026 (`14d0130`, d'après le stash du 25 août 2026) : le
+résumé exige rapport et configuration réussis et un détail encore vide.
+Cycle nominal vérifié sur `.141` (build 1358 : rapport, config et sondage
+en 200, aucun `WARN`) ; le cas config en échec n'a pas été provoqué sur le
+matériel (il faudrait une erreur serveur).
 
 ## Limites connues
 
