@@ -1,127 +1,83 @@
 # 00 — Contexte du projet
 
+Mis à jour le 10 octobre 2026 (base `main` = `46df836`). Le détail vivant
+(architecture, état fonctionnel, pièges) est dans `docs/REPRISE_INGENIEUR.md` ;
+l'état du jour est dans le checkpoint le plus récent de `docs/checkpoints/`.
+
 ## Produit
 
-AquaLook est un programmateur d’arrosage autonome sur ESP32. Il regroupe :
+AquaLook est un programmateur d’arrosage autonome sur ESP32-S3. Il regroupe :
 
-- une logique d’arrosage non bloquante ;
-- une interface Web locale ;
-- un écran TFT tactile ;
-- une configuration persistante ;
-- une synchronisation horaire NTP ;
-- une intégration météo OpenWeatherMap ;
-- un pilotage de relais par expandeur I²C ;
-- une chaîne OTA en cours de qualification progressive.
+- une planification locale non bloquante (1 à 8 zones) et un **moteur
+  d’exécution unique, V4** (zones → équipements → cartes → ports → voies) ;
+- un pilotage de vannes par cartes relais I²C (XL9535, MCP23017), câblage
+  décrit comme une donnée éditable ;
+- un écran tactile local et une interface Web locale (servie depuis la SD) ;
+- un moteur de scripts embarqué ;
+- une configuration persistante en NVS ;
+- NTP, météo (OpenWeatherMap ou Open-Meteo), notifications ntfy ;
+- des mises à jour firmware et Web **toujours déclenchées par l’utilisateur** ;
+- une synchronisation optionnelle avec l’espace en ligne (CloudSync,
+  AlwaysData), enrôlement par code court, PIN sur le LCD.
 
-## Matériel inspecté
+**Principe directeur** : l’arrosage et les sécurités fonctionnent sans Wi-Fi,
+sans Internet, sans serveur et sans carte SD.
 
-### Carte principale
+Le moteur historique a été supprimé le 8 septembre 2026 (commit `2750866`).
+Il n’existe plus : aucune procédure, comparaison ni compilation ne s’y réfère.
 
-- ESP32, cible PlatformIO `esp32dev`
-- Flash : 4 Mo
-- Partition : `min_spiffs.csv`
-- Système de fichiers : LittleFS
-- Cible V4 testée : `esp32-2432S028`
-- Layout dual OTA validé sur la carte V4
+## Matériel de référence
 
-### Affichage
+| Élément | Valeur |
+|---|---|
+| Carte | Guition JC4827W543C_I, ESP32-S3 |
+| Module de test | `.141` (`192.168.1.141`), N4R8 : 4 Mo de flash, PSRAM OPI 8 Mo, 5 zones câblées sur relais réels |
+| Écran | NV3041A 480×272, QSPI, `GFX Library for Arduino` via `lib/tft_espi_compat_s3` |
+| Tactile | GT911 capacitif, I²C dédié (SDA 8, SCL 4) |
+| Relais | XL9535 sur le second bus I²C (`Wire1`, SCL 17 / SDA 18), adresse `0x20` |
+| SD | SPI dédié (MISO 13, MOSI 11, SCK 12, CS 10) |
+| Voyant | ruban WS2812 sur GPIO 46 |
+| Partitions | `aqualook_partitions.csv` : deux slots OTA de 1 920 Kio, NVS 84 Kio, LittleFS 108 Kio |
 
-- TFT ILI9341 240 × 320
-- Backlight : GPIO 21
-- Touch XPT2046 sur bus séparé
-- Broches définies dans `platformio.ini`
+Le brochage est centralisé dans la section `[jc4827w543c_i]` de
+`platformio.ini` (macros `AQ_S3_*`).
 
-### I²C
-
-- SDA : GPIO 27
-- SCL : GPIO 22
-- XL9535 : adresse `0x20`
-
-### Contrôleurs de relais
-
-- XL9535, carte YellowCard
-- MCP23017, prévu et exposé dans la configuration
-- Limite fonctionnelle actuelle : 1 à 8 zones
-- Capacité interne des tableaux : 16 zones
+L’ancienne carte CYD (ESP32-2432S028, env `ProgrammeArrosage`) est en cours
+d’abandon : elle n’est compilée que sur demande explicite.
 
 ## Base logicielle
 
-- Framework Arduino
-- Plateforme `espressif32 @ 6.13.0`
-- Bibliothèques principales : ArduinoJson 7, ESPAsyncWebServer, AsyncTCP, TFT_eSPI, TJpg_Decoder, XPT2046_Touchscreen
+- Framework Arduino, plate-forme `espressif32 @ 6.13.0`
+- Environnement de production et de validation : `ProgrammeArrosage_s3`
+- Bibliothèques principales : ArduinoJson 7, ESPAsyncWebServer et AsyncTCP
+  (patchés au build), SdFat, GFX Library for Arduino, TAMC_GT911,
+  Adafruit NeoPixel
+- Version fonctionnelle : fichier `VERSION` (source unique, lue par
+  `tools/version_build.py`)
 
-## Source de vérité courante
+## Serveur
 
-Le socle historique a été construit après inspection du dépôt GitHub réel et du checkpoint complet du 27 juin 2026.
+`cloud/php-mutualized/` (PHP + MySQL) en service sur AlwaysData
+(`https://aqualook.alwaysdata.net`) : API module (`/v1/*`), console
+d’administration, espace utilisateur (`app.html`), ressources Web publiées.
+Publication par le propriétaire (FTP), jamais par l’agent.
 
-Pour le palier OTA-3.0 validé le 30 juillet 2026, la référence de travail est :
+## Interface administrateur Web
 
-- dépôt : `cnuma/AquaLook` ;
-- branche : `agent/ota-3.0-download-test-v591` ;
-- base volontaire : tag `v5.9.1` ;
-- commit code validé avant documentation : `6808f58bb0f386a17a2c24d5bb25fe0500410d43` ;
-- documentation : `docs/codex/11_OTA_3_DOWNLOAD_VALIDATION.md` ;
-- checkpoint : `docs/checkpoints/CHECKPOINT_2026-07-30_OTA-3.0_DOWNLOAD_VERIFIED.md`.
-
-La branche part volontairement de `v5.9.1` afin de vérifier qu’un module installé en 5.9.1 détecte et télécharge la release distante 5.9.2. Elle ne doit pas être réalignée ou reconstruite depuis `main` sans analyse explicite.
-
-## Lecture obligatoire pour l’OTA
-
-Après les lectures déjà imposées par `AGENTS.md`, lire obligatoirement :
-
-1. `docs/codex/11_OTA_3_DOWNLOAD_VALIDATION.md` ;
-2. `docs/checkpoints/CHECKPOINT_2026-07-30_OTA-3.0_DOWNLOAD_VERIFIED.md` ;
-3. `platformio.ini` ;
-4. les fichiers OTA réellement concernés.
-
-Ne pas utiliser un extrait de chat comme source de vérité.
-
-## Fonctionnalités actuelles
-
-- 1 à 8 zones actives
-- 5 créneaux maximum par jour et par zone
-- mode jours fixes
-- mode intervalle
-- démarrage et arrêt manuel
-- seuil de pluie par zone
-- fenêtre météo par zone
-- journal d’événements en RAM
-- portail captif
-- configuration utilisateur et administrateur
-- personnalisation LCD et Web
-- conservation de la configuration en NVS
-- migration depuis l’ancien `/config.json` LittleFS
-- vérification OTA de version via manifeste GitHub
-- sélection de la cible V4
-- téléchargement complet du firmware sans installation
-- validation de taille et SHA-256
-- affichage Web persistant du résultat
-- attente Web animée et rechargement automatique après maintenance
-
-## État OTA validé
-
-Sur matériel V4, les commandes suivantes sont validées :
-
-- `CHECK_VERSION` ;
-- `DOWNLOAD_UPDATE_TEST`.
-
-La validation observée comprend le redémarrage en maintenance minimale, le Wi-Fi, TLS GitHub, le manifeste, la sélection V4, le téléchargement de 1 365 088 octets, le SHA-256 conforme, la persistance et le retour au fonctionnement normal.
-
-Aucune écriture de partition OTA n’est encore implémentée dans ce palier. `setInsecure()` est encore utilisé et interdit de présenter la chaîne comme prête pour la production.
-
-## Interface administrateur
-
-Le verrouillage actuel masque visuellement les réglages sensibles, utilise `sessionStorage`, la clé `aqualook-admin-unlocked` et le mot de passe temporaire `1598753`.
-
-Ce mécanisme n’est pas une authentification serveur. Il ne doit pas être présenté comme une protection de sécurité forte.
+Le verrouillage actuel de `data/index.html` est **visuel** (`sessionStorage`,
+mot de passe temporaire `1598753`). Ce n’est pas une authentification ; son
+remplacement par une session Web locale est le lot F de D016.
 
 ## Contraintes fortes
 
-- LittleFS est très proche de sa limite.
-- Toute ressource déposée dans `data/` est embarquée.
-- Les fichiers de sauvegarde dans `data/` provoquent une saturation.
-- Le matériel relais peut être activé au boot si la logique est incorrecte.
-- Les modifications de persistance exigent une compatibilité avec les données existantes.
-- Toute évolution OTA doit préserver les builds Legacy et V4.
-- Le port COM doit être reconfirmé avant chaque téléversement.
-- Toute installation OTA future doit intégrer confiance TLS, partition inactive, contrôle final et rollback.
+- Le planificateur ne pilote jamais directement le matériel ; la durée
+  maximale de sécurité ne se retire pas.
+- LittleFS est proche de sa limite et ne contient que les secours
+  indispensables (`littlefs/`).
+- Toute évolution de la NVS est versionnée, avec migration ; sauvegarder la
+  partition (`tools/nvs_backup.py`) avant un flash qui change le schéma.
+- Une table de partitions ne se déploie pas par OTA.
+- Aucun serveur distant ne déclenche une mise à jour (D014).
+- Tout paramètre de service se règle sans recompilation (console ou NVS).
+- Le dépôt est public : aucun secret dans Git.
+- Le port COM est reconfirmé à chaque session.

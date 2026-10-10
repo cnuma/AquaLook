@@ -1,227 +1,151 @@
 # 05 — Compilation et tests
 
-## Statut des profils firmware
+Mis à jour le 10 octobre 2026. V4 est le seul moteur d’exécution ; le moteur
+historique a été supprimé le 8 septembre 2026 (commit `2750866`) et n’entre
+plus dans aucune procédure.
 
-- `ProgrammeArrosage_legacy` est la référence historique et le firmware de repli.
-- `ProgrammeArrosage_v4` est le profil de migration à qualifier en priorité sur matériel.
-- Une compilation V4 réussie ne constitue pas une validation fonctionnelle ou matérielle.
-- Tant que le backend V4 n’est pas réellement câblé dans `main.cpp` et qu’aucune zone n’est migrée, un essai avec le profil V4 ne doit pas être présenté comme un test complet du chemin V4.
-- Le profil `ProgrammeArrosage` reste un alias nominal historique pendant la phase de migration ; pour éviter toute ambiguïté, utiliser les noms explicites `_legacy` et `_v4` dans les procédures de développement.
+## Environnements PlatformIO
 
-## Port série obligatoire avant la première compilation
+| Env | Usage |
+|---|---|
+| `ProgrammeArrosage_s3` | **production et validation**, module `.141` |
+| `ProgrammeArrosage_s3_n16r8` | banc N16R8 sans écran (non validé sur matériel) |
+| `test_*_s3` (`test_relay_s3`, `test_sd_s3`, …) | bancs matériels ciblés |
+| `ProgrammeArrosage` | carte CYD en cours d’abandon : compilée **seulement** sur demande explicite |
 
-Avant de proposer ou d’exécuter la première chaîne de compilation, de téléversement ou de surveillance série d’une nouvelle session de travail, l’agent doit demander explicitement sur quel port série se trouve la carte.
+`ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` ne sont que des alias
+historiques de `ProgrammeArrosage` ; ne pas les utiliser.
 
-Exemple de question :
+Les fichiers `test_*.cpp` définissent chacun `setup()`/`loop()` : tout nouveau
+banc doit être exclu du `build_src_filter` de `[env:ProgrammeArrosage]`
+(hérité par les envs S3), sinon le build de production échoue.
 
-> Sur quel port COM la carte AquaLook est-elle connectée sur cette machine (`COM3`, `COM9`, etc.) ?
+## Port série obligatoire
 
-Règles :
+Avant la première compilation, le premier téléversement ou l’ouverture du
+moniteur d’une session, demander sur quel port COM la carte est connectée.
 
-- ne jamais supposer que le port défini dans `platformio.ini` est celui de la machine courante ;
-- ne jamais recopier automatiquement un ancien port COM provenant d’une autre machine ou d’une ancienne session ;
-- conserver le port confirmé pour toutes les commandes suivantes de la session ;
-- utiliser le marqueur `<PORT_COM>` tant que le port n’a pas été confirmé ;
-- si le port change ou si la carte n’est plus détectée, demander une nouvelle confirmation ;
-- lorsque nécessaire, proposer la commande `pio device list` pour identifier les ports disponibles.
+- ne jamais supposer que le port de `platformio.ini` ou d’une ancienne
+  session est encore valable ;
+- utiliser le marqueur `<PORT_COM>` tant que le port n’est pas confirmé ;
+- `pio device list` pour identifier les ports disponibles ;
+- conserver le port confirmé pour toute la session, le redemander si la carte
+  n’est plus détectée.
 
-## Compilation et téléversement : une seule commande suffit
-
-Pour n'importe quel environnement PlatformIO (`ProgrammeArrosage`, `ProgrammeArrosage_legacy`, `ProgrammeArrosage_v4`, etc.), la cible `upload` déclenche automatiquement la compilation avant de téléverser. Exécuter `pio run -e <env>` séparément juste avant `pio run -e <env> -t upload` est donc redondant pour flasher la carte :
-
-```powershell
-pio run -e <env> -t upload --upload-port <PORT_COM>
-pio device monitor -p <PORT_COM> -b 115200
-```
-
-Si le téléversement échoue à cause d'une erreur de compilation, PlatformIO s'arrête avant d'écrire quoi que ce soit sur la carte.
-
-Compiler séparément (sans téléverser) reste utile dans deux cas précis :
-
-- validation de compilation avant de committer/pousser du code, sans matériel connecté ou sans vouloir flasher immédiatement ;
-- documentation d'un checkpoint où la compilation et le téléversement doivent être tracés comme deux étapes distinctes.
-
-## Chaîne obligatoire pour un nouveau code
-
-### 1. Précontrôles Git
+## Chaîne courante
 
 ```powershell
-git status
-git diff --check
-git diff --stat
+git -c core.whitespace=cr-at-eol diff --check
+python tools/soak/announce_reboot.py
+pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>
+pio device monitor -p <PORT_COM> -b 115200 --dtr 1 --rts 0
 ```
 
-### 2. Compilation de contrôle Legacy
+- `upload` compile avant de téléverser ; si la compilation échoue, rien n’est
+  écrit sur la carte. Build S3 complet : environ 5 minutes.
+- Sans téléversement prévu : `pio run -e ProgrammeArrosage_s3`.
+- `--dtr 1` est obligatoire sur le S3 (USB natif) : sans lui le moniteur reste
+  muet. Le port se ré-énumère à chaque redémarrage.
+- Fermer le moniteur avant un téléversement (il tient le port).
+- `announce_reboot.py` ouvre la fenêtre de maintenance de la campagne de soak
+  avant tout flash de `.141`.
+- `git diff --check` simple signale à tort les fins de ligne CRLF : utiliser
+  `-c core.whitespace=cr-at-eol`.
+- Un build qui échoue juste après un changement de bibliothèque peut réussir
+  au second passage (patchs appliqués au build, `tools/patch_asyncwebserver.py`).
 
-Toute modification de code embarqué doit préserver la compilation Legacy :
+## LittleFS
+
+`littlefs/` est le `data_dir` PlatformIO. Après toute modification :
 
 ```powershell
-pio run -e ProgrammeArrosage_legacy
+pio run -e ProgrammeArrosage_s3 -t buildfs
 ```
 
-Cette compilation vérifie que les fichiers communs n’ont pas cassé le firmware historique et que le retour arrière reste disponible.
+Les pages Web vivent sur la SD (`data/`) : elles se déposent sur `.141`
+(`/api/debug/deploy-*`) ou se publient par `tools/publish_web_assets.py`
+(fichiers d’abord, manifeste en dernier) puis `tools/check_published_web.py`.
 
-### 3. Compilation et téléversement V4 en une seule commande
+## NVS
 
-Pour les essais matériels courants, la commande `upload` compile automatiquement le profil V4 avant de le téléverser. Il n’est donc pas nécessaire d’exécuter séparément `pio run -e ProgrammeArrosage_v4` juste avant le téléversement :
+Avant un flash qui change un format persisté :
 
 ```powershell
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
-pio device monitor -p <PORT_COM> -b 115200
+python tools/nvs_backup.py save <PORT_COM> avant-maj.bin
 ```
 
-Cette commande unique valide la compilation V4 puis téléverse le binaire produit. Si la compilation échoue, le téléversement n’est pas effectué.
+Toute nouvelle taille de structure est ajoutée à la garde de longueur de
+`ConfigManager::load()`.
 
-Lorsqu’aucun téléversement n’est prévu, notamment dans une validation automatisée ou documentaire, compiler séparément V4 :
+## Règle de validation
 
-```powershell
-pio run -e ProgrammeArrosage_v4
-```
+Une fonction n’est validée que si :
 
-### 4. LittleFS lorsque les ressources embarquées changent
-
-Le dépôt utilise `littlefs/` comme `data_dir` PlatformIO. Après toute modification de `littlefs/` :
-
-```powershell
-pio run -e ProgrammeArrosage_v4 -t buildfs
-```
-
-Avant un checkpoint ou une livraison nécessitant un repli Legacy vérifié :
-
-```powershell
-pio run -e ProgrammeArrosage_legacy -t buildfs
-pio run -e ProgrammeArrosage_v4 -t buildfs
-```
-
-### 5. Chargement Legacy uniquement si nécessaire
-
-Le profil Legacy n’est chargé que dans les cas suivants :
-
-- comparaison d’un comportement douteux ;
-- confirmation d’une régression ;
-- retour temporaire à la référence stable ;
-- campagne explicite de non-régression Legacy.
-
-```powershell
-pio run -e ProgrammeArrosage_legacy -t upload --upload-port <PORT_COM>
-pio device monitor -p <PORT_COM> -b 115200
-```
-
-### 6. Validation avant checkpoint ou livraison
-
-Sans téléversement matériel :
-
-```powershell
-git diff --check
-pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4
-```
-
-Avec essai matériel V4 :
-
-```powershell
-git diff --check
-pio run -e ProgrammeArrosage_legacy
-pio run -e ProgrammeArrosage_v4 -t upload --upload-port <PORT_COM>
-pio device monitor -p <PORT_COM> -b 115200
-```
-
-Ajouter selon le périmètre :
-
-```powershell
-pio run -e ProgrammeArrosage_v4 -t buildfs
-pio run -e test_execution_engine
-pio run -e calibration
-pio run -e test_relais
-```
-
-## Règle de qualification V4
-
-Une fonction ne peut être déclarée « migrée V4 » ou « validée V4 » que si les quatre conditions suivantes sont réunies :
-
-1. elle compile dans `ProgrammeArrosage_v4` ;
-2. son chemin V4 est réellement instancié et appelé dans le runtime ;
+1. elle compile dans `ProgrammeArrosage_s3` ;
+2. son chemin est réellement instancié et appelé dans le runtime ;
 3. elle a été testée sur la carte avec un effet observable ;
-4. son résultat a été comparé au comportement Legacy ou à un résultat attendu documenté.
+4. le résultat observé correspond au résultat attendu documenté.
 
-Pour chaque fonction testée, consigner au minimum :
+Consigner pour chaque essai : profil flashé, port série, fichier et fonction,
+point d’entrée exécuté, zone ou matériel utilisé, résultat attendu, résultat
+observé, écarts et tests non effectués. Vérifier l’identité réellement
+exécutée (série ou `/api/diagnostics`, champ `build`).
 
-- le profil flashé ;
-- le port série utilisé ;
-- le fichier et la fonction concernés ;
-- le point d’entrée exécuté ;
-- la zone ou le matériel utilisé ;
-- le résultat attendu ;
-- le résultat observé ;
-- les écarts et risques restants.
-
-Si le backend V4 n’est pas encore câblé pour la fonction concernée, noter explicitement :
-
-> Compilation V4 réussie, mais test fonctionnel V4 non applicable ou non représentatif à ce stade.
-
-## Stratégie de test pendant la migration
-
-- Les essais matériels courants se font en V4 dès que le chemin concerné est réellement actif.
-- Legacy reste la référence de comparaison et la solution de repli.
-- Les nouvelles évolutions importantes ne doivent pas s’accumuler tant que les fonctions V4 déjà intégrées n’ont pas été testées.
-- Les tests commencent sur une seule zone, avec une durée courte et sous surveillance.
-- Toute différence entre Legacy et V4 doit être qualifiée comme régression, correction volontaire ou évolution documentée.
+Les tests relais commencent par une seule zone, durée courte, sous
+surveillance.
 
 ## Matrice de validation minimale
 
-| Type de changement | Legacy compile | V4 compile | buildfs | Test V4 sur carte | Comparaison Legacy |
-|---|---:|---:|---:|---:|---:|
-| C++ métier partagé | Oui | Oui | Si ressources touchées | Selon impact | Selon impact |
-| Backend ou relais V4 | Oui | Oui | Non sauf UI | Obligatoire | Obligatoire |
-| HTML/JS/CSS | Oui | Oui | Oui | Oui | Selon impact |
-| Config NVS | Oui | Oui | Si ressources touchées | Oui | Obligatoire |
-| TFT/touch | Oui | Oui | Si assets touchés | Obligatoire | Selon impact |
-| Documentation seule | Non | Non | Non | Non | Non |
+| Type de changement | Compile S3 | buildfs | Test sur `.141` |
+|---|---:|---:|---:|
+| C++ métier | Oui | Si `littlefs/` touché | Selon impact |
+| Relais, équipements, moteur V4 | Oui | Non | Obligatoire |
+| Pages Web (`data/`) | Non (sauf code associé) | Non | Dépôt SD + navigateur |
+| `littlefs/` | Oui | Oui | Oui |
+| Format NVS | Oui | Non | Obligatoire, avec sauvegarde NVS |
+| LCD / tactile | Oui | Si assets touchés | Obligatoire |
+| Serveur (`cloud/php-mutualized/`) | Non | Non | Banc local MariaDB, puis production après publication |
+| Documentation seule | Non | Non | Non |
+
+## Observer un module
+
+- Série en priorité : le journal `/api/logs` est en RAM et se vide à chaque
+  redémarrage.
+- `/api/diagnostics` : `build`, `resetReason`, `wifi.rssi`, heap,
+  `runtimeComponents`.
+- `/api/health`, `/api/adminStatus`, `/api/logs.txt`.
+- Décoder un plantage :
+  `xtensa-esp32s3-elf-addr2line -pfiaC -e .pio/build/ProgrammeArrosage_s3/firmware.elf <adresses>`.
 
 ## Tests Web de non-régression
 
-1. page principale ;
-2. zones ;
-3. planning ;
-4. mode dense ;
-5. modales ;
-6. démarrage manuel ;
-7. arrêt manuel ;
-8. modification zone ;
-9. sauvegarde créneaux ;
-10. météo ;
-11. info-bulles ;
-12. paramètres utilisateur ;
-13. verrouillage admin ;
-14. mauvais mot de passe ;
-15. bon mot de passe ;
-16. persistance de session ;
-17. reverrouillage ;
-18. sauvegarde Wi-Fi avant reboot ;
-19. logs ;
-20. portail captif.
+Page principale, zones, planning, modales, démarrage et arrêt manuels,
+modification de zone, créneaux, météo, paramètres utilisateur, verrouillage
+administrateur, sauvegarde Wi-Fi avant redémarrage, journaux, portail captif,
+pages Santé, Synchro cloud, OTA, scripts.
 
 ## Tests NVS
 
-Boot sans NVS, sauvegarde, reboot, chargement, CRC invalide, taille invalide, reset, migration JSON et suppression JSON seulement après NVS valide.
+Démarrage sans NVS, sauvegarde, redémarrage, chargement, CRC invalide, taille
+invalide, réinitialisation, migration de schéma.
 
 ## Tests planning
 
-Heure non synchronisée, créneau actif/inactif, plusieurs zones, plusieurs créneaux, changement de jour, passage minuit, intervalle, pluie sous/au-dessus du seuil et durée maximale.
+Heure non synchronisée, créneau actif/inactif, plusieurs zones et créneaux,
+changement de jour, passage de minuit, intervalle, pluie sous/au-dessus du
+seuil, durée maximale.
 
 ## Tests relais
 
-Boot sûr, direct, inverse, XL9535, MCP23017 lorsque disponible, zone 1, dernière zone, arrêt manuel, timeout et reboot.
+Démarrage sûr (tout OFF), logique directe et inverse, XL9535, MCP23017 si
+disponible, première et dernière zone, arrêt manuel, timeout de sécurité,
+redémarrage pendant un arrosage.
 
 ## Critères de livraison
 
-Une livraison n’est pas valide sans :
-
-- compilation `SUCCESS` du profil Legacy pour tout changement de firmware ;
-- compilation `SUCCESS` du profil V4, obtenue soit par compilation seule, soit par la commande combinée compilation-téléversement ;
+- compilation `SUCCESS` de `ProgrammeArrosage_s3` pour tout changement de
+  firmware (compilation seule ou commande `upload`) ;
 - buildfs `SUCCESS` si `littlefs/` change ;
-- diff contrôlé ;
-- état Git explicite ;
+- diff contrôlé, état Git explicite ;
 - port série et profil réellement flashé indiqués ;
-- liste des tests matériels exécutés et non exécutés ;
-- absence de déclaration « validé V4 » lorsque le chemin V4 n’est pas réellement actif ou testé.
+- tests matériels exécutés et non exécutés listés.
