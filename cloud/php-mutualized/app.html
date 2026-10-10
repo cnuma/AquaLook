@@ -398,9 +398,8 @@ async function voirListe(){
   const mods = await api('/app/modules');
   if (!mods.length) {
     el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
-      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p>'
-      + '<p class="hint">Un module apparaît ici une fois déclaré et rattaché par '
-      + 'l&rsquo;administrateur.</p></div>';
+      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p></div>' + carteRattacher();
+    brancherRattacher();
     return;
   }
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
@@ -412,10 +411,77 @@ async function voirListe(){
     + '<span class="mod-s">' + (m.revision
         ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
-    + '</span></button>').join('') + '</div>';
+    + '</span></button>').join('') + '</div>' + carteRattacher();
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
   });
+  brancherRattacher();
+}
+
+// ── Rattachement par code (D016, lot D) ────────────────────────────────────
+//
+// Le code ne s'obtient que sur l'ecran du module : c'est la preuve que la
+// personne qui le saisit a le boitier sous la main.
+function carteRattacher(){
+  return '<div class="card"><h2>Rattacher un module</h2>'
+    + '<p class="hint">Sur l&rsquo;écran du module : ADMIN &rsaquo; En ligne &rsaquo; '
+    + 'Rattacher. Saisissez ici le code affiché (valable 10 minutes).</p>'
+    + '<div class="row"><input id="rt-code" maxlength="12" autocomplete="off" '
+    + 'autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" '
+    + 'style="flex:1;font-family:monospace;letter-spacing:2px;text-transform:uppercase">'
+    + '<button class="primary" id="rt-ok">Rattacher</button></div></div>';
+}
+
+function brancherRattacher(){
+  $('rt-ok').onclick = async () => {
+    const code = $('rt-code').value.trim();
+    if (!code) { toast('Saisissez le code affiché sur le module', true); return; }
+    $('rt-ok').disabled = true;
+    try {
+      const r = await api('/app/module/claim', {method:'POST', body: JSON.stringify({userCode: code})});
+      toast(r.transfert
+        ? 'Module rattaché. Il était à un autre compte : ses anciennes données ont été effacées.'
+        : 'Module rattaché. Il apparaîtra en ligne à sa prochaine synchronisation.');
+      await voirListe();
+    } catch(e){ toast(e.message, true); }
+    finally { if ($('rt-ok')) $('rt-ok').disabled = false; }
+  };
+}
+
+// Nom affiche et detachement, sur la page d'un module.
+function carteGestion(pr){
+  return '<details class="card"><summary><h2 style="display:inline">Ce module</h2></summary>'
+    + '<div class="row" style="margin-top:12px"><label>Nom</label>'
+    + '<input id="gm-nom" style="flex:1" maxlength="120" value="' + esc(pr.label || '') + '" '
+    + 'placeholder="' + esc(MOD) + '"><button id="gm-nom-ok">Enregistrer</button></div>'
+    + '<div class="row"><label>Identifiant</label><span class="mod-s" style="margin:0">'
+    + esc(MOD) + '</span></div>'
+    + '<div class="note warn">Détacher ce module révoque son accès : il cesse de se '
+    + 'synchroniser et n&rsquo;apparaît plus ici. Son arrosage local continue normalement. '
+    + 'Pour le rattacher de nouveau, il faudra un code lu sur son écran.</div>'
+    + '<div class="row"><label style="width:auto"><input type="checkbox" id="gm-purge"> '
+    + 'Effacer aussi son historique, sa configuration et ses sauvegardes en ligne</label></div>'
+    + '<div class="row"><button id="gm-detacher">Détacher ce module</button></div></details>';
+}
+
+function brancherGestion(){
+  $('gm-nom-ok').onclick = async () => {
+    try {
+      await api('/app/module/label', {method:'POST',
+        body: JSON.stringify({moduleId: MOD, label: $('gm-nom').value})});
+      toast('Nom enregistré');
+    } catch(e){ toast(e.message, true); }
+  };
+  $('gm-detacher').onclick = async () => {
+    const purge = $('gm-purge').checked;
+    if (!confirm('Détacher ce module de votre compte'
+        + (purge ? ' et effacer toutes ses données en ligne' : '') + ' ?')) return;
+    try {
+      await api('/app/module/release', {method:'POST', body: JSON.stringify({moduleId: MOD, purge: purge})});
+      toast('Module détaché');
+      await voirListe();
+    } catch(e){ toast(e.message, true); }
+  };
 }
 
 // ── Index des commandes, PAR ZONE ──────────────────────────────────────────
@@ -527,20 +593,21 @@ async function recharger(){
   const el = $('detail');
   el.hidden = false;
 
+  const pr = d.presence || {};
   if (!CFG || !CFG.payload) {
-    el.innerHTML = '<div class="card"><h2>' + esc(MOD) + '</h2>'
+    el.innerHTML = '<div class="card"><h2>' + esc(pr.label || MOD) + '</h2>'
       + '<div class="note warn">Ce module n&rsquo;a pas encore transmis sa configuration. '
       + 'Elle arrive à sa prochaine synchronisation ; il n&rsquo;y a rien à faire '
-      + 'd&rsquo;ici là.</div></div>';
+      + 'd&rsquo;ici là.</div></div>' + carteGestion(pr);
+    brancherGestion();
     return;
   }
   // Presence (ping, tout rapport confondu) et synchro (contenu reellement
   // change) affichees separement, memes libelles et memes deux temps que la
   // liste "Mes modules" (voirListe()) -- la meme information doit se
   // reconnaitre d'une page a l'autre, pas raconter deux histoires.
-  const pr = d.presence || {};
   el.innerHTML =
-      '<div class="card"><h2>' + esc(MOD) + '</h2>'
+      '<div class="card"><h2>' + esc(pr.label || MOD) + '</h2>'
     + '<div class="row"><label>Présence</label>'
     + '<span class="mod-s" style="margin:0">vue ' + esc(depuis(pr.last_seen)) + '</span></div>'
     + '<div class="row"><label>Synchro</label>'
@@ -556,8 +623,9 @@ async function recharger(){
     + '<div id="sauv" style="margin-top:12px"></div>'
     + '<p class="hint">Chaque état différent de la configuration est conservé ici, '
     + 'de quoi revenir en arrière ou remonter l&rsquo;installation sur un module '
-    + 'de remplacement.</p></details>';
+    + 'de remplacement.</p></details>' + carteGestion(pr);
 
+  brancherGestion();
   rendrePlanning();
   rendreScripts(d.commandes || []);
   // Sauvegardes chargees AVANT les commandes : rendreCommandes() resout
