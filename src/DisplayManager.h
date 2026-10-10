@@ -90,7 +90,10 @@ enum class AdminPage : uint8_t {
     // Code PIN du LCD (D016, lot E) : etat, pose, changement, retrait.
     // Ajoutee en dernier pour la meme raison qu'A propos.
     SECURITE = 8,
-    _COUNT = 9
+    // Rattachement a un compte en ligne (D016, lot D) : code court a saisir
+    // dans l'espace en ligne, oubli du compte. Ajoutee en dernier.
+    EN_LIGNE = 9,
+    _COUNT = 10
 };
 
 class DisplayManager {
@@ -336,6 +339,11 @@ private:
     uint16_t   _pinMsgColor = 0;
     // Retrait du PIN (page Securite) : deux appuis, comme le secret API.
     uint32_t   _removePinArmedAt = 0;
+    // Page En ligne (D016, lot D) : "Oublier le compte" en deux appuis, et
+    // empreinte du dernier rendu -- la page n'est redessinee que si l'etat
+    // de l'enrolement ou le decompte a change (pas de clignotement).
+    uint32_t   _forgetAccountArmedAt = 0;
+    uint32_t   _enLigneDrawKey = 0;
     // Geste d'effacement au demarrage : appui maintenu, borne.
     static constexpr uint32_t PIN_RECOVERY_HOLD_MS = 10000UL;
     // Garde de toucher apres le pave (et apres le geste d'effacement) : le
@@ -669,6 +677,7 @@ private:
     void drawAdminPageSante();   // resume + bouton vers Screen::HEALTH
     void drawAdminPageAPropos(); // versions installees, invariant F12
     void drawAdminPageSecurite(); // code PIN (D016, lot E)
+    void drawAdminPageEnLigne();  // rattachement a un compte (D016, lot D)
 
     // ── Code PIN (D016, lot E) ─────────────────
     // Portes uniques : TOUT acces a ADMIN et TOUT demarrage manuel depuis

@@ -13,6 +13,7 @@
 #include "WebAssetsUpdater.h"       // page A propos : version des pages installees
 #include "StorageManager.h"
 #include "SystemDiagnostics.h"      // page A propos : date de compilation, source unique
+#include "DeviceIdentity.h"         // page En ligne : identifiant materiel
 #include "esp_log.h"
 #include <WiFi.h>
 
@@ -27,6 +28,17 @@
 //  Conversion couleur #rrggbb → RGB565 (statique, usage interne)
 //  Sens inverse (RGB565 → #rrggbb) géré côté serveur / app.js.
 // ─────────────────────────────────────────────────────────────
+// Empreinte de ce que montre la page En ligne (D016, lot D) : elle n'est
+// redessinee que si l'une de ces valeurs change.
+static uint32_t enLigneKey(const EnrollView& v, const CloudSyncConfig& cfg, bool armed) {
+    return (static_cast<uint32_t>(v.phase) << 24)
+         ^ (v.remainingSec << 4)
+         ^ static_cast<uint8_t>(v.detail[0])
+         ^ (static_cast<uint32_t>(static_cast<uint8_t>(cfg.moduleId[0])) << 12)
+         ^ (cfg.token[0] ? (1UL << 21) : 0UL)
+         ^ (armed ? (1UL << 22) : 0UL);
+}
+
 static uint16_t hexToRgb565(const char* hex) {
     if (!hex || hex[0] != '#' || strlen(hex) != 7) return 0;
     // strtoul plutot que sscanf : voir CloudSync::isPrivateAddress, la famille
@@ -600,6 +612,11 @@ void DisplayManager::update() {
 #else
     const uint16_t rainMask = 0U;
 #endif
+    // Code de rattachement affiche (D016, lot D) : pas de mise en veille
+    // pendant qu'on le recopie, le code vit 10 minutes.
+    if (_cloudSync && _cloudSync->enrollActive() && !_screenMgr.isAsleep()) {
+        _screenMgr.wakeUp();
+    }
     {
         const uint32_t t0 = RuntimeProfiler::start();
         _screenMgr.update(anyActive, isWifiSearching(), activeZoneMask, _nbZones, rainMask);
@@ -743,7 +760,9 @@ void DisplayManager::update() {
     }
 
     // Pave PIN : le decompte d'attente apres echecs doit avancer a la seconde.
-    uint32_t interval = (anyActive || _screen == Screen::PIN) ? _refreshActMs : _refreshNomMs;
+    // Page En ligne : le decompte du code de rattachement avance aussi.
+    const bool enLigne = _screen == Screen::ADMIN && _adminPage == AdminPage::EN_LIGNE;
+    uint32_t interval = (anyActive || _screen == Screen::PIN || enLigne) ? _refreshActMs : _refreshNomMs;
 
 #if AQUALOOK_BOARD_S3
     // Encart meteo ouvert : ne rien redessiner dessous, le rendu periodique
@@ -807,6 +826,7 @@ const char* DisplayManager::adminPageName(AdminPage p) {
         case AdminPage::SANTE:  return "Sante";
         case AdminPage::APROPOS: return "A propos";
         case AdminPage::SECURITE: return "Securite";
+        case AdminPage::EN_LIGNE: return "En ligne";
         default:                return "?";
     }
 }
@@ -1422,6 +1442,43 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
                 _removePinArmedAt = 0;
             } else {
                 _removePinArmedAt = now;
+            }
+            _needsFullRedraw = true;
+        }
+    }
+    // Page En ligne (D016, lot D) -- coordonnees partagees avec
+    // drawAdminPageEnLigne(). Rattacher et oublier exigent une session
+    // deverrouillee ; annuler un code en cours reste libre (sans effet sur
+    // le compte).
+    if (_adminPage == AdminPage::EN_LIGNE && _cloudSync) {
+        const EnrollPhase ph = _cloudSync->enrollView().phase;
+        const bool enCours = ph == EnrollPhase::REQUESTING || ph == EnrollPhase::SHOWING ||
+                             ph == EnrollPhase::APPROVED || _cloudSync->enrollActive();
+        if (enCours) {
+            if (hitTest(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34, tx, ty)) {
+                EventBus::cloudEnrollRequest = EventBus::ENROLL_CANCEL;
+                _needsFullRedraw = true;
+            }
+            return;
+        }
+        if (hitTest(10, ADM_CONTENT_Y + 70, SCREEN_W - 20, 34, tx, ty)) {
+            if (!PinLock::isUnlocked()) { openPin(PinPurpose::ENTER_ADMIN); return; }
+            _forgetAccountArmedAt = 0;
+            EventBus::cloudEnrollRequest = EventBus::ENROLL_START;
+            _needsFullRedraw = true;
+            return;
+        }
+        const CloudSyncConfig& cfg = _cloudSync->config();
+        if (cfg.moduleId[0] && cfg.token[0] &&
+            hitTest(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34, tx, ty)) {
+            if (!PinLock::isUnlocked()) { openPin(PinPurpose::ENTER_ADMIN); return; }
+            const uint32_t now = millis();
+            if (_forgetAccountArmedAt != 0 &&
+                now - _forgetAccountArmedAt <= FORGET_SECRET_CONFIRM_MS) {
+                EventBus::cloudEnrollRequest = EventBus::ENROLL_FORGET;
+                _forgetAccountArmedAt = 0;
+            } else {
+                _forgetAccountArmedAt = now;
             }
             _needsFullRedraw = true;
         }
@@ -4142,6 +4199,7 @@ void DisplayManager::drawAdminPageContent() {
         case AdminPage::SANTE:  drawAdminPageSante();  break;
         case AdminPage::APROPOS: drawAdminPageAPropos(); break;
         case AdminPage::SECURITE: drawAdminPageSecurite(); break;
+        case AdminPage::EN_LIGNE: drawAdminPageEnLigne(); break;
         default: break;
     }
 }
@@ -4150,6 +4208,14 @@ void DisplayManager::updateAdminDynamic() {
     // Seule la page SYSTEM a du contenu dynamique (RAM, uptime)
     if (_adminPage == AdminPage::SYSTEM ||
         _adminPage == AdminPage::LOGS) drawAdminPageContent();
+    // En ligne : seulement quand l'etat ou le decompte a change.
+    if (_adminPage == AdminPage::EN_LIGNE && _cloudSync) {
+        const bool armed = _forgetAccountArmedAt != 0 &&
+                           millis() - _forgetAccountArmedAt <= FORGET_SECRET_CONFIRM_MS;
+        if (enLigneKey(_cloudSync->enrollView(), _cloudSync->config(), armed) != _enLigneDrawKey) {
+            drawAdminPageContent();
+        }
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -4353,6 +4419,96 @@ void DisplayManager::drawAdminPageSecurite() {
         const bool armed = _removePinArmedAt != 0;
         drawButton(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34,
                    armed ? "Confirmer ? (retaper ici)" : "Retirer le PIN",
+                   armed ? Theme::AMBER : Theme::SURFACE,
+                   armed ? 0x0000 : Theme::TEXT);
+    }
+}
+
+// ─────────────────────────────────────────────
+//  Page ADMIN : EN LIGNE (D016, lot D)
+//  Rattachement a un compte par code court. Le code est demande au serveur
+//  par CloudSyncScheduler (via EventBus::cloudEnrollRequest) ; cette page ne
+//  fait que lire son etat. Coordonnees des boutons partagees avec
+//  handleTouchAdmin().
+// ─────────────────────────────────────────────
+void DisplayManager::drawAdminPageEnLigne() {
+    int y = ADM_CONTENT_Y + 10;
+    _tft.setTextSize(1);
+    if (!_cloudSync) {
+        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        _tft.drawString("Synchronisation en ligne indisponible.", 12, y);
+        return;
+    }
+    const CloudSyncConfig& cfg = _cloudSync->config();
+    const EnrollView v = _cloudSync->enrollView();
+    if (_forgetAccountArmedAt != 0 &&
+        millis() - _forgetAccountArmedAt > FORGET_SECRET_CONFIRM_MS) {
+        _forgetAccountArmedAt = 0;
+    }
+    const bool armed = _forgetAccountArmedAt != 0;
+    _enLigneDrawKey = enLigneKey(v, cfg, armed);
+    char buf[72];
+
+    if (v.phase == EnrollPhase::REQUESTING || v.phase == EnrollPhase::SHOWING ||
+        v.phase == EnrollPhase::APPROVED) {
+        _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+        if (v.phase == EnrollPhase::REQUESTING) {
+            _tft.drawString("Demande du code au serveur...", 12, y);
+        } else if (v.phase == EnrollPhase::APPROVED) {
+            _tft.setTextColor(Theme::GREEN, Theme::SURFACE);
+            _tft.drawString("Code accepte, enregistrement...", 12, y);
+        } else {
+            _tft.drawString("Code a saisir dans l'espace en ligne :", 12, y);
+            _tft.setFreeFont(THEME_FONT_HEADLINE);
+            _tft.setTextColor(Theme::CYAN, Theme::SURFACE);
+            _tft.setTextDatum(TC_DATUM);
+            _tft.drawString(v.userCode, SCREEN_W / 2, y + 18);
+            _tft.setFreeFont(nullptr);
+            _tft.setTextDatum(TL_DATUM);
+            _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+            snprintf(buf, sizeof(buf), "%s/app > Rattacher un module", cfg.host);
+            _tft.drawString(buf, 12, y + 48);
+            snprintf(buf, sizeof(buf), "Valable encore %lu:%02lu",
+                     static_cast<unsigned long>(v.remainingSec / 60U),
+                     static_cast<unsigned long>(v.remainingSec % 60U));
+            _tft.drawString(buf, 12, y + 62);
+        }
+        drawButton(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34, "Annuler",
+                   Theme::SURFACE, Theme::TEXT);
+        return;
+    }
+
+    const bool rattache = cfg.moduleId[0] && cfg.token[0];
+    if (rattache) {
+        snprintf(buf, sizeof(buf), "Rattache : %s", cfg.moduleId);
+        _tft.setTextColor(Theme::GREEN, Theme::SURFACE);
+    } else {
+        strlcpy(buf, "Non rattache a un compte en ligne.", sizeof(buf));
+        _tft.setTextColor(Theme::AMBER, Theme::SURFACE);
+    }
+    _tft.drawString(buf, 12, y);
+    y += 16;
+    _tft.setTextColor(Theme::MUTED, Theme::SURFACE);
+    snprintf(buf, sizeof(buf), "Serveur : %s", cfg.host[0] ? cfg.host : "(non configure)");
+    _tft.drawString(buf, 12, y);
+    y += 14;
+    snprintf(buf, sizeof(buf), "Materiel : %s", DeviceIdentity::hwId());
+    _tft.drawString(buf, 12, y);
+    y += 14;
+    if (v.phase == EnrollPhase::FAILED) {
+        _tft.setTextColor(Theme::AMBER, Theme::SURFACE);
+        _tft.drawString(v.detail, 12, y);
+    } else if (v.phase == EnrollPhase::DONE) {
+        _tft.setTextColor(Theme::GREEN, Theme::SURFACE);
+        _tft.drawString("Rattachement reussi.", 12, y);
+    }
+
+    drawButton(10, ADM_CONTENT_Y + 70, SCREEN_W - 20, 34,
+               rattache ? "Rattacher a un autre compte" : "Rattacher a un compte",
+               Theme::SURFACE, Theme::TEXT);
+    if (rattache) {
+        drawButton(10, ADM_CONTENT_Y + 112, SCREEN_W - 20, 34,
+                   armed ? "Confirmer ? (retaper ici)" : "Oublier le compte",
                    armed ? Theme::AMBER : Theme::SURFACE,
                    armed ? 0x0000 : Theme::TEXT);
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // ═══════════════════════════════════════════════════════════════
 //  EventBus — canal de communication inter-modules
 //
@@ -14,6 +16,7 @@
 //    WebManager      → WiFiManager     via wifiDirty
 //    DisplayManager  → WiFiManager     via captiveRequested  (bouton écran)
 //    WebManager      → WiFiManager     via captiveRequested  (route /api/captive)
+//    DisplayManager  → CloudSyncScheduler via cloudEnrollRequest (ADMIN > En ligne)
 //
 //  Invariant I18 : EventBus est le SEUL canal inter-modules
 //  hors callbacks explicites (ex. onRelayRequest).
@@ -55,6 +58,13 @@ struct EventBus {
     /// --purple #6633cc cote Web).
     static bool updateInProgress;
 
+    // ── Rattachement a un compte en ligne (D016, lot D) ───────
+    /// Positionne par DisplayManager seulement (ADMIN > En ligne, derriere
+    /// le PIN) : aucune route Web ne rattache ni ne detache le module.
+    /// CloudSyncScheduler::update() le consomme.
+    enum : uint8_t { ENROLL_NONE = 0, ENROLL_START = 1, ENROLL_CANCEL = 2, ENROLL_FORGET = 3 };
+    static uint8_t cloudEnrollRequest;
+
     // ── Helpers ───────────────────────────────────────────────
     /// Remet tous les flags à false — appelé uniquement en test unitaire.
     static void reset() {
@@ -63,6 +73,7 @@ struct EventBus {
         wifiDirty        = false;
         captiveRequested = false;
         updateInProgress = false;
+        cloudEnrollRequest = ENROLL_NONE;
     }
 };
 

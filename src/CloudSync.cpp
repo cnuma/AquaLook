@@ -198,9 +198,13 @@ bool dechunkBody(String& body) {
     return out.length() > 0U;
 }
 
+// verbose : faux pour l'interrogation de l'enrolement (toutes les 5 s
+// pendant 10 min) -- ses quatre lignes INFO par echange chasseraient tout le
+// reste du journal circulaire. Les erreurs restent toujours journalisees.
 bool httpExchange(Client& client, const char* method, const char* host,
                   const char* path, const char* bearerToken,
-                  const String& body, int& outStatus, String& outBody) {
+                  const String& body, int& outStatus, String& outBody,
+                  bool verbose = true) {
     // 16 Ko depuis le 6 octobre 2026 (decision D014) : une commande
     // config.apply peut porter un script complet (bytecode + source) ou
     // le catalogue de phrases (~5 Ko). A 4 Ko, un JSON tronque ne
@@ -228,7 +232,7 @@ bool httpExchange(Client& client, const char* method, const char* host,
         client.print(body);
     }
 
-    EventLog::log(LOG_INFO, "CloudSync: %s %s requete envoyee", method, path);
+    if (verbose) EventLog::log(LOG_INFO, "CloudSync: %s %s requete envoyee", method, path);
 
     const uint32_t deadline = millis() + RESPONSE_TIMEOUT_MS;
     while (!client.available() && client.connected() && millis() < deadline) {
@@ -250,7 +254,7 @@ bool httpExchange(Client& client, const char* method, const char* host,
     }
     const int firstSpace = statusLine.indexOf(' ');
     outStatus = firstSpace >= 0 ? statusLine.substring(firstSpace + 1, firstSpace + 4).toInt() : 0;
-    EventLog::log(LOG_INFO, "CloudSync: statut http=%d", outStatus);
+    if (verbose) EventLog::log(LOG_INFO, "CloudSync: statut http=%d", outStatus);
 
     // Parcourir les en-tetes jusqu'a la ligne vide. Borne en nombre de lignes
     // en plus du delai, pour ne jamais dependre du seul comportement du pair.
@@ -272,8 +276,8 @@ bool httpExchange(Client& client, const char* method, const char* host,
         }
         ++headerCount;
     }
-    EventLog::log(LOG_INFO, "CloudSync: en-tetes lus (%u)%s", headerCount,
-                  chunked ? ", corps decoupe en morceaux" : "");
+    if (verbose) EventLog::log(LOG_INFO, "CloudSync: en-tetes lus (%u)%s", headerCount,
+                               chunked ? ", corps decoupe en morceaux" : "");
 
     // Lecture du corps octet par octet, bornee, avec un delay(1)
     // inconditionnel a chaque tour -- voir la note en tete de fonction.
@@ -311,8 +315,8 @@ bool httpExchange(Client& client, const char* method, const char* host,
         delay(1);
         if (millis() - lastDataAtMs > RESPONSE_TIMEOUT_MS) break;
     }
-    EventLog::log(LOG_INFO, "CloudSync: corps lu (%u octets)",
-                  static_cast<unsigned>(outBody.length()));
+    if (verbose) EventLog::log(LOG_INFO, "CloudSync: corps lu (%u octets)",
+                               static_cast<unsigned>(outBody.length()));
 
     if (chunked && !dechunkBody(outBody)) {
         // Corps annonce decoupe mais indechiffrable : le dire, et laisser le
@@ -1220,21 +1224,33 @@ void CloudSyncScheduler::update(bool ntpSynced,
     // _syncInProgress est vrai (donc juste avant le "if (_syncInProgress)
     // return;" qui suit) que ce controle a un sens.
     checkSyncWatchdog();
+    // Avant les retours anticipes : un module desactive (jamais rattache)
+    // doit pouvoir s'enroler.
+    handleEnrollRequest(wifi);
+    finishEnroll(epochSec);
 
-    if (BootLoopGuard::isDegraded()) return;
-    if (!_loaded || _triggered || !_cfg.enabled) return;
-    if (_syncInProgress) return;
-
+    // Stabilite WiFi suivie AVANT les retours anticipes, synchronisation
+    // desactivee comprise : sinon le chronometre ne partait qu'a
+    // l'activation, et le premier envoi d'un module tout juste rattache
+    // attendait WIFI_STABLE_MS (5 min) sur un WiFi deja stable depuis
+    // longtemps -- configuration invisible en ligne pendant ce temps
+    // (constate sur .141 le 10 oct. 2026).
     const uint32_t nowMs = millis();
-    // Report apres manque de memoire : ne pas reessayer en continu.
-    if (_deferUntilMs != 0U) {
-        if (nowMs < _deferUntilMs) return;
-        _deferUntilMs = 0U;
-    }
     if (wifi == nullptr || !wifi->isConnected()) {
         _wifiConnectedSinceMs = 0U;
     } else if (_wifiConnectedSinceMs == 0U) {
         _wifiConnectedSinceMs = nowMs;
+    }
+
+    if (BootLoopGuard::isDegraded()) return;
+    if (!_loaded || _triggered || !_cfg.enabled) return;
+    if (_syncInProgress) return;
+    if (enrollActive()) return;
+
+    // Report apres manque de memoire : ne pas reessayer en continu.
+    if (_deferUntilMs != 0U) {
+        if (nowMs < _deferUntilMs) return;
+        _deferUntilMs = 0U;
     }
 
     if (!ntpSynced) return;
@@ -1455,7 +1471,9 @@ void CloudSyncScheduler::performSync() {
 // continue son propre nettoyage (client->stop()) normalement, dans son
 // propre fil d'execution, une fois l'erreur remontee.
 void CloudSyncScheduler::checkSyncWatchdog() {
-    if (!_syncInProgress) return;
+    // L'enrolement partage ce chien de garde : les deux taches ne tournent
+    // jamais ensemble (voir startEnroll()).
+    if (!_syncInProgress && !_enrollTaskRunning) return;
 
     // TOUT le calcul -- y compris l'appel a fd() -- doit se faire SOUS LE
     // MEME VERROU que celui qui protege _watchdog.activeClient en ecriture
@@ -1838,4 +1856,386 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
         _pendingAck = CloudSyncPendingAck{};
         _ackSyncSoon = false;
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Enrolement par code court (D016, lot D)
+//
+//  Contrat : cloud/php-mutualized/enroll.php. Le module demande un code
+//  (/v1/enroll/start), l'affiche, puis interroge (/v1/enroll/poll) jusqu'a
+//  ce que l'utilisateur l'ait saisi dans son espace en ligne. Il recoit
+//  alors son identifiant et son jeton, que la boucle principale enregistre.
+//
+//  Le reseau tourne dans une tache dediee (comme la synchronisation, jamais
+//  en meme temps qu'elle) ; l'ecriture NVS et l'etat partage avec l'ecran
+//  restent a la boucle principale.
+// ═══════════════════════════════════════════════════════════════
+
+namespace {
+
+// Un aller-retour complet. Memes clients, memes timeouts et meme chien de
+// garde que CloudSync::run() : un handshake TLS peut rester bloque bien
+// au-dela de ses timeouts (PHASE_HARD_DEADLINE_MS).
+bool enrollExchange(const CloudSyncConfig& cfg, const char* path, const String& body,
+                    const char* bearer, CloudSyncWatchdog* watchdog, bool verbose,
+                    int& outStatus, String& outBody) {
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    WiFiClient* client = nullptr;
+    if (cfg.useHttps) {
+        OtaTlsTrust::configure(secureClient);
+        secureClient.setHandshakeTimeout(TLS_HANDSHAKE_TIMEOUT_MS / 1000U);
+        secureClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
+        client = &secureClient;
+    } else {
+        plainClient.setTimeout(CONNECT_TIMEOUT_MS / 1000U);
+        client = &plainClient;
+    }
+    // Declare APRES les clients : detruit avant eux, il efface le pointeur
+    // publie avant que l'objet ne disparaisse (meme raison que
+    // WatchdogClientGuard dans CloudSync::run()).
+    struct Guard {
+        CloudSyncWatchdog* w;
+        ~Guard() {
+            portENTER_CRITICAL(&g_cloudSyncMux);
+            w->activeClient = nullptr;
+            w->phaseStartMs = 0U;
+            portEXIT_CRITICAL(&g_cloudSyncMux);
+        }
+    } guard{watchdog};
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    watchdog->activeClient = client;
+    watchdog->phaseStartMs = millis();
+    watchdog->fired = false;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    outStatus = 0;
+    const uint16_t port = cfg.port != 0U ? cfg.port : (cfg.useHttps ? 443U : 80U);
+    if (!client->connect(cfg.host, port)) return false;
+    const bool ok = httpExchange(*client, "POST", cfg.host, path, bearer, body,
+                                 outStatus, outBody, verbose);
+    client->stop();
+    return ok;
+}
+
+}  // namespace
+
+EnrollView CloudSyncScheduler::enrollView() const {
+    EnrollView v;
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    v = _enroll;
+    const uint32_t deadline = _enrollDeadlineMs;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+    if (v.phase == EnrollPhase::SHOWING) {
+        const int32_t left = static_cast<int32_t>(deadline - millis());
+        v.remainingSec = left > 0 ? static_cast<uint32_t>(left) / 1000UL : 0U;
+    }
+    // Le jour ou EnrollView porterait autre chose que l'affichage, il ne
+    // faudrait pas qu'il emporte le jeton : il n'y est pas.
+    return v;
+}
+
+void CloudSyncScheduler::setEnrollFailed(const char* detail) {
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _enroll.phase = EnrollPhase::FAILED;
+    _enroll.userCode[0] = '\0';
+    copyText(_enroll.detail, sizeof(_enroll.detail), detail);
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+    EventLog::log(LOG_WARN, "[ENROLL] echec : %s", detail);
+}
+
+void CloudSyncScheduler::handleEnrollRequest(const WiFiManager* wifi) {
+    const uint8_t req = EventBus::cloudEnrollRequest;
+    EventBus::cloudEnrollRequest = EventBus::ENROLL_NONE;
+
+    if (req == EventBus::ENROLL_START && !_enrollTaskRunning) {
+        startEnroll(wifi);
+    } else if (req == EventBus::ENROLL_CANCEL) {
+        if (_enrollTaskRunning) {
+            _enrollCancel = true;   // la tache s'arrete a son prochain pas
+        } else {
+            _enrollWanted = false;
+            portENTER_CRITICAL(&g_cloudSyncMux);
+            if (_enroll.phase != EnrollPhase::APPROVED) {
+                _enroll = EnrollView{};
+            }
+            portEXIT_CRITICAL(&g_cloudSyncMux);
+        }
+    } else if (req == EventBus::ENROLL_FORGET && !_enrollTaskRunning && !_enrollWanted) {
+        forgetAccount();
+    }
+
+    // Demande mise en attente pendant une synchronisation.
+    if (_enrollWanted && !_syncInProgress && !_enrollTaskRunning) {
+        startEnroll(wifi);
+    }
+}
+
+void CloudSyncScheduler::startEnroll(const WiFiManager* wifi) {
+    _enrollWanted = false;
+    if (BootLoopGuard::isDegraded()) { setEnrollFailed("Mode degrade : redemarrer"); return; }
+    if (_cfg.host[0] == '\0') { setEnrollFailed("Serveur non configure"); return; }
+    // Meme regle que set() : le jeton recu ne doit jamais traverser Internet
+    // en clair.
+    if (!_cfg.useHttps && !isPrivateAddress(_cfg.host)) {
+        setEnrollFailed("HTTPS requis vers ce serveur");
+        return;
+    }
+    if (wifi == nullptr || !wifi->isConnected()) { setEnrollFailed("Pas de connexion WiFi"); return; }
+
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _enroll = EnrollView{};
+    _enroll.phase = EnrollPhase::REQUESTING;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    if (_syncInProgress) {
+        _enrollWanted = true;   // lance des que la synchronisation finit
+        return;
+    }
+    const uint32_t freeBytes = static_cast<uint32_t>(AquaLook::Heap::freeBytes());
+    const uint32_t largestBlock = static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
+    if (freeBytes < MIN_FREE_FOR_SYNC || largestBlock < MIN_BLOCK_FOR_SYNC) {
+        setEnrollFailed("Memoire insuffisante, reessayer");
+        return;
+    }
+
+    _enrollCfg = _cfg;
+    _enrollCancel = false;
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _enrollTaskRunning = true;
+    _watchdog.activeClient = nullptr;
+    _watchdog.phaseStartMs = 0U;
+    _watchdog.fired = false;
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+
+    // Coeur 1, comme la synchronisation (voir startSync()).
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        enrollTaskEntry, "cloud-enroll", SYNC_TASK_STACK_BYTES, this,
+        SYNC_TASK_PRIORITY, nullptr, 1);
+    if (created != pdPASS) {
+        _enrollTaskRunning = false;
+        setEnrollFailed("Tache impossible a creer");
+        return;
+    }
+    EventLog::log(LOG_INFO, "[ENROLL] demande de code vers %s", _cfg.host);
+}
+
+void CloudSyncScheduler::enrollTaskEntry(void* context) {
+    CloudSyncScheduler* self = static_cast<CloudSyncScheduler*>(context);
+    if (self) {
+        self->performEnroll();
+        self->_enrollTaskRunning = false;
+    }
+    vTaskDelete(nullptr);
+}
+
+void CloudSyncScheduler::performEnroll() {
+    const CloudSyncConfig& cfg = _enrollCfg;
+    // Le jeton actuel prouve au serveur que c'est bien CE boitier qui
+    // demande (exige s'il est deja rattache). Jamais en clair, comme run().
+    const char* bearer = (cfg.useHttps && cfg.token[0]) ? cfg.token : "";
+
+    String body;
+    String resp;
+    int status = 0;
+    {
+        JsonDocument doc;
+        doc["hwId"] = DeviceIdentity::hwId();
+        doc["firmware"] = AQUALOOK_VERSION;
+        serializeJson(doc, body);
+    }
+    if (!enrollExchange(cfg, "/v1/enroll/start", body, bearer, &_watchdog, true, status, resp)) {
+        setEnrollFailed("Serveur injoignable");
+        return;
+    }
+    if (status == 403) { setEnrollFailed("Deja rattache : detacher en ligne"); return; }
+    if (status == 429) {
+        // Dire pourquoi et QUAND : "plus tard" seul laissait l'utilisateur
+        // reessayer au hasard (retour du 10 oct. 2026). Heure locale si
+        // l'horloge est connue, sinon un delai.
+        JsonDocument doc;
+        uint32_t retrySec = 0U;
+        uint32_t limit = 0U;
+        if (deserializeJson(doc, resp) == DeserializationError::Ok) {
+            retrySec = doc["retryAfter"] | 0U;
+            limit = doc["limit"] | 0U;
+        }
+        char quand[24];
+        struct tm t;
+        const time_t at = time(nullptr) + static_cast<time_t>(retrySec);
+        if (retrySec > 0U && time(nullptr) > 1700000000 && localtime_r(&at, &t)) {
+            snprintf(quand, sizeof(quand), "a %02d:%02d", t.tm_hour, t.tm_min);
+        } else if (retrySec > 0U) {
+            snprintf(quand, sizeof(quand), "dans %lu min",
+                     static_cast<unsigned long>((retrySec + 59U) / 60U));
+        } else {
+            copyText(quand, sizeof(quand), "plus tard");
+        }
+        char d[48];
+        if (limit > 0U) {
+            snprintf(d, sizeof(d), "%lu codes/h atteints : reessayer %s",
+                     static_cast<unsigned long>(limit), quand);
+        } else {
+            snprintf(d, sizeof(d), "Trop de demandes : reessayer %s", quand);
+        }
+        setEnrollFailed(d);
+        return;
+    }
+    if (status == 503) { setEnrollFailed("Serveur pas a jour pour le rattachement"); return; }
+    if (status != 200) {
+        char d[48];
+        snprintf(d, sizeof(d), "Refus du serveur (http %d)", status);
+        setEnrollFailed(d);
+        return;
+    }
+
+    char deviceCode[65] = "";
+    uint32_t expiresSec = 0U;
+    uint32_t intervalMs = 5000UL;
+    {
+        JsonDocument doc;
+        if (deserializeJson(doc, resp) != DeserializationError::Ok) {
+            setEnrollFailed("Reponse illisible");
+            return;
+        }
+        const char* dc = doc["deviceCode"] | "";
+        const char* uc = doc["userCode"] | "";
+        expiresSec = doc["expiresIn"] | 0U;
+        const uint32_t interval = doc["interval"] | 5U;
+        if (strlen(dc) != 64U || uc[0] == '\0' || strlen(uc) >= sizeof(_enroll.userCode)
+            || expiresSec == 0U) {
+            setEnrollFailed("Reponse illisible");
+            return;
+        }
+        copyText(deviceCode, sizeof(deviceCode), dc);
+        intervalMs = (interval < 2U ? 2U : (interval > 60U ? 60U : interval)) * 1000UL;
+        portENTER_CRITICAL(&g_cloudSyncMux);
+        if (_enrollCancel) {
+            // Annule pendant la demande : rien a montrer.
+            _enroll = EnrollView{};
+            portEXIT_CRITICAL(&g_cloudSyncMux);
+            return;
+        }
+        _enroll.phase = EnrollPhase::SHOWING;
+        copyText(_enroll.userCode, sizeof(_enroll.userCode), uc);
+        _enroll.detail[0] = '\0';
+        _enrollDeadlineMs = millis() + expiresSec * 1000UL;
+        portEXIT_CRITICAL(&g_cloudSyncMux);
+    }
+    // Le code lui-meme n'est jamais journalise (voir EnrollView).
+    EventLog::log(LOG_INFO, "[ENROLL] code affiche, valable %lu s",
+                  static_cast<unsigned long>(expiresSec));
+
+    for (;;) {
+        // Attente decoupee : une annulation doit agir en une fraction de
+        // seconde, pas a la fin de l'intervalle.
+        for (uint32_t waited = 0U; waited < intervalMs && !_enrollCancel; waited += 100U) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (_enrollCancel) {
+            portENTER_CRITICAL(&g_cloudSyncMux);
+            _enroll = EnrollView{};
+            portEXIT_CRITICAL(&g_cloudSyncMux);
+            EventLog::log(LOG_INFO, "[ENROLL] annule depuis l'ecran");
+            break;
+        }
+        if (static_cast<int32_t>(millis() - _enrollDeadlineMs) >= 0) {
+            setEnrollFailed("Code expire");
+            break;
+        }
+
+        body = String();
+        {
+            JsonDocument doc;
+            doc["deviceCode"] = deviceCode;
+            serializeJson(doc, body);
+        }
+        resp = String();
+        if (!enrollExchange(cfg, "/v1/enroll/poll", body, "", &_watchdog, false, status, resp)) {
+            continue;   // reseau passager : on reessaie jusqu'a l'expiration
+        }
+        if (status == 429) { intervalMs += 2000UL; continue; }
+        if (status == 410) { setEnrollFailed("Code expire ou remplace"); break; }
+        if (status != 200) {
+            char d[48];
+            snprintf(d, sizeof(d), "Refus du serveur (http %d)", status);
+            setEnrollFailed(d);
+            break;
+        }
+        JsonDocument doc;
+        if (deserializeJson(doc, resp) != DeserializationError::Ok) continue;
+        const char* st = doc["status"] | "";
+        if (strcmp(st, "pending") == 0) continue;
+        const char* mid = doc["moduleId"] | "";
+        const char* tok = doc["token"] | "";
+        if (strcmp(st, "approved") != 0 || mid[0] == '\0' || tok[0] == '\0'
+            || strlen(mid) >= sizeof(_enrollModuleId) || strlen(tok) >= sizeof(_enrollToken)) {
+            setEnrollFailed("Reponse illisible");
+            break;
+        }
+        portENTER_CRITICAL(&g_cloudSyncMux);
+        copyText(_enrollModuleId, sizeof(_enrollModuleId), mid);
+        copyText(_enrollToken, sizeof(_enrollToken), tok);
+        _enroll.phase = EnrollPhase::APPROVED;
+        _enroll.userCode[0] = '\0';
+        portEXIT_CRITICAL(&g_cloudSyncMux);
+        EventLog::log(LOG_INFO, "[ENROLL] approuve : module %s", mid);
+        break;
+    }
+    memset(deviceCode, 0, sizeof(deviceCode));
+}
+
+void CloudSyncScheduler::finishEnroll(uint32_t epochSec) {
+    (void)epochSec;
+    if (_enrollTaskRunning) return;
+    char mid[sizeof(_enrollModuleId)];
+    char tok[sizeof(_enrollToken)];
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    const bool approved = _enroll.phase == EnrollPhase::APPROVED;
+    if (approved) {
+        memcpy(mid, _enrollModuleId, sizeof(mid));
+        memcpy(tok, _enrollToken, sizeof(tok));
+        memset(_enrollToken, 0, sizeof(_enrollToken));
+        _enrollModuleId[0] = '\0';
+    }
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+    if (!approved) return;
+
+    // Hote, port, HTTPS et intervalle inchanges : seuls l'identite et le
+    // jeton viennent du serveur. La synchronisation est activee.
+    const bool ok = set(true, _cfg.host, _cfg.port, _cfg.useHttps, mid, tok, _cfg.intervalMinutes);
+    memset(tok, 0, sizeof(tok));
+    if (!ok) {
+        setEnrollFailed("Enregistrement impossible");
+        return;
+    }
+    // Premier cycle des que les conditions habituelles sont reunies (WiFi
+    // stable, pas d'arrosage), configuration comprise : le serveur ne
+    // connait encore rien de ce module.
+    _lastSyncEpochSec = 1U;
+    _lastSyncedRevision = 0xFFFFFFFFUL;
+    _consecutiveFailures = 0U;
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _enroll = EnrollView{};
+    _enroll.phase = EnrollPhase::DONE;
+    copyText(_enroll.detail, sizeof(_enroll.detail), mid);
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+    EventLog::log(LOG_INFO, "[ENROLL] rattache, module %s enregistre ; configuration envoyee dans ~%lu s",
+                  mid, static_cast<unsigned long>(SYNC_SOON_SECONDS));
+}
+
+// "Oublier le compte" (ADMIN > En ligne, D016 §5) : efface identifiant et
+// jeton de la NVS et coupe la synchronisation. Le serveur n'est pas
+// prevenu : le module y apparait hors ligne jusqu'a son detachement en
+// ligne ou un nouvel enrolement (qui exigera alors le detachement, faute
+// de jeton a presenter).
+void CloudSyncScheduler::forgetAccount() {
+    if (!set(false, _cfg.host, _cfg.port, _cfg.useHttps, "", "", _cfg.intervalMinutes)) {
+        setEnrollFailed("Effacement impossible");
+        return;
+    }
+    portENTER_CRITICAL(&g_cloudSyncMux);
+    _enroll = EnrollView{};
+    portEXIT_CRITICAL(&g_cloudSyncMux);
+    EventLog::log(LOG_INFO, "[ENROLL] compte oublie depuis l'ecran");
 }

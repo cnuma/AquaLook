@@ -95,6 +95,33 @@ struct CloudSyncWatchdog {
     bool     volatile fired        = false;    // latch : n'agit qu'une fois par phase
 };
 
+// ── Enrolement par code court (D016, lot D) ──────────────────────────
+//
+// Demande depuis le LCD (ADMIN > En ligne, PIN si pose) via
+// EventBus::cloudEnrollRequest ; aucune route Web ne la declenche. Le
+// module demande un code au serveur, l'affiche, puis interroge le serveur
+// jusqu'a ce que l'utilisateur l'ait saisi dans son espace en ligne : il
+// recoit alors son identifiant et son jeton, enregistres en NVS par la
+// boucle principale. Contrat serveur : cloud/php-mutualized/enroll.php.
+enum class EnrollPhase : uint8_t {
+    IDLE,        // rien en cours
+    REQUESTING,  // demande du code en cours
+    SHOWING,     // code affiche, en attente de sa saisie en ligne
+    APPROVED,    // jeton recu, enregistrement par la boucle principale
+    DONE,        // rattache
+    FAILED       // echec : detail lisible
+};
+
+// Ce que l'ecran affiche. userCode n'est JAMAIS journalise : lu dans le
+// journal (expose sur le LAN), il permettrait a un tiers de le saisir avant
+// le proprietaire.
+struct EnrollView {
+    EnrollPhase phase = EnrollPhase::IDLE;
+    char     userCode[12] = "";
+    uint32_t remainingSec = 0U;
+    char     detail[48]   = "";
+};
+
 class CloudSync {
 public:
     // Charge la configuration depuis NVS. Fonction partagee avec
@@ -170,6 +197,12 @@ public:
 
     bool set(bool enabled, const char* host, uint16_t port, bool useHttps,
              const char* moduleId, const char* token, uint16_t intervalMinutes);
+
+    // Etat de l'enrolement, pour l'ecran (copie sous verrou). La demande,
+    // l'annulation et l'oubli du compte passent par
+    // EventBus::cloudEnrollRequest, consomme dans update().
+    EnrollView enrollView() const;
+    bool enrollActive() const { return _enrollTaskRunning || _enrollWanted; }
 
     // ── Diagnostic du dernier cycle, pour /api/adminStatus ───────────────
     //
@@ -254,6 +287,28 @@ private:
     // l'affichage, ce que la tache de synchronisation n'a pas le droit de
     // faire (voir la note sur applyPendingResult dans CloudSync.cpp).
     void applyCommand(const char* json, const char* correlationId);
+
+    // Enrolement (D016, lot D) -- voir EnrollPhase.
+    void handleEnrollRequest(const WiFiManager* wifi);
+    void startEnroll(const WiFiManager* wifi);
+    void finishEnroll(uint32_t epochSec);
+    void forgetAccount();
+    void setEnrollFailed(const char* detail);
+    static void enrollTaskEntry(void* context);
+    void performEnroll();
+
+    // Partage avec la tache d'enrolement, sous g_cloudSyncMux. Le jeton
+    // recu n'y sejourne que le temps que la boucle principale l'enregistre.
+    EnrollView       _enroll;
+    uint32_t         _enrollDeadlineMs = 0U;
+    char             _enrollModuleId[32] = "";
+    char             _enrollToken[80]    = "";
+    volatile bool    _enrollTaskRunning = false;
+    volatile bool    _enrollCancel      = false;
+    // Demande recue pendant une synchronisation : lancee des qu'elle finit
+    // (les deux ne tournent jamais ensemble, meme tas, meme chien de garde).
+    bool             _enrollWanted      = false;
+    CloudSyncConfig  _enrollCfg;
 
     CloudSyncConfig _cfg;
     uint32_t _lastSyncEpochSec = 0U;
