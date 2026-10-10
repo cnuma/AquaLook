@@ -41,6 +41,8 @@ public:
         char    ssid[33];
         int8_t  rssi;
         bool    secured;
+        uint8_t bssid[6];   // point d'acces precis (un mesh = un SSID, plusieurs BSSID)
+        uint8_t channel;
     };
 
     int16_t     getScanCount() const;

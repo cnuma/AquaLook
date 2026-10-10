@@ -3046,6 +3046,18 @@ void WebManager::handleSetDisplay(AsyncWebServerRequest* req, JsonDocument& doc)
 void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
     if (!_wifi) { sendError(req, "wifi indisponible"); return; }
 
+    // Diagnostic du mesh : ?refresh=1 relance un scan (le resultat est sinon
+    // garde jusqu'au redemarrage), ?all=1 liste chaque point d'acces (BSSID)
+    // au lieu d'un seul par SSID. Sans parametre, reponse inchangee pour
+    // setup.html (champs bssid/channel en plus seulement).
+    const bool all = req->hasParam("all");
+    if (req->hasParam("refresh")) {
+        _wifi->clearScan();
+        _wifi->startScan();
+        req->send(200, "application/json", "{\"scanning\":true}");
+        return;
+    }
+
     int16_t n = _wifi->getScanCount();
 
     if (n < 0) {
@@ -3092,7 +3104,7 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
 
         // Vérifier si ce SSID a déjà été ajouté
         bool duplicate = false;
-        for (uint8_t j = 0; j < i; j++) {
+        for (uint8_t j = 0; !all && j < i; j++) {
             if (seen[j] && strcmp(_wifi->getScanEntry(order[j]).ssid, e.ssid) == 0) {
                 duplicate = true;
                 break;
@@ -3105,6 +3117,11 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
         net["ssid"]    = e.ssid;
         net["rssi"]    = e.rssi;
         net["secured"] = e.secured;
+        char bssid[18];
+        snprintf(bssid, sizeof(bssid), "%02x:%02x:%02x:%02x:%02x:%02x",
+                 e.bssid[0], e.bssid[1], e.bssid[2], e.bssid[3], e.bssid[4], e.bssid[5]);
+        net["bssid"]   = bssid;
+        net["channel"] = e.channel;
     }
 
     // Le résultat n'est volontairement pas libéré ici (pas de clearScan()) :

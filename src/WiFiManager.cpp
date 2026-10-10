@@ -73,10 +73,14 @@ static const char* wifiDisconnectReasonName(uint8_t reason) {
 static void onWifiDisconnectedEvent(WiFiEvent_t, WiFiEventInfo_t info) {
     EventLog::log(
         LOG_WARN,
-        "WiFi: deconnecte par le pilote, raison=%u (%s) rssi_avant=%ddBm",
+        "WiFi: deconnecte par le pilote, raison=%u (%s) rssi_avant=%ddBm "
+        "bssid=%02x:%02x:%02x:%02x:%02x:%02x",
         static_cast<unsigned>(info.wifi_sta_disconnected.reason),
         wifiDisconnectReasonName(info.wifi_sta_disconnected.reason),
-        WiFi.RSSI()
+        WiFi.RSSI(),
+        info.wifi_sta_disconnected.bssid[0], info.wifi_sta_disconnected.bssid[1],
+        info.wifi_sta_disconnected.bssid[2], info.wifi_sta_disconnected.bssid[3],
+        info.wifi_sta_disconnected.bssid[4], info.wifi_sta_disconnected.bssid[5]
     );
 }
 
@@ -267,9 +271,11 @@ void WiFiManager::handleConnecting(uint32_t now) {
 
         EventLog::log(
             LOG_INFO,
-            "WiFi: connecte IP=%s RSSI=%ddBm, veille desactivee",
+            "WiFi: connecte IP=%s RSSI=%ddBm BSSID=%s ch=%d, veille desactivee",
             WiFi.localIP().toString().c_str(),
-            WiFi.RSSI()
+            WiFi.RSSI(),
+            WiFi.BSSIDstr().c_str(),
+            static_cast<int>(WiFi.channel())
         );
 
         EventBus::displayDirty = true;
@@ -635,6 +641,8 @@ WiFiManager::getScanEntry(uint8_t i) const {
     e.ssid[0] = '\0';
     e.rssi = 0;
     e.secured = false;
+    memset(e.bssid, 0, sizeof(e.bssid));
+    e.channel = 0;
 
     const int16_t n = static_cast<int16_t>(WiFi.scanComplete());
     if (n <= 0 || i >= static_cast<uint8_t>(n)) return e;
@@ -644,6 +652,9 @@ WiFiManager::getScanEntry(uint8_t i) const {
     e.rssi = static_cast<int8_t>(WiFi.RSSI(i));
     e.secured =
         WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    const uint8_t* bssid = WiFi.BSSID(i);
+    if (bssid) memcpy(e.bssid, bssid, sizeof(e.bssid));
+    e.channel = static_cast<uint8_t>(WiFi.channel(i));
 
     return e;
 }

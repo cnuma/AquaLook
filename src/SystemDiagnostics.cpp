@@ -548,6 +548,8 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     }
 
     w["channel"] = WiFi.channel();
+    // Noeud du mesh reellement associe : le RSSI seul ne dit pas lequel.
+    w["bssid"] = (wifi && wifi->isConnected()) ? WiFi.BSSIDstr() : String();
     w["mac"] = WiFi.macAddress();
 
     RuntimeProfiler::fillJson(doc);
