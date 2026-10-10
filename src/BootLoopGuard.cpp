@@ -1,6 +1,7 @@
 #include "BootLoopGuard.h"
 
 #include <Preferences.h>
+#include <esp_ota_ops.h>
 
 #include "EventLog.h"
 #include "FaultManager.h"
@@ -21,6 +22,9 @@ static constexpr const char* KEY_DEGRADED    = "degr";
 // vrai, sous surveillance. Distinct de KEY_DEGRADED : les deux ne sont
 // jamais vrais en meme temps.
 static constexpr const char* KEY_PROBATION   = "prob";
+// Empreinte de l'image en service (debut du SHA-256 de l'ELF, unique par
+// binaire, meme quand numero de build et SHA Git ne bougent pas).
+static constexpr const char* KEY_FIRMWARE    = "fw";
 // Un essai a deja ete tente pour cet episode et a echoue (rechute). Bloque
 // tout nouvel essai automatique tant qu'un clearDegraded() manuel ne
 // l'efface pas -- sans quoi un module dont la cause reelle persiste
@@ -55,7 +59,26 @@ void BootLoopGuard::onBoot() {
         return;
     }
 
-    const bool expected   = prefs.getBool(KEY_EXPECTED, false);
+    // Nouveau firmware (flash de developpement ou mise a jour) : ce
+    // redemarrage est voulu par definition. Sans cela, chaque flash comptait
+    // comme un demarrage non planifie et trois flashs rapproches suffisaient
+    // a approcher le mode degrade (constate sur .141 le 10 oct. 2026). Une
+    // vraie boucle de plantages tourne sur le MEME binaire et reste comptee.
+    char fw[17] = {0};
+    esp_ota_get_app_elf_sha256(fw, sizeof(fw));
+    const bool newFirmware = fw[0] != '\0' && prefs.getString(KEY_FIRMWARE, "") != fw;
+    if (newFirmware) {
+        // Compteur et mode degrade repartent de zero : ils jugeaient
+        // l'ancien binaire, pas celui-ci.
+        prefs.putString(KEY_FIRMWARE, fw);
+        prefs.putUChar(KEY_SUSPECT, 0U);
+        prefs.putBool(KEY_DEGRADED, false);
+        prefs.putBool(KEY_PROBE_FAILED, false);
+        EventLog::log(LOG_INFO,
+                      "Garde anti-boucle: nouveau firmware (%s), compteur remis a zero", fw);
+    }
+
+    const bool expected   = prefs.getBool(KEY_EXPECTED, false) || newFirmware;
     const bool wasOnTrial = prefs.getBool(KEY_PROBATION, false);
     _degraded = prefs.getBool(KEY_DEGRADED, false);
     uint8_t count = prefs.getUChar(KEY_SUSPECT, 0U);
