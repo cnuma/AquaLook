@@ -211,6 +211,19 @@ bool WiFiManager::processPendingAction(uint32_t now) {
     switch (action) {
         case PendingAction::STA_SET_MODE:
             WiFi.mode(WIFI_STA);
+            _staModeSetMs = now;
+            scheduleAction(PendingAction::STA_SCAN_START, now + WIFI_MODE_SETTLE_MS);
+            return true;
+
+        case PendingAction::STA_SCAN_START:
+            // startConnection() vient d'arreter la station (disconnect(true)) :
+            // un scan lance avant STA_START est perdu (constate au demarrage de
+            // .141, scan jamais termine). Attendre le demarrage effectif.
+            if (!(WiFi.getStatusBits() & STA_STARTED_BIT) &&
+                (now - _staModeSetMs) < STA_START_TIMEOUT_MS) {
+                scheduleAction(PendingAction::STA_SCAN_START, now + TARGET_SCAN_POLL_MS);
+                return true;
+            }
             // Tentatives paires : scan puis connexion au noeud le plus fort.
             // Tentatives impaires : choix du pilote, pour ne jamais rester
             // bloque sur un noeud visible qui refuserait l'association.
@@ -308,10 +321,11 @@ void WiFiManager::beginTargeted(uint32_t now) {
         const int32_t channel = WiFi.channel(best);
         EventLog::log(
             LOG_INFO,
-            "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s), scan %lums)",
+            "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s), %lu+%lums)",
             bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
             static_cast<long>(channel), static_cast<int>(WiFi.RSSI(best)),
             static_cast<unsigned>(seen),
+            static_cast<unsigned long>(_targetScanStartMs - _staModeSetMs),
             static_cast<unsigned long>(now - _targetScanStartMs)
         );
         WiFi.scanDelete();
@@ -319,8 +333,9 @@ void WiFiManager::beginTargeted(uint32_t now) {
     } else {
         EventLog::log(
             LOG_INFO,
-            "WiFi: scan de connexion sans resultat (n=%d, %lums), choix du pilote",
+            "WiFi: scan de connexion sans resultat (n=%d, %lu+%lums), choix du pilote",
             static_cast<int>(n),
+            static_cast<unsigned long>(_targetScanStartMs - _staModeSetMs),
             static_cast<unsigned long>(now - _targetScanStartMs)
         );
         if (n == WIFI_SCAN_RUNNING) esp_wifi_scan_stop();  // expire : liberer la radio
