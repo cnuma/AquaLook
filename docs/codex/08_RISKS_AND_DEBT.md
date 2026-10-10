@@ -31,8 +31,9 @@ Mesures : NTP requis, offsets vérifiés et statut NTP exposé.
 Traité par le lot F de D016 (10 oct. 2026) : session Web côté module,
 filtre unique sur toutes les écritures, gardes anti-CSRF et anti « DNS
 rebinding ». Restent : HTTP en clair sur le LAN (cookie captable, risque
-assumé), première pose du mot de passe et changement en clair tant que B1/B5
-ne sont pas flashés, secret en clair dans la NVS (accès physique).
+assumé), secret en clair dans la NVS (accès physique). Première pose
+soumise à un geste sur l'écran (B5) et changement chiffré (B1) : validés le
+10 oct. 2026.
 
 ## Dette technique identifiée
 

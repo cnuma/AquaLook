@@ -360,12 +360,19 @@ sessions. Pages : `session.js` (fenêtre de connexion, saisie masquée,
 secret en `localStorage`. Outils : `tools/module_session.py`, soak branché.
 Essais : 34/34 automatisés (gardes, connexion, défi rejoué, blocage par IP,
 5 sessions, déconnexion), navigateur validé par le propriétaire (« good »),
-mot de passe de **test** posé sur `.141` (dans `.env`). Restent : B1
-(changement chiffré) et B5 (premier mot de passe autorisé sur l'écran) sur
-la branche `feature/lot-f-b1-b5`, compilés, non flashés ; phases 4 à 6 de la
-procédure de test. **Tant que B1 n'est pas flashé, « changer le secret »
-dans l'éditeur échoue** (la page envoie déjà la forme chiffrée) :
-contournement, « Oublier » sur l'écran puis bandeau « Accès non protégé ».
+mot de passe de **test** posé sur `.141` (dans `.env`). B1 (changement
+chiffré : `nonce`, `enc`, `mac` ; forme en clair refusée 400 dès qu'un
+secret existe) et B5 (premier mot de passe accepté seulement dans une
+fenêtre de 10 min ouverte sur l'écran, ADMIN > Système « Autoriser un mot de
+passe Web », ouverte aussi par « Oublier ») : **validés sur `.141` le 10 oct.
+2026** (build 1347, `158eec8`, fusion `84806ca`). Phase 5 : 12/12 (clair
+400, mauvais actuel 403, défi inconnu ou rejoué 409, changement accepté,
+session de l'auteur conservée, ancien refusé, nouveau accepté). Phase 4 :
+oubli puis redémarrage, pose refusée 403 ; « Autoriser » touché, fenêtre
+ouverte ; mot de passe posé depuis le bandeau par le propriétaire (toujours
+un mot de passe de banc, dans `.env`). Non observé : l'ouverture de la
+fenêtre par « Oublier » (journal perdu au redémarrage). Reste : phase 6 (SD
+retirée, portail captif).
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes
