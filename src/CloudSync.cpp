@@ -1345,7 +1345,7 @@ void CloudSyncScheduler::update(bool ntpSynced,
     if (!startSync(*config)) return;
     if (forced) {
         _forceRequested = false;
-        EventLog::log(LOG_INFO, "CloudSync: synchro demandee depuis la page Web, lancee");
+        EventLog::log(LOG_INFO, "CloudSync: synchro immediate (bouton Web ou rattachement), lancee");
     }
 
     // Enregistre seulement une fois la tache lancee : un report memoire ne
@@ -2221,19 +2221,23 @@ void CloudSyncScheduler::finishEnroll(uint32_t epochSec) {
         setEnrollFailed("Enregistrement impossible");
         return;
     }
-    // Premier cycle des que les conditions habituelles sont reunies (WiFi
-    // stable, pas d'arrosage), configuration comprise : le serveur ne
-    // connait encore rien de ce module.
+    // Premier cycle IMMEDIAT, configuration comprise : l'utilisateur vient
+    // de saisir le code et regarde son espace en ligne -- toute latence
+    // ressemblerait a un echec (demande du proprietaire, 10 oct. 2026).
+    // Meme chemin que la synchro forcee (requestSyncNow) : ni intervalle,
+    // ni stabilite WiFi, que l'echange qui vient de reussir prouve deja.
+    // Un arrosage en cours le fait seulement attendre sa fin.
     _lastSyncEpochSec = 1U;
     _lastSyncedRevision = 0xFFFFFFFFUL;
     _consecutiveFailures = 0U;
+    _forceRequested = true;
     portENTER_CRITICAL(&g_cloudSyncMux);
     _enroll = EnrollView{};
     _enroll.phase = EnrollPhase::DONE;
     copyText(_enroll.detail, sizeof(_enroll.detail), mid);
     portEXIT_CRITICAL(&g_cloudSyncMux);
-    EventLog::log(LOG_INFO, "[ENROLL] rattache, module %s enregistre ; configuration envoyee dans ~%lu s",
-                  mid, static_cast<unsigned long>(SYNC_SOON_SECONDS));
+    EventLog::log(LOG_INFO, "[ENROLL] rattache, module %s enregistre ; envoi immediat de la configuration",
+                  mid);
 }
 
 // "Oublier le compte" (ADMIN > En ligne, D016 §5) : efface identifiant et
