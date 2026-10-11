@@ -70,6 +70,13 @@
   const pointe = (el) => getComputedStyle(el, '::before').borderLeftWidth === '0px' ? 'gauche' : 'droite';
   const l0 = larg();
   ok(bp.offsetParent && br.offsetParent && pointe(bp) === 'gauche' && pointe(br) === 'droite', 'volets : pastilles visibles, triangles vers les bords');
+  // Jonction en T : centre de la pastille sur la limite schema / zone du bas,
+  // y compris zone du bas repliee.
+  const auT = () => [bp, br].every((el) => { const r = el.getBoundingClientRect();
+    return Math.abs((r.top + r.bottom) / 2 - (document.querySelector('.bottom').getBoundingClientRect().top - 4)) < 2; });
+  const t1 = auT(); document.getElementById('b-replier').click(); await wait(100);
+  const t2 = auT(); document.getElementById('b-replier').click(); await wait(100);
+  ok(t1 && t2, 'pastilles des volets sur les T (zone du bas dépliée : ' + t1 + ', repliée : ' + t2 + ')');
   bp.click(); await wait(100);
   const l1 = larg(), mr = main.getBoundingClientRect();
   ok(main.classList.contains('pal-replie') && getComputedStyle(document.querySelector('.palette')).visibility === 'hidden', 'palette repliée');
