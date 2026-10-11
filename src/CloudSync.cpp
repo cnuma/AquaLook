@@ -1038,6 +1038,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     armPhaseDeadline();
     if (!client->connect(cfg.host, port)) {
         copyText(result.detail, sizeof(result.detail), "sondage: connexion impossible");
+        result.pollFailed = true;
         result.valid = true;
         return result;
     }
@@ -1046,6 +1047,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         String respBody;
         if (!httpExchange(*client, "GET", cfg.host, "/v1/pending-command", authToken, "", status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "sondage: pas de reponse");
+            result.pollFailed = true;
             client->stop();
             result.valid = true;
             return result;
@@ -1080,6 +1082,16 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
                         }
                     }
                 }
+            }
+        } else {
+            // Statut d'erreur (401, 500...) : sans ce detail, le cycle
+            // affichait "cmd=aucune" comme si le serveur n'avait rien a dire.
+            // Ne pas ecraser un detail plus ancien (config en echec).
+            result.pollFailed = true;
+            if (result.detail[0] == '\0') {
+                char detail[64];
+                snprintf(detail, sizeof(detail), "sondage: http=%d", status);
+                copyText(result.detail, sizeof(result.detail), detail);
             }
         }
     }
@@ -1837,10 +1849,12 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
                   // constate le 2 septembre 2026 en suivant la premiere
                   // commande reelle, ou la ligne disait "cmd=echec" alors que
                   // la commande venait d'etre appliquee avec succes.
-                  result.commandReceived
-                      ? (result.ackSuccess ? "accuse-ok" : "accuse-differe")
-                      : "aucune");
-    if (!ok && result.detail[0]) {
+                  result.pollFailed
+                      ? "sondage-echec"
+                      : result.commandReceived
+                          ? (result.ackSuccess ? "accuse-ok" : "accuse-differe")
+                          : "aucune");
+    if ((!ok || result.pollFailed) && result.detail[0]) {
         EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
     }
 
