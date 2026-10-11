@@ -62,6 +62,27 @@
   const pv = document.getElementById('p-var'), b = document.getElementById('gv-enregistrer');
   ok(pv.scrollHeight > pv.clientHeight, 'liste variables plus haute que l’onglet (' + pv.scrollHeight + ' > ' + pv.clientHeight + ')');
   ok(b.getBoundingClientRect().bottom <= pv.getBoundingClientRect().bottom + 1, 'bouton Enregistrer les variables visible sans défiler');
+  // Volets lateraux repliables (P2.6) : la colonne tombe a 0, le schema
+  // gagne la largeur, la pastille reste dans la gouttiere, preference gardee.
+  const main = document.querySelector('.main'), cv = document.getElementById('canvas');
+  const bp = document.getElementById('b-volet-pal'), br = document.getElementById('b-volet-props');
+  const larg = () => cv.getBoundingClientRect().width;
+  const pointe = (el) => getComputedStyle(el, '::before').borderLeftWidth === '0px' ? 'gauche' : 'droite';
+  const l0 = larg();
+  ok(bp.offsetParent && br.offsetParent && pointe(bp) === 'gauche' && pointe(br) === 'droite', 'volets : pastilles visibles, triangles vers les bords');
+  bp.click(); await wait(100);
+  const l1 = larg(), mr = main.getBoundingClientRect();
+  ok(main.classList.contains('pal-replie') && getComputedStyle(document.querySelector('.palette')).visibility === 'hidden', 'palette repliée');
+  ok(Math.abs(l1 - l0 - 230) < 2, 'schéma élargi de la palette : ' + Math.round(l0) + ' -> ' + Math.round(l1));
+  ok(Math.abs(bp.getBoundingClientRect().left + 8 - mr.left - 4) < 2 && pointe(bp) === 'droite', 'pastille palette au bord gauche, triangle vers le schéma');
+  ok(bp.getAttribute('aria-expanded') === 'false' && localStorage.getItem('aqualook-pal-replie') === '1', 'palette : aria + préférence');
+  br.click(); await wait(100);
+  const l2 = larg();
+  ok(Math.abs(l2 - l1 - 320) < 2 && pointe(br) === 'gauche', 'réglages repliés : ' + Math.round(l1) + ' -> ' + Math.round(l2));
+  ok(Math.abs(mr.right - 4 - (br.getBoundingClientRect().left + 8)) < 2, 'pastille réglages au bord droit');
+  bp.click(); br.click(); await wait(100);
+  ok(Math.abs(larg() - l0) < 2 && !main.classList.contains('pal-replie') && !main.classList.contains('props-replie')
+    && localStorage.getItem('aqualook-props-replie') === '0', 'volets dépliés : largeur d’origine');
   ok(window.__err.length === 0, 'erreurs JS : ' + JSON.stringify(window.__err));
   const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = (echecs ? 'ECHECS: ' + echecs : 'TOUT OK') + '\n' + R.join('\n'); document.body.appendChild(pre);
 })().catch((e) => { const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = 'EXCEPTION ' + e.stack; document.body.appendChild(pre); });
