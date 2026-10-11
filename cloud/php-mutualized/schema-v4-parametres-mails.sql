@@ -14,8 +14,9 @@
 -- des noms acceptes). Les acces a la base et le jeton administrateur n'y
 -- vont jamais : il faut les connaitre AVANT de pouvoir lire cette table.
 --
--- value contient en clair le mot de passe SMTP lorsqu'il est regle ici :
--- l'API ne le relit jamais, mais une sauvegarde de la base le contient.
+-- value contient le mot de passe SMTP lorsqu'il est regle ici, CHIFFRE
+-- depuis P0.4c (prefixe enc1:, cle SETTINGS_KEY du .env, voir settings.php) ;
+-- l'API ne le relit jamais.
 CREATE TABLE IF NOT EXISTS app_setting (
     name       VARCHAR(64) PRIMARY KEY,
     value      VARCHAR(255) NOT NULL,

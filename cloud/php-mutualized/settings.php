@@ -13,12 +13,18 @@
  * permettent de lire la base et d'ouvrir la console ; les mettre en base
  * serait circulaire.
  *
- * Les parametres secrets (mot de passe SMTP) sont stockes en clair dans la
- * base -- il faut bien les presenter au serveur SMTP -- mais ne sont JAMAIS
- * relus par l'API : la console sait seulement s'ils sont definis. Une
- * sauvegarde de la base contient donc ce mot de passe ; c'est le prix de la
- * modification sans redeploiement, et le .env reste disponible pour qui
- * prefere l'eviter.
+ * Les parametres secrets (mot de passe SMTP) ne sont JAMAIS relus par
+ * l'API : la console sait seulement s'ils sont definis. Depuis le 11 oct.
+ * 2026 (TODO P0.4c) ils sont CHIFFRES en base avec la cle SETTINGS_KEY du
+ * .env du serveur : une sauvegarde ou une fuite de la base seule ne donne
+ * plus le mot de passe de la boite mail ; il faut aussi le .env. Une
+ * ancienne valeur en clair reste lue, et se rechiffre d'elle-meme a la
+ * premiere lecture des que la cle existe. Sans cle, un nouveau secret est
+ * refuse plutot qu'ecrit en clair.
+ *
+ * SETTINGS_KEY rejoint donc DB_* et ADMIN_TOKEN dans le .env (une cle en
+ * base a cote de ce qu'elle chiffre ne protegerait rien). La perdre rend le
+ * secret illisible : il suffit alors de le ressaisir dans la console.
  */
 
 declare(strict_types=1);
@@ -90,12 +96,99 @@ function settings_from_db(): array
     return $cache;
 }
 
+// ── Chiffrement des secrets en base (P0.4c) ─────────────────────────────
+//
+// XChaCha20-Poly1305 (libsodium, standard depuis PHP 7.2) : nonce aleatoire
+// de 24 octets, sans risque de repetition. Le nom du parametre est lie au
+// chiffre (donnee associee) : recopier en base le chiffre d'un secret sous
+// un autre nom ne le dechiffre pas. Format stocke :
+//   enc1:<base64(nonce . chiffre)>
+// La colonne fait 255 caracteres : d'ou SETTINGS_SECRET_MAX_LEN.
+const SETTINGS_ENC_PREFIX = 'enc1:';
+const SETTINGS_SECRET_MAX_LEN = 128;
+
+/**
+ * Cle de 32 octets lue dans SETTINGS_KEY (base64), ou null si absente,
+ * mal formee ou libsodium indisponible. Generer avec :
+ *   php -r "echo base64_encode(random_bytes(32));"
+ */
+function settings_key(): ?string
+{
+    if (!function_exists('sodium_crypto_aead_xchacha20poly1305_ietf_encrypt')) {
+        return null;
+    }
+    $key = base64_decode(env_value('SETTINGS_KEY'), true);
+    return ($key !== false && strlen($key) === SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES) ? $key : null;
+}
+
+function settings_encrypt(string $name, string $plain, string $key): string
+{
+    $nonce = random_bytes(SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES);
+    $box = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt($plain, $name, $nonce, $key);
+    return SETTINGS_ENC_PREFIX . base64_encode($nonce . $box);
+}
+
+/** Texte clair, ou null si la cle manque ou ne correspond pas. */
+function settings_decrypt(string $name, string $stored): ?string
+{
+    $key = settings_key();
+    $raw = base64_decode(substr($stored, strlen(SETTINGS_ENC_PREFIX)), true);
+    $n = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES;
+    if ($key === null || $raw === false || strlen($raw) <= $n) {
+        return null;
+    }
+    $plain = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt(substr($raw, $n), $name, substr($raw, 0, $n), $key);
+    return $plain === false ? null : $plain;
+}
+
+/** Etat d'un secret en base : 'chiffre', 'clair', 'illisible' ou null (absent). */
+function settings_secret_state(string $name): ?string
+{
+    $stored = settings_from_db()[$name] ?? '';
+    if ($stored === '') {
+        return null;
+    }
+    if (!str_starts_with($stored, SETTINGS_ENC_PREFIX)) {
+        return 'clair';
+    }
+    return settings_decrypt($name, $stored) === null ? 'illisible' : 'chiffre';
+}
+
+/**
+ * Rechiffre un secret encore en clair (ecrit avant P0.4c), si la cle existe.
+ * Ecriture conditionnelle (WHERE value = ancienne) : deux requetes
+ * simultanees ne s'ecrasent pas. Un echec ne bloque rien, la valeur claire
+ * reste lisible et le prochain passage reessaiera.
+ */
+function settings_migrate_plain(string $name, string $plain): void
+{
+    $key = settings_key();
+    if ($key === null || strlen($plain) > SETTINGS_SECRET_MAX_LEN) {
+        return;
+    }
+    try {
+        db()->prepare('UPDATE app_setting SET value = ?, updated_at = ? WHERE name = ? AND value = ?')
+            ->execute([settings_encrypt($name, $plain, $key), utc_now(), $name, $plain]);
+    } catch (Throwable $e) {
+        // sans consequence : voir ci-dessus
+    }
+}
+
 /** Valeur effective et sa provenance ('base', 'env' ou 'defaut'). */
 function setting_with_source(string $name): array
 {
     $db = settings_from_db();
     if (isset($db[$name]) && $db[$name] !== '') {
-        return [$db[$name], 'base'];
+        $value = $db[$name];
+        if (!empty(SETTINGS_REGISTRY[$name]['secret'])) {
+            if (str_starts_with($value, SETTINGS_ENC_PREFIX)) {
+                // Illisible (cle perdue ou changee) : vide, et non le repli
+                // .env -- la console le signale et invite a ressaisir.
+                return [settings_decrypt($name, $value) ?? '', 'base'];
+            }
+            settings_migrate_plain($name, $value);
+        }
+        return [$value, 'base'];
     }
     $env = env_value($name);
     if ($env !== '') {
@@ -128,6 +221,8 @@ function settings_list(): array
             'value'   => $def['secret'] ? null : $value,
             'defined' => $value !== '',
             'source'  => $source,
+            // Secrets seulement : etat du stockage en base (null = pas en base).
+            'stored'  => $def['secret'] ? settings_secret_state($name) : null,
         ];
     }
     return $out;
@@ -182,6 +277,17 @@ function settings_save(array $values): ?string
         }
         if ($def['type'] === 'email' && $value !== '' && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
             return 'adresse invalide : ' . $name;
+        }
+        if ($def['secret'] && $value !== '') {
+            if (strlen($value) > SETTINGS_SECRET_MAX_LEN) {
+                return $name . ' : ' . SETTINGS_SECRET_MAX_LEN . ' caracteres au plus';
+            }
+            $key = settings_key();
+            if ($key === null) {
+                return 'SETTINGS_KEY absente ou invalide dans le .env du serveur : '
+                    . 'secret non enregistre (il ne doit pas etre stocke en clair)';
+            }
+            $value = settings_encrypt($name, $value, $key);
         }
         $ecrire[$name] = $value === '' ? null : $value;
     }
