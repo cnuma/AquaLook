@@ -1038,6 +1038,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
     armPhaseDeadline();
     if (!client->connect(cfg.host, port)) {
         copyText(result.detail, sizeof(result.detail), "sondage: connexion impossible");
+        result.pollFailed = true;
         result.valid = true;
         return result;
     }
@@ -1046,6 +1047,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         String respBody;
         if (!httpExchange(*client, "GET", cfg.host, "/v1/pending-command", authToken, "", status, respBody)) {
             copyText(result.detail, sizeof(result.detail), "sondage: pas de reponse");
+            result.pollFailed = true;
             client->stop();
             result.valid = true;
             return result;
@@ -1080,6 +1082,16 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
                         }
                     }
                 }
+            }
+        } else {
+            // Statut d'erreur (401, 500...) : sans ce detail, le cycle
+            // affichait "cmd=aucune" comme si le serveur n'avait rien a dire.
+            // Ne pas ecraser un detail plus ancien (config en echec).
+            result.pollFailed = true;
+            if (result.detail[0] == '\0') {
+                char detail[64];
+                snprintf(detail, sizeof(detail), "sondage: http=%d", status);
+                copyText(result.detail, sizeof(result.detail), detail);
             }
         }
     }
@@ -1275,23 +1287,24 @@ void CloudSyncScheduler::update(bool ntpSynced,
     const bool forced = _forceRequested;
 
     // Un accuse est du : ne pas faire attendre le serveur un intervalle
-    // complet pour apprendre le sort de sa commande.
-    if (_ackSyncSoon && _lastSyncEpochSec != 0U) {
-        _lastSyncEpochSec = 0U;
-        _ackSyncSoon = false;
-    }
+    // complet pour apprendre le sort de sa commande. Ignore l'echeance comme
+    // une synchro forcee, mais garde les autres garde-fous (stabilite WiFi,
+    // arrosage, memoire). Remettre _lastSyncEpochSec a 0 comme avant faisait
+    // repasser par la "premiere echeance" : un intervalle complet d'attente.
+    const bool ackDue = _ackSyncSoon;
+    const bool immediate = forced || ackDue;
 
     // Premiere execution : ne pas synchroniser immediatement, meme raison
     // qu'UpdateCheckScheduler (eviter un redemarrage surprise a l'instant
     // ou la synchro cloud est activee).
-    if (_lastSyncEpochSec == 0U && !forced) {
+    if (_lastSyncEpochSec == 0U && !immediate) {
         saveLastSync(epochSec);
         EventLog::log(LOG_INFO, "CloudSync: premiere echeance dans %u min",
                       static_cast<unsigned>(_cfg.intervalMinutes));
         return;
     }
 
-    if (epochSec < _lastSyncEpochSec && !forced) {
+    if (epochSec < _lastSyncEpochSec && !immediate) {
         // Horloge reculee (correction NTP) : repartir de la date courante.
         saveLastSync(epochSec);
         return;
@@ -1326,7 +1339,7 @@ void CloudSyncScheduler::update(bool ntpSynced,
     const uint32_t requiredWaitSec = allowFastRetry
         ? SYNC_SOON_SECONDS
         : static_cast<uint32_t>(_cfg.intervalMinutes) * 60UL;
-    if (!forced && (epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
+    if (!immediate && (epochSec - _lastSyncEpochSec) < requiredWaitSec) return;
 
     if (_wifiConnectedSinceMs == 0U) {
         logBlocked("pas de connexion WiFi");
@@ -1360,6 +1373,12 @@ void CloudSyncScheduler::update(bool ntpSynced,
     if (forced) {
         _forceRequested = false;
         EventLog::log(LOG_INFO, "CloudSync: synchro immediate (bouton Web ou rattachement), lancee");
+    }
+    // Une seule tentative immediate par accuse : en cas d'echec, l'accuse
+    // repart a l'echeance normale, jamais en boucle serree.
+    if (ackDue) {
+        _ackSyncSoon = false;
+        EventLog::log(LOG_INFO, "CloudSync: cycle immediat pour accuser la commande");
     }
 
     // Enregistre seulement une fois la tache lancee : un report memoire ne
@@ -1830,10 +1849,12 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
                   // constate le 2 septembre 2026 en suivant la premiere
                   // commande reelle, ou la ligne disait "cmd=echec" alors que
                   // la commande venait d'etre appliquee avec succes.
-                  result.commandReceived
-                      ? (result.ackSuccess ? "accuse-ok" : "accuse-differe")
-                      : "aucune");
-    if (!ok && result.detail[0]) {
+                  result.pollFailed
+                      ? "sondage-echec"
+                      : result.commandReceived
+                          ? (result.ackSuccess ? "accuse-ok" : "accuse-differe")
+                          : "aucune");
+    if ((!ok || result.pollFailed) && result.detail[0]) {
         EventLog::log(LOG_WARN, "CloudSync: detail %s", result.detail);
     }
 

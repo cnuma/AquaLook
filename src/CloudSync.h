@@ -60,6 +60,9 @@ struct CloudSyncResult {
     bool     reportSuccess   = false;
     bool     configSuccess   = false;
     bool     commandReceived = false;
+    // Sondage /v1/pending-command en echec (connexion, reponse ou statut
+    // non 2xx) : n'invalide pas le cycle, mais doit se voir au journal.
+    bool     pollFailed      = false;
     char     correlationId[40] = "";
     bool     ackSuccess      = false;
     char     detail[64]      = "";
