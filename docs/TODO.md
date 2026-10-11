@@ -17,7 +17,7 @@ décision), *les deux*.
 |---|---|---|---|
 | P0.1 | CloudSync : l'accusé d'une commande attendait un intervalle complet (`_ackSyncSoon` remettait `_lastSyncEpochSec` à 0 → « première échéance ») | agent | **validé** sur `.141` (build 1384) : accusé 15 s après application — `1e16639` |
 | P0.2 | CloudSync : un sondage `/v1/pending-command` en échec (connexion, réponse, statut non 2xx) était muet quand rapport et config réussissaient | agent | corrigé, `00e8053` ; non-régression vérifiée, cas d'erreur non provoqué sur le matériel |
-| P0.3 | Mot de passe Web de `.141` = mot de passe de banc divulgué dans un chat : le remplacer (sans le committer, `.env` local) | les deux | à faire |
+| P0.3 | Mot de passe Web de `.141` = mot de passe de banc divulgué dans un chat : le remplacer (sans le committer, `.env` local) | les deux | **fait** le 11 oct. 2026 : changé par l'éditeur (bouton « Secret », envoi chiffré), `.env` mis à jour ; nouveau accepté, ancien refusé (403) par `tools/module_session.py` |
 | P0.4 | Durcissement sécurité AlwaysData : externaliser les scripts inline d'`admin.html`/`app.html` pour retirer `'unsafe-inline'` de la CSP ; déployer depuis Git plutôt qu'en éditant le serveur ; mot de passe SMTP en clair en base | les deux | à cadrer |
 | P0.5 | HTTPS des pages sur le réseau local (aujourd'hui HTTP en clair : cookie de session captable 30 min). Chantier lourd : serveur TLS sur l'ESP32 (ESPAsyncWebServer n'en a pas), certificat par module, mémoire, confiance navigateur. Étude de faisabilité d'abord | agent | à étudier |
 
