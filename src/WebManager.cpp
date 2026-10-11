@@ -61,6 +61,13 @@ st();
 </script></body></html>
 )rawlogin";
 
+// Accueil de secours servi a la place de /index.html quand la SD ne le fournit
+// pas. Sans lui, /login (et le lien "Retour" de /ota) menait sans SD a une
+// page "Not found" -- constate sur .141 le 11 oct. 2026 (phase 6, D016).
+static const char HOME_FALLBACK_HTML[] PROGMEM = R"rawhome(
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Secours</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{line-height:1.5;color:#bed0dc;font-size:14px}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b;border-radius:8px;padding:12px}a{display:block;margin-top:10px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-decoration:none}#v{font-size:12px;color:#8fa6b6}</style></head><body><main><h1>AquaLook</h1><p id="v">-</p><p class="warn">Interface de secours : la carte SD est absente ou illisible, l'interface complete n'est pas disponible. L'arrosage programme continue normalement.</p><a href="/ota">Mises a jour</a><a href="/setup">Configuration WiFi</a><a href="/logs">Journal</a><a href="/api/diagnostics">Diagnostic (JSON)</a></main><script>fetch('/api/diagnostics').then(r=>r.json()).then(d=>{const b=d.build;document.getElementById('v').textContent='Version '+b.version+' - build '+b.number+' ('+b.gitSha+')'}).catch(()=>{})</script></body></html>
+)rawhome";
+
 // ───── Diffusion des pages HTML embarquees ──────────────────────────────
 //
 // Les pages /ota et /logs pesent une douzaine de kilo-octets et partent en
@@ -565,6 +572,12 @@ void WebManager::setupRoutes() {
     _server.onNotFound([this](AsyncWebServerRequest* req) {
         if (_wifi && _wifi->isCaptivePortal()) {
             req->redirect("http://" + _wifi->getApIP().toString() + "/setup");
+        } else if (req->url() == "/index.html" &&
+                   (req->method() == HTTP_GET || req->method() == HTTP_HEAD)) {
+            // Ni la SD ni LittleFS n'ont servi l'accueil : page de secours.
+            sendEmbeddedPage(req, HOME_FALLBACK_HTML,
+                             sizeof(HOME_FALLBACK_HTML) - 1U,
+                             "X-AquaLook-Storage", "Firmware-Fallback");
         } else {
             req->send(404, "text/plain", "Not found");
         }
