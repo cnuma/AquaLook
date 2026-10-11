@@ -27,13 +27,17 @@ RewriteRule ^ index.php [L]
 # En-tetes de securite (defense en profondeur). Gardes par <IfModule> : sans
 # mod_headers, ces lignes sont ignorees au lieu de provoquer une 500.
 #
-# Les pages admin.html / app.html ne chargent AUCUNE ressource externe (tout
-# est inline, meme origine) : default-src 'self' ne casse donc rien. Les
-# scripts et styles etant inline, 'unsafe-inline' reste necessaire -- c'est un
-# socle, pas une protection XSS complete : l'etape suivante est d'externaliser
-# ces scripts pour passer a une CSP par nonce/hash. En l'etat, la CSP bloque
-# deja l'injection de script externe, l'exfiltration vers une autre origine,
-# le cadrage (clickjacking) et le detournement de formulaire.
+# Aucune page ne charge de ressource externe : default-src 'self' ne casse
+# rien. La CSP generale garde script-src 'unsafe-inline' pour /editeur/
+# (copie de data/scripts-schema.html, script inline partage avec la SD du
+# module) ; elle bloque deja l'injection de script externe, l'exfiltration
+# vers une autre origine, le cadrage (clickjacking) et le detournement de
+# formulaire.
+#
+# admin.html et app.html ont leur script dans admin.js / app.js (P0.4b) et
+# recoivent plus bas une CSP SANS 'unsafe-inline' dans script-src : un
+# <script> ou un attribut on*= injecte ne s'y execute plus. style-src garde
+# 'unsafe-inline' (attributs style= nombreux, risque faible).
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
@@ -43,6 +47,11 @@ RewriteRule ^ index.php [L]
     # sous-domaine d'alwaysdata.net). Le site est servi en HTTPS ; monter
     # max-age apres verification.
     Header always set Strict-Transport-Security "max-age=15552000"
+    # Remplace la CSP generale pour ces deux fichiers seulement (le
+    # <FilesMatch> est applique apres le niveau repertoire).
+    <FilesMatch "^(admin|app)\.html$">
+        Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    </FilesMatch>
 </IfModule>
 
 # Pas de listing de repertoire : /web/ ne doit pas enumerer les versions

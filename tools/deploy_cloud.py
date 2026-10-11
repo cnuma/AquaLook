@@ -28,7 +28,8 @@ Garde-fous :
     hors de ce depot. Les fichiers distants inconnus sont seulement signales ;
   - chaque fichier est envoye sous un nom temporaire (refuse par le
     .htaccess) puis renomme, pour qu'aucune requete ne tombe sur un PHP a
-    moitie ecrit ; index.php puis .htaccess en dernier.
+    moitie ecrit ; admin.html et app.html apres leurs scripts, puis
+    index.php et .htaccess en dernier.
 
 Exemples :
   python tools/deploy_cloud.py
@@ -53,7 +54,7 @@ EXCLUS_NOMS = {'README.md', 'router.php', '.env.example', '.gitignore'}
 EXCLUS_SUFFIXES = ('.md', '.sql', '.log')
 # Publies en dernier : l'aiguillage general et les regles d'acces ne doivent
 # changer qu'une fois toutes leurs dependances en place.
-ORDRE_FINAL = ['index.php', '.htaccess']
+ORDRE_FINAL = ['admin.html', 'app.html', 'index.php', '.htaccess']
 
 
 def git(*args):

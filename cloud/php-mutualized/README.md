@@ -97,8 +97,12 @@ et plafonds : paramètres `ENROLL_*` de la console.
 
 ## Console d'administration
 
-`admin.html` — page autonome (aucune dépendance, aucun CDN), servie en statique
-par Apache. Elle consomme les routes `/admin/*` ci-dessus.
+`admin.html` + `admin.js` — page autonome (aucune dépendance, aucun CDN), servie
+en statique par Apache. Elle consomme les routes `/admin/*` ci-dessus. Son script
+est dans `admin.js` (de même `app.html` → `app.js`) : la CSP de ces deux pages
+interdit tout script inline (`script-src 'self'`, voir `.htaccess`). Ne pas y
+remettre de `<script>` inline ni d'attribut `on*=` ; poser les gestionnaires
+en JS (`el.onclick = …`).
 
 Elle permet de : lister les modules et leur fraîcheur, déclarer un module et
 générer son jeton, lire les remontées et l'historique des commandes, composer
