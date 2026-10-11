@@ -1,0 +1,1254 @@
+// Une SEULE vue des horaires : le planning.
+//
+// L'application presentait auparavant le planning ET un editeur par zone. Les
+// deux lisaient la meme source mais l'affichaient differemment, et pouvaient
+// donc se contredire -- c'est arrive, sur le meme jour de la meme zone. Le
+// planning est desormais l'unique representation ; on y clique pour ouvrir le
+// detail d'un jour.
+//
+// L'identite vit dans un cookie HttpOnly pose par le serveur : ce script ne
+// peut ni le lire ni le voler.
+let MOD = null;      // module ouvert
+let CFG = null;      // sa configuration remontee
+let ATTENTE = null;  // ce qui est envoye et pas encore applique, PAR ZONE
+let REFUS = null;    // dernier refus, PAR ZONE
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const APO = String.fromCharCode(39);
+
+const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+const MAX_SLOTS = 5;
+
+function toast(m, err){
+  const t = $('toast');
+  t.textContent = m;
+  t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = ''; }, err ? 6500 : 3200);
+}
+
+async function api(path, options){
+  const opt = Object.assign({credentials:'same-origin', headers:{}}, options || {});
+  if (opt.body) opt.headers['Content-Type'] = 'application/json';
+  const r = await fetch(path, opt);
+  const txt = await r.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch(e){ data = null; }
+  if (!r.ok) {
+    const e = new Error((data && data.detail) ? data.detail : ('HTTP ' + r.status));
+    e.status = r.status;
+    throw e;
+  }
+  return data;
+}
+
+// Les horodatages arrivent en UTC sans suffixe de fuseau. Sans le Z explicite,
+// le navigateur les lirait en heure locale et afficherait un ecart silencieux.
+function parseUtc(s){
+  if (!s) return null;
+  const d = new Date(String(s).replace(' ', 'T') + 'Z');
+  return isNaN(d.getTime()) ? null : d;
+}
+function depuis(s){
+  const d = parseUtc(s);
+  if (!d) return 'jamais';
+  const sec = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (sec < 90) return 'il y a ' + Math.round(sec) + ' s';
+  if (sec < 5400) return 'il y a ' + Math.round(sec/60) + ' min';
+  if (sec < 172800) return 'il y a ' + Math.round(sec/3600) + ' h';
+  return 'il y a ' + Math.round(sec/86400) + ' j';
+}
+function fraicheur(last){
+  const d = parseUtc(last);
+  if (!d) return 'ko';
+  const min = (Date.now() - d.getTime()) / 60000;
+  return min < 20 ? 'ok' : (min < 60 ? 'warn' : 'ko');
+}
+const hhmm = (h, m) => String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+
+// ── Connexion ──────────────────────────────────────────────────────────────
+
+async function connecter(){
+  const email = $('email').value.trim();
+  const pass = $('pass').value;
+  if (!email || !pass) { toast('Adresse et mot de passe requis', true); return; }
+  $('btn-login').disabled = true;
+  try {
+    await api('/app/login', {method:'POST', body: JSON.stringify({email:email, password:pass})});
+    $('pass').value = '';
+    await demarrer();
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-login').disabled = false; }
+}
+
+async function deconnecter(){
+  try { await api('/app/logout', {method:'POST'}); } catch(e){}
+  MOD = null; CFG = null; ATTENTE = null; REFUS = null;
+  $('liste').hidden = true; $('detail').hidden = true;
+  $('login').hidden = false;
+  $('btn-logout').hidden = true; $('btn-back').hidden = true;
+  $('who').textContent = '';
+}
+
+// ── Mot de passe oublie, lien recu par mail, changement (D016, lot B) ───────
+//
+// Le jeton du lien arrive dans le fragment (#reset=... ou #invite=...) : il
+// n'est jamais envoye au serveur en GET. On le retire aussitot de la barre
+// d'adresse pour qu'il ne reste ni dans l'historique ni dans un favori.
+let LIEN = null;     // {purpose, token} lu dans le fragment
+
+function lireLien(){
+  const m = /^#(reset|invite)=([0-9a-f]{64})$/.exec(location.hash);
+  if (!m) return false;
+  LIEN = {purpose: m[1], token: m[2]};
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+
+function montrer(id){
+  ['login', 'oubli', 'nm'].forEach(s => { $(s).hidden = s !== id; });
+}
+
+async function demanderLien(){
+  const email = $('o-email').value.trim();
+  if (!email) { toast('Saisissez votre adresse', true); return; }
+  $('btn-oubli-envoyer').disabled = true;
+  try {
+    await api('/app/password/forgot', {method:'POST', body: JSON.stringify({email:email})});
+    toast('Si un compte existe pour cette adresse, un lien vient de lui être envoyé.');
+    montrer('login');
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-oubli-envoyer').disabled = false; }
+}
+
+async function poserMotDePasse(){
+  const p1 = $('nm-pass').value, p2 = $('nm-pass2').value;
+  if (p1.length < 10) { toast('Dix caractères au minimum', true); return; }
+  if (p1 !== p2) { toast('Les deux saisies diffèrent', true); return; }
+  $('btn-nm').disabled = true;
+  try {
+    await api('/app/password/reset', {method:'POST', body: JSON.stringify({token: LIEN.token, password: p1})});
+    $('nm-pass').value = ''; $('nm-pass2').value = '';
+    LIEN = null;
+    $('nm').hidden = true;
+    toast('Mot de passe enregistré');
+    await demarrer();
+  } catch(e){ toast(e.message, true); }
+  finally { $('btn-nm').disabled = false; }
+}
+
+function carteCompte(){
+  return '<details class="card"><summary><h2 style="display:inline">Mon compte</h2></summary>'
+    + '<div class="row" style="margin-top:12px"><label>Mot de passe actuel</label>'
+    + '<input type="password" id="mc-actuel" style="flex:1" autocomplete="current-password"></div>'
+    + '<div class="row"><label>Nouveau</label>'
+    + '<input type="password" id="mc-pass" style="flex:1" autocomplete="new-password"></div>'
+    + '<div class="row"><label>Confirmation</label>'
+    + '<input type="password" id="mc-pass2" style="flex:1" autocomplete="new-password"></div>'
+    + '<p class="hint">Dix caractères au minimum. Vos autres sessions (autres navigateurs, '
+    + 'téléphone) seront fermées ; celle-ci reste ouverte.</p>'
+    + '<div class="row"><button id="mc-ok">Changer le mot de passe</button></div></details>';
+}
+
+function brancherCompte(){
+  $('mc-ok').onclick = async () => {
+    const actuel = $('mc-actuel').value, p1 = $('mc-pass').value, p2 = $('mc-pass2').value;
+    if (!actuel) { toast('Saisissez le mot de passe actuel', true); return; }
+    if (p1.length < 10) { toast('Dix caractères au minimum', true); return; }
+    if (p1 !== p2) { toast('Les deux saisies diffèrent', true); return; }
+    $('mc-ok').disabled = true;
+    try {
+      await api('/app/password/change', {method:'POST', body: JSON.stringify({current: actuel, password: p1})});
+      $('mc-actuel').value = ''; $('mc-pass').value = ''; $('mc-pass2').value = '';
+      toast('Mot de passe changé');
+    } catch(e){ toast(e.message, true); }
+    finally { if ($('mc-ok')) $('mc-ok').disabled = false; }
+  };
+}
+
+async function demarrer(){
+  const moi = await api('/app/me');
+  $('who').textContent = moi.label || moi.email;
+  montrer(null);
+  $('btn-logout').hidden = false;
+  await voirListe();
+}
+
+// ── Liste des modules ──────────────────────────────────────────────────────
+
+async function voirListe(){
+  MOD = null; CFG = null; ATTENTE = null; REFUS = null;
+  $('detail').hidden = true;
+  $('btn-back').hidden = true;
+  const el = $('liste');
+  el.hidden = false;
+  const mods = await api('/app/modules');
+  if (!mods.length) {
+    el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
+      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p></div>' + carteRattacher() + carteCompte();
+    brancherRattacher();
+    brancherCompte();
+    return;
+  }
+  el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
+      '<button class="mod" data-id="' + esc(m.module_id) + '">'
+    + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
+    + esc(m.label || m.module_id) + '</span>'
+    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue')
+    + ' &middot; présence vue ' + depuis(m.last_seen) + '</span>'
+    + '<span class="mod-s">' + (m.revision
+        ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
+        : 'configuration jamais reçue')
+    + '</span></button>').join('') + '</div>' + carteRattacher() + carteCompte();
+  el.querySelectorAll('.mod').forEach(b => {
+    b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
+  });
+  brancherRattacher();
+  brancherCompte();
+}
+
+// ── Rattachement par code (D016, lot D) ────────────────────────────────────
+//
+// Le code ne s'obtient que sur l'ecran du module : c'est la preuve que la
+// personne qui le saisit a le boitier sous la main.
+function carteRattacher(){
+  return '<div class="card"><h2>Rattacher un module</h2>'
+    + '<p class="hint">Sur l&rsquo;écran du module : ADMIN &rsaquo; En ligne &rsaquo; '
+    + 'Rattacher. Saisissez ici le code affiché (valable 10 minutes).</p>'
+    + '<div class="row"><input id="rt-code" maxlength="12" autocomplete="off" '
+    + 'autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" '
+    + 'style="flex:1;font-family:monospace;letter-spacing:2px;text-transform:uppercase">'
+    + '<button class="primary" id="rt-ok">Rattacher</button></div></div>';
+}
+
+function brancherRattacher(){
+  $('rt-ok').onclick = async () => {
+    const code = $('rt-code').value.trim();
+    if (!code) { toast('Saisissez le code affiché sur le module', true); return; }
+    $('rt-ok').disabled = true;
+    try {
+      const r = await api('/app/module/claim', {method:'POST', body: JSON.stringify({userCode: code})});
+      toast(r.transfert
+        ? 'Module rattaché. Il était à un autre compte : ses anciennes données ont été effacées.'
+        : 'Module rattaché. Il apparaîtra en ligne à sa prochaine synchronisation.');
+      await voirListe();
+    } catch(e){ toast(e.message, true); }
+    finally { if ($('rt-ok')) $('rt-ok').disabled = false; }
+  };
+}
+
+// Nom affiche et detachement, sur la page d'un module.
+function carteGestion(pr){
+  return '<details class="card"><summary><h2 style="display:inline">Ce module</h2></summary>'
+    + '<div class="row" style="margin-top:12px"><label>Nom</label>'
+    + '<input id="gm-nom" style="flex:1" maxlength="120" value="' + esc(pr.label || '') + '" '
+    + 'placeholder="' + esc(MOD) + '"><button id="gm-nom-ok">Enregistrer</button></div>'
+    + '<div class="row"><label>Identifiant technique</label><span class="mod-s" style="margin:0">'
+    + esc(pr.hw_id || MOD) + '</span></div>'
+    + '<p class="hint">Le nom est libre et c&rsquo;est lui qui s&rsquo;affiche partout. '
+    + 'L&rsquo;identifiant technique est celui du boîtier, affiché aussi sur son écran '
+    + '(ADMIN &gt; En ligne) : il ne change jamais, même si le module est renommé.</p>'
+    + '<div class="note warn">Détacher ce module révoque son accès : il cesse de se '
+    + 'synchroniser et n&rsquo;apparaît plus ici. Son arrosage local continue normalement. '
+    + 'Pour le rattacher de nouveau, il faudra un code lu sur son écran.</div>'
+    + '<div class="row"><label style="width:auto"><input type="checkbox" id="gm-purge"> '
+    + 'Effacer aussi son historique, sa configuration et ses sauvegardes en ligne</label></div>'
+    + '<div class="row"><button id="gm-detacher">Détacher ce module</button></div></details>';
+}
+
+function brancherGestion(){
+  $('gm-nom-ok').onclick = async () => {
+    try {
+      await api('/app/module/label', {method:'POST',
+        body: JSON.stringify({moduleId: MOD, label: $('gm-nom').value})});
+      toast('Nom enregistré');
+    } catch(e){ toast(e.message, true); }
+  };
+  $('gm-detacher').onclick = async () => {
+    const purge = $('gm-purge').checked;
+    if (!confirm('Détacher ce module de votre compte'
+        + (purge ? ' et effacer toutes ses données en ligne' : '') + ' ?')) return;
+    try {
+      await api('/app/module/release', {method:'POST', body: JSON.stringify({moduleId: MOD, purge: purge})});
+      toast('Module détaché');
+      await voirListe();
+    } catch(e){ toast(e.message, true); }
+  };
+}
+
+// ── Index des commandes, PAR ZONE ──────────────────────────────────────────
+//
+// La clef est (zone, jour, rang), jamais (jour, rang) seul. Une premiere
+// version indexait sans la zone : les creneaux refuses d'une zone
+// s'affichaient alors sur TOUTES les lignes du planning, y compris des zones
+// que la commande ne mentionnait pas. Constate le 3 septembre 2026.
+function indexerCommandes(cmds, etat){
+  const liste = cmds || [];
+  // Un refus n'est affichable que s'il est la DERNIERE chose qui soit arrivee.
+  //
+  // Prendre le refus le plus recent ne suffisait pas : une commande reussie
+  // envoyee apres lui le rend caduc, et pourtant les croix restaient. Le
+  // planning annoncait des tentatives refusees alors que tout venait d'etre
+  // applique -- constate le 3 septembre 2026, apres un "30 champ(s)
+  // applique(s)". Toute commande posterieure, reussie ou en attente, remplace
+  // l'intention qui avait ete refusee.
+  if (etat === 'refused') {
+    return (liste.length && liste[0].state === 'refused')
+      ? construireIndex([liste[0]]) : null;
+  }
+  const choisies = liste.filter(c => c.state === etat);
+  if (!choisies.length) return null;
+  const source = choisies;
+  return construireIndex(source);
+}
+
+function construireIndex(source){
+  const idx = {};
+  source.forEach(c => {
+    ((c.command && c.command.zones) || []).forEach(z => {
+      const i = (z.i != null) ? z.i : 0;
+      const e = idx[i] || (idx[i] = { champs:{}, jours:{}, inter:{} });
+      ['name','mode','intervalDays','rain'].forEach(k => {
+        if (z[k] !== undefined) e.champs[k] = z[k];
+      });
+      (z.daySlots || []).forEach(s => {
+        const d = s.day || 0;
+        (e.jours[d] || (e.jours[d] = {}))[s.slot] = s;
+      });
+      (z.intervalSlots || []).forEach(s => { e.inter[s.slot] = s; });
+    });
+  });
+  return idx;
+}
+
+const attenteZone = i => (ATTENTE && ATTENTE[i]) ? ATTENTE[i] : null;
+const refusZone   = i => (REFUS && REFUS[i]) ? REFUS[i] : null;
+
+/** Valeur du creneau telle que le MODULE l'applique aujourd'hui. */
+function creneauModule(z, mode, d, r){
+  const src = (mode === 1)
+    ? (Array.isArray(z.interval) ? z.interval : [])
+    : ((Array.isArray(z.days) && Array.isArray(z.days[d])) ? z.days[d] : []);
+  const c = Array.isArray(src[r]) ? src[r] : [6,0,5,0];
+  return { h:Number(c[0])||0, m:Number(c[1])||0, dur:Number(c[2])||5, on:Number(c[3])===1 };
+}
+
+/**
+ * Etat complet d'un creneau : ce qui tourne, ce qui attend, ce qui a echoue.
+ *
+ * Un refus n'a RIEN applique -- le module sort avant d'ecrire des que la
+ * revision ne correspond plus. La valeur en vigueur reste donc celle du
+ * module, et l'echec est signale A COTE plutot que de remplacer l'affichage.
+ * Montrer la valeur refusee comme si elle etait programmee serait un mensonge.
+ */
+function creneau(i, mode, d, r){
+  const z = CFG.payload.zones[i];
+  const base = creneauModule(z, mode, d, r);
+  const att = attenteZone(i);
+  const ref = refusZone(i);
+  const sAtt = att ? ((mode === 1) ? att.inter[r] : (att.jours[d] || {})[r]) : null;
+  const sRef = ref ? ((mode === 1) ? ref.inter[r] : (ref.jours[d] || {})[r]) : null;
+
+  let effectif = base;
+  let enAttente = false;
+  if (sAtt) {
+    const identique = sAtt.h === base.h && sAtt.m === base.m
+                   && sAtt.dur === base.dur && !!sAtt.on === base.on;
+    effectif = { h:sAtt.h, m:sAtt.m, dur:sAtt.dur, on:!!sAtt.on };
+    enAttente = !identique;
+  }
+  const refuse = (!sAtt && sRef) ? { h:sRef.h, m:sRef.m, dur:sRef.dur, on:!!sRef.on } : null;
+  return { module:base, effectif:effectif, attente:enAttente, refuse:refuse };
+}
+
+// ── Detail d'un module ─────────────────────────────────────────────────────
+
+async function ouvrir(id){
+  MOD = id;
+  $('liste').hidden = true;
+  $('btn-back').hidden = false;
+  await recharger();
+}
+
+// Commandes de la derniere reponse /app/module -- conservees pour pouvoir
+// rafraichir "Modifications envoyées" (les references "Sauvegarde :" y
+// pointent vers SAUV par id) sans re-appeler le serveur, notamment apres un
+// renommage de sauvegarde (voir annoterSauvegarde()).
+let CMDS = [];
+
+async function recharger(){
+  const d = await api('/app/module?moduleId=' + encodeURIComponent(MOD));
+  CFG = d.config;
+  CMDS = d.commandes || [];
+  ATTENTE = indexerCommandes(d.commandes, 'pending');
+  REFUS   = indexerCommandes(d.commandes, 'refused');
+  const el = $('detail');
+  el.hidden = false;
+
+  const pr = d.presence || {};
+  if (!CFG || !CFG.payload) {
+    el.innerHTML = '<div class="card"><h2>' + esc(pr.label || MOD) + '</h2>'
+      + '<div class="note warn">Ce module n&rsquo;a pas encore transmis sa configuration. '
+      + 'Elle arrive à sa prochaine synchronisation ; il n&rsquo;y a rien à faire '
+      + 'd&rsquo;ici là.</div></div>' + carteGestion(pr);
+    brancherGestion();
+    return;
+  }
+  // Presence (ping, tout rapport confondu) et synchro (contenu reellement
+  // change) affichees separement, memes libelles et memes deux temps que la
+  // liste "Mes modules" (voirListe()) -- la meme information doit se
+  // reconnaitre d'une page a l'autre, pas raconter deux histoires.
+  el.innerHTML =
+      '<div class="card"><h2>' + esc(pr.label || MOD) + '</h2>'
+    + '<div class="row"><label>Présence</label>'
+    + '<span class="mod-s" style="margin:0">vue ' + esc(depuis(pr.last_seen)) + '</span></div>'
+    + '<div class="row"><label>Synchro</label>'
+    + '<span class="mod-s" style="margin:0">n&deg;' + esc(CFG.revision) + ' &middot; '
+    + esc(depuis(CFG.updatedAt)) + '</span></div></div>'
+    + '<div class="card"><h2>Planning de la semaine</h2><div id="planning"></div>'
+    + '<p class="hint">Cliquez un jour pour voir et modifier ses créneaux, ou le nom '
+    + 'd&rsquo;une zone pour ses réglages.</p></div>'
+    + '<div class="card"><h2>Scripts</h2><div id="scripts"></div></div>'
+    + '<details class="card"><summary><h2 style="display:inline">Modifications envoyées</h2></summary>'
+    + '<div id="cmds" style="margin-top:12px"></div></details>'
+    + '<details class="card"><summary><h2 style="display:inline">Sauvegarde de l&rsquo;installation</h2></summary>'
+    + '<div id="sauv" style="margin-top:12px"></div>'
+    + '<p class="hint">Chaque état différent de la configuration est conservé ici, '
+    + 'de quoi revenir en arrière ou remonter l&rsquo;installation sur un module '
+    + 'de remplacement.</p></details>' + carteGestion(pr);
+
+  brancherGestion();
+  rendrePlanning();
+  rendreScripts(d.commandes || []);
+  // Sauvegardes chargees AVANT les commandes : rendreCommandes() resout
+  // baseRevision en date lisible via SAUV (etatPourRevision), et a besoin
+  // que la liste soit deja la pour ne pas afficher un numero brut le temps
+  // d'un aller-retour reseau.
+  await chargerSauvegardes();
+  rendreCommandes(d.commandes || []);
+}
+
+// ── Scripts (decision D014) ────────────────────────────────────────────────
+//
+// Resume des six emplacements tel que le module les remonte, et lien vers
+// l'editeur graphique (/editeur/, meme page que sur le module, en mode
+// espace en ligne). Une modification en attente est signalee ici aussi :
+// sinon un effacement envoye ne laisserait aucune trace visible.
+function rendreScripts(cmds){
+  const el = $('scripts');
+  if (!el) return;
+  const sc = CFG.payload.scripts;
+  if (!sc) {
+    el.innerHTML = '<p class="hint" style="margin:0">Ce module ne remonte pas encore ses scripts : '
+      + 'son firmware est à mettre à jour.</p>';
+    return;
+  }
+  // Commande en attente la plus recente pour cet emplacement (cmds : du plus
+  // recent au plus ancien). Un effacement se dit comme tel, nom barre, comme
+  // une suppression de creneau dans la grille : « en attente » seul laissait
+  // croire a une simple modification.
+  const attente = i => {
+    const c = cmds.find(c => c.state === 'pending' && c.command
+      && Array.isArray(c.command.scripts) && c.command.scripts[0] && c.command.scripts[0].i === i);
+    return c ? c.command.scripts[0] : null;
+  };
+  el.innerHTML = '<table class="hist"><tr><th>N°</th><th>Script</th><th>État</th></tr>'
+    + (sc.emplacements || []).map(s => {
+        const a = attente(s.i), efface = !!(a && a.efface === true);
+        const nom = s.nom !== undefined ? esc(s.nom) : '<span class="mod-s" style="margin:0">vide</span>';
+        return '<tr><td>' + (s.i + 1) + '</td><td>' + (efface && s.nom !== undefined ? '<s>' + nom + '</s>' : nom)
+          + '</td><td>' + (efface ? '<span class="tag pending">effacement en attente</span>'
+            : a ? '<span class="tag pending">en attente</span>'
+            : (s.nom === undefined ? '' : (s.actif ? 'actif' : 'inactif'))) + '</td></tr>';
+      }).join('')
+    + '</table>'
+    + '<div class="row" style="margin-top:12px"><a class="primary" style="display:inline-block;padding:8px 14px;'
+    + 'border-radius:8px;text-decoration:none" href="/editeur/scripts-schema.html?module='
+    + encodeURIComponent(MOD) + '">Ouvrir l&rsquo;éditeur des scripts</a></div>'
+    + '<p class="hint">Édition sur ordinateur. Le module applique une modification à sa '
+    + 'prochaine synchronisation et reste seul juge : il refuse ce qu&rsquo;il n&rsquo;accepterait '
+    + 'pas sur place. Un script ne se lance jamais d&rsquo;ici.</p>';
+}
+
+// ── Sauvegarde de l'installation ───────────────────────────────────────────
+//
+// Distinct du miroir affiche plus haut, qui ne garde que l'etat courant et
+// l'ecrase a chaque synchronisation : une configuration abimee sur le module y
+// remplacerait la bonne en moins d'une minute. Une sauvegarde suppose de
+// pouvoir remonter le temps.
+
+let SAUV = [];
+
+// Nom d'un etat de configuration, partage entre la liste des sauvegardes ET
+// la resolution de baseRevision dans l'historique des commandes -- pour que
+// les deux parties de la page designent le meme etat de la meme facon.
+//
+// La date remplace le numero de revision comme identite visible : celui-ci
+// repart de tres bas a chaque reinitialisation/reflash du module, et deux
+// sauvegardes eloignees dans le temps peuvent donc porter le meme numero
+// (constate le 27 septembre 2026 -- "Configuration n°1" deux fois dans la
+// meme liste). La date, elle, ne ment jamais sur l'ordre reel.
+// Retourne du HTML deja sur (entites statiques + parties dynamiques
+// echappees) : ne PAS re-esc() le resultat au point d'appel, sous peine de
+// transformer "&deg;"/"&middot;" en texte litteral "&amp;deg;"/"&amp;middot;".
+function nomEtat(s, estCourant, zoneCount){
+  if (s.label) return esc(s.label);
+  if (estCourant) return 'État actuel';
+  const d = parseUtc(s.capturedAt);
+  if (!d) return 'n&deg;' + esc(s.revision);
+  const date = esc(d.toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  }));
+  return date + (zoneCount != null ? ' &middot; ' + zoneCount + ' zone(s)' : '');
+}
+
+// Retrouve, pour une baseRevision de commande, l'etat de configuration
+// correspondant dans SAUV -- ce qui permet de dire "cette modification a ete
+// construite a partir de CET etat-la", plutot que de laisser deviner, ET d'y
+// ouvrir directement le panneau de detail (id) sans avoir a le rechercher
+// dans la liste plus bas. Repli sur le numero brut, non cliquable, si la
+// sauvegarde a ete elaguee (BACKUP_KEEP=20) ou jamais capturee (baseRevision
+// anterieure a la premiere synchro cloud).
+function etatPourRevision(rev){
+  if (rev == null) return null;
+  const idx = SAUV.findIndex(s => s.revision === rev);
+  if (idx >= 0) return { label: nomEtat(SAUV[idx], idx === 0, SAUV[idx].zones), id: SAUV[idx].id };
+  if (CFG && CFG.revision === rev) return { label: 'État actuel', id: null };
+  return { label: 'n&deg;' + esc(rev), id: null };
+}
+
+async function chargerSauvegardes(){
+  const el = $('sauv');
+  if (!el) return;
+  try {
+    SAUV = await api('/app/backups?moduleId=' + encodeURIComponent(MOD));
+  } catch (e) {
+    el.innerHTML = '<div class="note ko">Sauvegardes illisibles : ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (!SAUV.length) {
+    el.innerHTML = '<div class="note warn">Aucun état enregistré pour l&rsquo;instant. '
+                 + 'Le premier arrive à la prochaine synchronisation du module.</div>';
+    return;
+  }
+  // La premiere ligne est l'etat courant : c'est le dernier que le module a
+  // envoye, donc ce qu'il porte en ce moment.
+  el.innerHTML = SAUV.map((s, k) => {
+    const nom = nomEtat(s, k === 0, s.zones);
+    return '<button class="sv' + (k === 0 ? ' cour' : '') + '" data-sv="' + s.id + '">'
+         + (s.pinned ? '<span class="ep" title="conservée hors purge">&#9733;</span>' : '')
+         + '<span class="nm">' + nom + '</span>'
+         + '<span class="qd">' + esc(depuis(s.capturedAt)) + '</span></button>';
+  }).join('');
+  el.querySelectorAll('[data-sv]').forEach(b => {
+    b.onclick = () => ouvrirSauvegarde(Number(b.dataset.sv));
+  });
+}
+
+// Libelles des reglages hors arrosage. Une cle absente de cette table n'est pas
+// affichee : mieux vaut ne rien montrer qu'un nom de champ brut.
+const LIB_REG = {
+  ntp:               'Serveur de temps',
+  owm:               'Météo',
+  wind:              'Alerte vent',
+  touch:             'Calibration tactile',
+  display:           'Affichage',
+  manualDurationMin: 'Arrosage manuel'
+};
+
+function resumeReglage(cle, v){
+  if (cle === 'ntp') {
+    return esc(v.server) + ' (UTC' + (v.gmtOffset >= 0 ? '+' : '') + (v.gmtOffset / 3600) + ')';
+  }
+  if (cle === 'owm') {
+    const ou = v.city ? esc(v.city) + ', ' + esc(v.country) : esc(v.lat) + ' / ' + esc(v.lon);
+    // Le dire ici evite de croire la meteo restaurable alors qu'il manque la
+    // seule chose que la sauvegarde ne rapporte volontairement pas.
+    return ou + (v.apiKeySet ? '' : ' &mdash; aucune clé configurée');
+  }
+  if (cle === 'wind') {
+    return 'rafale ' + esc(v.gustKmh) + ' km/h, sévère ' + esc(v.severeKmh) + ' km/h';
+  }
+  if (cle === 'touch') {
+    return 'X ' + esc(v.xMin) + '&ndash;' + esc(v.xMax)
+         + ', Y ' + esc(v.yMin) + '&ndash;' + esc(v.yMax);
+  }
+  if (cle === 'display') return Object.keys(v).length + ' réglages de thème';
+  if (cle === 'manualDurationMin') return esc(v) + ' minutes';
+  return '';
+}
+
+// Resume lisible du contenu d'une sauvegarde -- meme forme que
+// resumeCommande() (nom de zone en gras, jours et horaires a la suite) pour
+// que l'utilisateur reconnaisse un format deja vu dans "Modifications
+// envoyées", plutot que d'inventer une troisieme facon de dire la meme
+// chose. z.days[jour] et z.interval sont des tableaux de [h,m,dur,actif],
+// la forme brute du payload de sauvegarde -- differente de daySlots/
+// intervalSlots (objets) qu'utilisent les commandes.
+function resumeZonesSauvegarde(zones){
+  if (!zones.length) return '<span class="hint" style="margin:0">Aucune zone.</span>';
+  return zones.map((z, i) => {
+    const mode = Number(z.mode) === 1;
+    const nom = z.name || ('Zone ' + (i + 1));
+    const heure = c => hhmm(c[0], c[1]) + ' (' + c[2] + ' min)';
+    const bouts = [];
+    if (mode) {
+      const actifs = (Array.isArray(z.interval) ? z.interval : [])
+        .filter(c => Array.isArray(c) && Number(c[3]) === 1).map(heure);
+      bouts.push('tous les ' + (z.intervalDays || '?') + ' jours'
+        + (actifs.length ? ' : ' + actifs.join(', ') : ' : aucun créneau actif'));
+    } else {
+      (Array.isArray(z.days) ? z.days : []).forEach((slots, d) => {
+        const actifs = (Array.isArray(slots) ? slots : [])
+          .filter(c => Array.isArray(c) && Number(c[3]) === 1).map(heure);
+        if (actifs.length) bouts.push(JOURS[d] + ' : ' + actifs.join(', '));
+      });
+      if (!bouts.length) bouts.push('aucun créneau actif');
+    }
+    return '<b>' + esc(nom) + '</b> &mdash; ' + bouts.join(' &middot; ');
+  }).join('<br>');
+}
+
+// Scripts d'une sauvegarde (miroir payload.scripts) : emplacements occupes.
+function resumeScriptsSauvegarde(sc){
+  const occ = ((sc && sc.emplacements) || []).filter(e => e.nom !== undefined);
+  if (!occ.length) return '<span class="hint" style="margin:0">Aucun script.</span>';
+  return occ.map(e => '<b>' + (e.i + 1) + '</b> &mdash; ' + esc(e.nom || 'Sans nom')
+    + ' (' + (e.actif ? 'actif' : 'inactif') + ')').join('<br>');
+}
+
+// Ce qui distingue une sauvegarde de la PRECEDENTE. Une sauvegarde est prise
+// a chaque changement du miroir, quel qu'il soit : sans ce resume, un etat
+// cree par l'effacement d'un script ne montrait que des creneaux identiques
+// a la sauvegarde d'avant (constate le 8 oct. 2026).
+function diffSauvegardes(cur, prev){
+  const out = [];
+  const zc = (cur && cur.zones) || [], zp = (prev && prev.zones) || [];
+  for (let i = 0; i < Math.max(zc.length, zp.length); i++) {
+    const nom = esc((zc[i] || zp[i]).name || ('Zone ' + (i + 1)));
+    if (!zp[i]) out.push('zone <b>' + nom + '</b> ajoutée');
+    else if (!zc[i]) out.push('zone <b>' + nom + '</b> retirée');
+    else if (JSON.stringify(zc[i]) !== JSON.stringify(zp[i])) out.push('zone <b>' + nom + '</b> modifiée');
+  }
+  const ec = ((cur && cur.scripts && cur.scripts.emplacements) || []);
+  const ep = ((prev && prev.scripts && prev.scripts.emplacements) || []);
+  const parI = (l, i) => l.find(e => e.i === i) || { i: i };
+  const n = Math.max(ec.length, ep.length);
+  for (let i = 0; i < n; i++) {
+    const a = parI(ep, i), b = parI(ec, i);
+    const avant = a.nom !== undefined, apres = b.nom !== undefined;
+    const lib = (e) => 'script ' + (i + 1) + ' <b>« ' + esc(e.nom || 'Sans nom') + ' »</b>';
+    if (!avant && apres) out.push(lib(b) + ' créé');
+    else if (avant && !apres) out.push(lib(a) + ' effacé');
+    else if (avant && apres) {
+      const quoi = [];
+      if (a.nom !== b.nom) quoi.push('renommé (avant : « ' + esc(a.nom) + ' »)');
+      if (!!a.actif !== !!b.actif) quoi.push(b.actif ? 'activé' : 'désactivé');
+      if (a.source !== b.source || a.declencheur !== b.declencheur || a.cible !== b.cible
+          || a.octets !== b.octets) quoi.push('modifié');
+      if (quoi.length) out.push(lib(b) + ' ' + quoi.join(', '));
+    }
+  }
+  const nc = cur && cur.scripts ? cur.scripts.notifications : undefined;
+  const np = prev && prev.scripts ? prev.scripts.notifications : undefined;
+  if (typeof nc === 'boolean' && typeof np === 'boolean' && nc !== np) {
+    out.push('notifications ' + (nc ? 'activées' : 'coupées'));
+  }
+  const rc = (cur && cur.settings) || {}, rp = (prev && prev.settings) || {};
+  Object.keys(LIB_REG).forEach(k => {
+    if (JSON.stringify(rc[k]) !== JSON.stringify(rp[k])) out.push('réglage « ' + LIB_REG[k] + ' » modifié');
+  });
+  return out;
+}
+
+async function ouvrirSauvegarde(id){
+  let s;
+  try {
+    s = await api('/app/backup?moduleId=' + encodeURIComponent(MOD) + '&id=' + id);
+  } catch (e) { toast(e.message, true); return; }
+
+  const zones = (s.payload && s.payload.zones) || [];
+  const reg   = (s.payload && s.payload.settings) || null;
+
+  // Sauvegarde precedente (SAUV : de la plus recente a la plus ancienne),
+  // lue a part : son absence (elaguee, premiere sauvegarde, erreur reseau)
+  // ne doit pas empecher d'ouvrir celle-ci.
+  const k = SAUV.findIndex(x => x.id === id);
+  let prec = null;
+  if (k >= 0 && k + 1 < SAUV.length) {
+    try {
+      prec = await api('/app/backup?moduleId=' + encodeURIComponent(MOD) + '&id=' + SAUV[k + 1].id);
+    } catch (e) { prec = null; }
+  }
+
+  // Nombre de creneaux actifs : c'est ce qui distingue reellement deux
+  // sauvegardes aux yeux de quelqu'un qui cherche laquelle restaurer.
+  let actifs = 0;
+  zones.forEach(z => {
+    const src = (Number(z.mode) === 1) ? [z.interval || []] : (z.days || []);
+    src.forEach(j => (j || []).forEach(c => {
+      if (Array.isArray(c) && Number(c[3]) === 1) actifs++;
+    }));
+  });
+
+  const estCourant = SAUV.length > 0 && SAUV[0].id === id;
+  let h = '<h3>' + nomEtat(s, estCourant, zones.length) + '</h3>'
+        + '<p class="sous">Enregistrée ' + esc(depuis(s.capturedAt)) + ' &middot; '
+        + zones.length + ' zone(s) &middot; ' + actifs + ' créneau(x) actif(s).</p>';
+
+  if (prec) {
+    const d = diffSauvegardes(s.payload, prec.payload);
+    h += '<div class="note" style="margin:0 0 12px"><b>Par rapport à l&rsquo;état précédent :</b> '
+       + (d.length ? d.join(' &middot; ') : 'aucune différence dans les zones, les scripts ni les réglages affichés')
+       + '.</div>';
+  }
+
+  // Ce que la restauration APPLIQUERAIT, en clair, avant le bouton --
+  // jusqu'ici seul un compte ("37 créneaux actifs") le disait, sans montrer
+  // lesquels. Demande explicite : on doit pouvoir juger une sauvegarde sans
+  // deviner ce qu'elle contient. Meme classe .demande que le tableau des
+  // modifications, pour rester coherent avec un format deja connu.
+  h += '<div class="card" style="padding:12px;margin:0 0 12px;background:var(--green-dim)">'
+     + '<div class="demande">' + resumeZonesSauvegarde(zones) + '</div></div>';
+
+  const scSauv = s.payload && s.payload.scripts;
+  if (scSauv) {
+    h += '<p class="hint" style="margin:0 0 4px"><b>Scripts</b> (consultation)</p>'
+       + '<div class="card" style="padding:12px;margin:0 0 12px">'
+       + '<div class="demande">' + resumeScriptsSauvegarde(scSauv) + '</div></div>';
+  }
+
+  // Reglages systeme : secondaires pour la decision "je restaure ou pas",
+  // repliés par defaut plutot que juges "inutiles" et supprimés -- ils
+  // restent la seule trace exploitable en cas de remplacement de module.
+  if (reg) {
+    let lignes = '';
+    Object.keys(LIB_REG).forEach(c => {
+      if (reg[c] == null) return;
+      const d = resumeReglage(c, reg[c]);
+      if (!d) return;
+      lignes += '<dt>' + LIB_REG[c] + '</dt><dd>' + d + '</dd>';
+    });
+    if (lignes) {
+      h += '<details style="margin:0 0 12px">'
+         + '<summary class="hint" style="cursor:pointer;margin:0">Réglages système enregistrés (facultatif)</summary>'
+         + '<dl class="reg">' + lignes + '</dl></details>';
+    }
+  }
+
+  // Dire ce que la restauration ne fait pas : une sauvegarde en laquelle on
+  // croit a tort est pire qu'une sauvegarde dont on connait les limites.
+  h += '<div class="note warn">Le bouton ci-dessous renvoie <b>exactement les créneaux '
+     + 'listés plus haut</b> au module. Les scripts et les réglages système sont conservés '
+     + 'pour consultation, mais le module ne sait pas encore les recevoir : ils se '
+     + 'ressaisissent depuis son interface.</div>'
+     + '<div class="note">Le mot de passe WiFi, la clé météo et le jeton de notification '
+     + 'ne sont <b>jamais</b> envoyés au serveur. Ils se ressaisissent une fois sur un '
+     + 'module neuf.</div>';
+
+  h += '<div class="row" style="margin-top:16px">'
+     + '<input id="sv-nom" style="flex:1" maxlength="80" '
+     + 'placeholder="Nommer cette sauvegarde" value="' + esc(s.label || '') + '"></div>'
+     + '<div class="row" style="margin-top:10px">'
+     + '<button class="primary" id="sv-res">Restaurer ces créneaux</button>'
+     + '<button id="sv-enr">Enregistrer le nom</button>'
+     + '<button id="sv-ep">' + (s.pinned ? 'Ne plus conserver' : 'Conserver toujours') + '</button>'
+     + '<button class="fermer" id="sv-non">Fermer</button></div>';
+
+  $('panneau').innerHTML = h;
+  $('voile').classList.add('on');
+  $('sv-non').onclick = fermer;
+  $('sv-enr').onclick = () => annoterSauvegarde(id, { label: $('sv-nom').value.trim() });
+  $('sv-ep').onclick  = () => annoterSauvegarde(id, { pinned: !s.pinned });
+  $('sv-res').onclick = e => restaurerSauvegarde(id, e.target);
+}
+
+async function annoterSauvegarde(id, champs){
+  try {
+    await api('/app/backup/annotate', { method: 'POST',
+      body: JSON.stringify(Object.assign({ moduleId: MOD, id: id }, champs)) });
+    fermer();
+    await chargerSauvegardes();
+    // "Modifications envoyées" affiche le meme nom via "Sauvegarde : ..."
+    // (etatPourRevision() lit SAUV) -- sans ce second rendu, la nouvelle
+    // etiquette n'apparaissait qu'apres un rechargement complet de la page.
+    // Depuis le cache CMDS, pas un nouvel appel serveur.
+    rendreCommandes(CMDS);
+    toast('Sauvegarde mise à jour.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function restaurerSauvegarde(id, bouton){
+  bouton.disabled = true;
+  try {
+    const r = await api('/app/backup/restore', { method: 'POST',
+      body: JSON.stringify({ moduleId: MOD, id: id }) });
+    fermer();
+    await recharger();
+    toast('Restauration envoyée : ' + r.zones + ' zone(s). Le module l&rsquo;applique '
+        + 'à sa prochaine synchronisation.');
+  } catch (e) {
+    bouton.disabled = false;
+    toast(e.message, true);
+  }
+}
+
+// Couleur d'identite d'une zone, remontee par le module (zones[].color,
+// "#rrggbb"). Repli : la palette par defaut du module (data/app.js,
+// ZONE_FALLBACK_HEX) pour un firmware qui ne l'envoie pas encore.
+const ZONE_FALLBACK_HEX = ['#00fc00', '#0090f8', '#f8a400', '#780078'];
+function couleurZone(z, i){
+  const c = z && z.color;
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : ZONE_FALLBACK_HEX[i % 4];
+}
+
+// Texte lisible sur une couleur de zone : noir ou blanc, celui qui offre
+// le meilleur contraste (luminance relative WCAG). Une couleur de texte
+// fixe deviendrait illisible pour certaines zones (noir sur une zone
+// noire, vert sur vert...) : le choix suit donc chaque couleur.
+// Fond de la pastille du nom : la couleur de la zone adoucie (40 % de la
+// couleur, 60 % de blanc). Les couleurs d'identite sont saturees (#00fc00...)
+// et "petaient" en aplat ; le liseret garde la couleur franche.
+function pastelZone(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return '#e8e8e8';
+  const n = parseInt(m[1], 16);
+  return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255]
+    .map(v => Math.round(v * 0.4 + 255 * 0.6).toString(16).padStart(2, '0')).join('');
+}
+
+function texteZone(hex) {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const lin = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
+}
+
+// Cases d'une meme ligne a la hauteur de la plus haute, pour un planning
+// uniforme. Mesure apres rendu plutot qu'un etirement CSS (height:100% dans
+// une cellule) : celui-ci n'est pas fiable sous Firefox. Sans effet en
+// affichage etroit, ou les jours sont empiles (td en display:block).
+function egaliserJours(){
+  const p = $('planning');
+  if (!p) return;
+  p.querySelectorAll('.plan tr').forEach(tr => {
+    const js = Array.from(tr.querySelectorAll('.jour'));
+    js.forEach(j => { j.style.height = ''; });
+    if (js.length < 2 || getComputedStyle(tr).display !== 'table-row') return;
+    const h = Math.max.apply(null, js.map(j => j.offsetHeight));
+    js.forEach(j => { j.style.height = h + 'px'; });
+  });
+}
+let _egaliserH = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_egaliserH);
+  _egaliserH = setTimeout(egaliserJours, 150);
+});
+
+function rendrePlanning(){
+  const zones = CFG.payload.zones || [];
+  let h = '<table class="plan"><tr><th></th>'
+        + JOURS.map(j => '<th>' + j.slice(0,3) + '</th>').join('') + '</tr>';
+
+  zones.forEach((z, i) => {
+    const mode = (Number(z.mode) === 1) ? 1 : 0;
+    const zc = couleurZone(z, i), zp = pastelZone(zc);
+    h += '<tr' + ((mode === 1) ? ' class="inter"' : '') + ' style="--zc:' + zc + ';--zp:' + zp + ';--zt:' + texteZone(zp) + '">'
+       + '<td><button class="znom" data-z="' + i + '">'
+       + '<span class="zn">' + esc(z.name || ('Zone ' + (i+1))) + '</span>'
+       + '<small>' + ((mode === 1) ? 'tous les ' + esc(z.intervalDays || 1) + ' j'
+                                   : 'jours fixes') + '</small></button></td>';
+    if (mode === 1) {
+      // Une seule cellule : les jours d'arrosage dependent d'un ancrage que le
+      // module ne remonte pas. Repeter les horaires sur les sept colonnes
+      // laisserait croire a un arrosage quotidien.
+      h += '<td colspan="7">' + celluleJour(i, mode, 0, true) + '</td></tr>';
+      return;
+    }
+    for (let d = 0; d < 7; d++) h += '<td>' + celluleJour(i, mode, d, false) + '</td>';
+    h += '</tr>';
+  });
+
+  h += '</table><div class="legende">'
+     + '<span><span class="ex" style="background:var(--text)"></span>programmé sur le module</span>'
+     + '<span><span class="ex" style="background:var(--amber)"></span>en attente de synchronisation (barré : suppression)</span>'
+     + '<span style="color:var(--red)">&#10007; tentative refusée, non appliquée</span></div>';
+  $('planning').innerHTML = h;
+  egaliserJours();
+
+  $('planning').querySelectorAll('.jour').forEach(b => {
+    b.onclick = () => ouvrirJour(Number(b.dataset.z), Number(b.dataset.d));
+  });
+  $('planning').querySelectorAll('.znom').forEach(b => {
+    b.onclick = () => ouvrirZone(Number(b.dataset.z));
+  });
+}
+
+function celluleJour(i, mode, d, large){
+  const lignes = [];
+  let echecs = 0;
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const c = creneau(i, mode, d, r);
+    if (c.refuse) echecs++;
+    if (!c.effectif.on) {
+      // Un creneau decoche qui tourne encore sur le module est une
+      // suppression en attente : la montrer (horaire du module, barre),
+      // sinon une demande qui ne fait que supprimer semble n'etre pas partie.
+      if (c.attente && c.module.on) {
+        lignes.push('<span class="cr sup">'
+          + hhmm(c.module.h, c.module.m) + ' ' + c.module.dur + APO + '</span>');
+      }
+      continue;
+    }
+    lignes.push('<span class="cr' + (c.attente ? ' att' : '') + '">'
+      + hhmm(c.effectif.h, c.effectif.m) + ' ' + c.effectif.dur + APO + '</span>');
+  }
+  const corps = lignes.length ? lignes.join('')
+                              : '<span style="color:var(--muted)">&ndash;</span>';
+  // Une mention, pas un compte : le nombre d'objets envoyes est un detail
+  // d'implementation, pas une information. Cinq creneaux partent toujours
+  // ensemble, y compris ceux qu'on n'a pas touches.
+  const note = echecs ? '<span class="echec">&#10007; dernière tentative refusée</span>' : '';
+  const suite = large
+    ? '<span class="mod-s" style="margin-top:4px">appliqués les jours d&rsquo;arrosage</span>'
+    : '';
+  const jl = large ? '' : JOURS[d].slice(0, 3);
+  return '<button class="jour' + (lignes.length ? '' : ' vide') + '" data-z="' + i
+       + '" data-d="' + d + '" data-jl="' + jl + '">'
+       + '<span class="jc">' + corps + note + suite + '</span></button>';
+}
+
+// ── Fenetre de detail ──────────────────────────────────────────────────────
+
+function fermer(){ $('voile').classList.remove('on'); $('panneau').innerHTML = ''; }
+
+function ouvrirJour(i, d){
+  const z = CFG.payload.zones[i];
+  const mode = (Number(z.mode) === 1) ? 1 : 0;
+  const titre = (mode === 1) ? 'Horaires d&rsquo;arrosage' : JOURS[d];
+
+  let h = '<h3>' + esc(z.name || ('Zone ' + (i+1))) + ' &mdash; ' + titre + '</h3>'
+        + '<p class="sous">' + ((mode === 1)
+            ? 'Appliqués tous les ' + esc(z.intervalDays || 1) + ' jours.'
+            : 'Cinq créneaux possibles. Décochez pour désactiver sans perdre l&rsquo;horaire.')
+        + '</p>';
+
+  let aAttente = false;
+  let aRefus = false;
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const c = creneau(i, mode, d, r);
+    if (c.attente) aAttente = true;
+    if (c.refuse) aRefus = true;
+    const cls = c.attente ? ' att' : (c.refuse ? ' ref' : '');
+    h += '<div class="slot' + (c.effectif.on ? '' : ' off') + cls + '" id="sr' + r + '">'
+      + '<span class="slot-n">' + (r+1) + '</span>'
+      + '<input type="checkbox" id="a' + r + '"' + (c.effectif.on ? ' checked' : '') + '>'
+      + '<input type="time" id="t' + r + '" value="' + hhmm(c.effectif.h, c.effectif.m) + '">'
+      + '<label>pendant</label>'
+      + '<input type="number" id="u' + r + '" min="1" max="' + dureeMax() + '" value="'
+      + c.effectif.dur + '"><label>min</label>'
+      + (c.attente ? '<span class="badge att">en attente</span>' : '')
+      + (c.refuse ? '<span class="badge ref">' + hhmm(c.refuse.h, c.refuse.m)
+                    + ' refusé</span>' : '')
+      + '</div>';
+  }
+
+  if (aAttente) {
+    h += '<div class="note warn">Les lignes ambrées sont déjà envoyées et attendent la '
+       + 'prochaine synchronisation. Ce que vous voyez est l&rsquo;état qui sera vrai '
+       + 'une fois appliqué.</div>';
+  }
+  if (aRefus) {
+    h += '<div class="note ko">Une tentative précédente a été refusée : les réglages du '
+       + 'module avaient changé entre-temps, et <b>rien</b> n&rsquo;a été appliqué. '
+       + 'Les valeurs affichées sont celles réellement programmées. Renvoyez pour '
+       + 'réessayer.</div>';
+  }
+  h += '<p class="hint">Durée maximale acceptée par ce module : ' + dureeMax() + ' minutes.</p>'
+     + '<div class="row" style="margin-top:16px">'
+     + '<button class="primary" id="p-ok">Envoyer au module</button>'
+     + '<button id="p-non">Annuler</button></div>';
+
+  $('panneau').innerHTML = h;
+  $('voile').classList.add('on');
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    $('a' + r).onchange = e => {
+      const el = $('sr' + r);
+      const garde = (el.className.indexOf('att') >= 0) ? ' att'
+                  : ((el.className.indexOf('ref') >= 0) ? ' ref' : '');
+      el.className = 'slot' + (e.target.checked ? '' : ' off') + garde;
+    };
+  }
+  $('p-non').onclick = fermer;
+  $('p-ok').onclick = () => envoyerJour(i, mode, d);
+}
+
+function ouvrirZone(i){
+  const zBase = CFG.payload.zones[i];
+  const att = attenteZone(i);
+  const z = att ? Object.assign({}, zBase, att.champs) : zBase;
+  const mode = (Number(z.mode) === 1) ? 1 : 0;
+  const rain = z.rain || {};
+
+  $('panneau').innerHTML =
+      '<h3>Réglages de la zone</h3>'
+    + '<p class="sous">Les horaires se règlent en cliquant un jour du planning.</p>'
+    + '<div class="row"><label>Nom</label>'
+    + '<input id="z-nom" style="flex:1" maxlength="24" value="' + esc(z.name || '') + '"></div>'
+    + '<div class="row"><label>Déclenchement</label><select id="z-mode">'
+    + '<option value="0"' + ((mode === 0) ? ' selected' : '') + '>Jours fixes</option>'
+    + '<option value="1"' + ((mode === 1) ? ' selected' : '') + '>Tous les N jours</option>'
+    + '</select><span id="z-di"' + ((mode === 1) ? '' : ' hidden') + '>'
+    + '<span class="paire"><label>tous les</label>'
+    + '<input type="number" id="z-int" min="1" max="30" '
+    + 'style="width:72px" value="' + esc(z.intervalDays || 2) + '"><label>jours</label></span></span></div>'
+    // Valeur et unite groupees : livrees en vrac au retour a la ligne, la
+    // phrase se coupait entre << mm sur >> et << 24 heures >> sur telephone.
+    + '<div class="row"><label>Ne pas arroser s&rsquo;il est tombé plus de</label>'
+    + '<span class="paire"><input type="number" id="z-mm" min="0" max="100" step="0.5" '
+    + 'style="width:80px" value="' + esc((rain.thresholdMm != null) ? rain.thresholdMm : 0)
+    + '"><label>mm</label></span>'
+    + '<span class="paire"><label>sur</label>'
+    + '<input type="number" id="z-h" min="0" max="48" style="width:72px" value="'
+    + esc((rain.forecastHours != null) ? rain.forecastHours : 24) + '">'
+    + '<label>heures</label></span></div>'
+    + '<div class="row" style="margin-top:16px">'
+    + '<button class="primary" id="p-ok">Envoyer au module</button>'
+    + '<button id="p-non">Annuler</button></div>';
+
+  $('voile').classList.add('on');
+  $('z-mode').onchange = e => { $('z-di').hidden = (e.target.value !== '1'); };
+  $('p-non').onclick = fermer;
+  $('p-ok').onclick = () => envoyerZone(i);
+}
+
+// Plafond impose par le module. Il ecarte SILENCIEUSEMENT un creneau plus
+// long : la commande part, l'accuse annonce un succes partiel, et le reglage
+// semble enregistre.
+function dureeMax(){
+  const s = CFG && CFG.payload && CFG.payload.system;
+  const v = s && Number(s.maxWateringMin);
+  return (v && v > 0) ? v : 60;
+}
+
+// ── Envoi ──────────────────────────────────────────────────────────────────
+
+async function envoyer(zone, bouton){
+  bouton.disabled = true;
+  try {
+    const r = await api('/app/module/schedule', {
+      method: 'POST', body: JSON.stringify({moduleId: MOD, zones: [zone]})
+    });
+    fermer();
+    toast((r && r.fusion)
+      ? 'Envoyé, groupé avec la modification déjà en attente.'
+      : 'Envoyé. Le module appliquera à sa prochaine synchronisation.');
+    await recharger();
+  } catch(e){
+    toast('Refusé : ' + e.message, true);
+    bouton.disabled = false;
+  }
+}
+
+function envoyerJour(i, mode, d){
+  const plafond = dureeMax();
+  const slots = [];
+  for (let r = 0; r < MAX_SLOTS; r++) {
+    const t = ($('t' + r).value || '00:00').split(':');
+    const dur = Number($('u' + r).value);
+    // Le module refuse une duree nulle : un creneau desactive garde donc une
+    // duree valide, c'est l'indicateur "on" qui le neutralise.
+    slots.push({ slot:r, h:Number(t[0])||0, m:Number(t[1])||0,
+                 dur:(dur > 0) ? dur : 5, on: $('a' + r).checked });
+  }
+  const trop = slots.filter(s => s.on && s.dur > plafond);
+  if (trop.length) {
+    toast('Durée trop longue (' + trop[0].dur + ' min). Ce module n' + APO
+        + 'accepte pas plus de ' + plafond + ' minutes par créneau.', true);
+    return;
+  }
+  const zone = { i: i };
+  if (mode === 1) zone.intervalSlots = slots;
+  else zone.daySlots = slots.map(s => Object.assign({day: d}, s));
+  envoyer(zone, $('p-ok'));
+}
+
+function envoyerZone(i){
+  const mode = Number($('z-mode').value);
+  const zone = {
+    i: i,
+    name: $('z-nom').value.trim(),
+    mode: mode,
+    rain: { thresholdMm: Number($('z-mm').value), forecastHours: Number($('z-h').value) }
+  };
+  if (mode === 1) zone.intervalDays = Number($('z-int').value);
+  envoyer(zone, $('p-ok'));
+}
+
+// ── Historique ─────────────────────────────────────────────────────────────
+
+function resumeCommande(c){
+  const cmd = c.command;
+  // Scripts et phrases (decision D014) : une commande porte l'un OU l'autre.
+  if (cmd && Array.isArray(cmd.phrases)) {
+    return '<b>Phrases</b> &mdash; ' + cmd.phrases.length + ' phrase(s)';
+  }
+  if (cmd && Array.isArray(cmd.scripts) && cmd.scripts[0]) {
+    const s = cmd.scripts[0];
+    return '<b>Script ' + (s.i + 1) + '</b> &mdash; ' + (s.efface ? 'effacement'
+      : esc(s.nom || '') + (s.actif === false ? ' (inactif)' : '') + ' &middot; '
+        + ((s.code || '').length / 2) + ' octets');
+  }
+  if (!cmd || !Array.isArray(cmd.zones)) return '';
+  const nom = i => {
+    const z = (CFG && CFG.payload && CFG.payload.zones) ? CFG.payload.zones[i] : null;
+    return (z && z.name) ? z.name : ('Zone ' + (i+1));
+  };
+  const heure = s => hhmm(s.h, s.m) + ' (' + s.dur + ' min)';
+  return cmd.zones.map(z => {
+    const i = (z.i != null) ? z.i : 0;
+    const bouts = [];
+    if (z.mode === 1) bouts.push('tous les ' + (z.intervalDays || '?') + ' jours');
+    else if (z.mode === 0) bouts.push('jours fixes');
+    if (z.rain && z.rain.thresholdMm != null) {
+      bouts.push('pluie ' + z.rain.thresholdMm + ' mm / ' + (z.rain.forecastHours || 0) + ' h');
+    }
+    if (Array.isArray(z.intervalSlots) && z.intervalSlots.length) {
+      const a = z.intervalSlots.filter(s => s.on);
+      bouts.push(a.length ? a.map(heure).join(', ') : 'aucun créneau actif');
+    }
+    if (Array.isArray(z.daySlots) && z.daySlots.length) {
+      // Grouper par jour : une commande fusionnee peut en couvrir plusieurs.
+      const parJour = {};
+      z.daySlots.forEach(s => {
+        const d = s.day || 0;
+        if (!parJour[d]) parJour[d] = [];
+        if (s.on) parJour[d].push(heure(s));
+      });
+      Object.keys(parJour).sort((a,b) => a - b).forEach(d => {
+        bouts.push(JOURS[d] + ' : '
+          + (parJour[d].length ? parJour[d].join(', ') : 'aucun créneau actif'));
+      });
+    }
+    return '<b>' + esc(nom(i)) + '</b> &mdash; ' + bouts.join(' &middot; ');
+  }).join('<br>');
+}
+
+// Le libelle depend aussi de la RAISON : une ligne fusionnee n'a pas echoue,
+// son contenu a ete repris dans un envoi plus recent.
+function etatLisible(c){
+  const s = c.state;
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (s === 'expired') return (d.indexOf('regroupee') >= 0) ? 'fusionnée' : 'annulée';
+  return {pending:'en attente', accepted:'appliquée', refused:'refusée',
+          failed:'échouée'}[s] || s;
+}
+
+function detailLisible(c){
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  if (d.indexOf('config-modifiee-localement') === 0) {
+    // Preciser que le refus est TOTAL : le module sort avant d'appliquer quoi
+    // que ce soit. Sans cette phrase, on croit que certains reglages sont
+    // passes et on ne sait plus lesquels refaire.
+    return 'aucun de ces réglages n' + APO + 'a été appliqué. Les réglages du module '
+         + 'avaient changé entre-temps ; il refuse en bloc plutôt que d' + APO
+         + 'appliquer à moitié. Renvoyez pour réessayer.';
+  }
+  if (d.indexOf('regroupee') >= 0) return 'reprise dans une modification plus récente';
+  if (d.indexOf('type-non-supporte') === 0) return 'ce module ne sait pas traiter ce type de commande.';
+  // Le numero de revision vit dans sa propre colonne (voir revisionAppliquee),
+  // pas noye ici dans une phrase -- retire de ce texte pour ne pas le repeter.
+  if (d) return d.replace(/,?\s*revision=\d+/, '');
+  if (c.state === 'pending') return 'le module ne s' + APO + 'est pas encore synchronisé';
+  return '';
+}
+
+// Numero de revision que le module a effectivement applique, extrait du
+// texte brut renvoye par CloudSync.cpp (applyCommand(), "%u champ(s)
+// applique(s), revision=%lu"). Seules les commandes reellement appliquees en
+// portent un -- une fusionnee ou refusee n'a jamais ecrit de nouvelle
+// revision, donc null plutot qu'un chiffre inventé.
+function revisionAppliquee(c){
+  const d = (c.result && c.result.detail) ? String(c.result.detail) : '';
+  const m = d.match(/revision=(\d+)/);
+  return m ? m[1] : null;
+}
+
+function rendreCommandes(cmds){
+  const el = $('cmds');
+  if (!el) return;
+  if (!cmds.length) {
+    el.innerHTML = '<p class="hint" style="margin:0">Aucune modification envoyée pour le moment.</p>';
+    return;
+  }
+  el.innerHTML = '<table class="hist"><tr><th>Envoyée</th><th>État</th>'
+    + '<th>Ce qui est demandé</th><th>Détail</th><th>Révision</th></tr>'
+    + cmds.map(c => {
+        const d = parseUtc(c.issuedAt);
+        // A partir de quel etat cette modification a ete construite : sans
+        // ça, rien ne dit a quelle configuration ces lignes se rapportent,
+        // surtout une fois plusieurs modifications envoyees a la suite.
+        // Cliquable quand la sauvegarde existe encore (base.id) : ouvre son
+        // panneau de detail directement, sans defiler jusqu'a la liste plus
+        // bas pour retrouver l'etat correspondant.
+        const base = (c.command && c.command.baseRevision != null)
+          ? etatPourRevision(c.command.baseRevision) : null;
+        // "Sauvegarde :" : renvoie vers le vocabulaire deja connu de la
+        // section du meme nom plus bas, plutot qu'une tournure ("a partir
+        // de", "basee sur") qui reste abstraite tant qu'on ne sait pas a
+        // quoi elle renvoie. title= explicite le concept pour qui le voit la
+        // premiere fois -- demande explicite du 28 septembre 2026.
+        const baseTitle = 'La configuration du module telle que le serveur la '
+          + 'connaissait au moment où cette modification a été envoyée';
+        const baseHtml = !base ? ''
+          : (base.id != null
+              ? '<br><button class="lien-etat" data-sv-open="' + base.id + '" title="' + esc(baseTitle) + '">Sauvegarde : ' + base.label + '</button>'
+              : '<br><span class="mod-s" style="margin:0" title="' + esc(baseTitle) + '">Sauvegarde : ' + base.label + '</span>');
+        const rev = revisionAppliquee(c);
+        return '<tr><td>' + (d ? esc(d.toLocaleString('fr-FR')) : '—') + baseHtml + '</td>'
+          + '<td><span class="tag ' + esc(c.state) + '">' + esc(etatLisible(c)) + '</span></td>'
+          + '<td class="demande">' + resumeCommande(c) + '</td>'
+          + '<td>' + esc(detailLisible(c)) + '</td>'
+          + '<td style="font-family:var(--mono)">' + (rev ? 'n&deg;' + esc(rev) : '—') + '</td></tr>';
+      }).join('') + '</table>'
+    + '<p class="hint">« En attente » signifie que le module ne s&rsquo;est pas encore '
+    + 'synchronisé. Il prendra la modification tout seul.</p>';
+  el.querySelectorAll('[data-sv-open]').forEach(b => {
+    b.onclick = () => ouvrirSauvegarde(Number(b.dataset.svOpen));
+  });
+}
+
+// ── Demarrage ──────────────────────────────────────────────────────────────
+
+$('btn-login').onclick = connecter;
+$('btn-logout').onclick = deconnecter;
+$('btn-oubli').onclick = () => { $('o-email').value = $('email').value; montrer('oubli'); };
+$('btn-oubli-retour').onclick = () => montrer('login');
+$('btn-oubli-envoyer').onclick = demanderLien;
+$('btn-nm').onclick = poserMotDePasse;
+$('nm-pass2').addEventListener('keydown', e => { if (e.key === 'Enter') poserMotDePasse(); });
+$('btn-back').onclick = () => voirListe().catch(e => toast(e.message, true));
+$('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
+$('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
+$('voile').addEventListener('click', e => { if (e.target === $('voile')) fermer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermer(); });
+
+// Une session peut deja etre ouverte : on tente, et on retombe sur le
+// formulaire si elle a expire. Arriver sur une page de connexion n'est pas un
+// incident, donc aucun message d'erreur.
+// Un lien recu par mail passe avant tout : meme connecte sur ce navigateur,
+// la personne est venue poser un mot de passe.
+if (lireLien()) {
+  $('nm-titre').textContent = LIEN.purpose === 'invite' ? 'Bienvenue : choisissez votre mot de passe'
+                                                        : 'Nouveau mot de passe';
+  montrer('nm');
+} else {
+  demarrer().catch(() => { montrer('login'); });
+}
