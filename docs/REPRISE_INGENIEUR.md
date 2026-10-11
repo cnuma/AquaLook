@@ -1,12 +1,14 @@
 # AquaLook — Dossier de reprise ingénieur
 
-- Date de rédaction : 5 octobre 2026 ; en-tête et §1 remis à jour le
-  10 octobre 2026. Les §2 à §13 décrivent l'état du 5 octobre : pour l'état
+- Date de rédaction : 5 octobre 2026 ; §1 remis à jour le 10 octobre 2026,
+  en-tête le 11 octobre 2026. Les §2 à §13 décrivent l'état du 5 octobre : pour l'état
   du jour, le checkpoint le plus récent de `docs/checkpoints/` fait foi.
 - Base : `main` (seule branche de travail ; `feat/moteur-de-regles` y est
   intégrée et archivée sous `archive/feat/moteur-de-regles`)
-- Version fonctionnelle (`VERSION`) : `5.12.0` au 10 octobre — dernière
-  release publiée sur GitHub : tag `v5.9.7` (17 août 2026)
+- Version fonctionnelle : lire le fichier `VERSION` (source unique ;
+  `5.13.2` au 11 octobre 2026) — dernière release publiée sur GitHub :
+  tag `v5.9.7` (17 août 2026)
+- Reste à faire : `docs/TODO.md` (liste unique, par priorité)
 - Public visé : ingénieur embarqué qui reprend le projet sans avoir suivi son historique
 
 Ce document est le **point d'entrée unique** pour reprendre AquaLook. Il ne
