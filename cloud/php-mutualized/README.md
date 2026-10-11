@@ -150,9 +150,17 @@ par Let's Encrypt, sur le domaine `*.alwaysdata.net`.
 2. **Type de site** — *Web → Sites*, le site doit être de type **PHP**, pas
    Node.js. Une erreur déjà commise : un site déclaré Node.js répond 502 sur
    tout, y compris les fichiers statiques.
-3. **Dépôt des fichiers** — envoyer le contenu de `cloud/php-mutualized/` dans
-   le répertoire racine du site. **Transfert en mode binaire** : le mode ASCII
-   réécrit les fins de ligne et a déjà corrompu des empreintes SHA-256.
+3. **Dépôt des fichiers** — depuis le 11 oct. 2026, **depuis Git** avec
+   `tools/deploy_cloud.py` (lancé par le propriétaire) : il publie en FTPS le
+   contenu exact d'un commit, n'efface rien (`.env`, `/web/`, `/editeur/`
+   restent intacts), puis relit le serveur et annonce « Serveur ALIGNE sur
+   <sha> ». `python tools/deploy_cloud.py` (plan, hors ligne),
+   `... verifier` (lecture seule), `... publier`. Identifiants dans le `.env`
+   à la racine du dépôt : `AQUALOOK_FTP_HOST`, `AQUALOOK_FTP_USER`,
+   `AQUALOOK_FTP_PASSWORD`, `AQUALOOK_FTP_DIR` (défaut `www`). Ne plus
+   éditer les fichiers sur le serveur. À la main en dernier recours
+   seulement, **en mode binaire** : le mode ASCII réécrit les fins de ligne
+   et a déjà corrompu des empreintes SHA-256.
 4. **`.env`** — copier `.env.example` en `.env`, y reporter les identifiants de
    l'étape 1 et générer un jeton :
    `php -r "echo bin2hex(random_bytes(32));"`
