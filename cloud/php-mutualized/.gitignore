@@ -1,1 +1,4 @@
 .env
+# Journaux PHP ecrits a cote des sources (php.log, error.log) : artefacts
+# locaux, jamais versionnes -- ils revelent les chemins absolus du serveur.
+*.log
