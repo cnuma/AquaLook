@@ -206,10 +206,15 @@ par Let's Encrypt, sur le domaine `*.alwaysdata.net`.
    (au-delà de 3, l'hébergeur bloque). `/health` rend `config.mail` à `true`
    quand les réglages indispensables sont présents.
 
-   Restent **uniquement** dans le `.env` : `DB_*` et `ADMIN_TOKEN` (il faut
-   les connaître avant de pouvoir lire la base). Le mot de passe SMTP réglé
-   depuis la console est stocké en base : l'API ne le relit jamais, mais une
-   sauvegarde de la base le contient.
+   Restent **uniquement** dans le `.env` : `DB_*`, `ADMIN_TOKEN` (il faut
+   les connaître avant de pouvoir lire la base) et `SETTINGS_KEY`. Le mot de
+   passe SMTP réglé depuis la console est stocké en base **chiffré** avec
+   `SETTINGS_KEY` (XChaCha20-Poly1305, `settings.php`, P0.4c) : une
+   sauvegarde de la base seule ne le livre plus, et l'API ne le relit jamais.
+   Sans `SETTINGS_KEY`, la console refuse d'enregistrer un secret ; une
+   ancienne valeur en clair reste lue et se rechiffre d'elle-même dès que la
+   clé est en place (la console affiche l'état : chiffré, en clair,
+   illisible). Clé perdue ou changée : ressaisir le mot de passe.
 
 Le site sert déjà les ressources Web sous `/web/v<version>/`. L'API et la
 console cohabitent avec elles sans conflit : le `.htaccess` ne réécrit que ce
@@ -224,7 +229,8 @@ qui n'existe pas sur disque.
 3. Déposer ce dossier (`cloud/php-mutualized/`) à la racine du sous-domaine choisi,
    via FTP/SFTP ou Git si l'offre le permet.
 4. Copier `.env.example` en `.env`, renseigner les identifiants MySQL de l'étape 1
-   et générer un `ADMIN_TOKEN` (`php -r "echo bin2hex(random_bytes(32));"`).
+   et générer un `ADMIN_TOKEN` (`php -r "echo bin2hex(random_bytes(32));"`)
+   et une `SETTINGS_KEY` (`php -r "echo base64_encode(random_bytes(32));"`).
 5. Importer `schema.sql` (phpMyAdmin fourni par OVH, ou `mysql < schema.sql` en
    SSH si l'offre le permet).
 6. Vérifier `https://<sous-domaine>/health` répond `{"ok":true}`.

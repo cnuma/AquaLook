@@ -146,6 +146,12 @@ function renderModules() {
 // limite n'est ecrit dans cette page. Un secret n'est jamais relu ; son
 // champ vide signifie "ne pas changer".
 const SOURCES = { base: 'console', env: '.env', defaut: 'défaut' };
+// Etat en base d'un secret (settings.php, P0.4c) : chiffre avec SETTINGS_KEY.
+const STOCKAGE = {
+  chiffre: 'défini (chiffré) — laisser vide pour conserver',
+  clair: 'défini EN CLAIR — ajouter SETTINGS_KEY au .env du serveur',
+  illisible: 'ILLISIBLE (SETTINGS_KEY changée ?) — ressaisir le mot de passe'
+};
 
 async function voirParametres() {
   CURRENT = null;
@@ -159,7 +165,8 @@ async function voirParametres() {
 
   const lignes = items.map(s => '<div class="row"><label style="min-width:230px">' + esc(s.label) + '</label>'
     + '<input data-n="' + esc(s.name) + '" style="flex:1" autocomplete="off"'
-    + (s.secret ? ' type="password" placeholder="' + (s.defined ? 'défini — laisser vide pour conserver' : 'non défini') + '"'
+    + (s.secret ? ' type="password" placeholder="' + esc(STOCKAGE[s.stored]
+                    || (s.defined ? 'défini — laisser vide pour conserver' : 'non défini')) + '"'
                 : ' value="' + esc(s.value) + '"')
     + '><span class="mono" style="min-width:60px">' + esc(SOURCES[s.source] || s.source) + '</span>'
     + (s.source === 'base' ? '<button data-raz="' + esc(s.name) + '" title="Revenir au .env ou au défaut">×</button>' : '')
