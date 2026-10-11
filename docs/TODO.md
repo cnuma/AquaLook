@@ -73,7 +73,7 @@ décision), *les deux*.
 | P4.2 | D7 : peu de tests automatiques du planning (pluie, intervalle, minuit, durée max) |
 | P4.3 | D8 : capacité 16 / fonctionnelle 8, garde `MAX_ACTIVE_ZONES` sans test |
 | P4.4 | D1 : scan I²C de diagnostic au boot ; D3 : env `debug_boot` fragile |
-| P4.5 | Documentation périmée : `docs/START_HERE.md`, `docs/engineering/01_PROJECT_STATUS.md`, en-tête de `docs/REPRISE_INGENIEUR.md` (indique 5.12.0) |
+| P4.5 | Documentation périmée : `docs/START_HERE.md`, `docs/engineering/01_PROJECT_STATUS.md` (en-tête de `docs/REPRISE_INGENIEUR.md` corrigé le 11 oct. 2026 : renvoie au fichier `VERSION` et à cette liste) |
 | P4.6 | Sortir le dépôt d'OneDrive (`.pio/` ~830 Mo resynchronisé) |
 | P4.7 | Patch AsyncTCP n°5 lié à l'ancre textuelle d'AsyncTCP 3.3.2 : revérifier après toute mise à jour de bibliothèque |
 | P4.8 | Tests actifs du site cloud plus poussés (à scoper, faible débit, depuis la machine du propriétaire) |
