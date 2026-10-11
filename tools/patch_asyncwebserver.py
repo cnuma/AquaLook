@@ -142,6 +142,42 @@ PATCHES = [
         "}\n",
         "AQUALOOK_EVENT_PURGE",
     ),
+    # -- Patch 5 : ne pas relire le pcb dans le rappel d'erreur --
+    # lwIP appelle tcp_err APRES avoir libere le pcb (contrat documente de
+    # tcp_err). Le code d'origine relisait pourtant _pcb->state et posait des
+    # rappels dessus. Si la memoire avait deja ete reutilisee par un pcb en
+    # ecoute, tcp_sent(pcb, NULL) declenchait l'assertion de lwIP.
+    #
+    # Plantage reel du 11 octobre 2026 a 05:28 sur .141 : lancement du portail
+    # captif (WiFi.disconnect, donc abandon des connexions ouvertes) ->
+    #   assert failed: tcp_sent tcp.c:2131 (invalid socket state for sent
+    #   callback) dans AsyncClient::_error via _async_service_task.
+    # Le pcb n'existe plus : il suffit d'oublier le pointeur.
+    (
+        os.path.join("AsyncTCP", "src", "AsyncTCP.cpp"),
+        "void AsyncClient::_error(int8_t err) {\n"
+        "  if (_pcb) {\n"
+        "    TCP_MUTEX_LOCK();\n"
+        "    tcp_arg(_pcb, NULL);\n"
+        "    if (_pcb->state == LISTEN) {\n"
+        "      tcp_sent(_pcb, NULL);\n"
+        "      tcp_recv(_pcb, NULL);\n"
+        "      tcp_err(_pcb, NULL);\n"
+        "      tcp_poll(_pcb, NULL, 0);\n"
+        "    }\n"
+        "    TCP_MUTEX_UNLOCK();\n"
+        "    _free_closed_slot();\n"
+        "    _pcb = NULL;\n"
+        "  }\n",
+        "void AsyncClient::_error(int8_t err) {\n"
+        "  if (_pcb) {\n"
+        "    // AQUALOOK_ERROR_NO_PCB : lwIP a deja libere ce pcb quand tcp_err\n"
+        "    // est appele ; ne plus le deferencer, seulement l'oublier.\n"
+        "    _free_closed_slot();\n"
+        "    _pcb = NULL;\n"
+        "  }\n",
+        "AQUALOOK_ERROR_NO_PCB",
+    ),
 ]
 
 

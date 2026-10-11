@@ -371,8 +371,15 @@ session de l'auteur conservée, ancien refusé, nouveau accepté). Phase 4 :
 oubli puis redémarrage, pose refusée 403 ; « Autoriser » touché, fenêtre
 ouverte ; mot de passe posé depuis le bandeau par le propriétaire (toujours
 un mot de passe de banc, dans `.env`). Non observé : l'ouverture de la
-fenêtre par « Oublier » (journal perdu au redémarrage). Reste : phase 6 (SD
-retirée, portail captif).
+fenêtre par « Oublier » (journal perdu au redémarrage). Phase 6 (SD
+retirée, portail captif) : **validée sur `.141` le 11 oct. 2026** (5.13.1).
+Sans SD : `/login`, `/ota`, `/logs`, `/setup` de secours, écriture 401 sans
+session et acceptée avec, synchro cloud inchangée. Portail : `/api/wifi/scan`
+libre, `/api/notifications` 401. Trois défauts trouvés et corrigés : accueil
+« Not found » sans SD (`62229ea`), menu ADMIN de l'écran capté par le bandeau
+pendant une panne (`d36064a`), plantage AsyncTCP au lancement du portail avec
+une connexion ouverte (`40b1ef4`, patch n°5). Non essayé : enregistrer un
+réseau depuis le portail.
 
 Lot E : **validé sur `.141` le 9 oct. 2026** (firmware `370a6eb`, build
 1317). `PinLock` (NVS `aqlsec`, PBKDF2, essais limités et persistés), portes

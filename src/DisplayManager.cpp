@@ -953,8 +953,11 @@ void DisplayManager::drawHeader(const char* title, bool backBtn) {
 // qu'un pictogramme de 16 px vaut mieux pour un ecran arrose du bout du
 // doigt dans un jardin.
 bool DisplayManager::handleHeaderTouch(uint16_t tx, uint16_t ty) {
-    (void)tx;
     if (ty >= 28) return false;
+    // Le bouton menu de HOME vit dans le coin gauche du bandeau : le laisser
+    // passer, sinon une panne active (SD absente, par exemple) rend ADMIN
+    // inaccessible -- constate sur .141 le 11 oct. 2026.
+    if (_screen == Screen::HOME && tx < 40) return false;
     const uint32_t faultMask = FaultManager::activeMask() &
                                ~(1UL << static_cast<uint8_t>(FaultId::BOOT_LOOP));
     const bool abnormal = BootLoopGuard::isDegraded() ||
