@@ -39,12 +39,12 @@ décision), *les deux*.
 
 | # | Sujet | Qui |
 |---|---|---|
-| P2.1 | Recopier `data/scripts-schema.html` et `data/session.js` dans `/editeur/` (AlwaysData) ; paquet Web `5.10.4` (`publish_web_assets.py`, fichiers puis manifeste, `check_published_web.py`) ; tester « changer le secret » depuis l'éditeur | propriétaire (FTP) + agent |
+| P2.1 | Recopier `data/scripts-schema.html` (volets repliables P2.6 compris) et `data/session.js` dans `/editeur/` (AlwaysData) ; paquet Web `5.10.4` (`publish_web_assets.py`, fichiers puis manifeste, `check_published_web.py`) ; tester « changer le secret » depuis l'éditeur | propriétaire (FTP) + agent |
 | P2.2 | Lot G de D016 : effacement du PIN depuis l'espace en ligne | agent |
 | P2.3 | Confirmer en production : invitation depuis la console, changement de mot de passe connecté, durée de `forgot` sur adresse connue | les deux |
 | P2.4 | Confirmer au doigt (lot E) : geste d'effacement du PIN au démarrage, attentes successives ; relever la durée PBKDF2 | propriétaire |
 | P2.5 | Portail captif : enregistrer un réseau depuis le portail (non essayé) | les deux |
-| P2.6 | Éditeur de scripts sur tablette : volets latéraux repliables | agent |
+| ~~P2.6~~ | ~~Éditeur de scripts sur tablette : volets latéraux repliables~~ — **fait** le 11 oct. 2026 (`4e93e4e`, `7ff0df2`) : pastilles sur les jonctions en T, tout écran hors téléphone, validé par le propriétaire sur tablette (`.141`, dépôt SD) ; recopie dans `/editeur/` jointe à P2.1 | — |
 | P2.7 | Tag / release `v5.13.x` (non demandé à ce jour) | propriétaire (décision) |
 | P2.8 | **Nouvelle fonctionnalité : notifications par mail** (demande du 11 oct. 2026). Envoi par le serveur AlwaysData (pas par le module), réglé depuis le profil de l'utilisateur dans son espace en ligne (adresse, types d'événements, activation). Plafonds vérifiés côté serveur (par utilisateur, par module, par jour, en plus de `MAIL_MAX_PER_DAY` global), réglables sans recompilation (registre `settings.php` + console admin). Délivrabilité réglée (P1.5) | agent (+ décisions propriétaire) |
 

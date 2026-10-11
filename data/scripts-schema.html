@@ -52,7 +52,28 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;strok
 #msg.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
 #msg.err{border-color:#f5c6cb;color:var(--red);background:#f8d7da}
 
-.main{min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr) 320px;gap:8px}
+.main{min-height:0;display:grid;grid-template-columns:var(--w-pal) minmax(0,1fr) var(--w-props);gap:8px;
+  position:relative;--w-pal:230px;--w-props:320px}
+/* Volets lateraux repliables (P2.6, demande du 9 oct. 2026, etendue le
+   11 oct. a tout ecran qui n'est pas un telephone) : sur tablette les deux
+   volets mangeaient le schema. Meme pastille que la zone du bas, posee sur
+   les jonctions en T (gouttiere laterale / limite schema-zone du bas, elle
+   suit donc la zone du bas repliee) ; la colonne tombe a 0, l'aside reste dans sa cellule
+   (visibility, pas display:none, pour ne pas decaler la grille). */
+.main.pal-replie{--w-pal:0px}
+.main.props-replie{--w-props:0px}
+.main.pal-replie>.palette,.main.props-replie>.props-panel{visibility:hidden;border-width:0}
+.bottom>.volet{position:absolute;top:-4px;transform:translate(-50%,-50%);z-index:5;width:16px;height:30px;padding:0;
+  border:0;border-radius:8px;background:var(--green);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.bottom>.volet::after{content:'';position:absolute;inset:-8px}
+.bottom>.volet:hover{background:var(--green-mid)}
+.bottom>.volet:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+#b-volet-pal{left:-4px}
+#b-volet-props{left:calc(100% + 4px)}
+/* Triangle vers le bord = replier, vers le schema = deplier. */
+#b-volet-pal::before,.props-replie #b-volet-props::before{content:'';border:5px solid transparent;border-left:0;border-right:6px solid #fff;margin-right:1px}
+#b-volet-props::before,.pal-replie #b-volet-pal::before{content:'';border:5px solid transparent;border-right:0;border-left:6px solid #fff;margin:0 0 0 1px}
 .panel{background:var(--bg1);border:1px solid var(--border);border-radius:8px;min-height:0;overflow:auto}
 .ph{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px 14px 6px}
 
@@ -322,7 +343,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 @media (max-width:860px){
   body{overflow:auto}
   .main{grid-template-columns:minmax(0,1fr)}
-  .palette,.props-panel,.bottom,.edit-only{display:none!important}
+  .palette,.props-panel,.bottom,.edit-only,.volet{display:none!important}
   .center{grid-template-rows:minmax(0,1fr)}
   .plus{display:none}
   .mobile-banner{display:block;background:var(--blue-dim);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px}
@@ -396,6 +417,8 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
       </div>
       <div class="bottom">
        <button class="replier" id="b-replier" title="Replier ou déplier la zone du bas" aria-expanded="true" aria-label="Replier la zone du bas"></button>
+       <button class="volet" id="b-volet-pal" title="Replier ou déplier la palette de blocs" aria-expanded="true" aria-label="Replier la palette de blocs"></button>
+       <button class="volet" id="b-volet-props" title="Replier ou déplier les réglages du bloc" aria-expanded="true" aria-label="Replier les réglages du bloc"></button>
        <div class="panel">
         <div class="tabs">
           <span class="ttl">Texte généré</span>
@@ -1148,6 +1171,19 @@ function replier(oui) {
 }
 $('b-replier').onclick = () => replier(!document.querySelector('.center').classList.contains('replie'));
 try { if (localStorage.getItem('aqualook-bas-replie') === '1') replier(true); } catch (e) {}
+// Volets lateraux (palette, reglages) : meme principe, preference par volet.
+function volet(cote, oui) {
+  const nom = cote === 'pal' ? 'la palette de blocs' : 'les réglages du bloc';
+  document.querySelector('.main').classList.toggle(cote + '-replie', oui);
+  $('b-volet-' + cote).setAttribute('aria-label', (oui ? 'Déplier ' : 'Replier ') + nom);
+  $('b-volet-' + cote).setAttribute('aria-expanded', !oui);
+  try { localStorage.setItem('aqualook-' + cote + '-replie', oui ? '1' : '0'); } catch (e) {}
+  requestAnimationFrame(fit);
+}
+['pal', 'props'].forEach((c) => {
+  $('b-volet-' + c).onclick = () => volet(c, !document.querySelector('.main').classList.contains(c + '-replie'));
+  try { if (localStorage.getItem('aqualook-' + c + '-replie') === '1') volet(c, true); } catch (e) {}
+});
 $('t-phr').onclick = () => tab('phr');
 $('t-var').onclick = () => tab('var');
 
