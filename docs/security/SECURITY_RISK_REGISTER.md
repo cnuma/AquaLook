@@ -2,7 +2,7 @@
 
 ## 1. Usage
 
-Ce registre est vivant. Il est révisé lors de chaque évolution touchant le réseau, l'OTA, le cloud, MQTT, l'application mobile, la persistance, les secrets ou les commandes d'équipements.
+Ce registre est vivant. Il est révisé lors de chaque évolution touchant le réseau, l'OTA, le cloud, MQTT, l'application mobile, la persistance, les secrets ou les commandes d'équipements, **à chaque faille publiée qui concerne une technologie du projet, et au moins chaque trimestre** (`CYBERSECURITY_ARCHITECTURE.md` §1.1). Un risque « réduit » ou « fermé » peut être rouvert si une nouvelle technique d'attaque rend sa mesure insuffisante.
 
 Échelle :
 
@@ -14,7 +14,7 @@ Ce registre est vivant. Il est révisé lors de chaque évolution touchant le r�
 
 | ID | Risque | Surface | Probabilité | Impact | Mesures actuelles ou prévues | Contrat / preuve | État |
 |---|---|---|---|---|---|---|---|
-| SEC-001 | Accès administratif local non authentifié fortement | Interface Web locale | Élevée | Critique | Authentification serveur, sessions, autorisations, CSRF | aucune preuve fonctionnelle ; architecture `19_HTTPS_AND_SESSIONS.md` | Ouvert |
+| SEC-001 | Accès administratif local non authentifié fortement | Interface Web locale | Élevée | Critique | Session Web par défi-réponse HMAC, cookie `HttpOnly; SameSite=Strict`, toute écriture sous session, contrôle `Origin`/`Sec-Fetch-Site`, anti « DNS rebinding » (D016 lot F) ; reste : HTTP en clair sur le LAN (P0.5) | lot F validé sur `.141` le 10 oct. 2026 (`ENROLEMENT_ET_SECURITE_LOCALE.md` §8) | Réduit |
 | SEC-002 | Mot de passe Wi-Fi ou AP partagé, prévisible ou absent | Wi-Fi / portail captif | Élevée | Important | Identité propre par appareil, AP protégé et temporaire | test `expectedFailure` AP protégé | Ouvert |
 | SEC-003 | Commande distante MQTT forgée ou rejouée | MQTT | Moyenne | Critique | TLS, ACL, identité individuelle, expiration, identifiant de commande, anti-rejeu | non implémenté | Ouvert |
 | SEC-004 | Firmware OTA modifié ou source non autorisée | OTA | Moyenne | Critique | Signature, contrôle d'intégrité, provenance et rollback | non implémenté | Ouvert |
@@ -33,6 +33,10 @@ Ce registre est vivant. Il est révisé lors de chaque évolution touchant le r�
 | SEC-017 | Absence de révocation après compromission | Exploitation | Moyenne | Critique | Inventaire, révocation et reprovisionnement | procédure documentaire | Ouvert |
 | SEC-018 | Sauvegarde inutilisable lors d'un incident | VPS / configuration | Moyenne | Important | Sauvegardes protégées et tests de restauration | exercice non archivé | Ouvert |
 | SEC-019 | API météo interceptée ou clé OWM exposée | HTTP sortant / météo | Élevée | Important | HTTPS, minimisation des logs et rotation de clé | test `expectedFailure` HTTPS OWM | Ouvert |
+| SEC-020 | Script injecté (XSS) exécuté dans la console, l'espace utilisateur ou l'éditeur en ligne | Service en ligne | Moyenne | Critique | CSP `script-src 'self'` sans `'unsafe-inline'`, aucun script inline (P0.4b, P0.4d, P0.4e) | banc CSP Edge (CDP), témoin négatif ; en-têtes vérifiés en ligne le 12 oct. 2026 pour `admin.html`/`app.html` | Réduit |
+| SEC-021 | Mot de passe SMTP lu depuis une sauvegarde ou une fuite de la base | Service en ligne / base | Moyenne | Important | Chiffrement XChaCha20-Poly1305, clé `SETTINGS_KEY` hors base (P0.4c) ; reste : base **et** `.env` ensemble le livrent | banc PHP + MariaDB, 25 contrôles | Réduit (dès la clé posée en production) |
+| SEC-022 | Console d'administration chargée et étudiée par un inconnu ou une IA externe | Service en ligne | Élevée | Important | Authentification HTTP Basic avant la page, jeton admin ensuite, `noindex` (P0.4e) | banc PHP + Edge : 401 / 200 | Ouvert jusqu'à publication, puis Réduit |
+| SEC-023 | Publication partielle ou divergente du service (fichier modifié à la main, `.htaccess` fautive → 500) | Service en ligne / exploitation | Moyenne | Important | Publication depuis Git (`deploy_cloud.py`), ordre imposé, relecture, contrôle d'en-têtes juste après | outil testé sur banc FTP ; identifiants à fournir (P0.4a) | Ouvert |
 
 ## 3. Contrats exécutables
 

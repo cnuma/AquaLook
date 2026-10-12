@@ -193,6 +193,13 @@ Consigner le profil réellement flashé, le port série utilisé, le point d’e
 - Pour les opérations suivies d’un redémarrage, répondre au client avant le reboot.
 - Le verrouillage administrateur actuel est un verrouillage visuel côté navigateur, pas une authentification forte.
 
+### Cybersécurité : référentiel vivant
+
+- Référentiel : `docs/security/CYBERSECURITY_ARCHITECTURE.md` (mesures du service en ligne au §4.8), registre `docs/security/SECURITY_RISK_REGISTER.md`, module et LAN : `docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md`. Toute évolution s'y conforme et le met à jour.
+- Ces règles ne sont jamais figées (D017) : à chaque évolution, à chaque faille publiée concernant une technologie du projet et au moins chaque trimestre, vérifier qu'elles restent l'état de l'art et les faire évoluer.
+- Le dépôt reste open source : la sécurité ne repose jamais sur le secret du code ; aucun secret dans Git, une page, un journal ou un chat.
+- Pages Web : aucun script inline ni attribut `on*=`, aucune ressource externe.
+
 ### Affichage
 
 - Ne pas appeler `fillScreen()` en dehors du chemin de redraw complet prévu.
