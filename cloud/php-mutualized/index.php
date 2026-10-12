@@ -835,14 +835,9 @@ try {
 
     // ── Routes admin (jeton admin) ──────────────────────────────────────────
 
-    // La console d'administration est un fichier statique servi par Apache
-    // (.htaccess ne reecrit que ce qui n'existe pas sur disque). Cette route
-    // n'existe que pour que /admin, tape a la main, aboutisse quand meme.
-    if ($method === 'GET' && $path === '/admin') {
-        header('Content-Type: text/html; charset=utf-8');
-        header('Location: /admin.html', true, 302);
-        exit;
-    }
+    // Plus de redirection GET /admin -> /admin.html (retiree le 12 oct. 2026,
+    // D017) : elle indiquait a tout visiteur ou se trouve la console. /admin
+    // repond desormais 404 comme toute route inconnue.
 
     if ($method === 'GET' && $path === '/admin/modules') {
         require_admin();
