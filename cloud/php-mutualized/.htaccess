@@ -1,6 +1,9 @@
 # Renvoie tout vers index.php, qui route lui-meme sur REQUEST_URI.
 # Standard sur l'hebergement mutualise OVH (Apache + mod_rewrite deja actif).
 RewriteEngine On
+# La console (fichiers existants, donc hors de la regle generale) passe par
+# index.php, qui exige l'authentification Basic (console_page.php).
+RewriteRule ^admin\.(html|js)$ index.php [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L]
@@ -28,30 +31,26 @@ RewriteRule ^ index.php [L]
 # mod_headers, ces lignes sont ignorees au lieu de provoquer une 500.
 #
 # Aucune page ne charge de ressource externe : default-src 'self' ne casse
-# rien. La CSP generale garde script-src 'unsafe-inline' pour /editeur/
-# (copie de data/scripts-schema.html, script inline partage avec la SD du
-# module) ; elle bloque deja l'injection de script externe, l'exfiltration
-# vers une autre origine, le cadrage (clickjacking) et le detournement de
-# formulaire.
+# rien. script-src SANS 'unsafe-inline' sur tout le site : admin.html,
+# app.html (P0.4b) et /editeur/ (P0.4d, script dans script-editeur.js) n'ont
+# plus de script inline ; un <script> ou un attribut on*= injecte ne s'y
+# execute plus. style-src garde 'unsafe-inline' (attributs style= nombreux,
+# risque faible). Les copies de pages du module sous /web/ gardent du script
+# inline : elles sont destinees aux modules, pas a un navigateur sur ce site.
 #
-# admin.html et app.html ont leur script dans admin.js / app.js (P0.4b) et
-# recoivent plus bas une CSP SANS 'unsafe-inline' dans script-src : un
-# <script> ou un attribut on*= injecte ne s'y execute plus. style-src garde
-# 'unsafe-inline' (attributs style= nombreux, risque faible).
+# X-Robots-Tag : aucun moteur de recherche ne doit indexer le service
+# (complete robots.txt ; seuls les robots polis l'appliquent, ce n'est pas
+# une protection).
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
     Header always set Referrer-Policy "no-referrer"
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    Header always set X-Robots-Tag "noindex, nofollow, noarchive"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     # HSTS host-only (ni includeSubDomains ni preload : ce n'est qu'un
     # sous-domaine d'alwaysdata.net). Le site est servi en HTTPS ; monter
     # max-age apres verification.
     Header always set Strict-Transport-Security "max-age=15552000"
-    # Remplace la CSP generale pour ces deux fichiers seulement (le
-    # <FilesMatch> est applique apres le niveau repertoire).
-    <FilesMatch "^(admin|app)\.html$">
-        Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
-    </FilesMatch>
 </IfModule>
 
 # Pas de listing de repertoire : /web/ ne doit pas enumerer les versions
