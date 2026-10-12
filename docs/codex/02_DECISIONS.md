@@ -88,6 +88,14 @@ Décision du propriétaire, choix arbitrés le 8 octobre 2026.
   - l’onglet Variables en ligne est en lecture seule (pas de « Nouvelle valeur » ni d’envoi) et reste masqué pour un firmware qui ne remonte pas les variables.
 - **Hors périmètre** : modification des noms ou valeurs depuis l’espace en ligne.
 - **« En parallèle » en Et / en Ou** : « Et » (défaut, octet pour octet comme avant) attend les deux branches ; « Ou » reprend dès que l’une est finie, l’autre continue et le script ne se termine qu’avec elle (`JOINANY` 87, `JOIN` avant le `HALT` final). Un firmware antérieur refuse ces opcodes à l’enregistrement.
+## D017 — Sécurité du service en ligne et règles de sécurité vivantes (12 oct. 2026)
+
+Décision du propriétaire, 12 octobre 2026.
+
+- **Le code reste open source** : le dépôt n'est pas rendu privé et le code n'est pas obfusqué. La sécurité repose sur les secrets et contrôles côté serveur, jamais sur le secret du code.
+- **Service en ligne** : console d'administration derrière une authentification HTTP Basic (en PHP, identifiants dans le `.env` du serveur) en plus du jeton admin ; site non indexé (`robots.txt`, `X-Robots-Tag`) ; CSP sans `'unsafe-inline'` sur tout le site ; mot de passe SMTP chiffré en base. Détail et état : `docs/security/CYBERSECURITY_ARCHITECTURE.md` §4.8.
+- **Règles vivantes** : aucune règle de sécurité n'est figée. Elles sont remises en cause à chaque évolution, à chaque faille publiée concernant une technologie du projet et au moins chaque trimestre, au regard des bonnes pratiques du moment, et évoluent avec les nouvelles découvertes (`CYBERSECURITY_ARCHITECTURE.md` §1.1).
+
 ## D016 — Enrôlement en ligne, comptes et sécurité locale du module (9 oct. 2026)
 
 Décision du propriétaire (orientations validées le 9 octobre 2026). Conception détaillée, analyse des mails AlwaysData et découpage en lots : `docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md`.

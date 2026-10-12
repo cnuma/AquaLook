@@ -99,6 +99,14 @@ Ne jamais changer silencieusement l’ordre, le type ou la taille d’un champ p
 - Contrôler desktop et mobile.
 - Ne pas déplacer du CSS vers un autre fichier en prétendant réduire la taille totale LittleFS.
 
+## Sécurité (référentiel vivant)
+
+- Le référentiel est `docs/security/CYBERSECURITY_ARCHITECTURE.md` (principes, mesures en vigueur du service en ligne au §4.8) avec le registre `docs/security/SECURITY_RISK_REGISTER.md` ; module et réseau local : `docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md`.
+- Toute évolution s'y conforme **et le remet en question** : les règles de sécurité ne sont jamais figées (D017). À chaque évolution, à chaque faille publiée concernant une technologie du projet et au moins chaque trimestre, vérifier qu'elles sont toujours l'état de l'art (OWASP, ANSSI / CERT-FR, CVE, guides de l'hébergeur et d'Espressif) ; corriger le référentiel, le registre et, si une décision change, `02_DECISIONS.md`.
+- Le dépôt est public : la sécurité ne repose jamais sur le secret du code ; aucun secret dans Git, une page, un journal ou un chat.
+- Pages Web (module et service en ligne) : aucun script inline ni attribut `on*=`, aucune ressource externe ; tester sous la CSP réelle avec un témoin négatif.
+- Toute nouvelle surface (route, page, secret, service) ajoute ou met à jour une ligne du registre des risques.
+
 ## LCD
 
 - Utiliser la palette Theme.
