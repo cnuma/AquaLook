@@ -23,7 +23,10 @@ RewriteRule ^ index.php [L]
 # fichier qui existe sur disque (RewriteCond !-f). Il revelerait les chemins
 # absolus du serveur et des traces de pile. Non observe en production (le log
 # PHP est ailleurs), mais la garde coute une ligne et ferme le cas latent.
-<FilesMatch "^(\.env.*|schema.*\.sql|router\.php|cleanup\.php|.*\.md|.*\.log)$">
+# Fichiers PHP internes (inclus par index.php, jamais appeles directement) :
+# appeles seuls ils ne rendent rien, mais n'ont aucune raison de repondre.
+# require() lit le disque et n'est pas concerne par ce refus.
+<FilesMatch "^(\.env.*|schema.*\.sql|router\.php|cleanup\.php|(account|auth|console_page|db|enroll|env|mail|settings)\.php|.*\.md|.*\.log)$">
     Require all denied
 </FilesMatch>
 

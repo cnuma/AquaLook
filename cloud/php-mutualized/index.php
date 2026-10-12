@@ -158,6 +158,14 @@ if (($method === 'GET' || $method === 'HEAD') && isset(CONSOLE_PAGES[$path])) {
     serve_console_page($path);
 }
 
+// Racine du site : page d'accueil neutre (vers l'espace utilisateur), au
+// lieu du JSON "route inconnue" que voyait un visiteur.
+if (($method === 'GET' || $method === 'HEAD') && $path === '/') {
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/accueil.html');
+    exit;
+}
+
 try {
     if ($method === 'GET' && $path === '/health') {
         // Des BOOLEENS, jamais une valeur ni un chemin.

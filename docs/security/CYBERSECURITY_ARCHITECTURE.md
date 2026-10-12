@@ -25,6 +25,7 @@ Concrètement :
 |---|---|---|---|
 | Audit statique et tests actifs du site | 10-11 oct. 2026 | service en ligne | `docs/security/AUDIT_WEB_2026-10-10.md` |
 | Mesures P0.4b à P0.4e | 11-12 oct. 2026 | service en ligne | §4.8 ci-dessous |
+| Vérification après publication | 12 oct. 2026 | service en ligne | P0.4b à P0.4e en ligne ; `web_security_probe.py` : tout PASS ; parcours navigateur validé par le propriétaire |
 | Prochaine revue périodique | au plus tard 12 janv. 2027 | tout le référentiel | — |
 
 ## 2. Objectifs
@@ -147,14 +148,14 @@ Mis à jour le 12 octobre 2026. Code : `cloud/php-mutualized/`. État de chaque 
 | Mesure | Pourquoi | Où | État |
 |---|---|---|---|
 | Secrets uniquement dans le `.env` du serveur (`DB_*`, `ADMIN_TOKEN`, `SETTINGS_KEY`, `ADMIN_PAGE_*`) ; `.env.example` sans valeur réelle | dépôt public ; une base ne doit pas suffire à tout ouvrir | `.env.example`, `settings.php` | en ligne |
-| Fichiers sensibles refusés par Apache (`.env*`, `schema*.sql`, `router.php`, `cleanup.php`, `*.md`, `*.log`) ; pas de listing de répertoire | un fichier présent sur disque est servi tel quel sinon | `.htaccess` | en ligne |
+| Fichiers sensibles refusés par Apache (`.env*`, `schema*.sql`, `router.php`, `cleanup.php`, `*.md`, `*.log` ; fichiers PHP internes `account|auth|console_page|db|enroll|env|mail|settings.php` : à publier) ; pas de listing de répertoire | un fichier présent sur disque est servi tel quel sinon | `.htaccess` | en ligne |
 | Jetons (modules, admin) comparés en temps constant (`hash_equals`) ; seules des empreintes SHA-256 des jetons de module et codes d'enrôlement sont stockées | éviter fuite par mesure de temps et vol de jetons par lecture de la base | `index.php`, `db.php`, `enroll.php` | en ligne |
 | En-têtes : `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, HSTS | défense en profondeur (type MIME, cadrage, fuite d'adresse, rétrogradation HTTP) | `.htaccess` | en ligne |
 | CSP `script-src 'self'` sans `'unsafe-inline'` pour `admin.html` et `app.html` (scripts dans `admin.js`, `app.js`) | un script injecté (XSS) ne s'exécute pas | `.htaccess`, P0.4b | en ligne (vérifié le 12 oct. 2026) |
-| Éditeur sans script inline (`script-editeur.js`), puis CSP sans `'unsafe-inline'` sur **tout** le site | même raison, étendue à `/editeur/` | `data/`, `.htaccess`, P0.4d / P0.4e | éditeur en ligne ; CSP générale : branche |
-| Mot de passe SMTP chiffré en base (XChaCha20-Poly1305, libsodium, clé `SETTINGS_KEY`, nom du paramètre en donnée associée) ; refus d'écrire un secret sans clé | une sauvegarde ou une fuite de la base seule ne livre pas la boîte mail | `settings.php`, P0.4c | fusionnée |
-| Console d'administration derrière une authentification HTTP Basic (`ADMIN_PAGE_USER`, empreinte `password_hash`), en plus du jeton admin ; 503 si non configurée | un inconnu ne charge même pas la console | `console_page.php`, `.htaccess`, P0.4e | branche |
-| Site non indexé : `robots.txt` et `X-Robots-Tag: noindex, nofollow, noarchive` | ne pas exposer le service dans les moteurs de recherche (robots polis seulement : pas une protection) | `robots.txt`, `.htaccess`, P0.4e | branche |
+| Éditeur sans script inline (`script-editeur.js`), puis CSP sans `'unsafe-inline'` sur **tout** le site | même raison, étendue à `/editeur/` | `data/`, `.htaccess`, P0.4d / P0.4e | en ligne (12 oct. 2026) |
+| Mot de passe SMTP chiffré en base (XChaCha20-Poly1305, libsodium, clé `SETTINGS_KEY`, nom du paramètre en donnée associée) ; refus d'écrire un secret sans clé | une sauvegarde ou une fuite de la base seule ne livre pas la boîte mail | `settings.php`, P0.4c | en ligne (12 oct. 2026) |
+| Console d'administration derrière une authentification HTTP Basic (`ADMIN_PAGE_USER`, empreinte `password_hash`), en plus du jeton admin ; 503 si non configurée | un inconnu ne charge même pas la console | `console_page.php`, `.htaccess`, P0.4e | en ligne (12 oct. 2026) |
+| Site non indexé : `robots.txt` et `X-Robots-Tag: noindex, nofollow, noarchive` | ne pas exposer le service dans les moteurs de recherche (robots polis seulement : pas une protection) | `robots.txt`, `.htaccess`, P0.4e | en ligne (12 oct. 2026) |
 | Mails : CR/LF refusés, certificat SMTP vérifié, plafonds par adresse, IP et jour **avant** envoi, journal sans adresse en clair | injection d'en-têtes, abus qui ferait couper le site | `mail.php`, `settings.php` | en ligne |
 | Liens des mails construits depuis `APP_BASE_URL` (https obligatoire), jamais depuis l'en-tête `Host` | empoisonnement du lien de réinitialisation | `account.php`, `settings.php` | en ligne |
 | Publication depuis Git (`tools/deploy_cloud.py`, FTPS, relecture « ALIGNE », pages publiées après leurs scripts, `.htaccess` en dernier) | le serveur correspond à un commit ; pas de demi-publication | `tools/deploy_cloud.py` | outil prêt, identifiants FTP à fournir (P0.4a) |

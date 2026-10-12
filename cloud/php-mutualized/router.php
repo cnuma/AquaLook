@@ -21,7 +21,7 @@ $file = __DIR__ . $path;
 // developpement ne le lit pas, et sans ce garde-fou .env serait servi en
 // clair en local. Un secret qui fuit sur le poste de developpement est un
 // secret qui a fuite.
-if (preg_match('#(^|/)(\.env|schema\.sql|router\.php)$#', $path)) {
+if (preg_match('#(^|/)(\.env|schema\.sql|router\.php|(account|auth|console_page|db|enroll|env|mail|settings)\.php)$#', $path)) {
     http_response_code(403);
     exit;
 }
