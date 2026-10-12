@@ -87,8 +87,9 @@ async function deconnecter(){
   try { await api('/app/logout', {method:'POST'}); } catch(e){}
   MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('liste').hidden = true; $('detail').hidden = true;
+  $('compte').hidden = true; $('compte').innerHTML = '';
   $('login').hidden = false;
-  $('btn-logout').hidden = true; $('btn-back').hidden = true;
+  $('btn-logout').hidden = true; $('btn-back').hidden = true; $('btn-compte').hidden = true;
   $('who').textContent = '';
 }
 
@@ -140,8 +141,8 @@ async function poserMotDePasse(){
 }
 
 function carteCompte(){
-  return '<details class="card"><summary><h2 style="display:inline">Mon compte</h2></summary>'
-    + '<div class="row" style="margin-top:12px"><label>Mot de passe actuel</label>'
+  return '<div class="card"><h2>Mot de passe</h2>'
+    + '<div class="row"><label>Mot de passe actuel</label>'
     + '<input type="password" id="mc-actuel" style="flex:1" autocomplete="current-password"></div>'
     + '<div class="row"><label>Nouveau</label>'
     + '<input type="password" id="mc-pass" style="flex:1" autocomplete="new-password"></div>'
@@ -149,7 +150,7 @@ function carteCompte(){
     + '<input type="password" id="mc-pass2" style="flex:1" autocomplete="new-password"></div>'
     + '<p class="hint">Dix caractères au minimum. Vos autres sessions (autres navigateurs, '
     + 'téléphone) seront fermées ; celle-ci reste ouverte.</p>'
-    + '<div class="row"><button id="mc-ok">Changer le mot de passe</button></div></details>';
+    + '<div class="row"><button id="mc-ok">Changer le mot de passe</button></div></div>';
 }
 
 function brancherCompte(){
@@ -176,20 +177,60 @@ async function demarrer(){
   await voirListe();
 }
 
+// ── Mon compte ─────────────────────────────────────────────────────────────
+//
+// L'accueil ne montre que les modules, la vue de tous les jours. Tout ce qui
+// touche au compte -- rattacher un nouveau module, mot de passe, et les
+// options a venir -- vit ici, ouvert par le bouton "Mon compte" de l'en-tete.
+// Comme un menu de reglages : la page liste les options, et chacune s'ouvre
+// seule, avec un retour vers le menu. Une nouvelle option = une entree de
+// OPTIONS_COMPTE.
+const OPTIONS_COMPTE = {
+  rattacher:  {titre: 'Rattacher un module',
+               sous: 'Ajouter un boîtier avec le code affiché sur son écran',
+               carte: () => carteRattacher(), brancher: () => brancherRattacher()},
+  motdepasse: {titre: 'Mot de passe',
+               sous: 'Changer le mot de passe de connexion',
+               carte: () => carteCompte(), brancher: () => brancherCompte()}
+};
+
+function voirCompte(option){
+  MOD = null; CFG = null; ATTENTE = null; REFUS = null;
+  $('liste').hidden = true; $('detail').hidden = true;
+  $('btn-back').hidden = false; $('btn-compte').hidden = true;
+  const el = $('compte');
+  el.hidden = false;
+  const op = OPTIONS_COMPTE[option];
+  if (!op) {
+    el.innerHTML = '<div class="card"><h2>Mon compte</h2>'
+      + Object.keys(OPTIONS_COMPTE).map(k =>
+          '<button class="mod" data-op="' + k + '"><span class="mod-t">'
+        + esc(OPTIONS_COMPTE[k].titre) + '<span class="spacer"></span>&rsaquo;</span>'
+        + '<span class="op-s">' + esc(OPTIONS_COMPTE[k].sous) + '</span></button>').join('')
+      + '</div>';
+    el.querySelectorAll('.mod').forEach(b => { b.onclick = () => voirCompte(b.dataset.op); });
+    return;
+  }
+  el.innerHTML = '<div class="fil"><button id="cp-retour">&lsaquo; Mon compte</button></div>' + op.carte();
+  $('cp-retour').onclick = () => voirCompte();
+  op.brancher();
+}
+
 // ── Liste des modules ──────────────────────────────────────────────────────
 
 async function voirListe(){
   MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('detail').hidden = true;
-  $('btn-back').hidden = true;
+  $('compte').hidden = true; $('compte').innerHTML = '';
+  $('btn-back').hidden = true; $('btn-compte').hidden = false;
   const el = $('liste');
   el.hidden = false;
   const mods = await api('/app/modules');
   if (!mods.length) {
     el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
-      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p></div>' + carteRattacher() + carteCompte();
-    brancherRattacher();
-    brancherCompte();
+      + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p>'
+      + '<div class="row"><button class="primary" id="ls-rattacher">Rattacher un module</button></div></div>';
+    $('ls-rattacher').onclick = () => { voirCompte('rattacher'); $('rt-code').focus(); };
     return;
   }
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
@@ -201,12 +242,10 @@ async function voirListe(){
     + '<span class="mod-s">' + (m.revision
         ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
-    + '</span></button>').join('') + '</div>' + carteRattacher() + carteCompte();
+    + '</span></button>').join('') + '</div>';
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
   });
-  brancherRattacher();
-  brancherCompte();
 }
 
 // ── Rattachement par code (D016, lot D) ────────────────────────────────────
@@ -223,7 +262,22 @@ function carteRattacher(){
     + '<button class="primary" id="rt-ok">Rattacher</button></div></div>';
 }
 
+// Le module affiche le code en deux blocs (ABCD-EFGH) : le tiret est pose ici
+// tout seul, l'utilisateur n'a pas a se demander s'il faut le taper. Le
+// serveur accepte le code avec ou sans tiret (enroll_normalize_user_code).
+// Pendant un effacement, pas de tiret ajoute apres le 4e caractere : sinon
+// la touche Retour arriere ne pourrait jamais le retirer.
+function formaterCode(e){
+  const champ = $('rt-code');
+  const brut = champ.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const efface = e && e.inputType && e.inputType.indexOf('delete') === 0;
+  champ.value = (brut.length > 4 || (brut.length === 4 && !efface))
+    ? brut.slice(0, 4) + '-' + brut.slice(4) : brut;
+}
+
 function brancherRattacher(){
+  $('rt-code').addEventListener('input', formaterCode);
+  $('rt-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('rt-ok').click(); });
   $('rt-ok').onclick = async () => {
     const code = $('rt-code').value.trim();
     if (!code) { toast('Saisissez le code affiché sur le module', true); return; }
@@ -368,7 +422,8 @@ function creneau(i, mode, d, r){
 async function ouvrir(id){
   MOD = id;
   $('liste').hidden = true;
-  $('btn-back').hidden = false;
+  $('compte').hidden = true; $('compte').innerHTML = '';
+  $('btn-back').hidden = false; $('btn-compte').hidden = false;
   await recharger();
 }
 
@@ -1239,6 +1294,7 @@ $('btn-oubli-envoyer').onclick = demanderLien;
 $('btn-nm').onclick = poserMotDePasse;
 $('nm-pass2').addEventListener('keydown', e => { if (e.key === 'Enter') poserMotDePasse(); });
 $('btn-back').onclick = () => voirListe().catch(e => toast(e.message, true));
+$('btn-compte').onclick = () => voirCompte();
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
 $('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
 $('voile').addEventListener('click', e => { if (e.target === $('voile')) fermer(); });
