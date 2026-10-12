@@ -268,7 +268,6 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .empty ol{padding-left:18px;margin:8px 0}
 .sec-acts{border-top:1px solid var(--border);margin-top:14px;padding-top:12px}
 .sec-acts .ph{padding:0 0 8px}
-.btn.retour{margin-bottom:12px}
 
 /* Zone du bas en deux (8 oct. 2026) : le texte genere a gauche, a droite
    les onglets Essai a blanc / Phrases / Variables (avant : deux fenetres
@@ -345,7 +344,7 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 @media (max-width:860px){
   body{overflow:auto}
   .main{grid-template-columns:minmax(0,1fr)}
-  .palette,.props-panel,.bottom,.edit-only,.volet{display:none!important}
+  .palette,.props-panel,.bottom,.edit-only,.volet,#b-reglages{display:none!important}
   .center{grid-template-rows:minmax(0,1fr)}
   .plus{display:none}
   .mobile-banner{display:block;background:var(--blue-dim);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px}
@@ -370,6 +369,7 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM9 11h7M9 15h7"/></symbol>
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
   <symbol id="i-run" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
   <symbol id="i-var" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M9 10h6M9 14h6"/></symbol>
@@ -384,6 +384,7 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
     <span class="nomwrap"><input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script"><span class="dirty" id="dirty" hidden>Script non enregistré</span></span>
     <label class="actif-top edit-only" title="Un script inactif reste enregistré mais ne part jamais"><input type="checkbox" id="actif-top"> Actif</label>
     <span class="spacer"></span>
+    <button class="btn" id="b-reglages" title="Aide, mot de passe du module, effacer le script (touche Échap)"><svg class="ic"><use href="#i-reglages"/></svg>Réglages généraux</button>
     <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
     <button class="btn edit-only" id="b-lancer" title="Exécute sur le module la version enregistrée">Lancer maintenant</button>

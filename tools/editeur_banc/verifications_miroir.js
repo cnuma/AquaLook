@@ -41,7 +41,8 @@
   ok(document.getElementById('b-effacer') && !document.getElementById('b-secret') && !document.getElementById('b-oublier'),
     'en ligne : pas de bouton mot de passe du module (sans objet)');
   document.querySelector('#world [data-id]').click(); await wait(50);
-  ok(document.getElementById('p-retour'), 'en ligne : bouton « Réglages du script »');
+  document.getElementById('b-reglages').click(); await wait(50);
+  ok(document.getElementById('b-effacer'), 'en ligne : « Réglages généraux » ramène à la vue générale');
   ok(window.__err.length === 0, 'erreurs JS : ' + JSON.stringify(window.__err));
   const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = (echecs ? 'ECHECS: ' + echecs : 'TOUT OK') + '\n' + R.join('\n'); document.body.appendChild(pre);
 })().catch((e) => { const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = 'EXCEPTION ' + e.stack; document.body.appendChild(pre); });

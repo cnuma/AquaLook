@@ -328,17 +328,17 @@ function renderProps() {
       + '<li>Glissez un bloc de la palette sur un <b>+</b> pour l’ajouter.</li>'
       + '<li>Glissez un bloc existant sur un autre <b>+</b> pour le déplacer.</li>'
       + '<li>Le texte du bas est ce que le module recevra.</li></ol>'
-      + '<p>Pour revenir ici après avoir choisi un bloc : bouton <b>← Réglages du script</b> ou touche Échap.</p></div>'
+      + '<p>Pour revenir ici après avoir choisi un bloc : bouton <b>Réglages généraux</b> en haut, ou touche Échap.</p></div>'
       + '<div class="sec-acts acts"><button class="btn danger" id="b-effacer">Effacer ce script</button></div>'
       // Mot de passe : sans objet dans l'espace en ligne (pas de signature,
       // et /api/auth-secret n'existe que sur le module).
       + (CLOUD ? '' : '<div class="sec-acts"><div class="ph">Mot de passe du module</div>'
         + '<div class="hint">C’est le mot de passe de connexion à la page du module. Il protège aussi chaque '
-        + 'enregistrement de script : l’éditeur le demande la première fois, puis le retient tant que cet onglet reste ouvert.</div>'
+        + 'enregistrement de script : l’éditeur le demande la première fois, puis le retient tant que cette page reste ouverte.</div>'
         + '<div class="acts"><button class="btn" id="b-secret">Changer le mot de passe…</button>'
         + (secretRetenu() ? '<button class="btn" id="b-oublier">Ne plus le retenir</button>' : '') + '</div>'
-        + (secretRetenu() ? '<div class="hint">« Ne plus le retenir » : l’éditeur le redemandera au prochain enregistrement. '
-          + 'Utile sur un ordinateur partagé ; fermer l’onglet a le même effet.</div>' : '')
+        + (secretRetenu() ? '<div class="hint">Sur un ordinateur partagé, cliquez « Ne plus le retenir » avant de partir : '
+          + 'personne ne pourra enregistrer un script sans le saisir à nouveau.</div>' : '')
         + '</div>');
     $('b-effacer').onclick = effacer;
     if (!CLOUD) {
@@ -416,11 +416,6 @@ function renderProps() {
   }
   p.innerHTML = h;
   if (!editable && !(sel === 'start' && modeTexte())) p.querySelectorAll('select,input,button').forEach((e) => { e.disabled = true; });
-  // Seul chemin visible vers la vue generale (aide, mot de passe, effacer) :
-  // sans lui, une fois un bloc choisi, il fallait Echap ou recharger la page.
-  // Ajoute apres la mise en lecture seule : il doit rester utilisable.
-  p.insertAdjacentHTML('afterbegin', '<button class="btn retour" id="p-retour" title="Touche Échap">← Réglages du script</button>');
-  $('p-retour').onclick = () => choisir(null);
   wireProps(p);
 }
 function wireProps(p) {
@@ -699,6 +694,12 @@ function volet(cote, oui) {
   try { localStorage.setItem('aqualook-' + cote + '-replie', oui ? '1' : '0'); } catch (e) {}
   requestAnimationFrame(fit);
 }
+// Bandeau du haut : retour a la vue generale du panneau de droite (aide,
+// mot de passe, effacer), quel que soit le bloc choisi ; deplie le volet.
+$('b-reglages').onclick = () => {
+  if (document.querySelector('.main').classList.contains('props-replie')) volet('props', false);
+  choisir(null);
+};
 ['pal', 'props'].forEach((c) => {
   $('b-volet-' + c).onclick = () => volet(c, !document.querySelector('.main').classList.contains(c + '-replie'));
   try { if (localStorage.getItem('aqualook-' + c + '-replie') === '1') volet(c, true); } catch (e) {}
@@ -964,7 +965,7 @@ function secretRetenu() {
 function oublierSecret() {
   try { sessionStorage.removeItem('aqualook-secret'); } catch (e) {}
   if (!sel) renderProps();
-  dire('L’éditeur ne retient plus le mot de passe : il le redemandera au prochain enregistrement. Le mot de passe du module, lui, ne change pas.', '');
+  dire('Mot de passe effacé de cette page (il n’est pas modifié sur le module). Il vous sera demandé au prochain enregistrement.', '');
 }
 async function prochainNonce() {
   const d = await (await fetch('/api/auth/state')).json();

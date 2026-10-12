@@ -94,12 +94,13 @@
   const id = (x) => document.getElementById(x);
   try { sessionStorage.removeItem('aqualook-secret'); } catch (e) {}
   choisir(null);
-  ok(id('b-effacer') && /Changer le mot de passe/.test((id('b-secret') || {}).textContent) && !id('b-oublier') && !id('p-retour'),
+  ok(id('b-effacer') && /Changer le mot de passe/.test((id('b-secret') || {}).textContent) && !id('b-oublier'),
     'vue générale : effacer, changer le mot de passe, rien de retenu');
+  ok(id('b-reglages').closest('header.top') && !id('props').contains(id('b-reglages')), 'bouton « Réglages généraux » dans le bandeau du haut');
   document.querySelector('#world [data-id]').click(); await wait(50);
-  ok(id('p-retour') && !id('b-effacer') && !id('p-retour').disabled, 'bloc choisi : bouton « Réglages du script »');
-  id('p-retour').click(); await wait(50);
-  ok(id('b-effacer') && !id('p-retour'), 'retour à la vue générale sans recharger');
+  ok(!id('b-effacer'), 'bloc choisi : réglages du bloc');
+  volet('props', true); id('b-reglages').click(); await wait(50);
+  ok(id('b-effacer') && !document.querySelector('.main').classList.contains('props-replie'), 'Réglages généraux : vue générale, volet déplié, sans recharger');
   sessionStorage.setItem('aqualook-secret', 'banc'); choisir(null);
   ok(/Ne plus le retenir/.test((id('b-oublier') || {}).textContent), 'mot de passe retenu : bouton « Ne plus le retenir »');
   id('b-oublier').click();
