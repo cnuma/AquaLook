@@ -161,6 +161,8 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
 #login,#oubli,#nm{max-width:380px;margin:60px auto}
 #login input,#oubli input,#nm input{width:100%;margin-top:6px}
 #login .row,#oubli .row,#nm .row{display:block}
+#login input[type=checkbox]{width:18px;margin:0;flex:none}
+#login label.paire{color:var(--text);font-size:14px;cursor:pointer}
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
        background:var(--text);color:#fff;border-radius:8px;padding:11px 18px;opacity:0;
        transition:.2s;pointer-events:none;max-width:90vw;z-index:40;font-size:14px}
@@ -274,6 +276,8 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
       <input type="email" id="email" autocomplete="username"></div>
     <div class="row"><label for="pass">Mot de passe</label>
       <input type="password" id="pass" autocomplete="current-password"></div>
+    <div class="row"><label class="paire" for="remember"><input type="checkbox" id="remember"> <span id="remember-txt">Rester connecté sur cet appareil</span></label>
+      <div class="hint">Sans cette case, il faudra se reconnecter après la fermeture du navigateur ou une longue inactivité. À ne pas cocher sur un appareil partagé.</div></div>
     <div class="row"><button class="primary" id="btn-login" style="width:100%">Se connecter</button></div>
     <div class="row"><button class="ghost" id="btn-oubli" style="width:100%">Mot de passe oublié ?</button></div>
   </section>

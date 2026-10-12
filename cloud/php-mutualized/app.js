@@ -76,7 +76,7 @@ async function connecter(){
   if (!email || !pass) { toast('Adresse et mot de passe requis', true); return; }
   $('btn-login').disabled = true;
   try {
-    await api('/app/login', {method:'POST', body: JSON.stringify({email:email, password:pass})});
+    await api('/app/login', {method:'POST', body: JSON.stringify({email:email, password:pass, remember:$('remember').checked})});
     $('pass').value = '';
     await demarrer();
   } catch(e){ toast(e.message, true); }
@@ -1228,6 +1228,10 @@ function rendreCommandes(cmds){
 // ── Demarrage ──────────────────────────────────────────────────────────────
 
 $('btn-login').onclick = connecter;
+// Duree de "Rester connecte" lue sur le serveur (reglable dans la console).
+api('/app/login-options').then((o) => {
+  if (o && o.rememberDays) $('remember-txt').textContent = 'Rester connecté ' + o.rememberDays + ' jours sur cet appareil';
+}).catch(() => {});
 $('btn-logout').onclick = deconnecter;
 $('btn-oubli').onclick = () => { $('o-email').value = $('email').value; montrer('oubli'); };
 $('btn-oubli-retour').onclick = () => montrer('login');

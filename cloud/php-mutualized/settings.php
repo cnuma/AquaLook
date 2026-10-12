@@ -73,6 +73,15 @@ const SETTINGS_REGISTRY = [
         'label' => 'Adresse publique du site, pour les liens des mails (https://...)'],
     'RESET_TOKEN_TTL_MIN' => ['type' => 'int', 'secret' => false, 'default' => '30', 'min' => 10, 'max' => 240,
         'label' => "Validite d'un lien mot de passe oublie (min)"],
+    // Sessions de l'espace utilisateur (auth.php). Bornes liees : une session
+    // courte (<= 24 h) ne doit jamais etre confondue avec "rester connecte"
+    // (>= 2 jours).
+    'SESSION_REMEMBER_DAYS' => ['type' => 'int', 'secret' => false, 'default' => '7', 'min' => 2, 'max' => 30,
+        'label' => 'Espace utilisateur : durée de « Rester connecté » (jours)'],
+    'SESSION_IDLE_MIN' => ['type' => 'int', 'secret' => false, 'default' => '120', 'min' => 10, 'max' => 720,
+        'label' => 'Espace utilisateur sans « Rester connecté » : déconnexion après inactivité (min)'],
+    'SESSION_MAX_H' => ['type' => 'int', 'secret' => false, 'default' => '12', 'min' => 1, 'max' => 24,
+        'label' => 'Espace utilisateur sans « Rester connecté » : durée maximale (h)'],
     'INVITE_TOKEN_TTL_H' => ['type' => 'int', 'secret' => false, 'default' => '72', 'min' => 1, 'max' => 336,
         'label' => "Validite d'un lien d'invitation (h)"],
 ];

@@ -153,6 +153,16 @@ vérifié par test réel). Comparaison de jetons via `hash_equals()` (temps cons
 évite une fuite par mesure de temps). `.env` et `schema.sql` explicitement bloqués
 par `.htaccess` en cas d'accès direct.
 
+**Sessions de l'espace utilisateur** (12 oct. 2026, `auth.php`) : case
+« Rester connecté » à la connexion. Cochée : cookie persistant et session de
+`SESSION_REMEMBER_DAYS` jours (7 par défaut), non prolongée par l'activité.
+Non cochée : cookie de navigateur (effacé à sa fermeture) et, côté serveur,
+déconnexion après `SESSION_IDLE_MIN` minutes sans activité (120) et au plus
+`SESSION_MAX_H` heures (12). Aucune session ne dépasse `SESSION_REMEMBER_DAYS`
+jours, y compris celles ouvertes avant ce changement (30 jours). Durées
+réglables dans la console (Paramètres) ; `GET /app/login-options` (public)
+donne la durée affichée à côté de la case.
+
 ## Déploiement sur AlwaysData
 
 C'est l'hébergement réellement utilisé (`aqualook.alwaysdata.net`, qui sert déjà
