@@ -182,15 +182,38 @@ async function demarrer(){
 // L'accueil ne montre que les modules, la vue de tous les jours. Tout ce qui
 // touche au compte -- rattacher un nouveau module, mot de passe, et les
 // options a venir -- vit ici, ouvert par le bouton "Mon compte" de l'en-tete.
-function voirCompte(){
+// Comme un menu de reglages : la page liste les options, et chacune s'ouvre
+// seule, avec un retour vers le menu. Une nouvelle option = une entree de
+// OPTIONS_COMPTE.
+const OPTIONS_COMPTE = {
+  rattacher:  {titre: 'Rattacher un module',
+               sous: 'Ajouter un boîtier avec le code affiché sur son écran',
+               carte: () => carteRattacher(), brancher: () => brancherRattacher()},
+  motdepasse: {titre: 'Mot de passe',
+               sous: 'Changer le mot de passe de connexion',
+               carte: () => carteCompte(), brancher: () => brancherCompte()}
+};
+
+function voirCompte(option){
   MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('liste').hidden = true; $('detail').hidden = true;
   $('btn-back').hidden = false; $('btn-compte').hidden = true;
   const el = $('compte');
   el.hidden = false;
-  el.innerHTML = carteRattacher() + carteCompte();
-  brancherRattacher();
-  brancherCompte();
+  const op = OPTIONS_COMPTE[option];
+  if (!op) {
+    el.innerHTML = '<div class="card"><h2>Mon compte</h2>'
+      + Object.keys(OPTIONS_COMPTE).map(k =>
+          '<button class="mod" data-op="' + k + '"><span class="mod-t">'
+        + esc(OPTIONS_COMPTE[k].titre) + '<span class="spacer"></span>&rsaquo;</span>'
+        + '<span class="op-s">' + esc(OPTIONS_COMPTE[k].sous) + '</span></button>').join('')
+      + '</div>';
+    el.querySelectorAll('.mod').forEach(b => { b.onclick = () => voirCompte(b.dataset.op); });
+    return;
+  }
+  el.innerHTML = '<div class="fil"><button id="cp-retour">&lsaquo; Mon compte</button></div>' + op.carte();
+  $('cp-retour').onclick = () => voirCompte();
+  op.brancher();
 }
 
 // ── Liste des modules ──────────────────────────────────────────────────────
@@ -207,7 +230,7 @@ async function voirListe(){
     el.innerHTML = '<div class="card"><h2>Mes modules</h2>'
       + '<p>Aucun module n&rsquo;est rattaché à ce compte.</p>'
       + '<div class="row"><button class="primary" id="ls-rattacher">Rattacher un module</button></div></div>';
-    $('ls-rattacher').onclick = () => { voirCompte(); $('rt-code').focus(); };
+    $('ls-rattacher').onclick = () => { voirCompte('rattacher'); $('rt-code').focus(); };
     return;
   }
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
@@ -1271,7 +1294,7 @@ $('btn-oubli-envoyer').onclick = demanderLien;
 $('btn-nm').onclick = poserMotDePasse;
 $('nm-pass2').addEventListener('keydown', e => { if (e.key === 'Enter') poserMotDePasse(); });
 $('btn-back').onclick = () => voirListe().catch(e => toast(e.message, true));
-$('btn-compte').onclick = voirCompte;
+$('btn-compte').onclick = () => voirCompte();
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') connecter(); });
 $('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('pass').focus(); });
 $('voile').addEventListener('click', e => { if (e.target === $('voile')) fermer(); });
