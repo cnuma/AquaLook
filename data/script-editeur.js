@@ -327,13 +327,24 @@ function renderProps() {
       + '<li>Le bloc vert <b>Départ</b> fixe ce qui lance le script.</li>'
       + '<li>Glissez un bloc de la palette sur un <b>+</b> pour l’ajouter.</li>'
       + '<li>Glissez un bloc existant sur un autre <b>+</b> pour le déplacer.</li>'
-      + '<li>Le texte du bas est ce que le module recevra.</li></ol></div>'
-      + '<div class="sec-acts acts"><button class="btn" id="b-secret">Secret</button>'
-      + '<button class="btn" id="b-oublier">Oublier le secret ici</button>'
-      + '<button class="btn danger" id="b-effacer">Effacer ce script</button></div>';
-    $('b-secret').onclick = definirSecret;
-    $('b-oublier').onclick = oublierSecret;
+      + '<li>Le texte du bas est ce que le module recevra.</li></ol>'
+      + '<p>Pour revenir ici après avoir choisi un bloc : bouton <b>← Réglages du script</b> ou touche Échap.</p></div>'
+      + '<div class="sec-acts acts"><button class="btn danger" id="b-effacer">Effacer ce script</button></div>'
+      // Mot de passe : sans objet dans l'espace en ligne (pas de signature,
+      // et /api/auth-secret n'existe que sur le module).
+      + (CLOUD ? '' : '<div class="sec-acts"><div class="ph">Mot de passe du module</div>'
+        + '<div class="hint">C’est le mot de passe de connexion à la page du module. Il protège aussi chaque '
+        + 'enregistrement de script : l’éditeur le demande la première fois, puis le retient tant que cet onglet reste ouvert.</div>'
+        + '<div class="acts"><button class="btn" id="b-secret">Changer le mot de passe…</button>'
+        + (secretRetenu() ? '<button class="btn" id="b-oublier">Ne plus le retenir</button>' : '') + '</div>'
+        + (secretRetenu() ? '<div class="hint">« Ne plus le retenir » : l’éditeur le redemandera au prochain enregistrement. '
+          + 'Utile sur un ordinateur partagé ; fermer l’onglet a le même effet.</div>' : '')
+        + '</div>');
     $('b-effacer').onclick = effacer;
+    if (!CLOUD) {
+      $('b-secret').onclick = definirSecret;
+      if ($('b-oublier')) $('b-oublier').onclick = oublierSecret;
+    }
     return;
   }
   let h;
@@ -405,6 +416,11 @@ function renderProps() {
   }
   p.innerHTML = h;
   if (!editable && !(sel === 'start' && modeTexte())) p.querySelectorAll('select,input,button').forEach((e) => { e.disabled = true; });
+  // Seul chemin visible vers la vue generale (aide, mot de passe, effacer) :
+  // sans lui, une fois un bloc choisi, il fallait Echap ou recharger la page.
+  // Ajoute apres la mise en lecture seule : il doit rester utilisable.
+  p.insertAdjacentHTML('afterbegin', '<button class="btn retour" id="p-retour" title="Touche Échap">← Réglages du script</button>');
+  $('p-retour').onclick = () => choisir(null);
   wireProps(p);
 }
 function wireProps(p) {
@@ -938,13 +954,17 @@ async function secret() {
   try { s = sessionStorage.getItem('aqualook-secret'); } catch (e) {}
   if (!s) {
     s = await demanderSecret('Mot de passe Web du module', '12 caractères minimum');
-    if (s) { try { sessionStorage.setItem('aqualook-secret', s); } catch (e) {} }
+    if (s) { try { sessionStorage.setItem('aqualook-secret', s); } catch (e) {} if (!sel) renderProps(); }
   }
   return s;
 }
+function secretRetenu() {
+  try { return !!sessionStorage.getItem('aqualook-secret'); } catch (e) { return false; }
+}
 function oublierSecret() {
   try { sessionStorage.removeItem('aqualook-secret'); } catch (e) {}
-  dire('Mot de passe oublié dans cet onglet. Il reste en place sur le module.', '');
+  if (!sel) renderProps();
+  dire('L’éditeur ne retient plus le mot de passe : il le redemandera au prochain enregistrement. Le mot de passe du module, lui, ne change pas.', '');
 }
 async function prochainNonce() {
   const d = await (await fetch('/api/auth/state')).json();
@@ -973,6 +993,7 @@ async function definirSecret() {
   }
   if (d.ok) {
     try { sessionStorage.setItem('aqualook-secret', nouveau); } catch (e) {}
+    if (!sel) renderProps();
     dire('Mot de passe enregistré sur le module et retenu pour cet onglet.', 'ok');
   } else dire('Refusé : ' + (d.error || ''), 'ko');
 }
@@ -994,10 +1015,10 @@ async function enregistrer() {
   if (doc.trigger.t && !doc.trigger.target) { dire('Choisissez ce qui déclenche le script dans le bloc « Départ ».', 'ko'); choisir('start'); return; }
   const i = slot();
   const etat = await prochainNonce();
-  if (!etat.configure) { dire('Le module n’a pas encore de secret : cliquez « Secret » (panneau de droite, aucun bloc sélectionné) pour en poser un.', 'ko'); return; }
+  if (!etat.configure) { dire('Le module n’a pas encore de mot de passe : « ← Réglages du script » (panneau de droite), puis « Changer le mot de passe… ».', 'ko'); return; }
   const hex = code.map((b) => b.toString(16).padStart(2, '0')).join('');
   const sig = await signer('script-save|' + i + '|' + etat.nonce + '|' + hex);
-  if (!sig) { dire('Secret requis pour enregistrer.', 'ko'); return; }
+  if (!sig) { dire('Mot de passe du module requis pour enregistrer.', 'ko'); return; }
   const r = await fetch('/api/script-save', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1021,7 +1042,7 @@ async function lancer() {
   const i = slot();
   const etat = await prochainNonce();
   const sig = await signer('script-run|' + i + '|' + etat.nonce);
-  if (!sig) { dire('Secret requis pour lancer.', 'ko'); return; }
+  if (!sig) { dire('Mot de passe du module requis pour lancer.', 'ko'); return; }
   const r = await fetch('/api/script-run', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
@@ -1035,7 +1056,7 @@ async function effacer() {
   if (!confirm('Effacer le script ' + (i + 1) + ' du module ?')) return;
   const etat = await prochainNonce();
   const sig = await signer('script-erase|' + i + '|' + etat.nonce);
-  if (!sig) { dire('Secret requis pour effacer.', 'ko'); return; }
+  if (!sig) { dire('Mot de passe du module requis pour effacer.', 'ko'); return; }
   const r = await fetch('/api/script-erase', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ i: i, nonce: etat.nonce, sig: sig })
@@ -1220,7 +1241,7 @@ $('ph-enregistrer').onclick = async () => {
     // Forme canonique = les octets TSV exacts que le module ecrira.
     const corpus = BIBLIO.map((o) => o.code + '\t' + o.texte + '\n').join('');
     const sig = await signer('script-messages|' + etat.nonce + '|' + corpus);
-    if (!sig) { direPhrases('Secret requis pour enregistrer.', 'ko'); return; }
+    if (!sig) { direPhrases('Mot de passe du module requis pour enregistrer.', 'ko'); return; }
     const r = await fetch('/api/script-messages', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entries: BIBLIO.map((o) => ({ code: o.code, texte: o.texte })), nonce: etat.nonce, sig: sig })
@@ -1291,7 +1312,7 @@ $('gv-enregistrer').onclick = async () => {
     const canon = 'script-globals|' + etat.nonce + '|' + noms.map((n) => n + '\n').join('') + '|'
       + fixe.map((f) => f.i + '=' + f.v + ';').join('');
     const sig = await signer(canon);
-    if (!sig) { direVariables('Secret requis pour enregistrer.', 'ko'); return; }
+    if (!sig) { direVariables('Mot de passe du module requis pour enregistrer.', 'ko'); return; }
     const r = await fetch('/api/script-globals', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ noms: noms, fixe: fixe, nonce: etat.nonce, sig: sig })
