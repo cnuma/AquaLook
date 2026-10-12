@@ -374,8 +374,15 @@ try {
             send_json(401, ['detail' => 'identifiant ou mot de passe incorrect']);
         }
 
-        set_session_cookie(open_session($userId));
+        $remember = ($body['remember'] ?? false) === true;
+        set_session_cookie(open_session($userId, $remember), $remember);
         send_json(200, ['ok' => true]);
+    }
+
+    // Public : la duree affichee a cote de la case "Rester connecte" vient du
+    // registre, jamais ecrite en dur dans la page.
+    if ($method === 'GET' && $path === '/app/login-options') {
+        send_json(200, ['rememberDays' => setting_int('SESSION_REMEMBER_DAYS')]);
     }
 
     if ($method === 'POST' && $path === '/app/logout') {

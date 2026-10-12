@@ -12,9 +12,22 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/settings.php';
 
 const SESSION_COOKIE   = 'aq_session';
-const SESSION_DAYS     = 30;
+// Durees de session (12 oct. 2026, demande du proprietaire : plus de
+// connexion sans mot de passe pendant 30 jours). Reglables dans la console
+// (registre settings.php) :
+//   - case "Rester connecte" cochee : SESSION_REMEMBER_DAYS jours, fixes ;
+//   - case non cochee : cookie de navigateur (efface a sa fermeture), et
+//     cote serveur SESSION_IDLE_MIN minutes sans activite, SESSION_MAX_H
+//     heures au plus.
+// Aucune session, quelle qu'elle soit, ne vit plus de SESSION_REMEMBER_DAYS
+// jours (y compris celles ouvertes avant ce changement, pour 30 jours).
+// Le type de session se deduit de sa duree prevue : une session courte ne
+// depasse jamais SESSION_MAX_H (24 h au plus), une session "rester
+// connecte" dure au moins 2 jours -- les bornes du registre le garantissent,
+// sans colonne ni migration de schema.
 // Fenetre et plafonds de la limitation de debit. Volontairement genereux
 // pour un humain qui se trompe, et hors de portee d'une force brute : a
 // 10 essais par quart d'heure, essayer un million de mots de passe demande
@@ -93,15 +106,22 @@ function verify_credentials(string $email, string $password): ?int
     return (int)$row['user_id'];
 }
 
+/** Duree d'une session courte a partir de maintenant, en minutes. */
+function session_short_minutes(): int
+{
+    return min(setting_int('SESSION_IDLE_MIN'), setting_int('SESSION_MAX_H') * 60);
+}
+
 /** Ouvre une session et rend le jeton en clair, a poser en cookie. */
-function open_session(int $userId): string
+function open_session(int $userId, bool $remember = false): string
 {
     $token = bin2hex(random_bytes(32));
+    $minutes = $remember ? setting_int('SESSION_REMEMBER_DAYS') * 1440 : session_short_minutes();
     $stmt = db()->prepare(
         'INSERT INTO app_session (token_sha256, user_id, created_at, expires_at, last_seen) '
-        . 'VALUES (?, ?, ?, (UTC_TIMESTAMP(3) + INTERVAL ? DAY), ?)'
+        . 'VALUES (?, ?, ?, (UTC_TIMESTAMP(3) + INTERVAL ? MINUTE), ?)'
     );
-    $stmt->execute([hash('sha256', $token), $userId, utc_now(), SESSION_DAYS, utc_now()]);
+    $stmt->execute([hash('sha256', $token), $userId, utc_now(), $minutes, utc_now()]);
 
     $stmt = db()->prepare('UPDATE app_user SET last_login = ? WHERE user_id = ?');
     $stmt->execute([utc_now(), $userId]);
@@ -118,18 +138,26 @@ function current_user(): ?array
     $stmt = db()->prepare(
         'SELECT u.user_id, u.email, u.label FROM app_session s '
         . 'JOIN app_user u ON u.user_id = s.user_id '
-        . 'WHERE s.token_sha256 = ? AND s.expires_at > UTC_TIMESTAMP(3)'
+        . 'WHERE s.token_sha256 = ? AND s.expires_at > UTC_TIMESTAMP(3) '
+        . 'AND s.created_at > (UTC_TIMESTAMP(3) - INTERVAL ? DAY)'
     );
-    $stmt->execute([hash('sha256', $token)]);
+    $stmt->execute([hash('sha256', $token), setting_int('SESSION_REMEMBER_DAYS')]);
     $row = $stmt->fetch();
     if (!$row) {
         return null;
     }
     // Trace de vie, utile pour reperer une session oubliee. Ecriture a chaque
     // requete assumee : le volume est celui d'un humain qui navigue, pas
-    // celui des modules.
-    $upd = db()->prepare('UPDATE app_session SET last_seen = ? WHERE token_sha256 = ?');
-    $upd->execute([utc_now(), hash('sha256', $token)]);
+    // celui des modules. Une session courte est prolongee d'autant
+    // (inactivite), sans depasser SESSION_MAX_H depuis son ouverture.
+    $upd = db()->prepare(
+        'UPDATE app_session SET last_seen = ?, expires_at = IF('
+        . 'TIMESTAMPDIFF(SECOND, created_at, expires_at) <= ?, '
+        . 'LEAST(UTC_TIMESTAMP(3) + INTERVAL ? MINUTE, created_at + INTERVAL ? HOUR), expires_at) '
+        . 'WHERE token_sha256 = ?'
+    );
+    $maxH = setting_int('SESSION_MAX_H');
+    $upd->execute([utc_now(), $maxH * 3600, setting_int('SESSION_IDLE_MIN'), $maxH, hash('sha256', $token)]);
     return ['userId' => (int)$row['user_id'], 'email' => $row['email'], 'label' => $row['label']];
 }
 
@@ -151,10 +179,13 @@ function close_session(): void
  * site, ce qui ferme la falsification de requete inter-site sans avoir a
  * gerer un jeton anti-CSRF separe.
  */
-function set_session_cookie(?string $token): void
+function set_session_cookie(?string $token, bool $remember = false): void
 {
+    // Sans "rester connecte" : cookie de navigateur (expires 0), efface a la
+    // fermeture -- le serveur borne de toute facon la session (voir plus haut).
     setcookie(SESSION_COOKIE, $token ?? '', [
-        'expires'  => $token === null ? time() - 3600 : time() + SESSION_DAYS * 86400,
+        'expires'  => $token === null ? time() - 3600
+                    : ($remember ? time() + setting_int('SESSION_REMEMBER_DAYS') * 86400 : 0),
         'path'     => '/',
         'secure'   => true,
         'httponly' => true,

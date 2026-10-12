@@ -95,6 +95,7 @@ Décision du propriétaire, 12 octobre 2026.
 - **Le code reste open source** : le dépôt n'est pas rendu privé et le code n'est pas obfusqué. La sécurité repose sur les secrets et contrôles côté serveur, jamais sur le secret du code.
 - **Service en ligne** : console d'administration derrière une authentification HTTP Basic (en PHP, identifiants dans le `.env` du serveur) en plus du jeton admin ; site non indexé (`robots.txt`, `X-Robots-Tag`) ; CSP sans `'unsafe-inline'` sur tout le site ; mot de passe SMTP chiffré en base. Détail et état : `docs/security/CYBERSECURITY_ARCHITECTURE.md` §4.8.
 - **Route `GET /admin` retirée** (12 oct. 2026) : elle redirigeait vers la console et en révélait l'adresse ; `/admin` répond 404. La racine `/` sert une page d'accueil neutre (`accueil.html`) qui ne mène qu'à l'espace utilisateur.
+- **Sessions de l'espace utilisateur** (12 oct. 2026) : fin des sessions de 30 jours. Case « Rester connecté » : 7 jours fixes ; sans la case : session de navigateur, 2 h d'inactivité, 12 h au plus. Durées réglables dans la console (`SESSION_REMEMBER_DAYS`, `SESSION_IDLE_MIN`, `SESSION_MAX_H`).
 - **Règles vivantes** : aucune règle de sécurité n'est figée. Elles sont remises en cause à chaque évolution, à chaque faille publiée concernant une technologie du projet et au moins chaque trimestre, au regard des bonnes pratiques du moment, et évoluent avec les nouvelles découvertes (`CYBERSECURITY_ARCHITECTURE.md` §1.1).
 
 ## D016 — Enrôlement en ligne, comptes et sécurité locale du module (9 oct. 2026)
