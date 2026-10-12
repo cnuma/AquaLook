@@ -336,9 +336,9 @@ function renderProps() {
         + '<div class="hint">C’est le mot de passe de connexion à la page du module. Il protège aussi chaque '
         + 'enregistrement de script : l’éditeur le demande la première fois, puis le retient tant que cette page reste ouverte.</div>'
         + '<div class="acts"><button class="btn" id="b-secret">Changer le mot de passe…</button>'
-        + (secretRetenu() ? '<button class="btn" id="b-oublier">Ne plus le retenir</button>' : '') + '</div>'
-        + (secretRetenu() ? '<div class="hint">Sur un ordinateur partagé, cliquez « Ne plus le retenir » avant de partir : '
-          + 'personne ne pourra enregistrer un script sans le saisir à nouveau.</div>' : '')
+        + (secretRetenu() ? '<button class="btn" id="b-oublier">Effacer du navigateur</button>' : '') + '</div>'
+        + (secretRetenu() ? '<div class="hint">Sur un ordinateur partagé, cliquez « Effacer du navigateur » avant de partir : '
+          + 'le mot de passe gardé par cette page est supprimé du navigateur, ce qui évite qu’une autre personne le réutilise.</div>' : '')
         + '</div>');
     $('b-effacer').onclick = effacer;
     if (!CLOUD) {

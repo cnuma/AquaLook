@@ -102,7 +102,7 @@
   volet('props', true); id('b-reglages').click(); await wait(50);
   ok(id('b-effacer') && !document.querySelector('.main').classList.contains('props-replie'), 'Réglages généraux : vue générale, volet déplié, sans recharger');
   sessionStorage.setItem('aqualook-secret', 'banc'); choisir(null);
-  ok(/Ne plus le retenir/.test((id('b-oublier') || {}).textContent), 'mot de passe retenu : bouton « Ne plus le retenir »');
+  ok(/Effacer du navigateur/.test((id('b-oublier') || {}).textContent), 'mot de passe retenu : bouton « Effacer du navigateur »');
   id('b-oublier').click();
   ok(!sessionStorage.getItem('aqualook-secret') && !id('b-oublier'), 'oublié : bouton retiré');
   ok(window.__err.length === 0, 'erreurs JS : ' + JSON.stringify(window.__err));
