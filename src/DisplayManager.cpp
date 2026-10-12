@@ -771,6 +771,10 @@ void DisplayManager::update() {
     if (_wxPopupDay >= 0) return;
 #endif
 
+    // P2.11 : apres les gardes veille, mise a jour et encart meteo, qui
+    // interdisent tous de repeindre l'ecran d'accueil.
+    updateSlotBlink(now);
+
     if (now - _lastUpdate >= interval) {
         _lastUpdate = now;
         const uint32_t t0 = RuntimeProfiler::start();
@@ -1895,6 +1899,7 @@ void DisplayManager::renderPlanSprite() {
     uint16_t spriteH   = _planHdrH + nbPlan * _planZoneH;  // hauteur utile réelle
 
     _sprPlan.fillSprite(Theme::BG);
+    for (uint8_t z = 0; z < nbPlan; z++) _slotBlink[z].valid = false;  // P2.11
 
     // ── Séparateurs horizontaux — uniquement sur les lignes utilisées ──
     _sprPlan.drawFastHLine(0, _planHdrH - 1, PL_PLAN_W, Theme::BORDER);
@@ -2136,6 +2141,10 @@ void DisplayManager::renderPlanSprite() {
                 // degenere est la regle, pas l'exception (constate sur materiel
                 // reel le 29 aout 2026).
                 drawSlotBar(_sprPlan, sx, rowY + 2, sw, _planZoneH - 4, slotColor);
+                if (col == 0 && isRunningSlotToday(z, s)) {
+                    noteSlotBlink(z, sx, PL_PLAN_Y + rowY + 2, sw, _planZoneH - 4,
+                                  slotColor, rainBlk ? Theme::RAIN_BG_SOFT : Theme::BG);
+                }
             }
         }
     }
@@ -2167,6 +2176,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
     const uint8_t  nbPlan     = min(_nbZones, (uint8_t)8);
     const uint16_t COL_W      = _g2PlanColW;
     (void)planW;
+    for (uint8_t z = 0; z < nbPlan; z++) _slotBlink[z].valid = false;  // P2.11
     int todayIdx = todayEspIdx();
     int baseIdx = (todayIdx >= 0) ? todayIdx : 0;
     const char* jours[] = {"Lu","Ma","Me","Je","Ve","Sa","Di"};
@@ -2317,6 +2327,10 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
                 int sx = cx + 1 + (int)(frac * (COL_W - 2));
                 int sw = max(2, (int)((float)slot.duration / 1440.0f * (COL_W - 2)));
                 drawSlotBar(_tft, sx, rowY + 2, sw, max(2, (int)zoneH - 4), slotColor);
+                if (c == 0 && isRunningSlotToday(z, sl)) {
+                    noteSlotBlink(z, sx, rowY + 2, sw, max(2, (int)zoneH - 4),
+                                  slotColor, rainBlk ? Theme::RAIN_BG_SOFT : Theme::BG);
+                }
             }
         }
     }
@@ -2330,6 +2344,7 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
     if (zoneH < 4) zoneH = 4;
 
     _tft.fillRect(0, destY, SCREEN_W, h, Theme::BG);
+    for (uint8_t z = zStart; z < zEnd && z < MAX_ZONES; z++) _slotBlink[z].valid = false;  // P2.11
 
     int todayIdx = todayEspIdx();
     int baseIdx  = (todayIdx >= 0) ? todayIdx : 0;
@@ -2406,8 +2421,80 @@ void DisplayManager::renderPlanSpriteFull(uint16_t destY, uint16_t h,
                 int sw = max(2, (int)((float)sl.duration / 1440.0f * (DAY_W - 2)));
                 uint16_t barH = max((uint16_t)2, (uint16_t)(zoneH - 4));
                 drawSlotBar(_tft, sx, rowY + 2, sw, barH, slotColor);
+                if (col == 0 && isRunningSlotToday(z, s)) {
+                    noteSlotBlink(z, sx, rowY + 2, sw, barH,
+                                  slotColor, rainBlk ? Theme::RAIN_BG_SOFT : Theme::BG);
+                }
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────
+//  P2.11 — barre du creneau programme qui arrose : clignote sur le LCD
+// ─────────────────────────────────────────────
+// Derniere annonce serie par zone (jour * 8 + creneau + 1, 0 = aucune) :
+// une ligne par arrosage, et non une par redessin complet.
+static uint32_t s_slotBlinkLogged[MAX_ZONES] = {};
+
+// Le creneau n'est cherche que dans la colonne du jour : un arrosage qui
+// deborde apres minuit appartient a la colonne de la veille, qui n'est plus
+// affichee, et ne doit pas faire clignoter le creneau de meme rang du jour.
+bool DisplayManager::isRunningSlotToday(uint8_t zone, uint8_t slotIdx) const {
+    if (!_schedule || !_ntp || !_ntp->isSynced()) return false;
+    uint8_t  s   = 0;
+    uint32_t day = 0;
+    if (!_schedule->getScheduledSlot(zone, s, day)) return false;
+    return s == slotIdx && day == _ntp->getEpochDay();
+}
+
+void DisplayManager::noteSlotBlink(uint8_t zone, int16_t x, int16_t y,
+                                   int16_t w, int16_t h,
+                                   uint16_t on, uint16_t off) {
+    if (zone >= MAX_ZONES || w <= 0 || h <= 0) return;
+    SlotBlink& b = _slotBlink[zone];
+    b.valid = true;
+    b.x = x; b.y = y; b.w = w; b.h = h;
+    b.on = on; b.off = off;
+
+    uint8_t  s   = 0;
+    uint32_t day = 0;
+    if (_schedule && _schedule->getScheduledSlot(zone, s, day)) {
+        const uint32_t key = day * 8UL + s + 1UL;
+        if (s_slotBlinkLogged[zone] != key) {
+            s_slotBlinkLogged[zone] = key;
+            Serial.printf("[LCD] Zone %u : creneau %u clignote (%dx%d @%d,%d)\n",
+                          (unsigned)(zone + 1U), (unsigned)(s + 1U),
+                          (int)w, (int)h, (int)x, (int)y);
+        }
+    }
+}
+
+// Appelee a chaque passage de update() sur HOME, hors veille et hors encart
+// meteo. Cadence bornee par SLOT_BLINK_MS (F1) ; ne repeint que les barres
+// notees par le dernier rendu du planning visible.
+void DisplayManager::updateSlotBlink(uint32_t now) {
+    if (_screen != Screen::HOME) return;
+    if (!AquaLook::Time::elapsedAtLeast(now, _slotBlinkAtMs, SLOT_BLINK_MS)) return;
+    _slotBlinkAtMs = now;
+    _slotBlinkOn   = !_slotBlinkOn;
+
+    for (uint8_t z = 0; z < MAX_ZONES; ++z) {
+        SlotBlink& b = _slotBlink[z];
+        if (!b.valid) continue;
+        uint8_t  s   = 0;
+        uint32_t day = 0;
+        if (!_schedule || !_schedule->getScheduledSlot(z, s, day)) {
+            // Fin de l'arrosage : la barre redevient fixe. Le redessin
+            // complet que provoque l'arret (displayDirty) la repeint de
+            // toute facon ; ceci couvre le tour qui le precede.
+            drawSlotBar(_tft, b.x, b.y, b.w, b.h, b.on);
+            b.valid = false;
+            Serial.printf("[LCD] Zone %u : creneau fixe\n", (unsigned)(z + 1U));
+            continue;
+        }
+        if (_slotBlinkOn) drawSlotBar(_tft, b.x, b.y, b.w, b.h, b.on);
+        else              _tft.fillRect(b.x, b.y, b.w, b.h, b.off);
     }
 }
 
@@ -2875,6 +2962,9 @@ void DisplayManager::drawHomeFull() {
     // passent LIST, GRID2 et GRID4. Marquer les tuiles une par une ne suffit
     // pas ici -- au-dela de quelques zones l'ecran n'en montre pas la moitie,
     // et un module non cable doit dire son etat d'un seul coup d'oeil.
+    // P2.11 : seul le planning qui va etre redessine peut renoter une barre
+    // clignotante (vue "Marche forcee" ou autre mode : aucune).
+    for (uint8_t z = 0; z < MAX_ZONES; z++) _slotBlink[z].valid = false;
     if (homeUnwired()) { drawHomeFull_unwired(); return; }
     switch (_homeMode) {
         case HomeMode::LIST:  drawHomeFull_list();  break;
