@@ -90,6 +90,21 @@
   bp.click(); br.click(); await wait(100);
   ok(Math.abs(larg() - l0) < 2 && !main.classList.contains('pal-replie') && !main.classList.contains('props-replie')
     && localStorage.getItem('aqualook-props-replie') === '0', 'volets dépliés : largeur d’origine');
+  // Panneau Réglages : retour visible vers la vue générale ; boutons du mot de passe explicites.
+  const id = (x) => document.getElementById(x);
+  try { sessionStorage.removeItem('aqualook-secret'); } catch (e) {}
+  choisir(null);
+  ok(id('b-effacer') && /Changer le mot de passe/.test((id('b-secret') || {}).textContent) && !id('b-oublier'),
+    'vue générale : effacer, changer le mot de passe, rien de retenu');
+  ok(id('b-reglages').closest('header.top') && !id('props').contains(id('b-reglages')), 'bouton « Réglages généraux » dans le bandeau du haut');
+  document.querySelector('#world [data-id]').click(); await wait(50);
+  ok(!id('b-effacer'), 'bloc choisi : réglages du bloc');
+  volet('props', true); id('b-reglages').click(); await wait(50);
+  ok(id('b-effacer') && !document.querySelector('.main').classList.contains('props-replie'), 'Réglages généraux : vue générale, volet déplié, sans recharger');
+  sessionStorage.setItem('aqualook-secret', 'banc'); choisir(null);
+  ok(/Effacer du navigateur/.test((id('b-oublier') || {}).textContent), 'mot de passe retenu : bouton « Effacer du navigateur »');
+  id('b-oublier').click();
+  ok(!sessionStorage.getItem('aqualook-secret') && !id('b-oublier'), 'oublié : bouton retiré');
   ok(window.__err.length === 0, 'erreurs JS : ' + JSON.stringify(window.__err));
   const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = (echecs ? 'ECHECS: ' + echecs : 'TOUT OK') + '\n' + R.join('\n'); document.body.appendChild(pre);
 })().catch((e) => { const pre = document.createElement('pre'); pre.id = 'RESULTATS'; pre.textContent = 'EXCEPTION ' + e.stack; document.body.appendChild(pre); });
