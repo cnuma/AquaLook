@@ -63,6 +63,8 @@ PROTECTED = [
     # Console derriere authentification HTTP Basic (P0.4e) : attendu 401.
     ("GET", "/admin.html"),
     ("GET", "/admin.js"),
+    # Ancienne redirection vers la console, retiree le 12 oct. 2026 : 404.
+    ("GET", "/admin"),
 ]
 
 

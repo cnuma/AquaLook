@@ -38,7 +38,6 @@ Routes ajoutées pour la console d'administration (lecture, sauf l'annulation) :
 | `GET /admin/commands?moduleId=&limit=` | file et historique des commandes |
 | `GET /admin/config?moduleId=` | dernier instantané de configuration, pour lire `revision` |
 | `POST /admin/command/cancel` | annule une commande **encore en attente** |
-| `GET /admin` | redirige vers la console (`admin.html`) |
 
 `POST /admin/command/cancel` répond `409` si la commande est déjà réglée : le
 module l'a alors appliquée, et réécrire son état effacerait la trace de ce qui
