@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AquaLook</title>
+<!-- Page d'accueil du service (racine du site). Volontairement neutre : ni
+     console d'administration, ni API, ni version, ni technologie -- seulement
+     le chemin des utilisateurs vers leur espace. Pas de script (CSP). -->
+<style>
+:root{--bg:#f4f8f4;--surface:#fff;--line:#cfe0d2;--text:#16311d;--muted:#5d7a63;--green:#1a7a34}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+     background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+main{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:36px 32px;
+     max-width:420px;width:100%;text-align:center}
+svg{width:48px;height:48px;color:var(--green)}
+h1{font-size:24px;margin:10px 0 4px;font-weight:650}
+h1 span{color:var(--green)}
+p{color:var(--muted);margin:0 0 26px}
+a.primary{display:inline-block;background:var(--green);color:#fff;text-decoration:none;font-weight:600;
+          border-radius:8px;padding:11px 22px}
+a.primary:hover{filter:brightness(.92)}
+</style>
+</head>
+<body>
+<main>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7c3.3 4 6 7.3 6 10.6a6 6 0 0 1-12 0c0-3.3 2.7-6.6 6-10.6z"/></svg>
+  <h1>Aqua<span>Look</span></h1>
+  <p>Programmateur d’arrosage connecté</p>
+  <a class="primary" href="/app.html">Accéder à mon espace</a>
+</main>
+</body>
+</html>
