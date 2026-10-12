@@ -26,6 +26,13 @@ if (preg_match('#(^|/)(\.env|schema\.sql|router\.php)$#', $path)) {
     exit;
 }
 
+// Meme reecriture que la .htaccess : la console passe par index.php
+// (authentification Basic, console_page.php).
+if (preg_match('#^/admin\.(html|js)$#', $path)) {
+    require __DIR__ . '/index.php';
+    return true;
+}
+
 if ($path !== '/' && is_file($file)) {
     return false;   // laisse le serveur integre servir le fichier statique
 }

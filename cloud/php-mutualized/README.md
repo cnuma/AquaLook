@@ -97,10 +97,22 @@ et plafonds : paramètres `ENROLL_*` de la console.
 
 ## Console d'administration
 
-`admin.html` + `admin.js` — page autonome (aucune dépendance, aucun CDN), servie
-en statique par Apache. Elle consomme les routes `/admin/*` ci-dessus. Son script
-est dans `admin.js` (de même `app.html` → `app.js`) : la CSP de ces deux pages
-interdit tout script inline (`script-src 'self'`, voir `.htaccess`). Ne pas y
+`admin.html` + `admin.js` — page autonome (aucune dépendance, aucun CDN). Elle
+consomme les routes `/admin/*` ci-dessus. Son script est dans `admin.js` (de
+même `app.html` → `app.js`, et `/editeur/` → `script-editeur.js`) : la CSP du
+site interdit tout script inline (`script-src 'self'`, voir `.htaccess`).
+
+**Accès protégé (12 oct. 2026)** : la `.htaccess` réécrit `admin.html` et
+`admin.js` vers `index.php`, qui ne les sert qu'après une authentification
+HTTP Basic (`console_page.php`) : le navigateur demande un identifiant avant
+de charger quoi que ce soit. Identifiants dans le `.env` du serveur :
+`ADMIN_PAGE_USER` et `ADMIN_PAGE_HASH` (empreinte, jamais le mot de passe) ;
+absents, la console répond 503. Générer l'empreinte sur le poste (le mot de
+passe s'affiche pendant la frappe) :
+`php -r "echo password_hash(readline('Mot de passe : '), PASSWORD_DEFAULT), PHP_EOL;"`.
+Le jeton administrateur reste exigé ensuite par toutes les routes `/admin/*`
+(deux barrières). Le site entier est aussi marqué `noindex` (`robots.txt` et
+`X-Robots-Tag`). Ne pas y
 remettre de `<script>` inline ni d'attribut `on*=` ; poser les gestionnaires
 en JS (`el.onclick = …`).
 
@@ -281,6 +293,7 @@ mysql -h 127.0.0.1 -P 3307 -u root aqualook < schema.sql
 php -S 127.0.0.1:8001 router.php
 curl http://127.0.0.1:8001/health
 # console : http://127.0.0.1:8001/admin.html
+# (exige ADMIN_PAGE_USER et ADMIN_PAGE_HASH dans le .env local)
 ```
 
 Utiliser `router.php` et **non** `index.php` comme routeur. `php -S ... index.php`
@@ -288,7 +301,9 @@ envoie toutes les requêtes au routeur JSON, y compris `admin.html` : la console
 devient alors inaccessible en local alors qu'elle fonctionne en production —
 la pire forme de divergence entre les deux environnements. `router.php`
 reproduit exactement le comportement du `.htaccess` : fichier existant servi tel
-quel, tout le reste vers `index.php`, et `.env`/`schema.sql` refusés.
+quel (sauf `admin.html`/`admin.js`, envoyés à `index.php` pour
+l'authentification), tout le reste vers `index.php`, et `.env`/`schema.sql`
+refusés.
 
 ## Ce qui n'est pas fait
 

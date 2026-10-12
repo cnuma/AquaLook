@@ -36,6 +36,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail.php';
 require_once __DIR__ . '/enroll.php';
 require_once __DIR__ . '/account.php';
+require_once __DIR__ . '/console_page.php';
 
 const PROTO_VERSION = 'v1';
 const MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -150,6 +151,12 @@ function check_payload_size(array $payload): void
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/', '/') ?: '/';
+
+// Console derriere authentification Basic : la .htaccess reecrit ces deux
+// fichiers vers ici (console_page.php).
+if (($method === 'GET' || $method === 'HEAD') && isset(CONSOLE_PAGES[$path])) {
+    serve_console_page($path);
+}
 
 try {
     if ($method === 'GET' && $path === '/health') {

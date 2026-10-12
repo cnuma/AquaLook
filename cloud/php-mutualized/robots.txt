@@ -1,0 +1,3 @@
+# Service AquaLook : rien a indexer (voir aussi X-Robots-Tag dans .htaccess).
+User-agent: *
+Disallow: /
