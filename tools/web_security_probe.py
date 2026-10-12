@@ -42,6 +42,7 @@ SECURITY_HEADERS = [
     "x-content-type-options",
     "referrer-policy",
     "strict-transport-security",
+    "x-robots-tag",
 ]
 
 # Fichiers qui ne doivent JAMAIS etre servis en clair (deny-list .htaccess +
@@ -50,6 +51,7 @@ MUST_NOT_SERVE = [
     "/.env", "/.env.example", "/schema.sql", "/schema-v7-liens-compte.sql",
     "/router.php", "/cleanup.php", "/README.md", "/php.log", "/error.log",
     "/.git/config", "/.gitignore",
+    "/console_page.php", "/settings.php", "/db.php",
 ]
 
 # Routes protegees : sans session ni jeton, attendu 401 (ou 404), jamais 200.
@@ -58,6 +60,9 @@ PROTECTED = [
     ("GET", "/app/me"),
     ("GET", "/app/modules"),
     ("GET", "/v1/pending-command"),
+    # Console derriere authentification HTTP Basic (P0.4e) : attendu 401.
+    ("GET", "/admin.html"),
+    ("GET", "/admin.js"),
 ]
 
 
@@ -115,6 +120,15 @@ def main():
         else:
             line("ATTENTION", hn, "absent (correctif pas encore deploye ?)")
     time.sleep(d)
+    # CSP stricte (P0.4b/d/e) : aucun 'unsafe-inline' dans script-src, y
+    # compris sur l'editeur en ligne.
+    for p in ("/app.html", "/editeur/scripts-schema.html"):
+        st, h, _ = req(base, "GET", p)
+        csp = h.get("content-security-policy", "")
+        script_src = next((x.strip() for x in csp.split(";") if x.strip().startswith("script-src")), "")
+        ok = script_src and "'unsafe-inline'" not in script_src
+        line("PASS" if ok else "ATTENTION", "script-src " + p, script_src or "absent")
+        time.sleep(d)
 
     # 2. Fichiers sensibles : ne doivent pas etre servis.
     print("\n2. Fichiers sensibles (attendu : pas de 200 avec contenu)")
