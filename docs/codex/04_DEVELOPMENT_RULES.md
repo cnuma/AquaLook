@@ -84,6 +84,18 @@ Ne jamais changer silencieusement l’ordre, le type ou la taille d’un champ p
 - Éviter les commentaires volumineux dans le fichier embarqué.
 - Ne pas ajouter de backup dans `data/`.
 
+### Ergonomie (règle du propriétaire, 12 octobre 2026)
+
+Appliquée progressivement : à chaque page créée ou retouchée.
+
+- Les boutons de navigation (retour, liens vers les autres pages) sont **en
+  haut de la page** et restent toujours accessibles, jamais seulement en bas.
+- Une page destinée au navigateur PC exploite la largeur de l'écran pour
+  limiter le défilement vertical : l'information utile ne doit pas être
+  cachée sous la ligne de flottaison ni obliger à la chercher.
+- Une seule chose à la fois : menu d'options plutôt qu'empilement de cartes
+  (voir P2.9, « Mon compte »).
+
 ### JavaScript
 
 - Conserver les signatures appelées par les attributs HTML.
