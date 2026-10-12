@@ -42,7 +42,7 @@ décision), *les deux*.
 
 | # | Sujet | Qui |
 |---|---|---|
-| P2.1 | **Publier le paquet Web des modules** (pages `data/` téléchargées par les modules lors d'une mise à jour Web). La recopie de `/editeur/` sur AlwaysData est faite (12 oct. 2026, P0.4d) ; les modules n'ont pas encore le nouvel éditeur. Paquet en ligne : `5.10.3` (manifeste du 8 oct. 2026). Numéro du prochain paquet à choisir à la publication : il doit seulement différer de `5.10.3` (le module compare les numéros par égalité, `WebAssetsUpdater.cpp`). Étapes : `python tools/publish_web_assets.py <version>`, envoi FTP des fichiers puis du manifeste en dernier, `check_published_web.py` ; mise à jour Web de `.141` ; tester « changer le secret » depuis l'éditeur | propriétaire (FTP) + agent |
+| ~~P2.1~~ | ~~Publier le paquet Web des modules~~ | — | **fait** le 12 oct. 2026 : paquet `5.13.2` préparé par `publish_web_assets.py 5.13.2` (20 fichiers, manifeste 4 741 octets < `MANIFEST_MAX_BYTES` 8 192), envoyé par FTP par le propriétaire (fichiers puis manifeste) ; `check_published_web.py` : 20/20 conformes ; mise à jour Web de `.141` lancée par le propriétaire depuis `ota.html` ; les 20 fichiers servis par `.141` sont identiques au paquet (relecture HTTP). Le nouvel éditeur (P0.4d, P2.6) est donc sur les modules. Reste : essayer « changer le secret » depuis l'éditeur du module |
 | P2.2 | Lot G de D016 : effacement du PIN depuis l'espace en ligne | agent |
 | P2.3 | Confirmer en production : invitation depuis la console, changement de mot de passe connecté, durée de `forgot` sur adresse connue | les deux |
 | P2.4 | Confirmer au doigt (lot E) : geste d'effacement du PIN au démarrage, attentes successives ; relever la durée PBKDF2 | propriétaire |
