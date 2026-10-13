@@ -289,11 +289,13 @@ async function voirListe(){
       '<button class="mod' + (lignePages(m)[1] ? ' maj' : '') + '" data-id="' + esc(m.module_id) + '">'
     + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
     + esc(m.label || m.module_id) + '</span>'
-    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue')
-    + ' &middot; présence vue ' + depuis(m.last_seen) + '</span>'
+    // Deux versions independantes, nommees comme dans la rubrique Mises a
+    // jour du module : une difference entre elles est normale.
+    + '<span class="mod-s"><span class="upd-chan-vers">Programme du module &middot; <span>installé <b>'
+    + esc(m.firmware || '?') + '</b></span></span></span>'
     + '<span class="mod-s">' + lignePages(m)[0] + '</span>'
-    + '<span class="mod-s">' + (m.revision
-        ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
+    + '<span class="mod-s">présence vue ' + depuis(m.last_seen) + ' &middot; ' + (m.revision
+        ? 'config n&deg;' + esc(m.revision) + ' synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
     + '</span></button>').join('')
     + (enRetard.length
