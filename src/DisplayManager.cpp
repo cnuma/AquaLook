@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "NetName.h"
 #include "ApiAuth.h"                // page Systeme : oublier le secret API
 #include "WebSession.h"             // ... et fermer les sessions Web ouvertes avec lui
 #include "PinLock.h"                // code PIN : ADMIN et demarrage manuel (D016)
@@ -4346,7 +4347,14 @@ void DisplayManager::drawAdminPageWifi() {
     _tft.drawString("Config via navigateur :", 10, y); y += 14;
     _tft.setTextColor(Theme::CYAN, Theme::SURFACE);
     { String ip = WiFi.localIP().toString();
-      _tft.drawString(("http://" + (ip.length() > 3 ? ip : "...")).c_str(), 10, y);
+      const String url = "http://" + (ip.length() > 3 ? ip : String("..."));
+      _tft.drawString(url.c_str(), 10, y);
+      // Nom reseau (NetName), sur la meme ligne : plus facile a retenir que
+      // l'adresse, et stable si la box change l'adresse.
+      if (NetName::announced()) {
+          const String nom = String("ou http://") + NetName::name() + ".local";
+          _tft.drawString(nom.c_str(), 10 + _tft.textWidth(url.c_str()) + 14, y);
+      }
       y += 24; }
 
     // Bouton portail captif
