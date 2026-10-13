@@ -218,6 +218,28 @@ function voirCompte(option){
 
 // ── Liste des modules ──────────────────────────────────────────────────────
 
+// Compare deux versions "5.14.0" (suffixe eventuel ignore) : >0 si a est plus
+// recente. Une mise a jour n'est annoncee que si la version publiee est
+// PLUS RECENTE, pas seulement differente (module de banc en avance, etc.).
+function cmpVersion(a, b){
+  const n = v => String(v).split(/[^0-9]+/).filter(Boolean).slice(0, 3).map(Number);
+  const x = n(a), y = n(b);
+  for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; }
+  return 0;
+}
+// Ligne "Pages Web" d'un module : installee (dernier rapport du module) et
+// publiee (manifeste du site). Rend [html, majDisponible].
+function lignePages(m){
+  const inst = m.web_version, pub = m.web_available;
+  if (!inst) return ['Pages Web : version non remontée par ce module', false];
+  if (!pub) return ['Pages Web ' + esc(inst), false];
+  if (cmpVersion(pub, inst) > 0) {
+    return ['Pages Web ' + esc(inst) + ' &middot; <b class="maj">' + esc(pub)
+      + ' disponible</b>', true];
+  }
+  return ['Pages Web ' + esc(inst) + ' &middot; à jour', false];
+}
+
 async function voirListe(){
   MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('detail').hidden = true;
@@ -233,16 +255,24 @@ async function voirListe(){
     $('ls-rattacher').onclick = () => { voirCompte('rattacher'); $('rt-code').focus(); };
     return;
   }
+  const majAFaire = mods.some(m => lignePages(m)[1]);
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
       '<button class="mod" data-id="' + esc(m.module_id) + '">'
     + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
     + esc(m.label || m.module_id) + '</span>'
     + '<span class="mod-s">' + esc(m.firmware || 'version inconnue')
     + ' &middot; présence vue ' + depuis(m.last_seen) + '</span>'
+    + '<span class="mod-s">' + lignePages(m)[0] + '</span>'
     + '<span class="mod-s">' + (m.revision
         ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
-    + '</span></button>').join('') + '</div>';
+    + '</span></button>').join('')
+    + (majAFaire
+        ? '<p class="maj-note">Une nouvelle version des pages Web est disponible. '
+          + 'Elle s&rsquo;installe depuis le module lui-même, sur votre réseau : '
+          + '<a href="/maj.html">comment faire</a>.</p>'
+        : '<p class="hint"><a href="/maj.html">Mettre à jour un module : mode d&rsquo;emploi</a></p>')
+    + '</div>';
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
   });

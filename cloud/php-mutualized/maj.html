@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AquaLook — mettre à jour un module</title>
+<!-- Mode d'emploi statique, sans script (CSP) : comment installer sur place
+     une mise a jour que l'espace en ligne signale. L'espace en ligne ne
+     declenche jamais une mise a jour (D014) ; il la signale seulement. -->
+<style>
+:root{--bg:#f4f8f4;--surface:#fff;--line:#cfe0d2;--text:#16311d;--muted:#5d7a63;
+  --green:#1a7a34;--green-dim:#e4f2e7;--amber:#a86b0b;--amber-dim:#fdf3e0;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+h1{font-size:17px;margin:0 auto 0 0;font-weight:600}
+h1 span{color:var(--green)}
+header a{padding:8px 13px;border:1px solid var(--line);border-radius:7px;color:var(--text);text-decoration:none;font-size:14px}
+header a:hover{border-color:var(--green)}
+main{max-width:1100px;margin:0 auto;padding:20px}
+.intro{margin:0 0 16px;color:var(--muted)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@media(min-width:900px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:600}
+ol{margin:0;padding-left:22px}
+li{margin:0 0 10px}
+code,.btn{font-family:var(--mono);font-size:13px;background:var(--green-dim);border-radius:5px;padding:1px 6px}
+.btn{background:var(--green);color:#fff}
+.note{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--amber-dim);border:1px solid var(--amber);font-size:14px}
+.sec{margin-top:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Aqua<span>Look</span> — mettre à jour un module</h1>
+  <a href="/app.html">&#8249; Mes modules</a>
+</header>
+<main>
+<p class="intro">Quand « Mes modules » annonce une nouvelle version, l’installation se fait
+<b>depuis le module lui-même</b>, avec un ordinateur, une tablette ou un téléphone connecté
+au <b>même Wi-Fi</b> que lui. L’espace en ligne ne lance jamais de mise à jour à votre place :
+c’est vous qui décidez du moment.</p>
+
+<div class="cols">
+<section class="card">
+  <h2>Pages Web (l’interface du module)</h2>
+  <ol>
+    <li>Trouvez l’adresse du module : sur son écran, <b>ADMIN &rsaquo; WiFi</b>, ligne
+      « Etat WiFi » (par exemple <code>192.168.1.141</code>).</li>
+    <li>Ouvrez cette adresse dans le navigateur, puis connectez-vous avec le
+      <b>mot de passe Web</b> du module.</li>
+    <li>Ouvrez la page des mises à jour : badge <span class="btn">&#11014; MAJ</span> en haut
+      de l’accueil s’il est affiché, sinon directement
+      <code>http://adresse-du-module/ota.html</code>.</li>
+    <li>Cliquez sur <b>« Mettre à jour les pages Web »</b> et confirmez.</li>
+    <li>Le module redémarre en mode maintenance (écran violet) pendant <b>environ deux
+      minutes</b>, télécharge les fichiers, vérifie chacun, puis revient tout seul.</li>
+    <li>Rechargez la page : elle doit indiquer « Tout est à jour ». Dans « Mes modules »,
+      la nouvelle version apparaît après la synchronisation suivante du module.</li>
+  </ol>
+  <p class="note">Pas pendant un arrosage : le module refuse tant qu’une zone arrose.
+  L’arrosage programmé n’est pas affecté par la mise à jour. Si quelque chose échoue,
+  les pages actuelles sont conservées et la page explique pourquoi.</p>
+</section>
+
+<section class="card">
+  <h2>Programme du module (firmware)</h2>
+  <p>Sur la même page des mises à jour, la colonne « Programme du module » se fait en
+  trois étapes, dans l’ordre : <b>Vérifier</b>, <b>Préparer</b>, <b>Installer</b>. Chacune
+  s’active quand la précédente a réussi. Si le nouveau programme ne démarre pas
+  correctement, <b>l’ancien est restauré automatiquement</b>.</p>
+  <p class="note">Si la page indique qu’aucun programme n’est disponible pour ce module,
+  sa mise à jour se fait pour l’instant par câble, par la personne qui assure sa
+  maintenance.</p>
+
+  <h2 class="sec">Pourquoi c’est sûr</h2>
+  <p>Chaque mise à jour est <b>signée</b> par l’éditeur d’AquaLook. Le module vérifie cette
+  signature avant d’installer quoi que ce soit, et refuse un paquet modifié ou d’origine
+  inconnue, même s’il vient d’un serveur. Il vérifie ensuite chaque fichier un par un.</p>
+</section>
+</div>
+</main>
+</body>
+</html>

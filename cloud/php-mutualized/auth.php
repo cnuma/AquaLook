@@ -251,6 +251,44 @@ function user_modules(int $userId): array
 }
 
 /**
+ * Version des pages Web publiees : celle du manifeste servi par CE site, a
+ * cote de ce fichier (le meme que telechargent les modules). null s'il est
+ * absent ou illisible -- l'espace utilisateur dit alors "inconnue" plutot
+ * que d'annoncer une mise a jour qui n'existe pas.
+ */
+function published_web_version(): ?string
+{
+    $f = __DIR__ . '/aqualook-web-manifest.json';
+    if (!is_readable($f)) {
+        return null;
+    }
+    $m = json_decode((string) file_get_contents($f), true);
+    $v = is_array($m) ? ($m['release']['version'] ?? null) : null;
+    return (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null;
+}
+
+/**
+ * Version des pages Web installees sur un module, d'apres son dernier rapport
+ * diag (champ webAssets, firmware 5.15.0 et plus). null : firmware plus
+ * ancien, carte SD absente, ou aucun rapport conserve.
+ */
+function module_web_version(string $moduleId): ?string
+{
+    $stmt = db()->prepare(
+        "SELECT payload FROM module_message WHERE module_id = ? AND msg_type = 'diag' "
+        . 'ORDER BY ts DESC LIMIT 1'
+    );
+    $stmt->execute([$moduleId]);
+    $p = $stmt->fetchColumn();
+    if ($p === false) {
+        return null;
+    }
+    $d = json_decode((string) $p, true);
+    $v = is_array($d) ? ($d['webAssets'] ?? null) : null;
+    return (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null;
+}
+
+/**
  * Presence et fraicheur d'UN module, memes colonnes que user_modules() --
  * pour que la page de detail montre "vu" (last_seen, tout rapport confondu)
  * separement de "synchronise" (config_updated, seulement quand le contenu a
