@@ -262,7 +262,12 @@ try {
         if (is_string($hwId)) {
             bind_module_hw_id($moduleId, $hwId);
         }
-        send_json(200, ['ok' => true]);
+        // Version des pages Web publiee : le module la compare a la sienne et
+        // signale lui-meme une mise a jour (LCD, voyant, pastille Web), sans
+        // attendre sa verification nocturne. Information seulement (D014) ;
+        // l'installation reste verifiee par la signature (D018).
+        $publiee = published_web_version();
+        send_json(200, $publiee === null ? ['ok' => true] : ['ok' => true, 'webAvailable' => $publiee]);
     }
 
     if ($method === 'GET' && $path === '/v1/pending-command') {
@@ -465,7 +470,7 @@ try {
         $mods = user_modules($user['userId']);
         $publiee = published_web_version();
         foreach ($mods as &$m) {
-            $m['web_version'] = module_web_version($m['module_id']);
+            $m += module_local_info($m['module_id']);
             $m['web_available'] = $publiee;
         }
         unset($m);

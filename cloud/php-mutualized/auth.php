@@ -268,11 +268,12 @@ function published_web_version(): ?string
 }
 
 /**
- * Version des pages Web installees sur un module, d'apres son dernier rapport
- * diag (champ webAssets, firmware 5.15.0 et plus). null : firmware plus
- * ancien, carte SD absente, ou aucun rapport conserve.
+ * Ce que le dernier rapport diag d'un module dit de lui sur le reseau local :
+ * version des pages Web installees (webAssets) et nom mDNS (netName, joignable
+ * par http://<nom>.local). Valeurs nulles si absentes ou mal formees
+ * (firmware plus ancien, carte SD absente, mDNS indisponible).
  */
-function module_web_version(string $moduleId): ?string
+function module_local_info(string $moduleId): array
 {
     $stmt = db()->prepare(
         "SELECT payload FROM module_message WHERE module_id = ? AND msg_type = 'diag' "
@@ -280,12 +281,13 @@ function module_web_version(string $moduleId): ?string
     );
     $stmt->execute([$moduleId]);
     $p = $stmt->fetchColumn();
-    if ($p === false) {
-        return null;
-    }
-    $d = json_decode((string) $p, true);
+    $d = $p === false ? null : json_decode((string) $p, true);
     $v = is_array($d) ? ($d['webAssets'] ?? null) : null;
-    return (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null;
+    $n = is_array($d) ? ($d['netName'] ?? null) : null;
+    return [
+        'web_version' => (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null,
+        'net_name'    => (is_string($n) && preg_match('/^[a-z0-9-]{1,32}$/', $n)) ? $n : null,
+    ];
 }
 
 /**
