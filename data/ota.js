@@ -78,7 +78,10 @@ function render(){
   const j=LAST,v=document.getElementById('verdict');
   const checked=j&&j.valid&&j.command==='check_version';
   const failed=j&&j.valid&&!j.success;
-  const fwAv=!!(j&&j.updateAvailable),webAv=!!(j&&j.webAssetsUpdateAvailable);
+  // cloudWebAvailable : version des pages publiee, annoncee par le service en
+  // ligne (synchro), plus recente que l'installee -- meme info que la pastille.
+  const cloudWeb=(j&&j.cloudWebAvailable)||'';
+  const fwAv=!!(j&&j.valid&&j.updateAvailable),webAv=!!(j&&j.valid&&j.webAssetsUpdateAvailable)||!!cloudWeb;
 
   // -- Verdict : la reponse a "qu&rsquo;est-ce que je fais maintenant ?".
   //
@@ -120,7 +123,7 @@ function render(){
   const alertBox = document.getElementById('alert');
   alertBox.innerHTML = '';
 
-  if(!j || !j.valid){
+  if((!j || !j.valid) && !cloudWeb){
     v.className = 'verdict un';
     v.innerHTML = '<p class="vt">Aucune verification effectuee</p>'
       + '<p>Le module n&rsquo;a encore jamais interroge la source. Il ne sait donc pas s&rsquo;il existe quelque chose a installer &mdash; ce qui n&rsquo;est pas la meme chose qu&rsquo;etre a jour.</p>'
@@ -132,7 +135,8 @@ function render(){
     v.innerHTML = '<p class="vt">&#8593; Une mise a jour est disponible</p>'
       + '<p>' + quoi + ' peuvent etre mis a jour. '
       + (fwAv ? 'Pour le programme, suivez les etapes 1 a 3 ci-dessous.' : 'Un seul bouton suffit, plus bas.') + '</p>'
-      + '<p class="when">' + esc(whenTxt(j)) + '</p>';
+      + (cloudWeb ? '<p class="when">Pages Web ' + esc(cloudWeb) + ' publiees (annonce du service en ligne).</p>' : '')
+      + (j.valid ? '<p class="when">' + esc(whenTxt(j)) + '</p>' : '');
     if(failed) alertBox.innerHTML = failBox();
   } else if(failed){
     // Le niveau vient du fichier d&rsquo;aide : un etat normal ne prend
@@ -176,7 +180,7 @@ function render(){
   // c'est justement le moment ou le canal a le plus travaille.
   const webRepondu = !!(j && (j.webAssetsAvailableVersion ||
         (j.command === 'web_assets_update' && j.success)));
-  if(webAv) h += chan('Pages Web', wi || (j && j.webAssetsInstalledVersion), j.webAssetsAvailableVersion, 'a installer', 'av', '');
+  if(webAv) h += chan('Pages Web', wi || (j && j.webAssetsInstalledVersion), (j && j.webAssetsAvailableVersion) || cloudWeb, 'a installer', 'av', '');
   else if(webRepondu) h += chan('Pages Web', wi, null, 'a jour', 'up', '');
   else h += chan('Pages Web', wi, null, 'jamais verifiees', '', 'sur le module');
   document.getElementById('chans').innerHTML=h;
@@ -189,7 +193,7 @@ function render(){
     : "Lancez d'abord l'etape 1. Attention : le module ne conserve qu'un seul resultat, donc une mise a jour des pages Web efface celui de la verification — il faut alors relancer l'etape 1.");
   gate('s3','b-install','w3',ok3,"Lancez d'abord l'etape 2 : rien n'a encore ete prepare et verifie dans la partition de reserve.");
   const wb=document.getElementById('b-web'),ww=document.getElementById('wweb');
-  wb.textContent=webAv?('Installer les pages Web '+(j.webAssetsAvailableVersion||'')):'Mettre a jour les pages Web';
+  wb.textContent=webAv?('Installer les pages Web '+((j&&j.webAssetsAvailableVersion)||cloudWeb)):'Mettre a jour les pages Web';
   ww.style.display=webAv?'none':'block';
   ww.textContent=webAv?'':"Aucune version plus recente n'a ete reperee. Le bouton reste utilisable : il reinstalle ce que la source publie actuellement, ce qui repare des pages abimees.";
   renderLast();

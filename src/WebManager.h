@@ -306,6 +306,10 @@ public:
                     doc["sha256"] = result.sha256;
                     doc["calculatedSha256"] = result.calculatedSha256;
                 }
+                // Version des pages annoncee par le service en ligne (plus
+                // recente que l'installee), hors resultat de maintenance : la
+                // page /ota doit dire la meme chose que la pastille.
+                doc["cloudWebAvailable"] = NotificationManager::cloudWebUpdate();
                 String body;
                 serializeJson(doc, body);
                 AsyncWebServerResponse* response =

@@ -10,6 +10,7 @@
   --bg:#f4f8f4; --surface:#fff; --line:#cfe0d2; --line2:#e6efe7;
   --text:#16311d; --muted:#5d7a63; --green:#1a7a34; --green-dim:#e4f2e7;
   --amber:#a86b0b; --amber-dim:#fdf3e0; --red:#b3261e; --red-dim:#fbeceb;
+  --purple:#6633cc; --purple-dim:#f1ebfb;   /* = --purple du module */
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
 }
 *{box-sizing:border-box}
@@ -69,6 +70,26 @@ label{color:var(--muted);font-size:13px}
 .mod-t{font-weight:600;display:flex;align-items:center;gap:9px;font-size:16px}
 .mod-s{display:block;color:var(--muted);font-family:var(--mono);font-size:12px;margin-top:3px}
 .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+/* Mises a jour : MEMES styles que l'interface du module (data/style-base.css :
+   #update-badge, .upd-chan, .upd-chip, --purple) -- l'UI doit etre identique
+   sur le reseau local et en ligne (regle du proprietaire, 13 oct. 2026). */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+#update-badge{font-size:14px;font-weight:bold;color:#fff;text-decoration:none;padding:3px 9px;
+  border-radius:4px;background:var(--purple);animation:blink 2s infinite}
+@media (prefers-reduced-motion:reduce){#update-badge{animation:none}}
+.mod.maj{border-color:var(--purple);background:var(--purple-dim)}
+.upd-chan-vers{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:3px;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
+.upd-chan-vers b{color:var(--text);font-weight:600}
+.upd-arrow{color:var(--muted)}
+.upd-chip{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);
+  color:var(--muted);white-space:nowrap;font-family:system-ui,sans-serif}
+.upd-chip.ok{color:var(--green);border-color:var(--green)}
+.upd-chip.avail{color:var(--purple);border-color:var(--purple);font-weight:600}
+.upd-open{display:block;text-align:center;text-decoration:none;background:var(--purple);color:#fff;
+  border-radius:7px;padding:9px 12px;font-weight:600;margin-top:4px}
+.upd-open:hover{filter:brightness(.9)}
+.hint a{color:var(--green);font-weight:600}
 .dot.ok{background:var(--green)}.dot.warn{background:var(--amber)}.dot.ko{background:var(--red)}
 
 /* Planning : seule vue des horaires. */
@@ -270,6 +291,9 @@ table.hist{width:100%;border-collapse:collapse;font-size:13px}
 <header>
   <h1>Aqua<span>Look</span> — mes arrosages</h1>
   <div class="spacer"></div>
+  <!-- Meme pastille que l'en-tete du module (index.html #update-badge). -->
+  <a id="update-badge" href="/maj.html" hidden
+     title="Une mise à jour est disponible — comment l’installer">&#11014; MAJ</a>
   <span id="who" class="hint"></span>
   <button id="btn-back" hidden>Mes modules</button>
   <button id="btn-compte" hidden>Mon compte</button>

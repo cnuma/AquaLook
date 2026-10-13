@@ -262,7 +262,19 @@ try {
         if (is_string($hwId)) {
             bind_module_hw_id($moduleId, $hwId);
         }
-        send_json(200, ['ok' => true]);
+        // Version des pages Web publiee : le module la compare a la sienne et
+        // signale lui-meme une mise a jour (LCD, voyant, pastille Web), sans
+        // attendre sa verification nocturne. Information seulement (D014) ;
+        // l'installation reste verifiee par la signature (D018).
+        $publiee = published_web_version();
+        $reponse = ['ok' => true];
+        if ($publiee !== null) {
+            $reponse['webAvailable'] = $publiee;
+        }
+        // Nom donne par l'utilisateur ('' = aucun) : le module en tire son
+        // nom reseau local, http://<nom>.local (NetName).
+        $reponse['label'] = module_label($moduleId) ?? '';
+        send_json(200, $reponse);
     }
 
     if ($method === 'GET' && $path === '/v1/pending-command') {
@@ -459,7 +471,17 @@ try {
         if ($user === null) {
             send_json(401, ['detail' => 'session absente ou expiree']);
         }
-        send_json(200, user_modules($user['userId']));
+        // Versions des pages Web : installee (dernier rapport du module) et
+        // publiee (manifeste de ce site), pour signaler une mise a jour a
+        // faire sur place -- jamais declenchee d'ici (D014).
+        $mods = user_modules($user['userId']);
+        $publiee = published_web_version();
+        foreach ($mods as &$m) {
+            $m += module_local_info($m['module_id']);
+            $m['web_available'] = $publiee;
+        }
+        unset($m);
+        send_json(200, $mods);
     }
 
     // Rattachement d'un module par le code affiche sur son ecran (D016, lot D).

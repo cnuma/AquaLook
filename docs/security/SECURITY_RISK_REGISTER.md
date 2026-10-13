@@ -39,6 +39,7 @@ Ce registre est vivant. Il est révisé lors de chaque évolution touchant le r�
 | SEC-023 | Publication partielle ou divergente du service (fichier modifié à la main, `.htaccess` fautive → 500) | Service en ligne / exploitation | Moyenne | Important | Publication depuis Git (`deploy_cloud.py`), ordre imposé, relecture, contrôle d'en-têtes juste après | outil testé sur banc FTP ; identifiants à fournir (P0.4a) | Ouvert |
 | SEC-024 | Paquet de pages Web publié par un tiers (accès FTP ou hébergeur compromis, changement d'hébergeur) | Mise à jour Web / hébergement | Moyenne | Critique | Manifeste signé (ECDSA P-256), clé privée hors ligne, clé publique dans le firmware, refus sans repli (D018) | `.141` (5.14.0, 13 oct. 2026) : signé accepté, falsifié refusé (`signature-invalide`), non signé refusé (`signature-absente`), pages intactes | Réduit |
 | SEC-025 | Clé privée de signature volée ou perdue | Poste du propriétaire | Faible | Critique | Hors dépôt et hors OneDrive, droits restreints, sauvegarde hors ligne ; plusieurs clés publiques acceptées pour la rotation et la révocation par firmware | clé créée le 13 oct. 2026, sauvegarde hors ligne à faire par le propriétaire | Ouvert |
+| SEC-026 | Module annoncé sur le réseau local par mDNS (nom, service http) | Réseau local | Moyenne | Faible | Nom choisi par l'utilisateur ou générique, aucun secret annoncé ; écritures toujours sous session (D016) ; filtre d'hôte inchangé (.local déjà admis) | mDNS actif depuis 5.15.1 (13 oct. 2026) | Accepté |
 
 ## 3. Contrats exécutables
 

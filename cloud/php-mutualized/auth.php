@@ -251,6 +251,55 @@ function user_modules(int $userId): array
 }
 
 /**
+ * Version des pages Web publiees : celle du manifeste servi par CE site, a
+ * cote de ce fichier (le meme que telechargent les modules). null s'il est
+ * absent ou illisible -- l'espace utilisateur dit alors "inconnue" plutot
+ * que d'annoncer une mise a jour qui n'existe pas.
+ */
+function published_web_version(): ?string
+{
+    $f = __DIR__ . '/aqualook-web-manifest.json';
+    if (!is_readable($f)) {
+        return null;
+    }
+    $m = json_decode((string) file_get_contents($f), true);
+    $v = is_array($m) ? ($m['release']['version'] ?? null) : null;
+    return (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null;
+}
+
+/** Nom donne au module par son proprietaire (null s'il n'en a pas). */
+function module_label(string $moduleId): ?string
+{
+    $stmt = db()->prepare('SELECT label FROM module WHERE module_id = ?');
+    $stmt->execute([$moduleId]);
+    $l = $stmt->fetchColumn();
+    return (is_string($l) && $l !== '') ? $l : null;
+}
+
+/**
+ * Ce que le dernier rapport diag d'un module dit de lui sur le reseau local :
+ * version des pages Web installees (webAssets) et nom mDNS (netName, joignable
+ * par http://<nom>.local). Valeurs nulles si absentes ou mal formees
+ * (firmware plus ancien, carte SD absente, mDNS indisponible).
+ */
+function module_local_info(string $moduleId): array
+{
+    $stmt = db()->prepare(
+        "SELECT payload FROM module_message WHERE module_id = ? AND msg_type = 'diag' "
+        . 'ORDER BY ts DESC LIMIT 1'
+    );
+    $stmt->execute([$moduleId]);
+    $p = $stmt->fetchColumn();
+    $d = $p === false ? null : json_decode((string) $p, true);
+    $v = is_array($d) ? ($d['webAssets'] ?? null) : null;
+    $n = is_array($d) ? ($d['netName'] ?? null) : null;
+    return [
+        'web_version' => (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null,
+        'net_name'    => (is_string($n) && preg_match('/^[a-z0-9-]{1,32}$/', $n)) ? $n : null,
+    ];
+}
+
+/**
  * Presence et fraicheur d'UN module, memes colonnes que user_modules() --
  * pour que la page de detail montre "vu" (last_seen, tout rapport confondu)
  * separement de "synchronise" (config_updated, seulement quand le contenu a

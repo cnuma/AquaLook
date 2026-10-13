@@ -90,6 +90,7 @@ async function deconnecter(){
   $('compte').hidden = true; $('compte').innerHTML = '';
   $('login').hidden = false;
   $('btn-logout').hidden = true; $('btn-back').hidden = true; $('btn-compte').hidden = true;
+  $('update-badge').hidden = true;
   $('who').textContent = '';
 }
 
@@ -175,6 +176,20 @@ async function demarrer(){
   montrer(null);
   $('btn-logout').hidden = false;
   await voirListe();
+  if (!RAFRAICHIR) RAFRAICHIR = setInterval(rafraichir, 60000);
+}
+
+// Etat des modules relu chaque minute : la pastille ⬆ MAJ du bandeau suit
+// les mises a jour faites sur place (le module renvoie son etat des son
+// retour), et la liste se redessine si elle est affichee. Silencieux en cas
+// d'echec : la prochaine minute reessaiera.
+let RAFRAICHIR = null;
+async function rafraichir(){
+  if ($('btn-logout').hidden) return;          // deconnecte
+  try {
+    if (!$('liste').hidden) { await voirListe(); return; }
+    majPastille(await api('/app/modules'));
+  } catch(e){}
 }
 
 // ── Mon compte ─────────────────────────────────────────────────────────────
@@ -218,6 +233,41 @@ function voirCompte(option){
 
 // ── Liste des modules ──────────────────────────────────────────────────────
 
+// Compare deux versions "5.14.0" (suffixe eventuel ignore) : >0 si a est plus
+// recente. Une mise a jour n'est annoncee que si la version publiee est
+// PLUS RECENTE, pas seulement differente (module de banc en avance, etc.).
+function cmpVersion(a, b){
+  const n = v => String(v).split(/[^0-9]+/).filter(Boolean).slice(0, 3).map(Number);
+  const x = n(a), y = n(b);
+  for (let i = 0; i < 3; i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; }
+  return 0;
+}
+// Ligne "Pages Web" d'un module, MEME forme que la rubrique Mises a jour du
+// module (data/app.js, refreshUpdateState) : installé X -> disponible Y et
+// pastille a installer / a jour. Rend [html, majDisponible].
+function lignePages(m){
+  const inst = m.web_version, pub = m.web_available;
+  const chip = (t, c) => '<span class="upd-chip ' + c + '">' + t + '</span>';
+  if (!inst) return ['<span class="upd-chan-vers">Pages Web &middot; version non remontée par ce module</span>', false];
+  const plus = !!pub && cmpVersion(pub, inst) > 0;
+  return ['<span class="upd-chan-vers">Pages Web &middot; <span>installé <b>' + esc(inst) + '</b></span>'
+    + (plus ? '<span class="upd-arrow">&rarr;</span><span>disponible <b>' + esc(pub) + '</b></span>' : '')
+    + ' ' + (plus ? chip('à installer', 'avail') : pub ? chip('à jour', 'ok') : '') + '</span>', plus];
+}
+// Lien vers le mode d'emploi, avec le nom local du module s'il est connu
+// (http://<nom>.local, NetName) : la page donne alors le lien direct.
+function lienMaj(m){
+  return '/maj.html' + (m && m.net_name ? '?nom=' + encodeURIComponent(m.net_name) : '');
+}
+// Pastille du bandeau : visible tant qu'un module a une mise a jour a faire,
+// quelle que soit la vue. Relue chaque minute (voir rafraichir()).
+function majPastille(mods){
+  const enRetard = mods.filter(m => lignePages(m)[1]);
+  const b = $('update-badge');
+  b.hidden = !enRetard.length;
+  b.href = lienMaj(enRetard.length === 1 ? enRetard[0] : null);
+}
+
 async function voirListe(){
   MOD = null; CFG = null; ATTENTE = null; REFUS = null;
   $('detail').hidden = true;
@@ -233,16 +283,27 @@ async function voirListe(){
     $('ls-rattacher').onclick = () => { voirCompte('rattacher'); $('rt-code').focus(); };
     return;
   }
+  majPastille(mods);
+  const enRetard = mods.filter(m => lignePages(m)[1]);
   el.innerHTML = '<div class="card"><h2>Mes modules</h2>' + mods.map(m =>
-      '<button class="mod" data-id="' + esc(m.module_id) + '">'
+      '<button class="mod' + (lignePages(m)[1] ? ' maj' : '') + '" data-id="' + esc(m.module_id) + '">'
     + '<span class="mod-t"><span class="dot ' + fraicheur(m.last_seen) + '"></span>'
     + esc(m.label || m.module_id) + '</span>'
-    + '<span class="mod-s">' + esc(m.firmware || 'version inconnue')
-    + ' &middot; présence vue ' + depuis(m.last_seen) + '</span>'
-    + '<span class="mod-s">' + (m.revision
-        ? 'config n&deg;' + esc(m.revision) + ' &middot; synchronisée ' + depuis(m.config_updated)
+    // Deux versions independantes, nommees comme dans la rubrique Mises a
+    // jour du module : une difference entre elles est normale.
+    + '<span class="mod-s"><span class="upd-chan-vers">Programme du module &middot; <span>installé <b>'
+    + esc(m.firmware || '?') + '</b></span></span></span>'
+    + '<span class="mod-s">' + lignePages(m)[0] + '</span>'
+    + '<span class="mod-s">présence vue ' + depuis(m.last_seen) + ' &middot; ' + (m.revision
+        ? 'config n&deg;' + esc(m.revision) + ' synchronisée ' + depuis(m.config_updated)
         : 'configuration jamais reçue')
-    + '</span></button>').join('') + '</div>';
+    + '</span></button>').join('')
+    + (enRetard.length
+        ? '<a class="upd-open" href="' + lienMaj(enRetard.length === 1 ? enRetard[0] : null) + '">'
+          + 'Mettre à jour ' + (enRetard.length === 1 ? esc(enRetard[0].label || enRetard[0].module_id)
+                                                     : 'les modules') + ' : comment faire</a>'
+        : '<p class="hint"><a href="/maj.html">Mettre à jour un module : mode d&rsquo;emploi</a></p>')
+    + '</div>';
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
   });

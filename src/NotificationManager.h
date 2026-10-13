@@ -90,6 +90,12 @@ public:
     // repeint a chaque rafraichissement d'ecran, status() y serait paye
     // plusieurs fois par seconde pour deux booleens.
     static bool updateAvailable();
+    // Mise a jour des pages Web annoncee par le service en ligne (CloudSync),
+    // version publiee plus recente que l'installee ; "" = aucune. Information
+    // seulement (D014). Fondue dans updateAvailable() et status(), donc dans
+    // le bandeau LCD, le voyant et la pastille Web.
+    static void        setCloudWebUpdate(const char* version);
+    static const char* cloudWebUpdate();
     static bool saveConfig(bool enabled,
                            const char* server,
                            const char* topic,

@@ -14,6 +14,7 @@
 #include "ScheduleManager.h"
 #include "ConfigManager.h"
 #include "ScreenManager.h"
+#include "NotificationManager.h"
 #include "Theme.h"
 #include "MaintenanceResult.h"
 
@@ -322,7 +323,7 @@ void loadUpdateState() {
 
 void drawUpdateAvailableIcon(DisplayManager& d) {
     if (!s_updateStateLoaded) loadUpdateState();
-    if (!s_updateAvailable) return;
+    if (!s_updateAvailable && NotificationManager::cloudWebUpdate()[0] == '\0') return;
 
     // Bande réservée à gauche du sprite signal (x=300..319).
     // L'icône d'erreur conserve sa propre position et peut rester visible.

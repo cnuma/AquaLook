@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AquaLook — mettre à jour un module</title>
+<!-- Mode d'emploi pas a pas pour installer, sur place, une mise a jour que
+     l'espace en ligne signale (jamais declenchee d'ici, D014). Une etape a
+     la fois (maj.js) ; sans script, toutes les etapes restent lisibles a la
+     suite. Illustrations en SVG dans la page : couleurs des vrais ecrans
+     (LCD ardoise, interface Web du module, violet --purple des mises a jour). -->
+<style>
+:root{--bg:#f4f8f4;--surface:#fff;--line:#cfe0d2;--text:#16311d;--muted:#5d7a63;
+  --green:#1a7a34;--green-dim:#e4f2e7;--purple:#6633cc;--purple-dim:#f1ebfb;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+h1{font-size:17px;margin:0 auto 0 0;font-weight:600}
+h1 span{color:var(--green)}
+header a{padding:8px 13px;border:1px solid var(--line);border-radius:7px;color:var(--text);text-decoration:none;font-size:14px}
+header a:hover{border-color:var(--green)}
+main{max-width:1000px;margin:0 auto;padding:20px}
+.intro{margin:0 0 16px;color:var(--muted)}
+.etape{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;
+  display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:center}
+@media(min-width:800px){.etape{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.etape h2{margin:0 0 8px;font-size:20px}
+.etape .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;
+  background:var(--green);color:#fff;font-weight:700;font-size:15px;margin-right:8px;vertical-align:2px}
+.etape p{margin:0 0 10px}
+.etape.violet{border:2px solid var(--purple);background:var(--purple-dim)}
+.etape.violet .num{background:var(--purple)}
+.etape svg{width:100%;height:auto;max-height:300px;display:block}
+.aller{display:inline-block;background:var(--purple);color:#fff;text-decoration:none;font-weight:700;
+  font-size:18px;padding:12px 22px;border-radius:9px;margin:4px 0 10px}
+.aller:hover{filter:brightness(.92)}
+code{font-family:var(--mono);font-size:15px;background:var(--green-dim);border-radius:5px;padding:1px 7px}
+.violet code{background:#fff}
+.astuce{font-size:14px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px}
+.nom-connu{display:none}
+.avec-nom .nom-connu{display:block}
+.avec-nom .nom-inconnu{display:none}
+/* Pas a pas (classe posee par maj.js) : une etape a la fois. */
+.nav{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px}
+.js .nav{display:flex}
+.js .etape{display:none}
+.js .etape.active{display:grid}
+.nav button{font:inherit;font-size:16px;padding:10px 18px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--text);cursor:pointer}
+.nav button.suiv{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.nav button:disabled{opacity:.4;cursor:default}
+.nav .ou{flex:1;text-align:center;color:var(--muted);font-size:14px}
+.points{display:flex;gap:6px;justify-content:center;width:100%;order:3}
+.points span{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.points span.fait{background:var(--green)}
+.points span.ici{background:var(--purple)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Aqua<span>Look</span> — mettre à jour un module</h1>
+  <a href="/app.html">&#8249; Mes modules</a>
+</header>
+<main>
+<p class="intro">La mise à jour s’installe <b>depuis le module lui-même</b>, chez vous. Comptez
+cinq minutes. Suivez les étapes une par une ; rien ne peut casser le module.</p>
+
+<nav class="nav" aria-label="Étapes">
+  <button type="button" id="prec">&#8249; Précédent</button>
+  <span class="ou" id="ou"></span>
+  <button type="button" id="suiv" class="suiv">Suivant &#8250;</button>
+  <div class="points" id="points"></div>
+</nav>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">1</span>Avant de commencer</h2>
+    <p>Prenez un téléphone, une tablette ou un ordinateur <b>connecté au Wi-Fi de la maison</b>,
+    le même que celui du module.</p>
+    <p>Vérifiez qu’<b>aucune zone n’arrose</b> en ce moment : le module refuse de se mettre à jour
+    pendant un arrosage.</p>
+  </div>
+  <svg viewBox="0 0 320 180" role="img" aria-label="Un téléphone et le module sur le même Wi-Fi">
+    <rect width="320" height="180" rx="12" fill="#eef5ef"/>
+    <g fill="none" stroke="#1a7a34" stroke-width="5" stroke-linecap="round">
+      <path d="M130 62a42 42 0 0 1 60 0"/><path d="M142 76a24 24 0 0 1 36 0"/>
+    </g>
+    <circle cx="160" cy="90" r="5" fill="#1a7a34"/>
+    <rect x="34" y="70" width="58" height="96" rx="9" fill="#16311d"/>
+    <rect x="40" y="80" width="46" height="74" rx="3" fill="#e8efe9"/>
+    <rect x="204" y="96" width="92" height="62" rx="7" fill="#101818" stroke="#384c40" stroke-width="3"/>
+    <rect x="212" y="104" width="76" height="9" fill="#182420"/>
+    <rect x="214" y="120" width="34" height="12" rx="2" fill="#00ffff" opacity=".7"/>
+    <rect x="252" y="120" width="34" height="12" rx="2" fill="#07e05a" opacity=".7"/>
+    <text x="63" y="60" font-size="13" text-anchor="middle" fill="#16311d" font-family="sans-serif">vous</text>
+    <text x="250" y="86" font-size="13" text-anchor="middle" fill="#16311d" font-family="sans-serif">le module</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">2</span>Lire le nom du module sur son écran</h2>
+    <p class="nom-connu">Pour ce module, c’est <code><span class="nom">module</span>.local</code> :
+    vous pouvez passer directement à l’étape suivante.</p>
+    <p>Sur l’écran du module, touchez <b>&#8801;</b> en haut à gauche (saisissez le code PIN s’il
+    est demandé). La première page s’appelle <b>WiFi</b>.</p>
+    <p>Sur la ligne de l’adresse, lisez ce qui suit <b>« ou http:// »</b> : c’est le nom du
+    module, qui finit par <code>.local</code>.</p>
+    <p class="astuce">Si ce nom n’apparaît pas, notez plutôt l’adresse en chiffres affichée au
+    début de la même ligne (elle commence par http://).</p>
+  </div>
+  <svg viewBox="0 0 480 272" role="img" aria-label="Écran du module, page WiFi">
+    <rect width="480" height="272" rx="10" fill="#101818"/>
+    <rect width="480" height="28" fill="#182420"/>
+    <text x="8" y="19" font-size="13" fill="#00ffff" font-family="monospace">&lt;- Admin</text>
+    <text x="472" y="19" font-size="13" fill="#7a8a80" text-anchor="end" font-family="monospace">1/10</text>
+    <rect x="6" y="32" width="468" height="196" rx="6" fill="#182420" stroke="#384c40"/>
+    <text x="16" y="56" font-size="13" fill="#f8fcf8" font-family="monospace">Ma-Box-WiFi</text>
+    <text x="16" y="82" font-size="12" fill="#9aa89f" font-family="monospace">Etat WiFi : 192.168.1.20</text>
+    <text x="16" y="104" font-size="12" fill="#9aa89f" font-family="monospace">Config via navigateur :</text>
+    <text x="16" y="124" font-size="13" fill="#00ffff" font-family="monospace">http://192.168.1.20</text>
+    <rect x="186" y="110" width="262" height="22" rx="4" fill="none" stroke="#6633cc" stroke-width="3"/>
+    <text x="194" y="125" font-size="13" fill="#00ffff" font-family="monospace">ou http://jardin.local</text>
+    <rect x="16" y="140" width="448" height="34" rx="5" fill="#fd9a00"/>
+    <text x="240" y="162" font-size="13" fill="#000" text-anchor="middle" font-family="sans-serif">Lancer portail captif</text>
+    <rect y="232" width="480" height="40" fill="#283028"/>
+    <text x="30" y="258" font-size="16" fill="#fff" text-anchor="middle" font-family="sans-serif">&lt;</text>
+    <text x="240" y="258" font-size="16" fill="#fff" text-anchor="middle" font-family="sans-serif">WiFi</text>
+    <text x="450" y="258" font-size="16" fill="#fff" text-anchor="middle" font-family="sans-serif">&gt;</text>
+  </svg>
+</section>
+
+<section class="etape violet">
+  <div>
+    <h2><span class="num">3</span>Ouvrir le module</h2>
+    <div class="nom-connu">
+      <p>Touchez ce bouton :</p>
+      <a class="aller" id="aller" href="#">Ouvrir <span class="nom">module</span>.local</a>
+    </div>
+    <p class="nom-inconnu">Dans la barre d’adresse du navigateur, tapez le nom lu à l’étape 2,
+    par exemple <code>jardin-01.local</code>, puis validez.</p>
+    <p class="astuce">La page ne s’ouvre pas ? Certains téléphones Android ne connaissent pas les
+    noms en .local : tapez alors l’adresse en chiffres lue sur l’écran du module (étape 2).</p>
+  </div>
+  <svg viewBox="0 0 320 180" role="img" aria-label="Barre d’adresse du navigateur">
+    <rect width="320" height="180" rx="12" fill="#fff" stroke="#cfe0d2"/>
+    <rect x="16" y="22" width="288" height="40" rx="20" fill="#f1ebfb" stroke="#6633cc" stroke-width="3"/>
+    <text x="36" y="48" font-size="17" fill="#16311d" font-family="sans-serif"><tspan class="nom-svg">jardin-01</tspan>.local</text>
+    <rect x="16" y="82" width="288" height="78" rx="8" fill="#f0f4f1"/>
+    <text x="160" y="128" font-size="15" fill="#5d7a63" text-anchor="middle" font-family="sans-serif">la page du module s’ouvre</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">4</span>Se connecter</h2>
+    <p>Le module demande son <b>mot de passe Web</b> (celui choisi à l’installation).
+    Saisissez-le et touchez <b>Se connecter</b>.</p>
+    <p class="astuce">Ce mot de passe n’est jamais envoyé sur Internet : il reste entre votre
+    navigateur et le module.</p>
+  </div>
+  <svg viewBox="0 0 320 200" role="img" aria-label="Page de connexion du module">
+    <rect width="320" height="200" rx="12" fill="#101820"/>
+    <rect x="30" y="18" width="260" height="164" rx="10" fill="#172532" stroke="#385064"/>
+    <text x="46" y="46" font-size="15" font-weight="bold" fill="#eef" font-family="sans-serif">AquaLook - Connexion</text>
+    <rect x="46" y="70" width="228" height="34" rx="6" fill="#fff"/>
+    <text x="56" y="92" font-size="14" fill="#555" font-family="sans-serif">&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;</text>
+    <rect x="46" y="116" width="228" height="36" rx="6" fill="#4fc3f7"/>
+    <text x="160" y="139" font-size="15" font-weight="bold" fill="#06141b" text-anchor="middle" font-family="sans-serif">Se connecter</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">5</span>Toucher la pastille violette « &#11014; MAJ »</h2>
+    <p>En haut de la page d’accueil du module, une pastille violette <b>clignote</b> : elle signale
+    la mise à jour. Touchez-la, elle ouvre la page des mises à jour.</p>
+    <p class="astuce">C’est la même pastille que dans votre espace en ligne.</p>
+  </div>
+  <svg viewBox="0 0 320 160" role="img" aria-label="En-tête de l’accueil du module avec la pastille MAJ">
+    <rect width="320" height="160" rx="12" fill="#f0f4f1"/>
+    <rect x="12" y="16" width="296" height="46" rx="8" fill="#fff" stroke="#cfe0d2"/>
+    <text x="26" y="45" font-size="16" font-weight="bold" fill="#1a7a34" font-family="sans-serif">AquaLook</text>
+    <rect x="186" y="27" width="66" height="24" rx="4" fill="#6633cc"/>
+    <text x="219" y="44" font-size="13" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">&#11014; MAJ</text>
+    <g stroke="#16311d" stroke-width="3"><path d="M268 32h22M268 39h22M268 46h22"/></g>
+    <circle cx="219" cy="39" r="30" fill="none" stroke="#6633cc" stroke-width="2" stroke-dasharray="5 4"/>
+    <rect x="12" y="76" width="296" height="70" rx="8" fill="#fff" stroke="#cfe0d2"/>
+    <text x="160" y="116" font-size="13" fill="#5d7a63" text-anchor="middle" font-family="sans-serif">vos zones d’arrosage</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">6</span>Installer</h2>
+    <p>Dans la partie <b>Pages Web</b>, touchez le bouton violet <b>« Installer les pages Web »</b>,
+    puis confirmez.</p>
+    <p class="astuce">Si la page annonce aussi un nouveau « Programme du module », il s’installe
+    à part, en trois étapes sur la même page (Vérifier, Préparer, Installer).</p>
+  </div>
+  <svg viewBox="0 0 320 170" role="img" aria-label="Bouton Installer les pages Web">
+    <rect width="320" height="170" rx="12" fill="#101820"/>
+    <rect x="16" y="14" width="288" height="142" rx="9" fill="#101820" stroke="#4fc3f7"/>
+    <text x="30" y="40" font-size="15" font-weight="bold" fill="#bed0dc" font-family="sans-serif">Pages Web</text>
+    <text x="30" y="64" font-size="12" fill="#91aabd" font-family="sans-serif">Le module redémarre, télécharge, vérifie,</text>
+    <text x="30" y="80" font-size="12" fill="#91aabd" font-family="sans-serif">puis bascule.</text>
+    <rect x="30" y="98" width="260" height="40" rx="7" fill="#7e57c2"/>
+    <text x="160" y="123" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">Installer les pages Web</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">7</span>Patienter environ deux minutes</h2>
+    <p>L’écran du module devient <b>violet</b> : il installe. Ne le débranchez pas. Il revient
+    tout seul à son écran habituel.</p>
+    <p class="astuce">L’arrosage programmé n’est pas perturbé. Si quelque chose échoue, les
+    anciennes pages sont gardées et la page explique pourquoi.</p>
+  </div>
+  <svg viewBox="0 0 480 272" role="img" aria-label="Écran violet de mise à jour">
+    <rect width="480" height="272" rx="10" fill="#6633cc"/>
+    <text x="240" y="122" font-size="30" font-weight="bold" fill="#f8fcf8" text-anchor="middle" font-family="sans-serif">MISE A JOUR</text>
+    <text x="240" y="160" font-size="17" fill="#e7dcfa" text-anchor="middle" font-family="sans-serif">Ressources Web en cours d’installation</text>
+  </svg>
+</section>
+
+<section class="etape">
+  <div>
+    <h2><span class="num">8</span>C’est fini</h2>
+    <p>Rechargez la page des mises à jour : elle indique <b>« Tout est à jour »</b> et la pastille
+    violette disparaît.</p>
+    <p>Dans votre espace en ligne, le module passe à « à jour » <b>dans la minute</b> qui suit.</p>
+    <p><a href="/app.html">&#8249; Revenir à Mes modules</a></p>
+  </div>
+  <svg viewBox="0 0 320 150" role="img" aria-label="Tout est à jour">
+    <rect width="320" height="150" rx="12" fill="#101820"/>
+    <rect x="16" y="20" width="288" height="110" rx="10" fill="#10241a" stroke="#41956b"/>
+    <text x="160" y="72" font-size="20" font-weight="bold" fill="#6fcf97" text-anchor="middle" font-family="sans-serif">&#10003; Tout est à jour</text>
+    <text x="160" y="102" font-size="12" fill="#91aabd" text-anchor="middle" font-family="sans-serif">Pages Web : installé = disponible</text>
+  </svg>
+</section>
+</main>
+<script src="/maj.js"></script>
+</body>
+</html>

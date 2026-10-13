@@ -29,6 +29,8 @@
 #include "ScriptRunner.h"
 #include "ScriptStore.h"
 #include "StorageManager.h"
+#include "WebAssetsUpdater.h"
+#include "NetName.h"
 
 #ifndef AQUALOOK_VERSION
 #define AQUALOOK_VERSION "unknown"
@@ -760,6 +762,31 @@ bool applyScriptsCommand(JsonVariantConst cmd, CloudSyncPendingAck& ack,
 bool     g_varsCrcConfirmed = false;
 uint32_t g_varsCrc = 0U;
 
+// Version des pages Web installees (/www/assets-version.json), portee par le
+// rapport diag pour que l'espace en ligne compare installee / publiee.
+// Relue dans la BOUCLE PRINCIPALE avant chaque cycle (la tache ne lit
+// jamais la SD, voir buildConfigBody), lue par run() ensuite. Vide : SD
+// absente ou fichier illisible, le champ n'est alors pas envoye.
+char g_webAssetsVersion[24] = "";
+
+// Compare "5.14.0" et "5.15.0" (trois nombres, suffixe ignore) : >0 si a
+// est plus recente. Meme regle que cmpVersion() de l'espace en ligne.
+int compareVersions(const char* a, const char* b) {
+    long x[3] = {0, 0, 0}, y[3] = {0, 0, 0};
+    for (int k = 0; k < 2; ++k) {
+        const char* s = k == 0 ? a : b;
+        long* v = k == 0 ? x : y;
+        for (int i = 0; i < 3 && *s; ++i) {
+            while (*s && (*s < '0' || *s > '9')) ++s;
+            char* fin = nullptr;
+            v[i] = strtol(s, &fin, 10);
+            s = fin ? fin : s;
+        }
+    }
+    for (int i = 0; i < 3; ++i) if (x[i] != y[i]) return x[i] > y[i] ? 1 : -1;
+    return 0;
+}
+
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -944,6 +971,10 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         payload["heapLargestBlock"] =
             static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
+        if (g_webAssetsVersion[0] != '\0') payload["webAssets"] = g_webAssetsVersion;
+        // Nom local (mDNS, NetName) : l'espace en ligne donne alors l'adresse
+        // http://<nom>.local au lieu de demander l'IP.
+        if (NetName::announced()) payload["netName"] = NetName::name();
         // Historique du lien cote serveur (module_message), un releve par
         // cycle : identifie le noeud du mesh associe et son signal.
         {
@@ -980,6 +1011,20 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
             return result;
         }
         result.reportSuccess = (status >= 200 && status < 300);
+        // Version des pages publiee, si le serveur l'annonce (petit JSON).
+        if (result.reportSuccess && respBody.length() > 0U && respBody.length() < 1024U) {
+            JsonDocument resp;
+            if (deserializeJson(resp, respBody) == DeserializationError::Ok) {
+                const char* wa = resp["webAvailable"] | "";
+                if (strlen(wa) < sizeof(result.webAvailable)) {
+                    copyText(result.webAvailable, sizeof(result.webAvailable), wa);
+                }
+                if (resp["label"].is<const char*>()) {
+                    result.labelPresent = true;
+                    copyText(result.label, sizeof(result.label), resp["label"].as<const char*>());
+                }
+            }
+        }
         if (result.reportSuccess && varsSent) {
             g_varsCrcConfirmed = true;
             g_varsCrc = varsCrc;
@@ -1426,6 +1471,11 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
     } else {
         _taskConfigBody = String();
     }
+    g_webAssetsVersion[0] = '\0';
+    if (_reportStorage && _reportStorage->isSdAvailable()) {
+        WebAssetsUpdater::installedVersion(_reportStorage, g_webAssetsVersion,
+                                           sizeof(g_webAssetsVersion));
+    }
     _taskCfg = _cfg;
 
     portENTER_CRITICAL(&g_cloudSyncMux);
@@ -1837,6 +1887,16 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
     _taskConfigBody = String();
 
     const bool ok = result.valid && result.reportSuccess && result.configSuccess;
+    // Mise a jour des pages annoncee par le service en ligne : publiee PLUS
+    // RECENTE que l'installee (relue avant ce cycle). Alimente les memes
+    // indicateurs que la verification du module (LCD, voyant, pastille Web).
+    if (result.reportSuccess) {
+        const bool plusRecente = result.webAvailable[0] != '\0' && g_webAssetsVersion[0] != '\0' &&
+                                 compareVersions(result.webAvailable, g_webAssetsVersion) > 0;
+        NotificationManager::setCloudWebUpdate(plusRecente ? result.webAvailable : "");
+        // Nom donne par l'utilisateur -> nom reseau (http://<nom>.local).
+        if (result.labelPresent) NetName::setLabel(result.label);
+    }
     EventLog::log(ok ? LOG_INFO : LOG_WARN,
                   "CloudSync: cycle rapport=%s config=%s cmd=%s",
                   result.reportSuccess ? "ok" : "echec",
