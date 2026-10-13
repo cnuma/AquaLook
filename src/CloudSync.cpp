@@ -29,6 +29,7 @@
 #include "ScriptRunner.h"
 #include "ScriptStore.h"
 #include "StorageManager.h"
+#include "WebAssetsUpdater.h"
 
 #ifndef AQUALOOK_VERSION
 #define AQUALOOK_VERSION "unknown"
@@ -760,6 +761,13 @@ bool applyScriptsCommand(JsonVariantConst cmd, CloudSyncPendingAck& ack,
 bool     g_varsCrcConfirmed = false;
 uint32_t g_varsCrc = 0U;
 
+// Version des pages Web installees (/www/assets-version.json), portee par le
+// rapport diag pour que l'espace en ligne compare installee / publiee.
+// Relue dans la BOUCLE PRINCIPALE avant chaque cycle (la tache ne lit
+// jamais la SD, voir buildConfigBody), lue par run() ensuite. Vide : SD
+// absente ou fichier illisible, le champ n'est alors pas envoye.
+char g_webAssetsVersion[24] = "";
+
 }  // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -944,6 +952,7 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         payload["heapLargestBlock"] =
             static_cast<uint32_t>(AquaLook::Heap::largestFreeBlock());
         payload["resetReason"] = static_cast<int>(esp_reset_reason());
+        if (g_webAssetsVersion[0] != '\0') payload["webAssets"] = g_webAssetsVersion;
         // Historique du lien cote serveur (module_message), un releve par
         // cycle : identifie le noeud du mesh associe et son signal.
         {
@@ -1425,6 +1434,11 @@ bool CloudSyncScheduler::startSync(const ConfigManager& configManager) {
                       static_cast<unsigned long>(millis() - t0));
     } else {
         _taskConfigBody = String();
+    }
+    g_webAssetsVersion[0] = '\0';
+    if (_reportStorage && _reportStorage->isSdAvailable()) {
+        WebAssetsUpdater::installedVersion(_reportStorage, g_webAssetsVersion,
+                                           sizeof(g_webAssetsVersion));
     }
     _taskCfg = _cfg;
 
