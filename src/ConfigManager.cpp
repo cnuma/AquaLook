@@ -1084,8 +1084,9 @@ bool ConfigManager::setWebAssetsUrl(const char* url) {
     // en clair, n'importe qui sur le trajet peut en substituer un autre, avec
     // ses propres hashes et ses propres fichiers : la verification par hash
     // ne protege alors plus de rien, elle valide l'attaque. C'est la
-    // confiance dans le manifeste qui fait tenir toute la chaine, et seul le
-    // TLS l'etablit.
+    // confiance dans le manifeste qui fait tenir toute la chaine. Depuis D018
+    // elle repose d'abord sur sa signature (UpdateSignature) ; HTTPS reste
+    // exige en defense en profondeur.
     if (strncmp(url, "https://", 8) != 0) {
         EventLog::log(LOG_ERROR, "WebAssets: URL refusee, HTTPS obligatoire");
         return false;

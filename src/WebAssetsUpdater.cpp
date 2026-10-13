@@ -7,6 +7,7 @@
 #include "EventLog.h"
 #include "OtaTlsTrust.h"
 #include "StorageManager.h"
+#include "UpdateSignature.h"
 #include <ArduinoJson.h>
 
 namespace {
@@ -384,6 +385,45 @@ WebAssetVerifyResult fetchUnverified(const char* url, uint32_t maxBytes,
                                      const WebAssetsUpdater::Sink& sink) {
     return downloadAndVerify(String(url), maxBytes, "", 0U, sink, false);
 }
+
+// D018 : le manifeste n'est utilise que s'il est signe par une cle dont ce
+// firmware connait la cle publique. Signature cherchee a cote du manifeste
+// (<url>.sig), quel que soit l'hebergeur : c'est la cle, et non le site, qui
+// fait foi. Verifiee AVANT l'analyse du manifeste. Echec -> rien n'est
+// installe, detail = code court explique dans data/ota-help.json.
+bool verifyManifestSignature(const String& body, char* detail, size_t detailSize) {
+    const String sigUrl = String(WebAssetsUpdater::manifestUrl()) + ".sig";
+    String sig;
+    bool overflow = false;
+    const WebAssetsUpdater::Sink collect = [&sig, &overflow](const uint8_t* data, size_t len) -> bool {
+        if (sig.length() + len > UpdateSignature::SIG_FILE_MAX_BYTES) { overflow = true; return false; }
+        for (size_t i = 0; i < len; ++i) sig += static_cast<char>(data[i]);
+        return true;
+    };
+    const WebAssetVerifyResult dl =
+        fetchUnverified(sigUrl.c_str(), UpdateSignature::SIG_FILE_MAX_BYTES, collect);
+    if (overflow || strcmp(dl.detail, "too-large") == 0) {
+        copyText(detail, detailSize, "signature-illisible");
+    } else if (!dl.success) {
+        copyText(detail, detailSize,
+                 strcmp(dl.detail, "http-404") == 0 ? "signature-absente" : "signature-injoignable");
+    } else {
+        char keyId[17] = {0};
+        const UpdateSignature::Result r = UpdateSignature::verify(
+            reinterpret_cast<const uint8_t*>(body.c_str()), body.length(),
+            sig.c_str(), sig.length(), keyId, sizeof(keyId));
+        if (r == UpdateSignature::Result::OK) {
+            EventLog::log(LOG_INFO, "[MAJ-SIGNATURE] manifeste authentifie (cle %s)", keyId);
+            return true;
+        }
+        copyText(detail, detailSize, UpdateSignature::code(r));
+        EventLog::log(LOG_ERROR, "[MAJ-SIGNATURE] manifeste refuse : %s (cle %s)",
+                      detail, keyId[0] ? keyId : "?");
+        return false;
+    }
+    EventLog::log(LOG_ERROR, "[MAJ-SIGNATURE] manifeste refuse : %s (%s)", detail, dl.detail);
+    return false;
+}
 }  // namespace
 
 WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* storage) {
@@ -413,6 +453,9 @@ WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* s
     }
     if (!dl.success) {
         copyText(result.detail, sizeof(result.detail), dl.detail);
+        return result;
+    }
+    if (!verifyManifestSignature(body, result.detail, sizeof(result.detail))) {
         return result;
     }
 
@@ -481,6 +524,9 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         copyText(out.detail, sizeof(out.detail),
                  overflow ? "manifeste-trop-gros" : dl.detail);
         return out;
+    }
+    if (!verifyManifestSignature(body, out.detail, sizeof(out.detail))) {
+        return out;   // /www jamais touche
     }
 
     JsonDocument doc;

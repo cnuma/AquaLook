@@ -2656,7 +2656,9 @@ void WebManager::handleSetZoneName(AsyncWebServerRequest* req, JsonDocument& doc
 // HTTPS impose - voir ConfigManager::setWebAssetsUrl() pour le raisonnement :
 // le manifeste porte les SHA-256 qui authentifient les fichiers, donc servi
 // en clair il permettrait d'en substituer un autre et la verification par
-// hash validerait l'attaque au lieu de l'empecher.
+// hash validerait l'attaque au lieu de l'empecher. Depuis D018, le manifeste
+// doit en plus etre signe : changer de source ne permet pas d'installer un
+// paquet que le proprietaire n'a pas signe.
 void WebManager::handleSetWebAssetsUrl(AsyncWebServerRequest* req, JsonDocument& doc) {
     if (!_config) { sendError(req, "config indisponible"); return; }
     const char* url = doc["url"] | "";

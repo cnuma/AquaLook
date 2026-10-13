@@ -145,6 +145,30 @@
     "bascule-echouee": {
       "quoi": "Les nouveaux fichiers ont ete telecharges et verifies, mais leur mise en service a echoue.",
       "faire": "Relancez la mise a jour des pages Web. Si l'echec se repete, la carte SD est en cause."
+    },
+    "signature-absente": {
+      "quoi": "Le catalogue publie n'a pas de signature (fichier .sig introuvable a cote du catalogue).",
+      "faire": "Republiez avec tools/publish_web_assets.py : il produit le catalogue ET sa signature, a envoyer tous les deux (la signature juste avant le catalogue)."
+    },
+    "signature-injoignable": {
+      "quoi": "La signature du catalogue n'a pas pu etre telechargee (reseau ou serveur).",
+      "faire": "Relancez un peu plus tard ; si cela persiste, verifiez que le serveur de mise a jour repond."
+    },
+    "signature-illisible": {
+      "quoi": "Le fichier de signature recu n'a pas le format attendu.",
+      "faire": "Republiez la signature produite par tools/publish_web_assets.py, sans la modifier."
+    },
+    "signature-cle-inconnue": {
+      "quoi": "Le catalogue est signe par une cle que ce programme du module ne connait pas (cle nouvelle ou revoquee).",
+      "faire": "Mettez d'abord a jour le programme du module, ou signez avec une cle qu'il connait."
+    },
+    "signature-invalide": {
+      "quoi": "La signature ne correspond pas au catalogue : il a ete modifie apres sa signature, ou contrefait. Rien n'a ete installe.",
+      "faire": "Ne forcez rien. Republiez depuis le poste du proprietaire (catalogue et signature) ; si vous n'avez rien publie, l'hebergement a peut-etre ete compromis."
+    },
+    "signature-erreur-interne": {
+      "quoi": "Le module n'a pas pu effectuer la verification de signature.",
+      "faire": "Relancez ; si cela persiste, notez le code et signalez-le."
     }
   },
   "http": {
