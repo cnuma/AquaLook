@@ -37,6 +37,8 @@ décision), *les deux*.
 | ~~P1.5~~ | ~~Délivrabilité des mails (indésirables Gmail)~~ — **réglé** (confirmé par le propriétaire le 11 oct. 2026) | — |
 | P1.6 | Secret `ApiAuth` en clair dans la NVS (accès physique) : chiffrement NVS / flash, à évaluer | agent |
 | P1.7 | PIN LCD à 4 chiffres : évaluer l'allongement | les deux |
+| P1.8 | Fermer les portes de développement avant la mise en service : `/api/debug/*` (dépôt direct SD `deploy-begin`/`deploy-file`/`deploy-commit`, `log-messages`, essais) permet, sous session, d'écrire n'importe quel fichier servi comme page. Les désactiver par option de compilation dans le binaire de production (les garder sur le banc) | agent |
+| P1.9 | **En cours (13 oct. 2026)** : signature des mises à jour. Le manifeste Web est signé (ECDSA P-256) par une clé privée gardée hors du dépôt et hors de l'hébergeur ; le module le vérifie avec la clé publique intégrée au firmware avant toute installation. La confiance ne dépend plus de l'hébergeur (changement possible sans perte de sécurité). Ensuite : même mécanisme pour le manifeste firmware (avec P1.4) et refus d'une version antérieure (rejeu d'un ancien manifeste signé) | agent |
 
 ## P2 — Fonctionnel attendu
 
