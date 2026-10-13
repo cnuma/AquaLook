@@ -1468,6 +1468,24 @@ async function envoyerPhrasesCloud() {
 if (CLOUD) {
   document.body.classList.add('cloud');
   document.querySelector('.brand').href = '/app.html';
+  // Bandeau du site et pastille MAJ, comme sur Mes modules (app.js) :
+  // visible si un module a des pages Web plus anciennes que celles publiees.
+  $('sitebar').hidden = false;
+  (async function () {
+    try {
+      const mods = await apiCloud('/app/modules');
+      const n = v => String(v).split(/[^0-9]+/).filter(Boolean).slice(0, 3).map(Number);
+      const plusRecente = (a, b) => { const x = n(a), y = n(b);
+        for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+        return false; };
+      const enRetard = mods.filter(m => m.web_version && m.web_available && plusRecente(m.web_available, m.web_version));
+      if (enRetard.length) {
+        const b = $('update-badge');
+        b.hidden = false;
+        if (enRetard.length === 1 && enRetard[0].net_name) b.href = '/maj.html?nom=' + encodeURIComponent(enRetard[0].net_name);
+      }
+    } catch (e) { /* pastille absente : sans gravite */ }
+  })();
   $('msg').textContent = 'Lecture de l’espace en ligne…';
 
   lireModule = async function () {
