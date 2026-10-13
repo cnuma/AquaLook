@@ -80,6 +80,11 @@ struct CloudSyncResult {
     // rapport diag ("" si absente). Information seulement (D014) : sert a
     // signaler une mise a jour a faire, jamais a la declencher.
     char     webAvailable[24] = "";
+    // Nom donne au module par l'utilisateur (libelle de l'espace en ligne),
+    // transmis a chaque rapport ; labelPresent faux = serveur qui ne le
+    // transmet pas (on ne touche alors a rien). Sert au nom reseau (NetName).
+    bool     labelPresent = false;
+    char     label[121]   = "";
 };
 
 // Poignee de securite partagee entre la tache de synchronisation et la boucle

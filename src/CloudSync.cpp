@@ -1012,12 +1012,16 @@ CloudSyncResult CloudSync::run(const CloudSyncConfig& cfg,
         }
         result.reportSuccess = (status >= 200 && status < 300);
         // Version des pages publiee, si le serveur l'annonce (petit JSON).
-        if (result.reportSuccess && respBody.length() > 0U && respBody.length() < 512U) {
+        if (result.reportSuccess && respBody.length() > 0U && respBody.length() < 1024U) {
             JsonDocument resp;
             if (deserializeJson(resp, respBody) == DeserializationError::Ok) {
                 const char* wa = resp["webAvailable"] | "";
                 if (strlen(wa) < sizeof(result.webAvailable)) {
                     copyText(result.webAvailable, sizeof(result.webAvailable), wa);
+                }
+                if (resp["label"].is<const char*>()) {
+                    result.labelPresent = true;
+                    copyText(result.label, sizeof(result.label), resp["label"].as<const char*>());
                 }
             }
         }
@@ -1890,6 +1894,8 @@ void CloudSyncScheduler::applyPendingResult(uint32_t epochSec) {
         const bool plusRecente = result.webAvailable[0] != '\0' && g_webAssetsVersion[0] != '\0' &&
                                  compareVersions(result.webAvailable, g_webAssetsVersion) > 0;
         NotificationManager::setCloudWebUpdate(plusRecente ? result.webAvailable : "");
+        // Nom donne par l'utilisateur -> nom reseau (http://<nom>.local).
+        if (result.labelPresent) NetName::setLabel(result.label);
     }
     EventLog::log(ok ? LOG_INFO : LOG_WARN,
                   "CloudSync: cycle rapport=%s config=%s cmd=%s",

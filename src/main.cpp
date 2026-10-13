@@ -731,9 +731,10 @@ void setup() {
     configMgr.applyToSchedule(scheduleMgr);
     splashStep("Planning");
 
-    // Nom reseau (DHCP puis mDNS) derive du nom du module en ligne : pose
-    // AVANT la connexion, la box ne le relit qu'a la demande d'adresse.
-    NetName::prepare(CloudSync::loadConfig().moduleId);
+    // Nom reseau (DHCP puis mDNS) : celui donne par l'utilisateur dans son
+    // espace en ligne (memorise), sinon le nom par defaut. Pose AVANT la
+    // connexion, la box ne le relit qu'a la demande d'adresse.
+    NetName::prepare();
     wifiMgr.begin(configMgr.wifi().ssid, configMgr.wifi().password);
     splashStep("WiFi");
 
