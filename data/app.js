@@ -233,6 +233,7 @@ function setZonesView(v) {
   _applyZonesViewBtn();
   renderZones();
 }
+function toggleZonesView() { setZonesView(_zonesView === 'normal' ? 'dense' : 'normal'); }
 function _applyZonesViewBtn() {
   const btn = document.getElementById('btn-zones-view');
   if (!btn) return;
@@ -301,11 +302,11 @@ function renderZonesGrid() {
       <div class="zt-reason" title="${noOut ? 'Aucune sortie physique affectee a cette zone' : reason}">${noOut ? '&#9888; Aucune sortie affectee &mdash; a definir dans le cablage' : reason}</div>
       <div class="zt-actions">
         <button class="btn-run ${active ? 'active' : ''}" ${noOut ? 'disabled' : ''}
-                onclick="toggleManual(${i}, ${!active})">
+                data-onclick="toggleManual(${i}, ${!active})">
           ${noOut ? 'Sans sortie' : (active ? 'Arreter' : 'Arroser ' + manDur + ' min')}
         </button>
         <button class="btn-identify" title="Fait clignoter en blanc la LED de cette zone, pour la reperer au branchement"
-                onclick="identifyZone(${i})">&#128161;</button>
+                data-onclick="identifyZone(${i})">&#128161;</button>
       </div>
     </div>`;
   }).join('');
@@ -349,7 +350,7 @@ function renderZonesTable() {
     const reason   = rainDelayed ? 'Reporté (pluie)' : (z.reason || z.lastReason || 'En attente');
     const noOut    = (z.hasOutput === false);
     return `<tr class="${active ? 'zone-active-'+color : ''} ${z.mode === 1 ? 'zone-interval' : ''} ${noOut ? 'zone-unassigned' : (rainDelayed ? 'zone-rain-delayed' : '')}"
-                onclick="openZoneConfigModal(${i})"
+                data-onclick="openZoneConfigModal(${i})"
                 title="Configurer ${name}">
       <td class="zt-name zt-name-${color}" style="--zc:${zoneHex(z, i)}">
         <span class="zone-dot zone-dot-${color}"></span>
@@ -360,9 +361,9 @@ function renderZonesTable() {
       <td class="zt-cell zt-rain">&#9748;&nbsp;&ge;&nbsp;${threshMm}mm&nbsp;/&nbsp;${hours}h</td>
       <td class="zt-cell zt-reason">${noOut ? '&#9888; Aucune sortie affectee' : reason}</td>
       <td class="zt-cell zt-edit-hint">&#9998;</td>
-      <td class="zt-action" onclick="event.stopPropagation()">
+      <td class="zt-action" data-onclick="event.stopPropagation()">
         <button class="btn-run ${active ? 'active' : ''}" ${noOut ? 'disabled' : ''}
-                onclick="toggleManual(${i}, ${!active})">
+                data-onclick="toggleManual(${i}, ${!active})">
           ${noOut ? 'Sans&nbsp;sortie' : (active ? 'Arreter' : 'Arroser&nbsp;'+manDur+'&nbsp;min')}
         </button>
       </td>
@@ -401,13 +402,13 @@ function openZoneConfigModal(zoneIdx) {
     <div class="zone-cfg-field">
       <label>Couleur</label>
       <input type="color" id="zcfg-color" class="cfg-color" value="${zHex}"
-             oninput="document.getElementById('zcfg-dot').style.background = this.value">
+             data-oninput="zcfgDotPreview(this.value)">
       <div class="cfg-hint">Identifie la zone sur l&rsquo;&eacute;cran, le planning et le ruban lumineux.</div>
     </div>
     <hr class="zone-cfg-sep">
     <div class="zone-cfg-field">
       <label>Mode planification</label>
-      <select id="zcfg-mode" onchange="zcfgToggleInterval()">
+      <select id="zcfg-mode" data-onchange="zcfgToggleInterval()">
         <option value="0" ${mode===0?'selected':''}>Jours fixes</option>
         <option value="1" ${mode===1?'selected':''}>Intervalle</option>
       </select>
@@ -441,10 +442,12 @@ function openZoneConfigModal(zoneIdx) {
       <label><input type="checkbox" id="zcfg-notify-start" ${notifyStart?'checked':''}> Notifier au démarrage</label>
       <label><input type="checkbox" id="zcfg-notify-stop" ${notifyStop?'checked':''}> Notifier à l'arrêt</label>
     </div>
-    <button class="btn-full" onclick="saveZoneConfig(${zoneIdx})">Enregistrer</button>
+    <button class="btn-full" data-onclick="saveZoneConfig(${zoneIdx})">Enregistrer</button>
   `;
   document.getElementById('modal').classList.add('open');
 }
+// Apercu de la couleur pendant la saisie (ex-attribut oninput inline, P3.11).
+function zcfgDotPreview(v) { const d = document.getElementById('zcfg-dot'); if (d) d.style.background = v; }
 function zcfgToggleInterval() {
   const isInterval = document.getElementById('zcfg-mode').value === '1';
   document.getElementById('zcfg-interval-row').style.display = isInterval ? 'grid' : 'none';
@@ -545,7 +548,7 @@ function renderPlanning() {
         const cls     = !hasAny ? 'off' : rainBlk ? 'rain' : 'on';
         const bgStyle = (hasAny && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
-                      onclick="openDayModal(${zi},${espIdx})">
+                      data-onclick="openDayModal(${zi},${espIdx})">
           ${hasAny
             ? enabled.map(s=>`<div class="mini-slot">
                 ${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
@@ -584,7 +587,7 @@ function renderPlanning() {
           : `<div class="pg-cross">--</div>`;
         const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
-                      onclick="openIntervalModal(${zi},${todayEpoch}+${col})" title="/${intervalD}j - cliquer pour consulter ou proposer cette date comme nouveau depart">
+                      data-onclick="openIntervalModal(${zi},${todayEpoch + col})" title="/${intervalD}j - cliquer pour consulter ou proposer cette date comme nouveau depart">
           ${inner}
         </div>`;
       });
@@ -737,7 +740,7 @@ Le cycle sera recalcule a partir de cette date.`)){
   document.getElementById('modal').classList.add('open');
   try{
     const r=await fetch(`/api/zone?z=${zone}`),data=await r.json();_zoneSlots[zone]=data;
-    document.getElementById('modal-body').innerHTML=`<div class="zone-cfg-field"><label>Date de debut actuelle</label><input type="date" id="interval-anchor-date" value="${epochDayToIso(current||todayEpochDay())}"><small style="color:var(--muted)">${epochDayLabel(current)}</small><button class="btn-full" style="margin-top:8px" onclick="saveIntervalAnchorInput(${zone})">Enregistrer cette date</button></div>`+buildSlotsHTML('is',data.intervalSlots||[])+`<button class="btn-full" style="margin-top:12px;border-color:var(--red);color:var(--red)" onclick="deleteIntervalProgramming(${zone})">Supprimer la programmation intervalle</button>`;
+    document.getElementById('modal-body').innerHTML=`<div class="zone-cfg-field"><label>Date de debut actuelle</label><input type="date" id="interval-anchor-date" value="${epochDayToIso(current||todayEpochDay())}"><small style="color:var(--muted)">${epochDayLabel(current)}</small><button class="btn-full" style="margin-top:8px" data-onclick="saveIntervalAnchorInput(${zone})">Enregistrer cette date</button></div>`+buildSlotsHTML('is',data.intervalSlots||[])+`<button class="btn-full" style="margin-top:12px;border-color:var(--red);color:var(--red)" data-onclick="deleteIntervalProgramming(${zone})">Supprimer la programmation intervalle</button>`;
   }catch(e){document.getElementById('modal-body').innerHTML='<div style="color:var(--red);padding:12px">Erreur de chargement</div>'}
 }
 async function saveIntervalAnchorInput(zone){
@@ -773,7 +776,7 @@ function buildSlotsHTML(prefix, slots) {
     html += `<div class="slot-row">
       <button class="slot-toggle ${en?'on':''}" id="${prefix}-t-${si}"
               title="${en?'Cliquer pour desactiver ce slot':'Cliquer pour activer ce slot'}"
-              onclick="toggleSlot('${prefix}',${si})">${en?'&#10003;':'&#9675;'}</button>
+              data-onclick="toggleSlot('${prefix}',${si})">${en?'&#10003;':'&#9675;'}</button>
       <input class="slot-input" type="number" id="${prefix}-h-${si}"
              min="0" max="23" value="${h}" ${!en?'disabled':''}
              title="Heure de debut (0-23)">
@@ -786,7 +789,7 @@ function buildSlotsHTML(prefix, slots) {
       <span class="slot-num">${si+1}</span>
     </div>`;
   });
-  html += `<button class="btn-full" onclick="saveSlots()">Enregistrer</button>`;
+  html += `<button class="btn-full" data-onclick="saveSlots()">Enregistrer</button>`;
   return html;
 }
 function toggleSlot(prefix, si) {
@@ -914,7 +917,7 @@ function buildCfgMenu() {
   });
 
   menu.innerHTML = groups.concat(orphans).map(g => `
-    <button class="cfg-menu-item" onclick="openCfgPage('${g.id}')">
+    <button class="cfg-menu-item" data-onclick="openCfgPage('${g.id}')">
       <span class="cfg-menu-label"><span class="sec-icon">${g.icon}</span>${g.label}</span>
       <span class="cfg-menu-chevron">&#8250;</span>
     </button>`).join('');
@@ -1097,7 +1100,7 @@ function buildCfgZoneList() {
     // Rappeler la reference : une zone renommee "Potager distant" ne dit plus
     // a quelle sortie elle correspond, et l'utilisateur s'y perd des que les
     // noms ne suivent plus l'ordre.
-    return `<button class="cfg-zone-link" onclick="openZoneConfigModal(${i})">
+    return `<button class="cfg-zone-link" data-onclick="openZoneConfigModal(${i})">
               <span class="zone-dot" style="background:${zoneHex(z, i)}"></span>
               <span class="cfg-zone-ref">Z${i + 1}</span>
               <span class="cfg-zone-link-name">${name}</span>
@@ -1741,9 +1744,9 @@ function renderIoEditor() {
     for (let a = 0x20; a <= 0x27; a++)
       h += '<option value="' + a + '"' + (a === b.addr ? ' selected' : '') + '>0x' + a.toString(16) + '</option>';
     h += '</select><span class="io-st">' + (b.ready ? '<span class="io-ok">prete</span>' : '<span class="io-ko">absente</span>') + '</span>'
-      + '<button class="io-del" onclick="ioRemoveBoard(' + i + ')">&#10007;</button></div>';
+      + '<button class="io-del" data-onclick="ioRemoveBoard(' + i + ')">&#10007;</button></div>';
   });
-  h += '<button class="btn-cfg" onclick="ioAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
+  h += '<button class="btn-cfg" data-onclick="ioAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
 
   h += '<div class="cfg-subsection-title" style="margin-top:12px">Broches</div>';
   h += '<div class="cfg-hint">Chaque broche : carte, broche, sens, role, zone, niveau actif. '
@@ -1753,7 +1756,7 @@ function renderIoEditor() {
     h += '<div class="io-bind">'
       + '<select data-io="board" data-i="' + i + '">' + ioBoardOptions(b.board) + '</select>'
       + '<select data-io="pin" data-i="' + i + '">' + ioPinOptions(b.pin) + '</select>'
-      + '<select data-io="dir" data-i="' + i + '" onchange="ioOnDirChange(' + i + ')">'
+      + '<select data-io="dir" data-i="' + i + '" data-onchange="ioOnDirChange(' + i + ')">'
       + '<option value="0"' + (b.dir === 0 ? ' selected' : '') + '>Entree</option>'
       + '<option value="1"' + (b.dir === 1 ? ' selected' : '') + '>Sortie</option></select>'
       + '<select data-io="role" data-i="' + i + '">' + ioRoleOptions(b.dir, b.role) + '</select>'
@@ -1763,9 +1766,9 @@ function renderIoEditor() {
       + '<option value="0"' + (b.active === 0 ? ' selected' : '') + '>actif=0</option></select>'
       + '<label class="io-pu"><input type="checkbox" data-io="pullup" data-i="' + i + '"' + (b.pullup ? ' checked' : '') + '>pull-up</label>'
       + '<span class="io-st">' + ioStateBadge(b) + '</span>'
-      + '<button class="io-del" onclick="ioRemoveBind(' + i + ')">&#10007;</button></div>';
+      + '<button class="io-del" data-onclick="ioRemoveBind(' + i + ')">&#10007;</button></div>';
   });
-  h += '<button class="btn-cfg" onclick="ioAddBind()" style="margin:6px 0">+ Ajouter une broche</button>';
+  h += '<button class="btn-cfg" data-onclick="ioAddBind()" style="margin:6px 0">+ Ajouter une broche</button>';
   el.innerHTML = h;
 }
 
@@ -2019,7 +2022,7 @@ function renderTopoEditor() {
        + '<b>Ce que vous voyez ici</b> est votre saisie enregistr&eacute;e, pas ce '
        + 'que le module applique &mdash; c&rsquo;est pour cela qu&rsquo;elle survit '
        + 'a un rechargement de page.'
-       + '<button class="btn-cfg" onclick="topoAppliquer()" style="margin-top:9px">'
+       + '<button class="btn-cfg" data-onclick="topoAppliquer()" style="margin-top:9px">'
        + 'Red&eacute;marrer maintenant pour appliquer</button></div>';
   }
 
@@ -2044,9 +2047,9 @@ function renderTopoEditor() {
           + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' disabled' : '')
           + '>' + o[1] + (TOPO_TRANSPORT_DISPO.indexOf(o[0]) < 0 ? ' (a venir)' : '')
           + '</option>').join('') + '</select>')
-      + '<button class="io-del" onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
+      + '<button class="io-del" data-onclick="topoRemoveBoard(' + n + ')">&#10007;</button></div>';
   });
-  h += '<button class="btn-cfg" onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
+  h += '<button class="btn-cfg" data-onclick="topoAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
   // Cet avertissement disait que le MCP23017 n'etait pilotable que par le
   // moteur historique. C'etait vrai jusqu'au 8 septembre 2026 ; les deux
   // expandeurs partagent desormais le meme pilote V4.
@@ -2098,7 +2101,7 @@ function renderTopoEditor() {
       + topoField('Sur la carte', '<select data-topo="board" data-n="' + n + '">' + topoBoardOptions(a.board, topoIsInput(a.role)) + '</select>')
       + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
           '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
-      + '<button class="io-del" onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
+      + '<button class="io-del" data-onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
   });
   // Deux boutons plutot qu'un choix a faire APRES coup : l'utilisateur
   // demande explicitement de choisir des la creation si la nouvelle ligne
@@ -2108,9 +2111,9 @@ function renderTopoEditor() {
   // annonce d'avance ce que la ligne sera, dans le meme langage visuel.
   h += '<div style="display:flex;gap:8px;margin:6px 0">'
      + '<button class="btn-cfg io-out" style="width:auto;margin:0" '
-     + 'onclick="topoAddAssign(\'out\')">+ Ajouter une sortie</button>'
+     + 'data-onclick="topoAddAssign(\'out\')">+ Ajouter une sortie</button>'
      + '<button class="btn-cfg io-in" style="width:auto;margin:0" '
-     + 'onclick="topoAddAssign(\'in\')">+ Ajouter une entr&eacute;e</button>'
+     + 'data-onclick="topoAddAssign(\'in\')">+ Ajouter une entr&eacute;e</button>'
      + '</div>';
 
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
