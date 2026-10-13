@@ -75,6 +75,11 @@ struct CloudSyncResult {
     // critique, ou recopier plusieurs kilo-octets bloquerait les
     // interruptions bien trop longtemps. Un pointeur se copie en un mot.
     char*    commandJson     = nullptr;
+
+    // Version des pages Web publiee, annoncee par le serveur en reponse au
+    // rapport diag ("" si absente). Information seulement (D014) : sert a
+    // signaler une mise a jour a faire, jamais a la declencher.
+    char     webAvailable[24] = "";
 };
 
 // Poignee de securite partagee entre la tache de synchronisation et la boucle
@@ -220,6 +225,12 @@ public:
     // drapeau, comme les accesseurs ci-dessous.
     enum class ForceSyncResult : uint8_t { LANCEE, DESACTIVEE, OCCUPEE, TROP_TOT };
     static constexpr uint32_t FORCE_SYNC_MIN_GAP_SEC = 60UL;
+    // Premier demarrage apres une mise a jour reussie (main.cpp) : envoie
+    // l'etat tout de suite, sans attendre l'intervalle ni les 5 min de
+    // stabilite WiFi, pour que l'espace en ligne cesse aussitot d'annoncer
+    // une mise a jour deja faite.
+    void requestSyncAfterUpdate() { if (_cfg.enabled) _forceRequested = true; }
+
     ForceSyncResult requestSyncNow(uint32_t epochSec, uint32_t& retryInSec);
     bool forceSyncPending() const { return _forceRequested; }
     bool syncInProgress() const { return _syncInProgress; }

@@ -2,6 +2,7 @@
 #include "EventBus.h"
 #include "FaultManager.h"
 #include "MaintenanceResult.h"
+#include "NotificationManager.h"
 #include "StatusLed.h"
 #include "Theme.h"
 
@@ -235,7 +236,7 @@ void ScreenManager::updateLed(bool relayActive, bool wifiSearching) {
     // au-dessus du mode LED normal choisi par l'utilisateur -- une mise a
     // jour disponible reste visible quel que soit le mode.
     if (!_updateStateLoaded) loadUpdateState();
-    if (_updatePending) {
+    if (_updatePending || NotificationManager::cloudWebUpdate()[0] != '\0') {
         if (now - _ledTimer >= 1500UL) {
             _ledTimer = now;
             _ledPhase ^= 1U;

@@ -1072,7 +1072,11 @@ async function refreshUpdateState() {
   // ce qui est REELLEMENT servi en ce moment.
   const webInst = web ? (web.version || web.gitSha) : null;
   let wa;
-  if (!checked) {
+  // Annonce du service en ligne (synchro) : meme etat que la pastille.
+  const cloudWeb = res && res.cloudWebAvailable;
+  if (cloudWeb) {
+    wa = line('Pages Web', webInst, cloudWeb, 'à installer', 'avail');
+  } else if (!checked) {
     wa = line('Pages Web', webInst, null, 'jamais vérifié', 'unknown');
   } else if (res.webAssetsUpdateAvailable) {
     wa = line('Pages Web', webInst || res.webAssetsInstalledVersion,

@@ -8,6 +8,7 @@
 
 #include "BootLoopGuard.h"
 #include "EventLog.h"
+#include "EventBus.h"
 #include "HeapMetrics.h"
 #include "ConfigManager.h"
 #include "MaintenanceResult.h"
@@ -280,14 +281,30 @@ NotificationConfig NotificationManager::config() {
     return result;
 }
 
+namespace {
+char g_cloudWebUpdate[24] = "";
+}
+
+void NotificationManager::setCloudWebUpdate(const char* version) {
+    const char* v = version ? version : "";
+    if (strcmp(v, g_cloudWebUpdate) == 0) return;
+    strlcpy(g_cloudWebUpdate, v, sizeof(g_cloudWebUpdate));
+    EventLog::log(LOG_INFO, v[0] ? "[MAJ-ANNONCE] pages Web %s publiees (service en ligne)"
+                                 : "[MAJ-ANNONCE] pages Web a jour%s", v);
+    EventBus::displayDirty = true;   // bandeau LCD
+}
+
+const char* NotificationManager::cloudWebUpdate() { return g_cloudWebUpdate; }
+
 bool NotificationManager::updateAvailable() {
     begin();
     // Les deux canaux sont volontairement fondus en un seul booleen : pour
     // un indicateur visuel, "il y a quelque chose a installer" est la seule
     // information utile. Le detail de QUOI se lit dans l'interface Web, qui
     // a la place de l'expliquer.
-    return g_updateResult.valid &&
-           (g_updateResult.updateAvailable || g_updateResult.webAssetsUpdateAvailable);
+    return (g_updateResult.valid &&
+            (g_updateResult.updateAvailable || g_updateResult.webAssetsUpdateAvailable)) ||
+           g_cloudWebUpdate[0] != '\0';
 }
 
 NotificationStatus NotificationManager::status() {
@@ -300,7 +317,8 @@ NotificationStatus NotificationManager::status() {
     value.updatePending = g_updatePending;
     value.webAssetsUpdatePending = g_webAssetsUpdatePending;
     value.updateAvailable = g_updateResult.valid && g_updateResult.updateAvailable;
-    value.webAssetsUpdateAvailable = g_updateResult.valid && g_updateResult.webAssetsUpdateAvailable;
+    value.webAssetsUpdateAvailable = (g_updateResult.valid && g_updateResult.webAssetsUpdateAvailable) ||
+                                     g_cloudWebUpdate[0] != '\0';
     value.pendingMask = IncidentManager::storageSd().pendingNotifications;
     value.pendingZoneEvents = g_zoneEventCount;
     value.attempts = g_attempts;

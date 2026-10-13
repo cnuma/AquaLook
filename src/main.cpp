@@ -30,6 +30,7 @@
 #include "BootLoopGuard.h"
 #include "SystemDiagnostics.h"
 #include "CloudSync.h"
+#include "NetName.h"
 #include "UpdateCheckScheduler.h"
 #include "RuntimeProfiler.h"
 #include "EquipmentManager.h"
@@ -730,6 +731,9 @@ void setup() {
     configMgr.applyToSchedule(scheduleMgr);
     splashStep("Planning");
 
+    // Nom reseau (DHCP puis mDNS) derive du nom du module en ligne : pose
+    // AVANT la connexion, la box ne le relit qu'a la demande d'adresse.
+    NetName::prepare(CloudSync::loadConfig().moduleId);
     wifiMgr.begin(configMgr.wifi().ssid, configMgr.wifi().password);
     splashStep("WiFi");
 
@@ -825,6 +829,7 @@ void loop() {
     wifiMgr.update();
     RuntimeProfiler::stop(RuntimeProfiler::Component::WIFI, startedUs);
     const bool connected = wifiMgr.isConnected();
+    NetName::update(connected);   // mDNS : http://<nom>.local
 
     if (connected) {
         startedUs = RuntimeProfiler::start();
@@ -844,7 +849,19 @@ void loop() {
     static bool s_resultDateStamped = false;
     if (!s_resultDateStamped && ntpMgr.isSynced()) {
         s_resultDateStamped = true;
-        MaintenanceResultStore::stampDateIfMissing();
+        // Vrai une seule fois par operation : premier demarrage normal apres
+        // la maintenance. Apres une mise a jour reussie, l'etat part tout de
+        // suite vers l'espace en ligne (sinon il annoncerait encore la mise
+        // a jour pendant ~5 min, le temps de la stabilite WiFi).
+        if (MaintenanceResultStore::stampDateIfMissing()) {
+            const MaintenanceResult r = MaintenanceResultStore::load();
+            if (r.valid && r.success && (strcmp(r.command, "web_assets_update") == 0 ||
+                                         strcmp(r.command, "install_update") == 0)) {
+                EventLog::log(LOG_INFO, "CloudSync: mise a jour %s faite, etat envoye sans attendre",
+                              r.command);
+                cloudSyncScheduler.requestSyncAfterUpdate();
+            }
+        }
     }
 
     if (ntpMgr.isSynced()) {
