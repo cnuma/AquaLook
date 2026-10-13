@@ -267,6 +267,15 @@ function published_web_version(): ?string
     return (is_string($v) && $v !== '' && strlen($v) <= 24) ? $v : null;
 }
 
+/** Nom donne au module par son proprietaire (null s'il n'en a pas). */
+function module_label(string $moduleId): ?string
+{
+    $stmt = db()->prepare('SELECT label FROM module WHERE module_id = ?');
+    $stmt->execute([$moduleId]);
+    $l = $stmt->fetchColumn();
+    return (is_string($l) && $l !== '') ? $l : null;
+}
+
 /**
  * Ce que le dernier rapport diag d'un module dit de lui sur le reseau local :
  * version des pages Web installees (webAssets) et nom mDNS (netName, joignable

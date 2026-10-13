@@ -267,7 +267,14 @@ try {
         // attendre sa verification nocturne. Information seulement (D014) ;
         // l'installation reste verifiee par la signature (D018).
         $publiee = published_web_version();
-        send_json(200, $publiee === null ? ['ok' => true] : ['ok' => true, 'webAvailable' => $publiee]);
+        $reponse = ['ok' => true];
+        if ($publiee !== null) {
+            $reponse['webAvailable'] = $publiee;
+        }
+        // Nom donne par l'utilisateur ('' = aucun) : le module en tire son
+        // nom reseau local, http://<nom>.local (NetName).
+        $reponse['label'] = module_label($moduleId) ?? '';
+        send_json(200, $reponse);
     }
 
     if ($method === 'GET' && $path === '/v1/pending-command') {
