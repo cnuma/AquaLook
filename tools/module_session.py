@@ -130,6 +130,11 @@ def install_global_session(host=DEFAULT_HOST, password=None):
 def deploy(s, files):
     """Depot transactionnel sur la SD : transit, fichiers, bascule."""
     status, body = s.request('/api/debug/deploy-begin', b'', None, 'POST')
+    if status == 404:
+        # P1.8 : routes /api/debug/* absentes d'un binaire de production.
+        raise RuntimeError('deploy-begin : HTTP 404 -- le module tourne un '
+                           'binaire de production (build.devRoutes=false) ; '
+                           'flasher ProgrammeArrosage_s3_banc pour le depot direct')
     if status != 200:
         raise RuntimeError('deploy-begin : HTTP %s %s' % (status, body))
     for path in files:

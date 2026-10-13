@@ -80,6 +80,8 @@ public:
             Serial.printf("Git SHA       : %s\n", OtaBuildIdentity::GIT_SHA);
             Serial.printf("Branche       : %s\n", OtaBuildIdentity::GIT_BRANCH);
             Serial.printf("Carte         : %s\n", OtaBuildIdentity::BOARD);
+            Serial.printf("Routes debug  : %s\n", OtaBuildIdentity::DEV_ROUTES
+                          ? "OUVERTES (binaire de banc)" : "fermees (production)");
             Serial.printf("Identifiant   : %s\n", DeviceIdentity::hwId());
             Serial.println("============================================================");
         }
