@@ -32,6 +32,9 @@ import subprocess
 import sys
 import urllib.request
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import update_signing  # noqa: E402  (D018)
+
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 DATA = RACINE / "data"
 DIST = RACINE / "dist" / "alwaysdata"
@@ -139,6 +142,12 @@ def main():
 
     manifeste, dossier = generer(args.version)
     man = verifier(manifeste, dossier)
+    # D018 : signature du manifeste final (cle privee hors depot), puis
+    # relecture avec les cles publiques integrees au firmware. Sans elle, un
+    # module a jour refuse la publication (signature-absente).
+    signature = update_signing.signer(manifeste)
+    if not update_signing.verifier(manifeste, signature):
+        raise SystemExit("Signature non verifiable : ne pas televerser.")
     if args.comparer:
         comparer_au_serveur(man)
 
@@ -147,10 +156,14 @@ def main():
     print("  1. %s  ->  %s/web/v%s/"
           % (dossier.relative_to(RACINE), SITE, args.version))
     print("  2. %s  ->  racine du site"
+          % signature.relative_to(RACINE))
+    print("  3. %s  ->  racine du site"
           % manifeste.relative_to(RACINE))
     print()
     print("Le manifeste en dernier, toujours : publie en premier, il annonce")
-    print("une version dont aucun fichier n'est encore en ligne.")
+    print("une version dont aucun fichier n'est encore en ligne. Entre 2 et 3,")
+    print("un module qui verifierait verrait une signature qui ne correspond")
+    print("pas encore : il refuse et ne change rien, c'est sans danger.")
     print("Ensuite : python tools/check_published_web.py")
 
 

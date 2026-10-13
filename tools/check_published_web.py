@@ -24,9 +24,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import pathlib
 import sys
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import update_signing  # noqa: E402  (D018)
 
 TIMEOUT = 30
 
@@ -60,6 +64,17 @@ def main() -> int:
     print()
 
     faults = 0
+    # D018 : meme regle que le module (UpdateSignature::verify), sur les
+    # octets exacts du manifeste servi.
+    try:
+        sig = fetch(args.manifest_url + ".sig").decode("ascii", "replace")
+        ok, motif = update_signing.verifier_octets(raw, sig)
+    except urllib.error.HTTPError as exc:
+        ok, motif = False, "signature-absente (HTTP %d)" % exc.code
+    except Exception as exc:  # noqa: BLE001
+        ok, motif = False, "signature-injoignable (%s)" % exc
+    print(f"  {'conforme ' if ok else 'SIGNATURE'} {'(signature)':<18} {motif}")
+    faults += 0 if ok else 1
     for entry in files:
         name = entry.get("name", "?")
         try:
