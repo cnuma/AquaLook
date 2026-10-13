@@ -8,7 +8,8 @@ plus dans aucune procédure.
 
 | Env | Usage |
 |---|---|
-| `ProgrammeArrosage_s3` | **production et validation**, module `.141` |
+| `ProgrammeArrosage_s3` | **binaire de production** : routes `/api/debug/*` absentes (D020) ; compilation de validation |
+| `ProgrammeArrosage_s3_banc` | même firmware + routes de développement (`-DAQUALOOK_DEV_ROUTES=1`) : **flashé sur `.141`** |
 | `ProgrammeArrosage_s3_n16r8` | banc N16R8 sans écran (non validé sur matériel) |
 | `test_*_s3` (`test_relay_s3`, `test_sd_s3`, …) | bancs matériels ciblés |
 | `ProgrammeArrosage` | carte CYD en cours d’abandon : compilée **seulement** sur demande explicite |
@@ -37,13 +38,16 @@ moniteur d’une session, demander sur quel port COM la carte est connectée.
 ```powershell
 git -c core.whitespace=cr-at-eol diff --check
 python tools/soak/announce_reboot.py
-pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>
+pio run -e ProgrammeArrosage_s3_banc -t upload --upload-port <PORT_COM>
 pio device monitor -p <PORT_COM> -b 115200 --dtr 1 --rts 0
 ```
 
 - `upload` compile avant de téléverser ; si la compilation échoue, rien n’est
   écrit sur la carte. Build S3 complet : environ 5 minutes.
-- Sans téléversement prévu : `pio run -e ProgrammeArrosage_s3`.
+- Sans téléversement prévu : `pio run -e ProgrammeArrosage_s3` (binaire de
+  production).
+- Le binaire réellement exécuté se lit dans la bannière série (`Routes debug`)
+  ou dans `/api/diagnostics` (`build.env`, `build.devRoutes`).
 - `--dtr 1` est obligatoire sur le S3 (USB natif) : sans lui le moniteur reste
   muet. Le port se ré-énumère à chaque redémarrage.
 - Fermer le moniteur avant un téléversement (il tient le port).

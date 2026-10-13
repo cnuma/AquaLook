@@ -132,3 +132,13 @@ Demandes du propriétaire, 13 octobre 2026.
 - **Après une mise à jour réussie**, le module renvoie son état dès que l'heure est connue (synchro forcée), pour que le site cesse aussitôt d'annoncer la mise à jour ; il attend toutefois la fin d'un arrosage.
 - **Nom local** : le module répond à `http://<nom>.local` (mDNS, et nom DHCP pour la box), `<nom>` = nom donné par l'utilisateur dans son espace en ligne (accents translittérés, 32 caractères), transmis à chaque synchro et mémorisé en NVS (`aq_net`) ; sans nom donné, `aqualook-<fin MAC>`. Jamais l'identifiant technique.
 - **Mode d'emploi** `maj.html` : une étape à la fois, illustrations SVG fidèles aux vrais écrans, lien direct vers le module ; l'adresse IP lue sur le LCD reste le recours.
+
+## D020 — Routes de développement absentes du binaire de production (13 oct. 2026)
+
+P1.8, décision du propriétaire du 13 octobre 2026.
+
+- **Fermées par défaut** : les onze routes `/api/debug/*` (dépôt direct sur la SD `deploy-begin`/`deploy-file`/`deploy-commit`, écriture du catalogue `log-messages`, `sd-selftest`, `verify-web-asset` et son état, `heap-info`, `nvs-stats`, `script-selftest`, `script-dryrun`) ne sont enregistrées que si `AQUALOOK_DEV_ROUTES=1` (`src/OtaBuildIdentity.h`, défaut `0`). Absentes, elles répondent 404. Un oubli ne peut donc jamais les ouvrir en production.
+- **Deux environnements** : `ProgrammeArrosage_s3` est le binaire de production (routes fermées) ; `ProgrammeArrosage_s3_banc` (`extends` du précédent + `-DAQUALOOK_DEV_ROUTES=1`) est flashé sur le module de banc `.141`.
+- **Visible** : bannière série (`Routes debug : OUVERTES (binaire de banc)` / `fermees (production)`) et `/api/diagnostics` (`build.env`, `build.devRoutes`).
+- **Toutes fermées, lectures comprises** : `heap-info` et `nvs-stats` étaient des diagnostics temporaires ; `/api/diagnostics` et `/api/health` couvrent le service.
+- **OTA firmware** : `MaintenanceBoot` compare l'environnement du manifeste à celui du binaire ; un binaire de banc ne recevra donc jamais un firmware de production par OTA (et inversement). À reprendre avec P1.4 si le banc doit suivre l'OTA.
