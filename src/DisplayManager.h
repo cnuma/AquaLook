@@ -385,6 +385,24 @@ private:
         uint8_t lockState = 255;
     } _hc;
 
+    // ── Barre du creneau en cours qui clignote (P2.11) ──
+    // Les rendus de planning notent ici, en coordonnees ecran, la barre du
+    // creneau programme qui arrose ; updateSlotBlink() ne repeint ensuite
+    // que ce rectangle (I4 : ni fillScreen ni redraw complet). Un arrosage
+    // manuel ou lance par un script ne clignote pas.
+    struct SlotBlink {
+        bool     valid = false;
+        int16_t  x = 0, y = 0, w = 0, h = 0;
+        uint16_t on = 0, off = 0;   // couleur de la barre / fond de la cellule
+    } _slotBlink[MAX_ZONES];
+    bool     _slotBlinkOn   = true;
+    uint32_t _slotBlinkAtMs = 0;
+    static constexpr uint32_t SLOT_BLINK_MS = 500UL;
+    bool isRunningSlotToday(uint8_t zone, uint8_t slotIdx) const;
+    void noteSlotBlink(uint8_t zone, int16_t x, int16_t y, int16_t w,
+                       int16_t h, uint16_t on, uint16_t off);
+    void updateSlotBlink(uint32_t now);
+
     // ── Constantes layout HOME ─────────────────
     //
     //  Mode LIST — 1-2 zones (sprites larges) :

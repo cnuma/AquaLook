@@ -66,8 +66,15 @@ struct ActiveSlot {
     uint32_t remainingMs = 0;   // reliquat conserve pendant la suspension
     uint32_t pausedAtMs  = 0;
 
+    // Creneau programme qui a declenche l'arrosage (P2.11, LCD) : -1 pour un
+    // depart manuel ou par script. slotEpochDay situe le creneau dans le
+    // planning : passe minuit, il n'est plus dans la colonne du jour.
+    int8_t   slotIdx      = -1;
+    uint32_t slotEpochDay = 0;
+
     ActiveSlot() : running(false), startMs(0), durationMs(0), isManual(false),
-                   paused(false), remainingMs(0), pausedAtMs(0) {}
+                   paused(false), remainingMs(0), pausedAtMs(0),
+                   slotIdx(-1), slotEpochDay(0) {}
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -88,6 +95,10 @@ public:
     String       getLastReason(uint8_t zone)   const;
     uint32_t     getElapsedMs(uint8_t zone)    const;
     uint32_t     getRemainingMs(uint8_t zone)  const;
+    // Vrai seulement pendant un arrosage lance par un creneau programme :
+    // rend l'indice du creneau et le jour (epoch/86400) ou il a demarre.
+    bool         getScheduledSlot(uint8_t zone, uint8_t& slotIdx,
+                                  uint32_t& epochDay) const;
     uint16_t     getManualDurationMin()        const { return _manualDurationMin; }
 
     // ── Setters planning ──────────────────────

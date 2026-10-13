@@ -71,6 +71,8 @@ void ScheduleManager::update(int hour, int minute, int weekday,
             // Heure atteinte — vérifier conditions
             if (shouldWater(z, weekday, epochDay, rainMm)) {
                 activateZone(z, sl.duration, false);
+                _active[z].slotIdx      = (int8_t)s;
+                _active[z].slotEpochDay = epochDay;
             }
             break;  // un seul slot par minute par zone
         }
@@ -106,6 +108,16 @@ uint32_t ScheduleManager::getRemainingMs(uint8_t zone) const {
     return (elapsed < _active[zone].durationMs)
            ? _active[zone].durationMs - elapsed
            : 0;
+}
+
+bool ScheduleManager::getScheduledSlot(uint8_t zone, uint8_t& slotIdx,
+                                       uint32_t& epochDay) const {
+    if (zone >= MAX_ZONES) return false;
+    const ActiveSlot& a = _active[zone];
+    if (!a.running || a.isManual || a.slotIdx < 0) return false;
+    slotIdx  = (uint8_t)a.slotIdx;
+    epochDay = a.slotEpochDay;
+    return true;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -252,6 +264,8 @@ void ScheduleManager::activateZoneMs(uint8_t zone,
     _active[zone].isManual   = manual;
     _active[zone].paused     = false;
     _active[zone].remainingMs = 0;
+    // Renseigne par update() juste apres, pour un depart de creneau seulement.
+    _active[zone].slotIdx    = -1;
     EventBus::displayDirty   = true;
     Serial.printf("[Schedule] Zone %d — START %dmin (%s) reason=%s\n",
                   zone+1, durationMin,
@@ -265,6 +279,7 @@ void ScheduleManager::deactivateZone(uint8_t zone) {
     _active[zone].startMs    = 0;
     _active[zone].durationMs = 0;
     _active[zone].isManual   = false;
+    _active[zone].slotIdx    = -1;
     EventBus::displayDirty   = true;
     Serial.printf("[Schedule] Zone %d — STOP\n", zone+1);
     if (_relayCallback) _relayCallback(zone, false);
@@ -329,9 +344,16 @@ bool ScheduleManager::resumeZone(uint8_t zone) {
 
     const uint32_t remaining = slot.remainingMs;
     const bool manual = slot.isManual;
+    // Un creneau suspendu puis repris reste le meme creneau (P2.11).
+    const int8_t   slotIdx      = slot.slotIdx;
+    const uint32_t slotEpochDay = slot.slotEpochDay;
     EventLog::log(LOG_INFO, "Schedule: zone %u reprise pour %lus",
                   (unsigned)(zone + 1U), (unsigned long)(remaining / 1000UL));
     activateZoneMs(zone, remaining, manual);
+    if (!manual) {
+        slot.slotIdx      = slotIdx;
+        slot.slotEpochDay = slotEpochDay;
+    }
     if (_pauseObserver) _pauseObserver();
     return true;
 }
