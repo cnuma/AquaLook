@@ -49,3 +49,7 @@ docs/apercus/
 
 # Caches Python des scripts outils
 __pycache__/
+
+# Cles privees de signature des mises a jour (D018) : jamais dans le depot.
+cle-privee*.pem
+*.key

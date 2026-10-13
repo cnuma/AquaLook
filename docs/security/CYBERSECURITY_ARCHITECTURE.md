@@ -99,6 +99,7 @@ Le verrouillage visuel actuel côté navigateur ne constitue pas une authentific
 ### 4.4 OTA
 
 - firmware signé ;
+- pages Web : manifeste signé ECDSA P-256, vérifié par le module avant toute installation, clé publique dans le firmware, indépendant de l'hébergeur (D018, en vigueur depuis le 13 oct. 2026) ;
 - vérification d'intégrité avant activation ;
 - provenance de la version vérifiée ;
 - partitions doubles et rollback conservés ;
