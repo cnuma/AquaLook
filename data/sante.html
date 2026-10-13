@@ -5,7 +5,12 @@
    du module (DisplayManager::drawHealthFull) -- les deux lisent
    /api/health et ne doivent jamais raconter deux histoires differentes. */
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
-.wrap{max-width:640px;margin:0 auto}
+.wrap{max-width:1100px;margin:0 auto}
+nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:-16px -16px 12px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border2)}
+nav.top h1{margin:0 auto 0 0}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;align-items:start}
+@media(min-width:900px){.cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 h1{font-size:21px;margin:0 0 4px;color:var(--text)}
 .sub{color:var(--text2);font-size:13px;margin:0 0 16px;line-height:1.6}
 .card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px;margin-bottom:12px}
@@ -27,7 +32,7 @@ h1{font-size:21px;margin:0 0 4px;color:var(--text)}
   font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;
   background:var(--bg2);color:var(--text);border:1px solid var(--border2)}
 .bar button.principal{background:var(--amber);color:#3a2a00;border-color:var(--amber)}
-a.back{display:inline-block;margin-top:4px;padding:9px 14px;border:1px solid var(--border2);
+a.back{display:inline-block;padding:9px 14px;border:1px solid var(--border2);
   border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
 #msg{margin:0 0 12px;padding:9px 12px;border-radius:6px;font-size:12.5px;font-family:var(--mono);
   line-height:1.6;border:1px solid var(--border2);background:var(--bg2);color:var(--text)}
@@ -36,13 +41,17 @@ a.back{display:inline-block;margin-top:4px;padding:9px 14px;border:1px solid var
 #msg.ko{border-color:var(--amber);color:#8a5a00;background:#fff8e6}
 </style></head><body><div class=wrap>
 
-<h1>Sante du module</h1>
+<nav class=top><h1>Sante du module</h1>
+<a class=back href=/index.html>&#8249; Retour a AquaLook</a>
+<a class=back href=/ota.html>Mises a jour</a></nav>
 <p class=sub>Ce que montre l'ecran du module, page « Sante » -- accessible
 la aussi sans passer par ici, en tapant le bandeau des qu'il change de
 couleur.</p>
 
 <div id=msg></div>
+<div class=bar id=actions></div>
 
+<div class=cols><div>
 <div class=card>
   <div class=row><span class=k>Etat general</span><span class="v" id=overall>&hellip;</span></div>
   <div class=row><span class=k>Demarrages sans periode stable</span><span class="v" id=boots>&hellip;</span></div>
@@ -55,6 +64,7 @@ couleur.</p>
   <ul class=faults id=faults></ul>
 </div>
 
+</div><div>
 <!-- Memes lignes que la page « A propos » des reglages de l'ecran
      (DisplayManager::drawAdminPageAPropos). Lecture seule, sans admin. -->
 <div class=card>
@@ -68,151 +78,8 @@ couleur.</p>
   <div class=row><span class=k>MAJ firmware</span><span class=v id=ap-majfw>&hellip;</span></div>
   <div class=row><span class=k>MAJ pages</span><span class=v id=ap-majweb>&hellip;</span></div>
 </div>
-
-<div class=bar id=actions></div>
-
-<a class=back href=/index.html>Retour a AquaLook</a>
+</div></div>
 </div>
 
-<script src="/hmac.js"></script><script src="/session.js"></script><script>
-const $ = (id) => document.getElementById(id);
-
-function dire(t, e) {
-  const m = $('msg');
-  m.textContent = t || '';
-  m.className = e || '';
-}
-
-async function poster(url) {
-  const r = await fetch(url, { method: 'POST' });
-  const d = await r.json().catch(function () { return {}; });
-  return { ok: r.ok && d.ok !== false, data: d };
-}
-
-async function leverDegrade() {
-  const { ok, data } = await poster('/api/bootguard/clear');
-  dire(ok ? 'Mode degrade leve : les fonctions suspendues reprennent immediatement.'
-          : ('Echec : ' + (data.error || 'raison inconnue')), ok ? 'ok' : 'ko');
-  charger();
-}
-
-async function acquitter(sdNeedsAck) {
-  const { ok, data } = await poster('/api/logs/ack');
-  if (ok && sdNeedsAck) await poster('/api/incidents/storage-sd/ack');
-  dire(ok ? 'Acquitte.' : ('Echec : ' + (data.error || 'raison inconnue')), ok ? 'ok' : 'ko');
-  charger();
-}
-
-function rendreActions(d) {
-  const sdNeedsAck = d.storageSd && d.storageSd.state === 'recovered-unacknowledged';
-  let h = '';
-  if (d.overall === 'degrade') {
-    h += '<button class="principal" onclick="leverDegrade()">Lever le mode degrade</button>';
-  } else if (d.unacknowledged || sdNeedsAck) {
-    h += '<button onclick="acquitter(' + (sdNeedsAck ? 'true' : 'false') + ')">Acquitter</button>';
-  }
-  $('actions').innerHTML = h;
-}
-
-function rendre(d) {
-  const ov = $('overall');
-  const overallLabel = { degrade: 'DEGRADE', essai: 'A l’essai', normal: 'Normal' }[d.overall] || d.overall;
-  const overallClass = { degrade: 'bad', essai: 'warn', normal: 'ok' }[d.overall] || '';
-  ov.textContent = overallLabel;
-  ov.className = 'v ' + overallClass;
-
-  const bl = d.bootLoop || {};
-  $('boots').textContent = (bl.suspectBoots || 0) + ' / ' + (bl.threshold || 4);
-
-  const sd = d.storageSd || {};
-  const sdEl = $('sd');
-  if (!sd.state || sd.state === 'none') {
-    sdEl.textContent = 'Aucun incident'; sdEl.className = 'v ok';
-  } else if (sd.state === 'active') {
-    sdEl.textContent = 'En panne'; sdEl.className = 'v bad';
-  } else if (sd.state === 'recovered-unacknowledged') {
-    sdEl.textContent = 'Retablie (a acquitter)'; sdEl.className = 'v warn';
-  } else {
-    sdEl.textContent = 'OK'; sdEl.className = 'v ok';
-  }
-
-  const no = $('notif');
-  no.textContent = (d.notifications && d.notifications.enabled) ? 'Actives' : 'Coupees';
-  no.className = 'v ' + ((d.notifications && d.notifications.enabled) ? 'ok' : '');
-
-  const faults = (d.faults || []);
-  $('faults').innerHTML = faults.length
-    ? faults.map(function (f) { return '<li>' + f.label + '</li>'; }).join('')
-    : '<li class="vide" style="color:var(--muted)">Aucun</li>';
-
-  rendreActions(d);
-}
-
-async function charger() {
-  try {
-    const r = await fetch('/api/health', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    rendre(await r.json());
-  } catch (e) {
-    dire('Sante injoignable (' + e.message + ').', 'ko');
-  }
-}
-
-function ecrire(id, t, c) {
-  const el = $(id);
-  el.textContent = t;
-  el.className = 'v ' + (c || '');
-}
-
-async function lireJson(url) {
-  try {
-    const r = await fetch(url, { cache: 'no-store' });
-    return r.ok ? await r.json() : null;
-  } catch (e) { return null; }
-}
-
-// Une seule fois : rien de tout cela ne change sans redemarrage. Sources :
-// /api/diagnostics.build (meme macros que le LCD), /assets-version.json
-// (pages installees), /api/maintenance/last-result (meme lecture que /ota).
-async function chargerAPropos() {
-  const [diag, web, res] = await Promise.all([
-    lireJson('/api/diagnostics'),
-    lireJson('/assets-version.json'),
-    lireJson('/api/maintenance/last-result')
-  ]);
-  const b = (diag && diag.build) || null;
-  if (b) {
-    ecrire('ap-produit', 'AquaLook - ' + (b.productLine || '?'));
-    ecrire('ap-version', b.version || '?');
-    ecrire('ap-build', (b.number || '?') + ' (SHA ' + (b.gitSha || '?') + ')');
-    ecrire('ap-branche', b.gitBranch || '?');
-    ecrire('ap-date', (b.compiledDate || '') + ' ' + (b.compiledTime || ''));
-  } else {
-    ['ap-produit', 'ap-version', 'ap-build', 'ap-branche', 'ap-date']
-      .forEach(function (id) { ecrire(id, 'injoignable', 'warn'); });
-  }
-  const wv = web && (web.version || web.gitSha);
-  ecrire('ap-web', wv || 'inconnue', wv ? '' : 'warn');
-
-  if (!(res && res.valid && res.command === 'check_version')) {
-    ecrire('ap-majfw', 'pas de verif. recente');
-    ecrire('ap-majweb', 'pas de verif. recente');
-    return;
-  }
-  if (res.updateAvailable && res.availableVersion) {
-    ecrire('ap-majfw', res.availableVersion + ' disponible', 'warn');
-  } else {
-    ecrire('ap-majfw', 'a jour', 'ok');
-  }
-  if (res.webAssetsUpdateAvailable && res.webAssetsAvailableVersion) {
-    ecrire('ap-majweb', res.webAssetsAvailableVersion + ' disponible', 'warn');
-  } else {
-    ecrire('ap-majweb', 'a jour', 'ok');
-  }
-}
-
-charger();
-chargerAPropos();
-setInterval(charger, 4000);
-</script>
+<script src="/hmac.js"></script><script src="/session.js"></script><script src="/sante.js"></script>
 </body></html>
