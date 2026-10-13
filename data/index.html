@@ -38,7 +38,7 @@
     <div class="logo-row">
       <img src="/logo.png" alt="AquaLook"
            style="height:28px;width:auto;border-radius:4px;"
-           onerror="this.style.display='none'">
+           data-onerror="masquer(this)">
       <div>
         <span id="header-title" style="display:block">AQUALOOK<span id="header-product-badge" class="product-badge"></span></span>
         <span class="logo-city" id="header-city"></span>
@@ -58,7 +58,7 @@
        diverger. Lien vers /cloudsync.html pour le detail complet, meme
        principe que #update-badge vers /ota. -->
   <a id="cloud-badge" href="/cloudsync.html" style="display:none"></a>
-  <button id="btn-menu" onclick="openDrawer()" title="Configuration">
+  <button id="btn-menu" data-onclick="openDrawer()" title="Configuration">
     <span></span><span></span><span></span>
   </button>
 </header>
@@ -80,7 +80,7 @@
 </div>
 <div class="card">
   <div class="card-title">Activité
-    <button id="btn-toggle-activity" onclick="toggleActivity()"
+    <button id="btn-toggle-activity" data-onclick="toggleActivity()"
             style="font-family:var(--mono);font-size:10px;padding:2px 8px;
                    border:1px solid var(--border2);border-radius:4px;
                    background:var(--bg2);color:var(--muted);cursor:pointer;
@@ -92,28 +92,28 @@
 </div>
 <div id="assets-version" style="text-align:center;font-family:var(--mono);
      font-size:10px;color:var(--muted);padding:6px 0 2px"></div>
-<div class="modal-overlay" id="modal" onclick="closeModalOutside(event)">
+<div class="modal-overlay" id="modal" data-onclick="closeModalOutside(event)">
   <div class="modal">
     <div class="modal-title">
       <span id="modal-title-text"></span>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" data-onclick="closeModal()">✕</button>
     </div>
     <div id="modal-body"></div>
-    <button class="btn-full fermer" onclick="closeModal()">Fermer</button>
+    <button class="btn-full fermer" data-onclick="closeModal()">Fermer</button>
   </div>
 </div>
-<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer-overlay" data-onclick="closeDrawer()"></div>
 <div id="drawer">
   <div class="drawer-header">
-    <button class="drawer-back" id="cfg-back" onclick="backToCfgMenu()"
+    <button class="drawer-back" id="cfg-back" data-onclick="backToCfgMenu()"
             title="Retour aux paramètres">&#8249;</button>
     <span class="drawer-title" id="cfg-title">Paramètres</span>
-    <button class="drawer-close" onclick="closeDrawer()">✕</button></div>
+    <button class="drawer-close" data-onclick="closeDrawer()">✕</button></div>
   <!-- Niveau 1 : liste des rubriques. Construite en JS a partir des sections
        presentes plus bas, pour qu'ajouter une rubrique n'impose pas de la
        declarer a deux endroits. Voir buildCfgMenu(). -->
   <nav id="cfg-menu"></nav>
-  <button id="admin-btn" class="btn-cfg" onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Options avancées du module</button>
+  <button id="admin-btn" class="btn-cfg" data-onclick="adminToggle()" style="margin:8px 12px;width:calc(100% - 24px)">Options avancées du module</button>
   <div id="link-sante" style="margin:0 12px 8px">
     <a href="/sante.html"
        style="display:block;padding:8px 10px;font-family:var(--mono);
@@ -151,7 +151,7 @@
     </a>
   </div>
   <div class="cfg-section" id="sec-wifi">
-    <div class="cfg-section-header" onclick="toggleSection('sec-wifi')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-wifi')">
       <span class="cfg-section-title"><span class="sec-icon">📡</span>WiFi</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -163,8 +163,8 @@
       <div class="cfg-field"><label>Mot de passe</label>
         <input type="password" id="cfg-pwd" placeholder="Mot de passe WiFi">
       </div>
-      <button class="btn-cfg warn" onclick="saveCfgWifi()">Enregistrer et redémarrer</button>
-      <button class="btn-cfg warn" onclick="launchCaptive()" style="margin-top:8px">
+      <button class="btn-cfg warn" data-onclick="saveCfgWifi()">Enregistrer et redémarrer</button>
+      <button class="btn-cfg warn" data-onclick="launchCaptive()" style="margin-top:8px">
         Lancer portail captif
       </button>
       <div class="cfg-info" id="wifi-keepalive-info" style="margin-top:14px">Cible keepalive : <span>—</span></div>
@@ -172,11 +172,11 @@
         <input type="text" id="cfg-keepalive" autocomplete="off" placeholder="ex : 192.168.1.1">
       </div>
       <div class="cfg-hint">Sondée périodiquement pour détecter une connexion WiFi "zombie". Remplie automatiquement avec la passerelle à la connexion ; modifiable pour un test (IP fictive) ou une cible cloud future. Laisser vide pour désactiver.</div>
-      <button class="btn-cfg" onclick="saveCfgWifiKeepalive()" style="margin-top:8px">Enregistrer la cible</button>
+      <button class="btn-cfg" data-onclick="saveCfgWifiKeepalive()" style="margin-top:8px">Enregistrer la cible</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-ntp">
-    <div class="cfg-section-header" onclick="toggleSection('sec-ntp')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-ntp')">
       <span class="cfg-section-title"><span class="sec-icon">🕐</span>NTP / Heure</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -192,18 +192,18 @@
           <input type="number" id="cfg-ntp-dst" placeholder="3600">
         </div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgNtp()">Enregistrer</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgNtp()">Enregistrer</button>
     </div>
   </div>
   <div id="bootguard-banner" style="display:none;margin:0 0 12px;padding:14px;border-radius:10px;background:#4a1010;border:1px solid #a33;color:#ffd9d9">
     <strong>Mode dégradé actif</strong>
     <div style="margin:.5rem 0;font-size:.92rem;line-height:1.45">AquaLook a redémarré plusieurs fois de suite sans parvenir à fonctionner normalement. Il s’est mis en sécurité&nbsp;: <strong>l’arrosage, l’horloge et cette page continuent de fonctionner</strong>. La météo, la vérification des mises à jour et les notifications sont suspendues.</div>
     <div style="margin:.5rem 0;font-size:.92rem">Consultez le journal pour comprendre la cause avant de réactiver. Le module réessaiera aussi tout seul après une période stable — voir la page Santé.</div>
-    <button class="btn-cfg" onclick="clearBootGuard()">Réactiver les fonctions suspendues</button>
+    <button class="btn-cfg" data-onclick="clearBootGuard()">Réactiver les fonctions suspendues</button>
     <a class="btn-cfg" href="/sante.html" style="display:inline-block;text-decoration:none;margin-left:8px">Page Santé</a>
   </div>
   <div class="cfg-section" id="sec-upd">
-    <div class="cfg-section-header" onclick="toggleSection('sec-upd')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-upd')">
       <span class="cfg-section-title"><span class="sec-icon">⬆</span>Mises à jour</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -232,18 +232,18 @@
       </div>
       <div class="cfg-hint">À l’heure choisie, AquaLook redémarre une trentaine de secondes en mode maintenance pour interroger le serveur de mises à jour, puis reprend son fonctionnement normal. La vérification est reportée — jamais annulée en silence — si un arrosage est en cours, si le réseau n’est pas stable, ou si l’heure n’est pas connue. Choisissez de préférence une heure creuse, hors de vos créneaux d’arrosage.</div>
       <div id="cfg-upd-last" class="cfg-hint"></div>
-      <button class="btn-cfg primary" onclick="saveCfgUpdateCheck()">Enregistrer</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgUpdateCheck()">Enregistrer</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-owm">
-    <div class="cfg-section-header" onclick="toggleSection('sec-owm')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-owm')">
       <span class="cfg-section-title"><span class="sec-icon">🌤</span>Météo</span>
       <span class="cfg-chevron">▶</span>
     </div>
     <div class="cfg-section-body">
       <div class="cfg-field">
         <label>Source des prévisions</label>
-        <select id="cfg-owm-provider" onchange="toggleOwmProvider()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
+        <select id="cfg-owm-provider" data-onchange="toggleOwmProvider()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
           <option value="1">Open-Meteo — modèles Météo-France</option>
           <option value="0">OpenWeatherMap</option>
         </select>
@@ -254,7 +254,7 @@
       </div>
       <div class="cfg-field">
         <label>Localisation</label>
-        <select id="cfg-owm-mode" onchange="toggleOwmMode()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
+        <select id="cfg-owm-mode" data-onchange="toggleOwmMode()" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:13px;padding:8px 10px;outline:none;">
           <option value="city">Ville / Pays</option>
           <option value="gps">Coordonnées GPS</option>
         </select>
@@ -286,11 +286,11 @@
           <option value="imperial">Impérial (°F)</option>
         </select>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgOwm()">Enregistrer</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgOwm()">Enregistrer</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-zones">
-    <div class="cfg-section-header" onclick="toggleSection('sec-zones')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-zones')">
       <span class="cfg-section-title"><span class="sec-icon">💧</span>Zones</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -324,7 +324,7 @@
         &#9888; <b>Aucun c&acirc;blage enregistr&eacute;.</b> Le module ne peut piloter aucune
         sortie tant que les cartes relais ne sont pas d&eacute;crites.
         <button class="btn-cfg" style="margin-top:8px"
-                onclick="openTopoEditor()">Configurer le c&acirc;blage relais</button>
+                data-onclick="openTopoEditor()">Configurer le c&acirc;blage relais</button>
       </div>
       <div class="cfg-field">
         <label>Nombre de zones</label>
@@ -339,11 +339,11 @@
           <input type="number" id="cfg-manual-dur" min="1" max="120" placeholder="10">
         </div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgRelaySetup(),saveCfgDisplay()">Enregistrer la configuration</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgRelaySetup(),saveCfgDisplay()">Enregistrer la configuration</button>
       <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
         <label style="margin-bottom:0">Affichage dense</label>
         <button id="btn-zones-view"
-                onclick="setZonesView(_zonesView === 'normal' ? 'dense' : 'normal')"
+                data-onclick="toggleZonesView()"
                 style="font-family:var(--mono);font-size:11px;padding:4px 12px;
                        border:1px solid var(--border2);border-radius:4px;
                        background:var(--bg2);color:var(--text2);cursor:pointer">
@@ -357,7 +357,7 @@
        POST /api/cloudSync en ligne de commande, ce qui la rendait
        introuvable. Ajoutee le 31 aout 2026 sur constat utilisateur. -->
   <div class="cfg-section" id="sec-cloud">
-    <div class="cfg-section-header" onclick="toggleSection('sec-cloud')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-cloud')">
       <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Serveur</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
@@ -385,11 +385,11 @@
         <input type="password" id="cs-token" placeholder="inchangé si laissé vide">
         <div class="cfg-hint">Jeton actuel : <span id="cs-token-masked" style="font-family:var(--mono)">—</span>. Le serveur n'en garde qu'une empreinte : s'il est perdu, il faut en générer un nouveau.</div>
       </div>
-      <button class="btn-cfg" onclick="saveCloudSync()">Enregistrer</button>
+      <button class="btn-cfg" data-onclick="saveCloudSync()">Enregistrer</button>
     </div>
   </div>
   <div class="cfg-section" id="sec-system">
-    <div class="cfg-section-header" onclick="toggleSection('sec-system')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-system')">
       <span class="cfg-section-title"><span class="sec-icon">⚙️</span>Système</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -411,23 +411,23 @@
         </select>
         <div class="cfg-hint">En veille uniquement - Rouge si arrosage actif</div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgSystem()">Enregistrer</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgSystem()">Enregistrer</button>
       <div class="cfg-field" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
         <label style="margin-bottom:0">Bandeau activite</label>
-        <button id="btn-toggle-activity" onclick="toggleActivity()"
+        <button id="btn-toggle-activity" data-onclick="toggleActivity()"
                 style="font-family:var(--mono);font-size:11px;padding:4px 12px;
                        border:1px solid var(--border2);border-radius:4px;
                        background:var(--bg2);color:var(--text2);cursor:pointer">
           Masquer
         </button>
       </div>
-      <button class="btn-cfg danger" onclick="resetConfig()" style="margin-top:14px">
+      <button class="btn-cfg danger" data-onclick="resetConfig()" style="margin-top:14px">
         Reset configuration (reboot)
       </button>
     </div>
   </div>
   <div class="cfg-section" id="sec-notifications">
-    <div class="cfg-section-header" onclick="toggleSection('sec-notifications')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-notifications')">
       <span class="cfg-section-title"><span class="sec-icon">🔔</span>Notifications (ntfy)</span>
       <span class="cfg-chevron">▶</span>
     </div>
@@ -449,15 +449,15 @@
         <input type="checkbox" id="cfg-ntfy-enabled" style="width:auto;margin:0">
         <label for="cfg-ntfy-enabled" style="margin:0;cursor:pointer">Activer les notifications</label>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgNotifications()">Enregistrer</button>
-      <button class="btn-cfg" onclick="testCfgNotifications()" style="margin-top:8px">Envoyer un test</button>
-      <button class="btn-cfg danger" onclick="resetCfgNotifications()" style="margin-top:8px">
+      <button class="btn-cfg primary" data-onclick="saveCfgNotifications()">Enregistrer</button>
+      <button class="btn-cfg" data-onclick="testCfgNotifications()" style="margin-top:8px">Envoyer un test</button>
+      <button class="btn-cfg danger" data-onclick="resetCfgNotifications()" style="margin-top:8px">
         Réinitialiser sujet et jeton
       </button>
     </div>
   </div>
   <div class="cfg-section" id="sec-io">
-    <div class="cfg-section-header" onclick="toggleSection('sec-io')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-io')">
       <span class="cfg-section-title"><span class="sec-icon">&#128268;</span>Entrées / Sorties (MCP23017)</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
@@ -469,13 +469,13 @@
         <input type="number" id="io-poll" min="1" max="60" value="5" style="width:64px">
       </div>
       <div id="io-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
-      <button class="btn-cfg primary" onclick="saveCfgIo()" style="margin-top:8px">Enregistrer</button>
-      <button class="btn-cfg" onclick="loadCfgIo()" style="margin-top:6px">Rafraîchir l&rsquo;état</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgIo()" style="margin-top:8px">Enregistrer</button>
+      <button class="btn-cfg" data-onclick="loadCfgIo()" style="margin-top:6px">Rafraîchir l&rsquo;état</button>
       <div class="cfg-hint" style="margin-top:6px">Surveillance de la présence des électrovannes (fuite au repos via optocoupleur), pilotage de sorties (éclairage, ventilation) et lecture de capteurs TOR. La présence n&rsquo;est évaluée que lorsque la zone est au repos.</div>
     </div>
   </div>
   <div class="cfg-section" id="sec-topo">
-    <div class="cfg-section-header" onclick="toggleSection('sec-topo')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-topo')">
       <span class="cfg-section-title"><span class="sec-icon">&#9889;</span>Câblage entrées / sorties</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
@@ -484,49 +484,49 @@
            (select ou input) jusqu'ici, meme sur des lignes redessinees apres
            coup. Un seul point d'entree pour tenir le controle de coherence a
            jour -- voir topoFieldChanged() dans app.js. -->
-      <div id="topo-editor" onchange="topoFieldChanged(event)"><div class="cfg-hint">Chargement&hellip;</div></div>
-      <button class="btn-cfg primary" onclick="saveCfgTopo()" style="margin-top:8px">Enregistrer</button>
-      <button class="btn-cfg" onclick="topoEraseWiring()" style="margin-top:6px">Effacer le câblage enregistré</button>
+      <div id="topo-editor" data-onchange="topoFieldChanged(event)"><div class="cfg-hint">Chargement&hellip;</div></div>
+      <button class="btn-cfg primary" data-onclick="saveCfgTopo()" style="margin-top:8px">Enregistrer</button>
+      <button class="btn-cfg" data-onclick="topoEraseWiring()" style="margin-top:6px">Effacer le câblage enregistré</button>
       <div class="cfg-hint" style="margin-top:6px">Décrit quelle voie physique (carte + canal) pilote chaque rôle : vanne de zone, pompe, éclairage&hellip; <b>Sans câblage enregistré, le module ne pilote aucune sortie</b> : il ne devine pas comment il est raccordé. Toute modification prend effet au prochain redémarrage.</div>
     </div>
   </div>
   <div class="cfg-section" id="sec-weather-tooltips">
-    <div class="cfg-section-header" onclick="toggleSection('sec-weather-tooltips')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-weather-tooltips')">
       <span class="cfg-section-title"><span class="sec-icon">&#9729;</span>Info-bulles météo Web</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
     <div class="cfg-section-body">
       <div class="cfg-hint" style="margin-bottom:10px">Choisir les informations affichées au survol d'une journée météo dans le planning.</div>
       <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:12px">
-        <input type="checkbox" id="disp-weatherVisualsEnabled" onchange="onDispNumericChange()" style="width:auto;margin:0">
+        <input type="checkbox" id="disp-weatherVisualsEnabled" data-onchange="onDispNumericChange()" style="width:auto;margin:0">
         <label for="disp-weatherVisualsEnabled" style="margin:0;cursor:pointer">Fond thermique et jauge verticale de pluie sur le LCD et la page Web</label>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipCondition" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipCondition" style="margin:0;cursor:pointer">Condition météo</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipTemp" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipTemp" style="margin:0;cursor:pointer">Températures min/max et ressenti</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipCondition" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipCondition" style="margin:0;cursor:pointer">Condition météo</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipTemp" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipTemp" style="margin:0;cursor:pointer">Températures min/max et ressenti</label></div>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipRain" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipRain" style="margin:0;cursor:pointer">Pluie cumulée</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPop" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPop" style="margin:0;cursor:pointer">Probabilité de pluie</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipRain" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipRain" style="margin:0;cursor:pointer">Pluie cumulée</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPop" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPop" style="margin:0;cursor:pointer">Probabilité de pluie</label></div>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipHumidity" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipHumidity" style="margin:0;cursor:pointer">Humidité maximale</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipWind" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipWind" style="margin:0;cursor:pointer">Vent maximal</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipHumidity" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipHumidity" style="margin:0;cursor:pointer">Humidité maximale</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipWind" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipWind" style="margin:0;cursor:pointer">Vent maximal</label></div>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipGust" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipGust" style="margin:0;cursor:pointer">Rafales maximales</label></div>
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipClouds" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipClouds" style="margin:0;cursor:pointer">Couverture nuageuse</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipGust" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipGust" style="margin:0;cursor:pointer">Rafales maximales</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipClouds" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipClouds" style="margin:0;cursor:pointer">Couverture nuageuse</label></div>
       </div>
       <div class="cfg-field-row">
-        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPressure" onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPressure" style="margin:0;cursor:pointer">Pression moyenne</label></div>
+        <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="disp-weatherTipPressure" data-onchange="onDispNumericChange()" style="width:auto;margin:0"><label for="disp-weatherTipPressure" style="margin:0;cursor:pointer">Pression moyenne</label></div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Enregistrer</button>
-      <button class="btn-cfg" onclick="resetCfgDisplay()" style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">Valeurs par défaut</button>
+      <button class="btn-cfg primary" data-onclick="saveCfgDisplay()">Enregistrer</button>
+      <button class="btn-cfg" data-onclick="resetCfgDisplay()" style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">Valeurs par défaut</button>
       <div class="cfg-hint" style="margin-top:6px">Par défaut : condition, températures, pluie, probabilité, humidité, vent et rafales.</div>
     </div>
   </div>
   <div class="cfg-section" id="sec-display">
-    <div class="cfg-section-header" onclick="toggleSection('sec-display')">
+    <div class="cfg-section-header" data-onclick="toggleSection('sec-display')">
       <span class="cfg-section-title"><span class="sec-icon">&#128444;</span>Affichage LCD</span>
       <span class="cfg-chevron">&#9654;</span>
     </div>
@@ -534,69 +534,69 @@
       <div class="cfg-subsection-title">Palette</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Fond</label>
-          <input type="color" id="disp-cBg" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cBg" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
         <div class="cfg-field"><label>Surface</label>
-          <input type="color" id="disp-cSurface" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cSurface" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
         <div class="cfg-field"><label>Surface 2</label>
-          <input type="color" id="disp-cSurface2" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cSurface2" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
       </div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Bordure</label>
-          <input type="color" id="disp-cBorder" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cBorder" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
         <div class="cfg-field"><label>Texte</label>
-          <input type="color" id="disp-cText" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cText" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
         <div class="cfg-field"><label>Texte 2</label>
-          <input type="color" id="disp-cText2" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cText2" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
       </div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Muted</label>
-          <input type="color" id="disp-cMuted" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cMuted" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
         <div class="cfg-field"><label>Actif (fond)</label>
-          <input type="color" id="disp-cActiveBg" class="cfg-color" oninput="onDispColorChange()">
+          <input type="color" id="disp-cActiveBg" class="cfg-color" data-oninput="onDispColorChange()">
         </div>
       </div>
       <div class="cfg-subsection-title" style="margin-top:10px">Formes</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Rayon SM (px)</label>
-          <input type="number" id="disp-rSm" min="1" max="20" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-rSm" min="1" max="20" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
         <div class="cfg-field"><label>Rayon MD (px)</label>
-          <input type="number" id="disp-rMd" min="1" max="20" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-rMd" min="1" max="20" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
         <div class="cfg-field"><label>Rayon LG (px)</label>
-          <input type="number" id="disp-rLg" min="1" max="30" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-rLg" min="1" max="30" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
       </div>
       <div class="cfg-field"><label>Largeur barre zone (px)</label>
-        <input type="number" id="disp-accentBarW" min="1" max="8" style="width:80px" onchange="onDispNumericChange()">
+        <input type="number" id="disp-accentBarW" min="1" max="8" style="width:80px" data-onchange="onDispNumericChange()">
       </div>
       <div class="cfg-subsection-title" style="margin-top:10px">Rafraichissement LCD</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Nominal (ms)</label>
-          <input type="number" id="disp-refreshNomMs" min="500" max="30000" step="500" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-refreshNomMs" min="500" max="30000" step="500" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
         <div class="cfg-field"><label>Actif (ms)</label>
-          <input type="number" id="disp-refreshActMs" min="200" max="5000" step="100" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-refreshActMs" min="200" max="5000" step="100" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
       </div>
       <div class="cfg-hint">Actif = intervalle quand un arrosage est en cours (invariant I21)</div>
       <div class="cfg-subsection-title" style="margin-top:10px">Météo LCD</div>
       <div class="cfg-field-row">
         <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input type="checkbox" id="disp-showWeatherIcon" onchange="onDispNumericChange()" style="width:auto;margin:0">
+          <input type="checkbox" id="disp-showWeatherIcon" data-onchange="onDispNumericChange()" style="width:auto;margin:0">
           <label for="disp-showWeatherIcon" style="margin:0;cursor:pointer">Icône météo (pluie / soleil)</label>
         </div>
       </div>
       <div class="cfg-field-row">
         <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input type="checkbox" id="disp-showWeatherTemp" onchange="onDispNumericChange()" style="width:auto;margin:0">
+          <input type="checkbox" id="disp-showWeatherTemp" data-onchange="onDispNumericChange()" style="width:auto;margin:0">
           <label for="disp-showWeatherTemp" for="disp-showWeatherTemp" style="margin:0;cursor:pointer">Température max du jour</label>
         </div>
       </div>
@@ -604,17 +604,17 @@
       <div class="cfg-subsection-title" style="margin-top:10px">Espacement</div>
       <div class="cfg-field-row">
         <div class="cfg-field"><label>Planning / boutons (px)</label>
-          <input type="number" id="disp-planGap" min="0" max="20" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-planGap" min="0" max="20" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
         <div class="cfg-field"><label>Grille GRID2 (px)</label>
-          <input type="number" id="disp-g2Gpad" min="0" max="8" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-g2Gpad" min="0" max="8" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
         <div class="cfg-field"><label>Grille GRID4 (px)</label>
-          <input type="number" id="disp-g4Gpad" min="0" max="8" style="width:100%" onchange="onDispNumericChange()">
+          <input type="number" id="disp-g4Gpad" min="0" max="8" style="width:100%" data-onchange="onDispNumericChange()">
         </div>
       </div>
-      <button class="btn-cfg primary" onclick="saveCfgDisplay()">Appliquer</button>
-      <button class="btn-cfg" onclick="resetCfgDisplay()"
+      <button class="btn-cfg primary" data-onclick="saveCfgDisplay()">Appliquer</button>
+      <button class="btn-cfg" data-onclick="resetCfgDisplay()"
               style="margin-top:6px;background:var(--bg2);color:var(--muted);border:1px solid var(--border2)">
         Reinitialiser les valeurs par defaut
       </button>
@@ -629,19 +629,7 @@
    style="position:fixed;bottom:6px;left:8px;width:6px;height:6px;
           border-radius:50%;background:#ffffff18;display:block;
           text-decoration:none" title="Journal et acquittement"></a>
-<script>
-/* Options avancees du module (D016 lot F) : la configuration du module
-   (reseau, affichage, serveur, cablage...) reste repliee pour l'usage
-   courant et s'ouvre a la demande. Ce n'est pas un verrou : la protection
-   est la session Web, exigee par le module pour toute ecriture. */
-const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","sec-cloud","sec-upd","sec-io","sec-topo","relay-admin","link-urls"],AV="aqualook-avance";
-function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Masquer les options avancées":"Options avancées du module");typeof buildCfgMenu=="function"&&buildCfgMenu()}
-function adminShow(s){let w=document.getElementById("unprotected-banner");if(s&&!s.configure&&!s.legacy){if(!w){w=document.createElement("div");w.id="unprotected-banner";w.textContent="Accès non protégé : définir un mot de passe Web";w.style.cssText="background:#8a5a00;color:#fff;padding:6px 12px;text-align:center;cursor:pointer;font-size:13px";w.onclick=adminSetPassword;document.body.prepend(w)}}else if(w)w.remove()}
-async function adminSetPassword(){let p=await AquaSession.promptSecret("Nouveau mot de passe Web","12 caractères au moins");if(!p)return;if(await AquaSession.promptSecret("Retaper le mot de passe")!==p){alert("Les deux saisies diffèrent");return}let r=await AquaSession.setPassword("",p);alert(r.ok?"Mot de passe posé : l'interface est désormais protégée.":"Refus : "+(r.error||"module injoignable"))}
-function avanceOuvert(){try{return sessionStorage.getItem(AV)==="1"}catch(e){return false}}
-async function adminToggle(){if(avanceOuvert()){try{sessionStorage.removeItem(AV)}catch(e){}adminApply(0);return}let s=AquaSession.state()||await AquaSession.refresh();if(s&&s.configure&&!s.active&&!await AquaSession.ask("Les options avancées modifient la configuration du module."))return;try{sessionStorage.setItem(AV,"1")}catch(e){}adminApply(1)}
-document.addEventListener("DOMContentLoaded",()=>{adminApply(avanceOuvert());AquaSession.onChange(adminShow);AquaSession.refresh()});
-</script>
+<script src="/index.js"></script>
 <!-- Signature des ecritures sensibles. crypto.subtle n'existe pas en HTTP
      simple : voir l'entete de hmac.js. -->
 <script src="/hmac.js"></script>

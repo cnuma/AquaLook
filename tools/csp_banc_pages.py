@@ -56,6 +56,10 @@ ALIAS = {"/setup": "setup.html", "/logs": "logs.html"}
 #   ["clic", selecteur, force]   force=1 : reactive un bouton desactive
 #   ["saisir", selecteur, valeur, evenement]
 #   ["cocher", selecteur, 0|1]   (declenche change)
+#   ["classe", selecteur, "a"|"pas", classe]                -> verification
+#   ["style", selecteur, propriete, contient]                -> verification
+#   ["bascule", selecteur_clic, selecteur_cible, classe]     -> le clic inverse la classe
+# "simule" : une valeur None repond 404 (ex. image absente -> onerror).
 # "post" : ecritures qui DOIVENT avoir ete demandees (methode, debut d'URL).
 # "simule" : reponses GET locales (chemin -> objet JSON) au lieu du module.
 SCENARIOS = {
@@ -125,6 +129,37 @@ SCENARIOS = {
         "post": [["POST", "/api/logConfig"], ["POST", "/api/logs/ack"],
                  ["POST", "/api/incidents/storage-sd/ack"]],
     },
+    "index": {
+        "page": "/index.html",
+        "simule": {"/logo.png": None},
+        "etapes": [["attendre", 5000],
+                   ["style", "img[alt=AquaLook]", "display", "none"],
+                   ["compte", "[data-onclick^=toggleManual]", 1],
+                   ["clic", "[data-onclick='toggleZonesView()']", 0],
+                   ["attendre", 300],
+                   ["compte", "tr[data-onclick^=openZoneConfigModal]", 1],
+                   ["clic", "td.zt-action .btn-run:not([disabled])", 0],
+                   ["attendre", 400],
+                   ["classe", "#modal", "pas", "open"],
+                   ["clic", "tr[data-onclick^=openZoneConfigModal] td.zt-mode", 0],
+                   ["attendre", 300],
+                   ["classe", "#modal", "a", "open"],
+                   ["saisir", "#zcfg-color", "#123456", "input"],
+                   ["style", "#zcfg-dot", "background", "rgb(18, 52, 86)"],
+                   ["clic", "#modal", 0],
+                   ["classe", "#modal", "pas", "open"],
+                   ["clic", "[data-onclick='toggleZonesView()']", 0],
+                   ["bascule", "[data-onclick=\"toggleSection('sec-zones')\"]", "#sec-zones", "open"],
+                   ["clic", "[data-onclick='openDrawer()']", 0],
+                   ["classe", "#drawer", "a", "open"],
+                   ["compte", "#drawer [data-onclick^=openCfgPage]", 1],
+                   ["clic", "[data-onclick='closeDrawer()']", 0],
+                   ["classe", "#drawer", "pas", "open"],
+                   ["saisir", "[data-onchange='onDispNumericChange()']", "7", "change"],
+                   ["clic", "[data-onclick='saveCfgRelaySetup(),saveCfgDisplay()']", 1],
+                   ["attendre", 1500]],
+        "post": [["POST", "/api/manual"], ["POST", "/api/display"], ["POST", "/api/system"]],
+    },
     "cloudsync": {
         "page": "/cloudsync.html",
         "etapes": [["attendre", 2500],
@@ -157,6 +192,9 @@ BANC_JS = r"""
           ok(c,'texte '+e[1]+' '+e[2]+' "'+e[3]+'" (lu : "'+v.slice(0,60)+'")');
         }else if(t==='clic'){if(e[2])el.disabled=false;el.style.display=el.style.display==='none'?'':el.style.display;el.click();ok(true,'clic '+e[1]);await pause(150)}
         else if(t==='saisir'){el.value=e[2];el.dispatchEvent(new Event(e[3],{bubbles:true}));ok(true,'saisie '+e[1])}
+        else if(t==='classe'){const c=el.classList.contains(e[3]);ok(e[2]==='a'?c:!c,'classe '+e[1]+' '+e[2]+' '+e[3])}
+        else if(t==='style'){const s=String(el.style[e[2]]||'');ok(s.indexOf(e[3])>=0,'style '+e[1]+' '+e[2]+' contient "'+e[3]+'" (lu : "'+s+'")')}
+        else if(t==='bascule'){const c=q(e[2]);if(!c){ok(false,'bascule '+e[2]+' absent');continue}const av=c.classList.contains(e[3]);el.click();await pause(150);ok(c.classList.contains(e[3])!==av,'bascule '+e[2]+' '+e[3]+' via '+e[1])}
         else if(t==='cocher'){el.checked=!!e[2];el.dispatchEvent(new Event('change',{bubbles:true}));ok(true,'coche '+e[1])}
       }catch(x){ok(false,t+' '+e[1]+' : exception '+x.message)}
     }
@@ -224,6 +262,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if chemin == "/__temoin.js":
             return self.envoyer(200, TEMOIN_JS.encode(), "application/javascript")
         if chemin in sc.get("simule", {}):
+            if sc["simule"][chemin] is None:
+                return self.envoyer(404, b"absent (banc)", "text/plain")
             return self.envoyer(200, json.dumps(sc["simule"][chemin]).encode(), "application/json")
         nom = ALIAS.get(chemin, chemin.lstrip("/"))
         local = os.path.join(DATA, nom)
