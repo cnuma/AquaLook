@@ -445,6 +445,9 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["gitBranch"] = AQUALOOK_GIT_BRANCH;
     build["relayBackend"] = "v4";
     build["productLine"] = AQUALOOK_PRODUCT_LINE;
+    build["env"] = OtaBuildIdentity::PLATFORMIO_ENVIRONMENT;
+    // Vrai seulement sur un binaire de banc (P1.8) : /api/debug/* ouvert.
+    build["devRoutes"] = OtaBuildIdentity::DEV_ROUTES;
     // Identifiant materiel (D016) : celui que le serveur rattache au module.
     build["hwId"] = DeviceIdentity::hwId();
     build["compiledDate"] = compiledDate();

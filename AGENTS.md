@@ -141,7 +141,7 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 
 Le moteur historique a été supprimé le 8 septembre 2026 (commit `2750866`) : V4 est le seul moteur d’exécution. `ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` ne sont plus que deux alias de `ProgrammeArrosage` (carte CYD historique, en cours d’abandon).
 
-- La cible de production et de validation est `ProgrammeArrosage_s3` (ESP32-S3, module de test `192.168.1.141`).
+- La cible de production et de validation est `ProgrammeArrosage_s3` (ESP32-S3). Le module de banc `192.168.1.141` est flashé avec `ProgrammeArrosage_s3_banc`, même firmware avec les routes de développement `/api/debug/*` ouvertes (D020) ; `ProgrammeArrosage_s3` est le binaire de production, sans ces routes.
 - `ProgrammeArrosage` (CYD) n’est compilé que si le support de cette carte est explicitement demandé.
 - Une compilation réussie ne signifie jamais qu’une fonction est validée : son chemin doit être réellement instancié, appelé et testé sur la carte avec un effet observable.
 
@@ -152,11 +152,11 @@ Pour tout nouveau code embarqué destiné à être testé sur matériel, la cha�
 ```powershell
 git diff --check
 python tools/soak/announce_reboot.py
-pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>
+pio run -e ProgrammeArrosage_s3_banc -t upload --upload-port <PORT_COM>
 pio device monitor -p <PORT_COM> -b 115200 --dtr 1 --rts 0
 ```
 
-La cible `upload` compile automatiquement avant le téléversement (build S3 complet : environ 5 minutes). Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_s3` pour la validation de compilation. Sur le S3 (USB natif), `--dtr 1` est obligatoire : sans lui le moniteur reste muet. Fermer le moniteur avant un téléversement (il tient le port). `announce_reboot.py` ouvre la fenêtre de maintenance de la campagne de soak avant tout flash de `.141`.
+La cible `upload` compile automatiquement avant le téléversement (build S3 complet : environ 5 minutes). Lorsqu’aucun téléversement n’est prévu, utiliser `pio run -e ProgrammeArrosage_s3` pour la validation de compilation du binaire de production. Sur le S3 (USB natif), `--dtr 1` est obligatoire : sans lui le moniteur reste muet. Fermer le moniteur avant un téléversement (il tient le port). `announce_reboot.py` ouvre la fenêtre de maintenance de la campagne de soak avant tout flash de `.141`.
 
 Consigner le profil réellement flashé, le port série utilisé, le point d’entrée exécuté, le matériel ou la zone testée, le résultat attendu, le résultat observé et les tests non effectués.
 
@@ -241,7 +241,7 @@ Cette règle s’applique à tout développement AquaLook qui crée, modifie ou 
 5. Vérifier que les changements sont réellement appelés et qu’ils agissent sur les éléments demandés.
 6. Avant toute commande dépendant du port série, demander et confirmer le port COM de la machine courante.
 7. Exécuter `git diff --check`.
-8. Si un essai matériel est prévu, exécuter directement `pio run -e ProgrammeArrosage_s3 -t upload --upload-port <PORT_COM>` (précédé de `python tools/soak/announce_reboot.py`) ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_s3`.
+8. Si un essai matériel est prévu, exécuter directement `pio run -e ProgrammeArrosage_s3_banc -t upload --upload-port <PORT_COM>` (précédé de `python tools/soak/announce_reboot.py`) ; cette commande assure compilation et téléversement. Sinon, exécuter `pio run -e ProgrammeArrosage_s3`.
 9. Si `littlefs/` est modifié, exécuter `pio run -e ProgrammeArrosage_s3 -t buildfs`.
 10. Pour une modification matérielle ciblée, utiliser le banc `test_*_s3` correspondant (par exemple `test_relay_s3`, `test_sd_s3`).
 11. Pour tout nouveau chemin actif, ouvrir le moniteur série sur `<PORT_COM>` avec `--dtr 1 --rts 0` et effectuer le test matériel correspondant.

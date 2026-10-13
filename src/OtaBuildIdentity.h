@@ -32,6 +32,16 @@
 #define AQUALOOK_PRODUCT_LINE "Aqualook Pro"
 #endif
 
+// Routes de developpement /api/debug/* (depot direct sur la SD, catalogue
+// du journal, autotests, essais) : FERMEES par defaut (P1.8). Sous session,
+// elles permettaient d'ecrire n'importe quel fichier servi comme page. Seul
+// l'environnement de banc les ouvre (platformio.ini,
+// env:ProgrammeArrosage_s3_banc) : un oubli ne peut donc jamais les laisser
+// ouvertes dans un binaire de production.
+#ifndef AQUALOOK_DEV_ROUTES
+#define AQUALOOK_DEV_ROUTES 0
+#endif
+
 namespace OtaBuildIdentity {
 constexpr char PRODUCT[] = "AquaLook";
 constexpr char PRODUCT_LINE[] = AQUALOOK_PRODUCT_LINE;
@@ -44,4 +54,5 @@ constexpr char GIT_SHA[] = AQUALOOK_GIT_SHA;
 constexpr char GIT_BRANCH[] = AQUALOOK_GIT_BRANCH;
 constexpr char OTA_TARGET[] = AQUALOOK_OTA_TARGET;
 constexpr char PLATFORMIO_ENVIRONMENT[] = AQUALOOK_PIO_ENV;
+constexpr bool DEV_ROUTES = AQUALOOK_DEV_ROUTES != 0;
 }

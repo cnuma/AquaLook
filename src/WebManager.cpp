@@ -687,12 +687,15 @@ void WebManager::setupRoutes() {
     POST_JSON("/api/updateCheck",   handleSetUpdateCheck);
     POST_JSON("/api/cloudSync",     handleSetCloudSync);
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : telechargement d'essai
     // Validation temporaire de WebAssetsUpdater::verifyOnly — voir la note
     // sur handleVerifyWebAsset (WebManager.h) et ROADMAP.md.
     POST_JSON("/api/debug/verify-web-asset", handleVerifyWebAsset);
+#endif  // AQUALOOK_DEV_ROUTES
 
 #undef POST_JSON
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : etat de l'essai, depot SD
     _server.on("/api/debug/verify-web-asset/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleVerifyWebAssetStatus(req);
     });
@@ -708,6 +711,7 @@ void WebManager::setupRoutes() {
             handleDeployFileBody(req, data, len, index, total);
         }
     );
+#endif  // AQUALOOK_DEV_ROUTES
 
     // Diagnostic temporaire pour la fragmentation memoire constatee lors des
     // tests HTTPS (voir ROADMAP.md, "constat du 16 aout 2026") : lecture
@@ -753,6 +757,7 @@ void WebManager::setupRoutes() {
         sendOk(req);
     });
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : diagnostics memoire et NVS
     _server.on("/api/debug/heap-info", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleHeapInfo(req);
     });
@@ -762,6 +767,7 @@ void WebManager::setupRoutes() {
     _server.on("/api/debug/nvs-stats", HTTP_GET, [this](AsyncWebServerRequest* req) {
         handleNvsStats(req);
     });
+#endif  // AQUALOOK_DEV_ROUTES
 
     // Auto-test d'ecriture SD, desormais a la demande. Il tournait a chaque
     // demarrage et ecrivait dans /www, ce qui creait une fenetre de corruption
@@ -810,6 +816,7 @@ void WebManager::setupRoutes() {
         sendJson(req, out, 202);
     });
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : depot SD transactionnel, autotest et essai de scripts
     // Deploiement transactionnel : prepare le transit, puis bascule.
     // Les fichiers eux-memes passent par /api/debug/deploy-file, qui ecrit
     // desormais dans /www.new tant qu'un transit est ouvert.
@@ -948,6 +955,8 @@ void WebManager::setupRoutes() {
         serializeJson(doc, body);
         req->send(200, "application/json", body);
     });
+
+#endif  // AQUALOOK_DEV_ROUTES
 
     // Etat de l'authentification. Volontairement lisible sans secret : dire
     // qu'une porte est verrouillee n'aide personne a l'ouvrir, et le cacher
@@ -1146,6 +1155,7 @@ void WebManager::setupRoutes() {
         req->send(200, "application/json", body);
     });
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : ecriture du catalogue du journal
     // Ecriture du meme catalogue -- PAS signee, contrairement a
     // /api/script-messages : pas d'editeur utilisateur derriere, sert au
     // deploiement ponctuel du contenu (voir tools/) depuis le poste de
@@ -1173,6 +1183,7 @@ void WebManager::setupRoutes() {
             body->concat(reinterpret_cast<const char*>(data), len);
         }
     );
+#endif  // AQUALOOK_DEV_ROUTES
 
     // Texte source d'un script, range sur la carte SD.
     //
@@ -1238,11 +1249,13 @@ void WebManager::setupRoutes() {
         req->send(200, "application/json", body);
     });
 
+#if AQUALOOK_DEV_ROUTES  // P1.8 : autotest d'ecriture SD
     _server.on("/api/debug/sd-selftest", HTTP_POST, [this](AsyncWebServerRequest* req) {
         if (!_storage) { sendError(req, "stockage indisponible", 503); return; }
         _storage->runWriteSelfTest();
         sendOk(req);
     });
+#endif  // AQUALOOK_DEV_ROUTES
 
     _server.on("/api/captive", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleStartCaptive(req);

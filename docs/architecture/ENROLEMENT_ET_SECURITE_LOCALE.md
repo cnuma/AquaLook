@@ -230,12 +230,16 @@ Règles :
 - **Outillage de banc** (`tools/`, `/api/debug/*`, `announce_reboot.py`) :
   ouverture de session par les outils avec le secret lu dans le `.env` local
   (jamais dans Git). Pas de porte dérobée compilée dans le firmware de
-  production.
+  production : depuis D020 (13 oct. 2026), les routes `/api/debug/*` ne
+  sont compilées que dans `ProgrammeArrosage_s3_banc`, binaire du module de
+  banc ; le binaire de production répond 404.
 
 ### 8.1 Classement des routes (W1, lot F)
 
 Relevé route par route le 10 oct. 2026 sur `main` = `37b5921`
-(`WebManager.cpp`, `WebManager.h`, `SdStaticHandler.cpp`).
+(`WebManager.cpp`, `WebManager.h`, `SdStaticHandler.cpp`). Les routes
+`/api/debug/*` citées ci-dessous n'existent que dans le binaire de banc
+(D020).
 
 **Application** : un seul filtre placé en tête du routage, juste après la
 garde de longueur d'URL. ESPAsyncWebServer choisit le gestionnaire dès la fin
