@@ -1,6 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap');
-
-:root {
+﻿:root {
   --bg:         #f0f4f1;
   --bg1:        #ffffff;
   --bg2:        #e8efe9;
@@ -16,8 +14,8 @@
   --text:       #1a2e1e;
   --text2:      #4a6e50;
   --muted:      #7a9e80;
-  --mono:       'IBM Plex Mono', monospace;
-  --sans:       'Space Grotesk', sans-serif;
+  --mono:       ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --sans:       system-ui, "Segoe UI", Roboto, Arial, sans-serif;
   /* Couleur fixe du badge horaire (.mini-slot), volontairement decorrelee
      de la couleur choisie par l'utilisateur pour le fond de zone (qui,
      elle, reste variable) : deux teintes proches du meme fond rendaient
