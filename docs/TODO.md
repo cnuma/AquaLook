@@ -31,7 +31,7 @@ décision), *les deux*.
 | # | Sujet | Qui |
 |---|---|---|
 | P1.1 | Wi-Fi mesh : test de bascule de nœud (rapprocher une borne secondaire, redémarrer le module, vérifier `wifi.bssid`, débrancher la borne) ; reconnexion après coupure réelle et après redémarrage logiciel | les deux |
-| P1.2 | Vers le 14 oct. : relire l'historique `payload.wifi` de `Jardin-01` et décider du « point 2 » (changer de nœud sans déconnexion ; branche `feature/wifi-diag-bssid`) | les deux |
+| ~~P1.2~~ | ~~Vers le 14 oct. : relire l'historique `payload.wifi` de `Jardin-01` et décider du « point 2 » (changer de nœud sans déconnexion ; branche `feature/wifi-diag-bssid`)~~ — **fait** le 14 oct. 2026 (clos par le propriétaire) : 915 rapports `diag` du 10 au 14 oct. relus en SQL ; signal −50 à −68 dBm, jamais ≤ −70, nœud faible `D3:9F:05` jamais choisi ; une bascule sans redémarrage (11 oct. 21:05) et deux coupures courtes au plus, avec un bon signal, résolues seules ; les autres retards de rapport viennent de la pause CloudSync pendant l'arrosage. **Point 2 ajourné** (ne se serait jamais déclenché), branche conservée ; reprendre si ≤ −75 dBm sans redémarrage ou retard > 10 min hors arrosage. Détail et requêtes SQL : `docs/engineering/18_NETWORK_AND_WIFI.md` § « Analyse de stabilité Wi-Fi » | — |
 | P1.3 | Migration du serveur Ubuntu 26 (19 oct. 2026) ; jeton admin de production | propriétaire |
 | P1.4 | D9 : release GitHub sans binaire S3 (`ota-release.yml`, `generate_ota_manifest.py`, `version_build.py` → `ota_target=unsupported`) ; cible `s3`, essai sur `.141`, puis retrait des alias `_legacy`/`_v4` | agent |
 | ~~P1.5~~ | ~~Délivrabilité des mails (indésirables Gmail)~~ — **réglé** (confirmé par le propriétaire le 11 oct. 2026) | — |

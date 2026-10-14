@@ -1,8 +1,8 @@
 # AquaLook Engineering Reference — Réseau et Wi-Fi
 
-- Version documentaire : 1.3
+- Version documentaire : 1.4
 - Statut : référence reliée au code
-- Dernière consolidation : 2026-10-01
+- Dernière consolidation : 2026-10-14
 - Source de code : `src/WiFiManager.h`, `src/WiFiManager.cpp`, `src/WebManager.*`, `src/main.cpp`, `src/CloudSync.h`, `src/CloudSync.cpp`
 - Composants : Wi-Fi STA, point d’accès, DNS captif, scan asynchrone, sonde de keepalive, Web, NTP et CloudSync
 - Maturité : D4
@@ -184,6 +184,133 @@ fausses alertes :
 `docs/checkpoints/CHECKPOINT_2026-10-01_cloudsync-outage-and-core1-contention.md`,
 section "Corrélation activité web / fiabilité CloudSync".
 
+## Analyse de stabilité Wi-Fi par l'historique serveur (P1.2, 14 oct. 2026)
+
+Depuis 5.13.0 (D11), chaque rapport CloudSync `diag` porte
+`payload.wifi {rssi, bssid, channel}`, avec `uptimeSec`, `resetReason` et
+`firmware`. L'historique est conservé 90 jours dans `module_message`
+(`cleanup.php`). La route `/admin/messages` est plafonnée à 200 lignes
+(environ 17 h à un rapport toutes les 5 min) : une analyse sur plusieurs
+jours se fait en SQL (phpMyAdmin AlwaysData, base de production, requêtes
+en lecture seule ci-dessous). Les heures `ts` sont en UTC.
+
+### Résultat (`Jardin-01` = `.141`, 10 oct. 15:08 → 14 oct. 01:00 UTC, 915 rapports)
+
+- signal entre −50 et −68 dBm, jamais ≤ −70 ; seuls les nœuds
+  `A4:35:15` et `CE:6F:A2` sont utilisés, le nœud faible `D3:9F:05`
+  (−89 dBm) jamais : le choix du nœud le plus fort au démarrage (D11)
+  suffit ;
+- une seule bascule de nœud sans redémarrage (11 oct. 21:05,
+  `A4:35:15` → `CE:6F:A2`, rapport en retard de 8,6 min), une seconde
+  coupure probable sur le même nœud (13 oct. 01:36, 8,8 min, juste après
+  la vérification nocturne des mises à jour de 03:30 locale) ; signal
+  −57/−58 dBm juste avant : ces coupures ne viennent pas d'un signal
+  faible et se sont résolues seules (reprise des rapports 5 min après la
+  reconnexion, `WIFI_STABLE_MS`) ; cause inconnue (journaux locaux perdus) ;
+- les autres retards de 7 à 17 min se terminent à hh:mm:03-04 s :
+  CloudSync ne part pas pendant un arrosage (`CloudSync.cpp`, garde
+  « arrosage en cours ») et le rapport suit la fin du créneau. Ce ne sont
+  pas des coupures Wi-Fi (créneaux du soak non recoupés un par un) ;
+- seul épisode long : 11 oct. 03:22 → 06:57 UTC, chute de tension
+  (`resetReason` 9), panique (4), 203 min sans rapport, chute de tension :
+  firmware 5.13.0 (plantage AsyncTCP corrigé en 5.13.1) sur alimentation
+  de banc ; rien n'indique le Wi-Fi ;
+- redémarrage logiciel (`resetReason` 3) chaque nuit vers 01:50 UTC.
+
+**Décision** : le « point 2 » (changer de nœud en cours de connexion) est
+ajourné ; il ne se serait jamais déclenché (marge +10 dB jamais atteinte) et
+n'aurait pas évité les deux coupures. Branche `feature/wifi-diag-bssid`
+conservée. **Reprendre si** un rapport montre ≤ −75 dBm sans redémarrage,
+ou un retard de rapport de plus de 10 min qui ne se termine pas à
+hh:mm:0x (donc pas un arrosage). Le test de coupure réelle P1.1 reste à
+faire.
+
+### Requêtes SQL
+
+Remplacer `Jardin-01` et la date de départ. Un redémarrage se reconnaît à
+un `uptimeSec` qui progresse moins que le temps écoulé (une minute de
+tolérance) : comparer seulement « uptime < précédent » rate un flash qui
+retombe sur la même valeur (≈ 315 s au premier rapport).
+
+1. Événements : redémarrages, bascules de nœud, trous de plus de 20 min.
+
+```sql
+SELECT ts, evenement, trou_min, bssid, rssi, uptime, firmware, reset_reason
+FROM (
+  SELECT ts,
+    JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid'))    AS bssid,
+    CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED)   AS rssi,
+    CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED)   AS uptime,
+    JSON_UNQUOTE(JSON_EXTRACT(payload,'$.firmware'))      AS firmware,
+    JSON_EXTRACT(payload,'$.resetReason')                 AS reset_reason,
+    TIMESTAMPDIFF(SECOND, LAG(ts) OVER w, ts) / 60        AS trou_min,
+    CASE
+      WHEN LAG(ts) OVER w IS NULL THEN 'debut'
+      WHEN CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED)
+         < LAG(CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED)) OVER w
+           + TIMESTAMPDIFF(SECOND, LAG(ts) OVER w, ts) - 60 THEN 'redemarrage'
+      WHEN JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid'))
+        <> LAG(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid'))) OVER w THEN 'BASCULE SANS REDEMARRAGE'
+      WHEN TIMESTAMPDIFF(MINUTE, LAG(ts) OVER w, ts) > 20 THEN 'TROU'
+    END AS evenement
+  FROM module_message
+  WHERE module_id = 'Jardin-01' AND msg_type = 'diag' AND ts >= '2026-10-10 15:00:00'
+  WINDOW w AS (ORDER BY ts, id)
+) t
+WHERE evenement IS NOT NULL
+ORDER BY ts;
+```
+
+2. Synthèse par jour et par nœud.
+
+```sql
+SELECT DATE(ts) AS jour,
+       JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid')) AS bssid,
+       COUNT(*) AS rapports,
+       MIN(CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED)) AS rssi_min,
+       ROUND(AVG(CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED)),1) AS rssi_moy,
+       MAX(CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED)) AS rssi_max
+FROM module_message
+WHERE module_id = 'Jardin-01' AND msg_type = 'diag' AND ts >= '2026-10-10 15:00:00'
+GROUP BY jour, bssid
+ORDER BY jour, bssid;
+```
+
+3. Signal faible (≤ −70 dBm).
+
+```sql
+SELECT ts, JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid')) AS bssid,
+       CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED) AS rssi,
+       CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED) AS uptime
+FROM module_message
+WHERE module_id = 'Jardin-01' AND msg_type = 'diag' AND ts >= '2026-10-10 15:00:00'
+  AND CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED) <= -70
+ORDER BY ts;
+```
+
+4. Retards de 7 min ou plus sans redémarrage. Une fin à hh:mm:0x s
+   signe un arrosage ; une autre seconde, une coupure probable.
+
+```sql
+SELECT ts, trou_min, prev_rssi, prev_bssid, rssi, bssid, uptime
+FROM (
+  SELECT ts,
+    CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED) AS uptime,
+    JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid')) AS bssid,
+    CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED) AS rssi,
+    LAG(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.wifi.bssid'))) OVER w AS prev_bssid,
+    LAG(CAST(JSON_EXTRACT(payload,'$.wifi.rssi') AS SIGNED)) OVER w AS prev_rssi,
+    LAG(CAST(JSON_EXTRACT(payload,'$.uptimeSec') AS SIGNED)) OVER w AS prev_uptime,
+    TIMESTAMPDIFF(SECOND, LAG(ts) OVER w, ts) AS ecart_s,
+    TIMESTAMPDIFF(SECOND, LAG(ts) OVER w, ts) / 60 AS trou_min
+  FROM module_message
+  WHERE module_id = 'Jardin-01' AND msg_type = 'diag' AND ts >= '2026-10-10 15:00:00'
+  WINDOW w AS (ORDER BY ts, id)
+) t
+WHERE uptime >= prev_uptime + ecart_s - 60 AND trou_min >= 7
+ORDER BY ts;
+```
+
 ## Scan réseau
 
 `startScan()` utilise `WiFi.scanNetworks(true, false)` en mode asynchrone. En portail captif, le mode passe temporairement à `WIFI_AP_STA`. `clearScan()` supprime les résultats et revient à `WIFI_AP` si nécessaire.
@@ -283,6 +410,12 @@ Le serveur Web est initialisé même si la connexion STA n’est pas encore éta
 - `docs/security/CYBERSECURITY_ARCHITECTURE.md`.
 
 ## Historique
+
+### 1.4
+
+Analyse de stabilité Wi-Fi par l'historique serveur (P1.2) : résultat
+sur `.141` du 10 au 14 oct. 2026, « point 2 » ajourné avec son critère de
+reprise, quatre requêtes SQL réutilisables sur `module_message`.
 
 ### 1.3
 
