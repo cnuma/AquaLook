@@ -128,7 +128,7 @@ reste est une couche optionnelle.
 | Relais | XL9535 sur I²C SDA 27 / SCL 22 | XL9535 sur **second** bus I²C (`Wire1`, SCL 17 / SDA 18), adresse 0x20 |
 | SD | lecteur intégré | SPI dédié (MISO 13, MOSI 11, SCK 12, CS 10) |
 | Voyant | LED RGB embarquée (LEDC) | ruban **WS2812** externe sur GPIO 46 (luminosité plafonnée à 40) |
-| Env PlatformIO | `ProgrammeArrosage` (alias `_legacy`, `_v4`) | `ProgrammeArrosage_s3` |
+| Env PlatformIO | `ProgrammeArrosage` (alias retirés le 14 oct. 2026, D021) | `ProgrammeArrosage_s3` |
 
 Le brochage S3 est centralisé dans la section `[jc4827w543c_i]` de
 `platformio.ini` (macros `AQ_S3_*`), chaque broche annotée de sa date de

@@ -64,11 +64,11 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install --upgrade platformio
 
-      - name: Build Legacy firmware
-        run: pio run -e ProgrammeArrosage
-
-      - name: Build V4 firmware
-        run: pio run -e ProgrammeArrosage_v4
+      # P1.4 : release S3 seule, binaire de PRODUCTION (routes de
+      # developpement absentes, D020). Ni carte historique ni pages Web : les
+      # pages passent par leur propre catalogue signe (AlwaysData).
+      - name: Build S3 production firmware
+        run: pio run -e ProgrammeArrosage_s3
 
       - name: Prepare release assets
         shell: bash
@@ -76,27 +76,13 @@ jobs:
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
           mkdir -p release
-          cp .pio/build/ProgrammeArrosage/firmware.bin "release/AquaLook-legacy-${version}.bin"
-          cp .pio/build/ProgrammeArrosage_v4/firmware.bin "release/AquaLook-v4-${version}.bin"
+          cp .pio/build/ProgrammeArrosage_s3/firmware.bin "release/AquaLook-s3-${version}.bin"
           python tools/generate_ota_manifest.py \
             --version "$version" \
             --tag "${{ steps.release.outputs.tag }}" \
-            --legacy "release/AquaLook-legacy-${version}.bin" \
-            --v4 "release/AquaLook-v4-${version}.bin" \
+            --s3 "release/AquaLook-s3-${version}.bin" \
             --output release/aqualook-manifest.json
-
-          # Canal separe, decouple du firmware ci-dessus (voir ROADMAP.md,
-          # "Mise a jour distante des ressources Web") : chaque fichier de
-          # data/ est publie individuellement comme asset de la release,
-          # au meme titre que les .bin, et decrit dans son propre manifeste.
-          cp data/* release/
-          python tools/generate_web_manifest.py \
-            --version "$version" \
-            --tag "${{ steps.release.outputs.tag }}" \
-            --data-dir data \
-            --output release/aqualook-web-manifest.json
-
-          sha256sum release/* | tee release/SHA256SUMS.txt
+          (cd release && sha256sum * | tee SHA256SUMS.txt)
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -106,7 +92,13 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub release
+      # Release en BROUILLON : invisible des modules (releases/latest ignore
+      # les brouillons). La cle de signature reste hors ligne (D018) : le
+      # proprietaire verifie, signe et publie depuis son poste avec
+      # tools/release_firmware.py signer X.Y.Z. Une release deja publiee
+      # n'est jamais modifiee ici : ses binaires correspondent a une
+      # signature, les remplacer la rendrait fausse.
+      - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -115,10 +107,15 @@ jobs:
           tag="${{ steps.release.outputs.tag }}"
           version="${{ steps.version.outputs.version }}"
           if gh release view "$tag" >/dev/null 2>&1; then
+            draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+            if [[ "$draft" != "true" ]]; then
+              echo "Release $tag already published: refusing to replace its assets" >&2
+              exit 1
+            fi
             gh release upload "$tag" release/* --clobber
           else
             gh release create "$tag" release/* \
+              --draft \
               --title "AquaLook ${version}" \
-              --generate-notes \
-              --latest
+              --generate-notes
           fi

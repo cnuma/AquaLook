@@ -24,6 +24,7 @@
 #include "StorageManager.h"
 #include "OtaBuildIdentity.h"
 #include "OtaTlsTrust.h"
+#include "UpdateSignature.h"
 
 namespace {
 constexpr char HTTPS_HOST[] = "api.github.com";
@@ -289,9 +290,18 @@ ManifestFetchOutcome fetchManifestUrl(const String& url, uint8_t redirectCount) 
 
     outcome.body.reserve(contentLength > 0 ? static_cast<size_t>(contentLength) : 1024U);
     uint32_t lastDataAtMs = millis();
-    while (client.connected() || client.available()) {
-        while (client.available()) {
-            outcome.body += static_cast<char>(client.read());
+    // Octets EXACTS de la reponse : la signature (D018) porte dessus. On
+    // s'arrete a Content-Length quand il est annonce, et un read() en echec
+    // (-1) n'est jamais ajoute au corps. Constate le 14 oct. 2026 : 131 octets
+    // recus pour une signature de 130, sans effet sur le JSON (ArduinoJson
+    // ignore la fin) mais fatal a la verification de signature.
+    while ((client.connected() || client.available()) &&
+           (contentLength < 0 || outcome.body.length() < static_cast<size_t>(contentLength))) {
+        while (client.available() &&
+               (contentLength < 0 || outcome.body.length() < static_cast<size_t>(contentLength))) {
+            const int c = client.read();
+            if (c < 0) break;
+            outcome.body += static_cast<char>(c);
             lastDataAtMs = millis();
             if (outcome.body.length() > MANIFEST_MAX_BYTES) {
                 copyText(outcome.detail, sizeof(outcome.detail), "manifest-too-large");
@@ -311,12 +321,63 @@ ManifestFetchOutcome fetchManifestUrl(const String& url, uint8_t redirectCount) 
     client.stop();
 
     outcome.bodySize = outcome.body.length();
+    if (contentLength >= 0 && outcome.bodySize != static_cast<uint32_t>(contentLength)) {
+        copyText(outcome.detail, sizeof(outcome.detail), "manifest-truncated");
+        outcome.body = "";
+        return outcome;
+    }
     if (outcome.bodySize == 0U) {
         copyText(outcome.detail, sizeof(outcome.detail), "manifest-empty");
         return outcome;
     }
     outcome.success = true;
     return outcome;
+}
+
+// P1.9 lot 2b (D018) : le manifeste du programme n'est utilise que s'il est
+// signe par une cle dont ce firmware connait la cle publique, comme celui
+// des pages Web. Signature cherchee a cote (<manifeste>.sig, meme release),
+// verifiee AVANT l'analyse, sur les octets exacts recus. Aucun repli non
+// signe : en cas d'echec, la verification echoue avec le code de refus, et
+// OtaStageUpdate n'accepte qu'une verification reussie, donc rien n'est
+// telecharge. La cle privee reste hors ligne : chaque release est signee
+// sur le poste du proprietaire (tools/release_firmware.py).
+void requireManifestSignature(ManifestFetchOutcome& fetch, const String& manifestUrl) {
+    if (!fetch.success) return;
+    const ManifestFetchOutcome sig = fetchManifestUrl(manifestUrl + ".sig", 0U);
+    char refusal[32] = "";
+    char keyId[17] = {0};
+    if (!sig.success) {
+        copyText(refusal, sizeof(refusal),
+                 strcmp(sig.detail, "http-status-404") == 0 ? "signature-absente" :
+                 strcmp(sig.detail, "manifest-too-large") == 0 ? "signature-illisible" :
+                                                                  "signature-injoignable");
+    } else {
+        const UpdateSignature::Result r = UpdateSignature::verify(
+            reinterpret_cast<const uint8_t*>(fetch.body.c_str()), fetch.body.length(),
+            sig.body.c_str(), sig.body.length(), keyId, sizeof(keyId));
+        if (r == UpdateSignature::Result::OK) {
+            EventLog::log(LOG_INFO, "[MAJ-SIGNATURE] manifeste programme authentifie (cle %s)", keyId);
+            return;
+        }
+        copyText(refusal, sizeof(refusal), UpdateSignature::code(r));
+    }
+    // Taille et debut de ce qui a ete recu (imprimable seulement) : distingue
+    // une signature fausse d'une reponse inattendue de l'hebergeur.
+    char head[25] = "";
+    size_t h = 0U;
+    for (size_t i = 0U; i < sig.body.length() && h < sizeof(head) - 1U; ++i) {
+        const char c = sig.body[i];
+        head[h++] = (c >= 0x20 && c < 0x7F) ? c : '.';
+    }
+    head[h] = '\0';
+    const unsigned last = sig.body.length() ? static_cast<uint8_t>(sig.body[sig.body.length() - 1U]) : 0U;
+    EventLog::log(LOG_ERROR, "[MAJ-SIGNATURE] manifeste programme refuse : %s (cle %s, %s, %u o \"%s\" fin %02X)",
+                  refusal, keyId[0] ? keyId : "?", sig.success ? "lue" : sig.detail,
+                  static_cast<unsigned>(sig.body.length()), head, last);
+    fetch.success = false;
+    fetch.body = "";
+    copyText(fetch.detail, sizeof(fetch.detail), refusal);
 }
 
 bool validVersion(const char* value) {
@@ -668,7 +729,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     } else if (request == MaintenanceRequest::CHECK_VERSION) {
         const String manifestUrl = String("https://") + OtaBuildIdentity::MANIFEST_HOST +
                                    OtaBuildIdentity::MANIFEST_PATH;
-        const ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
+        ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
+        requireManifestSignature(fetch, manifestUrl);
         MaintenanceResult result = validateManifest(fetch);
         success = result.success;
 
