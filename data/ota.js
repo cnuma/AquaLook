@@ -38,6 +38,9 @@ function explain(j){
   // cible, et faire choisir le lecteur entre deux paragraphes revenait a
   // lui refiler le travail.
   if(e && e.cas && j.target && e.cas[j.target]) e = e.cas[j.target];
+  // Variante selon l'operation : un meme code (signature-*) vise le
+  // catalogue du programme en check_version, celui des pages ailleurs.
+  if(e && e.commande && e.commande[j.command]) e = e.commande[j.command];
   if(e) return { titre: e.titre || null, niveau: e.niveau || 'alerte',
                  quoi: subst(e.quoi, j), faire: subst(e.faire, j), contexte: d.contexte };
 
