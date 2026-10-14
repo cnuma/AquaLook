@@ -348,6 +348,9 @@ def main():
     if inconnus:
         sys.exit("scenario inconnu : %s" % ", ".join(inconnus))
 
+    # File d'attente d'ecoute : 5 par defaut ; Edge ouvre plus de connexions
+    # simultanees et Windows refuse le surplus (script charge avec statut 0).
+    http.server.ThreadingHTTPServer.request_queue_size = 64
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = "http://127.0.0.1:%d" % srv.server_address[1]
