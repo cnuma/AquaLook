@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "EventLog.h"
+#include "MaintenanceScreen.h"
 #include "OtaPartitionWriter.h"
 #include "OtaTlsTrust.h"
 
@@ -171,6 +172,8 @@ MaintenanceResult stageUrl(const MaintenanceResult& manifest,
     uint32_t downloaded = 0U;
     const uint32_t downloadStartedAt = millis();
     uint32_t lastDataAt = downloadStartedAt;
+    MaintenanceScreen::step(2U, "Telechargement du programme");
+    MaintenanceScreen::progress(0U, manifest.firmwareSize, true, nullptr);
 
     while (downloaded < manifest.firmwareSize) {
         const int available = client.available();
@@ -185,6 +188,7 @@ MaintenanceResult stageUrl(const MaintenanceResult& manifest,
                 if (!writer.write(buffer, static_cast<size_t>(received))) break;
                 downloaded += static_cast<uint32_t>(received);
                 lastDataAt = millis();
+                MaintenanceScreen::progress(downloaded, manifest.firmwareSize, true, nullptr);
             }
         } else {
             if (!client.connected()) {
@@ -212,6 +216,7 @@ MaintenanceResult stageUrl(const MaintenanceResult& manifest,
         return result;
     }
 
+    MaintenanceScreen::step(3U, "Verification de l'empreinte");
     const OtaPartitionWriter::Result stage = writer.finish(manifest.sha256);
     copyText(result.calculatedSha256, sizeof(result.calculatedSha256), stage.calculatedSha256);
     if (!stage.success) {

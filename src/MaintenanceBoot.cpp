@@ -16,6 +16,7 @@
 #include "HeapMetrics.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
+#include "MaintenanceScreen.h"
 #include "OtaBootGuard.h"
 #include "OtaDownloadTest.h"
 #include "OtaStageUpdate.h"
@@ -518,6 +519,7 @@ void handleInstallUpdate() {
         MaintenanceResultStore::save(result);
         EventLog::log(LOG_ERROR,
                       "Maintenance: INSTALL_UPDATE refuse, aucune partition validee");
+        MaintenanceScreen::finish(false, result.detail);
         restartToNormal();
         return;
     }
@@ -527,6 +529,7 @@ void handleInstallUpdate() {
         MaintenanceResultStore::save(result);
         EventLog::log(LOG_ERROR,
                       "Maintenance: INSTALL_UPDATE echec armement de la garde de boot");
+        MaintenanceScreen::finish(false, result.detail);
         restartToNormal();
         return;
     }
@@ -539,6 +542,7 @@ void handleInstallUpdate() {
         EventLog::log(LOG_ERROR,
                       "Maintenance: INSTALL_UPDATE echec activation partition (%s)",
                       esp_err_to_name(setError));
+        MaintenanceScreen::finish(false, result.detail);
         restartToNormal();
         return;
     }
@@ -551,6 +555,7 @@ void handleInstallUpdate() {
                   "Maintenance: INSTALL_UPDATE partition activee label=%s address=0x%06lX, "
                   "redemarrage vers le nouveau firmware",
                   target->label, static_cast<unsigned long>(target->address));
+    MaintenanceScreen::finish(true, "Redemarrage sur le nouveau programme");
     restartToNormal();
 }
 }
@@ -605,6 +610,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         // ce stade precis signifie que l'ecriture n'a pas encore commence.
         // Voir /logs/messages.tsv.
         EventLog::log(LOG_WARN, "[MAINT-MINIMAL] command=install_update otaWrite=no");
+        MaintenanceScreen::begin("Programme du module", configManager.nbZones(), 1U);
+        MaintenanceScreen::step(1U, "Activation du nouveau programme");
         handleInstallUpdate();
         return true;
     }
@@ -625,8 +632,22 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
                   MaintenanceRequestStore::name(request));
     logMemory("start");
 
+    // P2.14 : progression a l'ecran pour les seules commandes que
+    // l'utilisateur a declenchees et attend (pas la verification nocturne,
+    // ni la synchro, ni la sonde GitHub : MaintenanceScreen reste inactif).
+    if (request == MaintenanceRequest::WEB_ASSETS_UPDATE) {
+        MaintenanceScreen::begin("Pages Web", configManager.nbZones(), 4U);
+    } else if (request == MaintenanceRequest::STAGE_UPDATE_TEST) {
+        MaintenanceScreen::begin("Programme du module", configManager.nbZones(), 3U);
+    } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
+        MaintenanceScreen::begin("Programme du module (essai)", configManager.nbZones(), 2U);
+    }
+    MaintenanceScreen::step(1U, "Connexion Wi-Fi");
+    logMemory("screen");
+
     char wifiDetail[128] = "";
     if (!connectWifi(configManager, wifiDetail, sizeof(wifiDetail))) {
+        MaintenanceScreen::finish(false, wifiDetail);
         MaintenanceResult result;
         result.valid = true;
         result.success = false;
@@ -732,6 +753,11 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
             EventLog::log(LOG_ERROR,
                           "Maintenance: echec sauvegarde resultat WEB_ASSETS_UPDATE");
         }
+        char webEnd[64];
+        snprintf(webEnd, sizeof(webEnd),
+                 r.filesDeployed ? "Pages Web %s installees" : "Pages Web deja a jour (%s)",
+                 r.version[0] ? r.version : "?");
+        MaintenanceScreen::finish(r.ok, r.ok ? webEnd : r.detail);
     } else if (request == MaintenanceRequest::CLOUD_SYNC) {
         const CloudSyncConfig cloudCfg = CloudSync::loadConfig();
         // Chemin conserve mais plus emprunte en fonctionnement normal depuis
@@ -776,7 +802,9 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         // suivante. Le journal EventLog suffit pour le diagnostic.
     } else if (request == MaintenanceRequest::DOWNLOAD_UPDATE_TEST) {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
+        MaintenanceScreen::step(2U, "Telechargement d'essai du programme");
         const MaintenanceResult result = OtaDownloadTest::run(validatedManifest);
+        MaintenanceScreen::finish(result.success, result.success ? "Essai reussi" : result.detail);
         success = result.success;
         if (!MaintenanceResultStore::save(result)) {
             EventLog::log(LOG_ERROR,
@@ -790,6 +818,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     } else {
         const MaintenanceResult validatedManifest = MaintenanceResultStore::load();
         const MaintenanceResult result = OtaStageUpdate::run(validatedManifest);
+        MaintenanceScreen::finish(result.success,
+                                  result.success ? "Programme pret a installer" : result.detail);
         success = result.success;
         if (!MaintenanceResultStore::save(result)) {
             EventLog::log(LOG_ERROR,

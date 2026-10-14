@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "EventLog.h"
+#include "MaintenanceScreen.h"
 #include "OtaTlsTrust.h"
 #include "StorageManager.h"
 #include "UpdateSignature.h"
@@ -535,6 +536,7 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         return out;
     }
 
+    MaintenanceScreen::step(2U, "Verification du catalogue signe");
     // Le manifeste est recupere une seule fois : il sert a la fois a comparer
     // les versions et a piloter le telechargement fichier par fichier.
     String body;
@@ -598,6 +600,7 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
     // Chaque fichier est ecrit dans le transit et verifie par SHA-256 pendant
     // son telechargement. Un seul echec annule tout : on ne bascule pas, et
     // /www reste intact.
+    MaintenanceScreen::step(3U, "Telechargement des fichiers");
     for (JsonObject f : files) {
         const char* name = f["name"] | "";
         const char* url = f["url"] | "";
@@ -614,6 +617,7 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
             return out;
         }
 
+        MaintenanceScreen::progress(out.filesDeployed, out.fileCount, false, name);
         String dest = String(StorageManager::ASSETS_STAGING) + "/" + name;
         FsFile file;
         if (!storage->openWrite(dest.c_str(), file)) {
@@ -658,6 +662,8 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         }
     }
 
+    MaintenanceScreen::progress(out.filesDeployed, out.fileCount, false, nullptr);
+    MaintenanceScreen::step(4U, "Bascule vers les nouvelles pages");
     if (!storage->commitAssetStaging()) {
         copyText(out.detail, sizeof(out.detail), "bascule-echouee");
         return out;
