@@ -157,8 +157,14 @@
       const m = /^g([1-9]|1[0-6])$/.exec(String(name).toLowerCase());
       return m ? parseInt(m[1], 10) - 1 : -1;
     }
+    // Une seule lettre : indexOf seul acceptait « ab » (sous-chaine de
+    // « abcdefgh ») et le mot vide comme la variable a (P3.3).
+    function isLocalVar(name) {
+      const n = String(name).toLowerCase();
+      return n.length === 1 && VARS.indexOf(n) >= 0;
+    }
     function varIndex(name) {
-      const idx = VARS.indexOf(String(name).toLowerCase());
+      const idx = isLocalVar(name) ? VARS.indexOf(String(name).toLowerCase()) : -1;
       if (idx < 0) {
         throw new CompileError('variable inconnue « ' + name + ' » (a à h)', line());
       }
@@ -229,7 +235,7 @@
       if (word === 'zoneactive') { next(); emit(OP.ZONE_ACTIVE); emitU16(callArg()); return; }
       if (word === 'reste') { next(); emit(OP.ZONE_REMAIN); emitU16(callArg()); return; }
       if (globalIndex(word) >= 0) { next(); emit(OP.GLOAD, globalIndex(word)); return; }
-      if (VARS.indexOf(word) >= 0) { next(); emit(OP.LOAD, varIndex(word)); return; }
+      if (isLocalVar(word)) { next(); emit(OP.LOAD, varIndex(word)); return; }
 
       throw new CompileError('expression attendue, trouvé « ' + (t || 'fin du script') + ' »', line());
     }
@@ -425,7 +431,7 @@
         return;
       }
 
-      if (VARS.indexOf(word) >= 0) {
+      if (isLocalVar(word)) {
         const v = varIndex(next());
         expect('=');
         expression();

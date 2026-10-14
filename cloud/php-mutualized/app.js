@@ -320,7 +320,15 @@ function carteRattacher(){
     + '<div class="row"><input id="rt-code" maxlength="12" autocomplete="off" '
     + 'autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" '
     + 'style="flex:1;font-family:monospace;letter-spacing:2px;text-transform:uppercase">'
-    + '<button class="primary" id="rt-ok">Rattacher</button></div></div>';
+    + '<button class="primary" id="rt-ok">Rattacher</button></div>'
+    // P3.10 : « Oublier le compte » sur l'ecran n'efface que le module ; en
+    // ligne il reste rattache, et le serveur refuse un nouveau code (403
+    // already_enrolled) tant qu'il n'est pas detache.
+    + '<p class="hint">L&rsquo;écran affiche &laquo;&nbsp;Deja rattache : detacher en ligne&nbsp;&raquo;&nbsp;? '
+    + 'Le module est encore rattaché à un compte, par exemple après &laquo;&nbsp;Oublier le compte&nbsp;&raquo; '
+    + 'sur son écran, qui n&rsquo;efface que le module. Détachez-le d&rsquo;abord depuis le compte '
+    + 'auquel il appartient (sa page &rsaquo; Ce module &rsaquo; Détacher ce module), puis demandez un '
+    + 'nouveau code.</p></div>';
 }
 
 // Le module affiche le code en deux blocs (ABCD-EFGH) : le tiret est pose ici

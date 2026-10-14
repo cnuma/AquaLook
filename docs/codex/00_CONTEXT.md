@@ -60,7 +60,7 @@ d’abandon : elle n’est compilée que sur demande explicite.
 `cloud/php-mutualized/` (PHP + MySQL) en service sur AlwaysData
 (`https://aqualook.alwaysdata.net`) : API module (`/v1/*`), console
 d’administration, espace utilisateur (`app.html`), ressources Web publiées.
-Publication par le propriétaire (FTP), jamais par l’agent.
+Publication depuis Git par `tools/deploy_cloud.py` (FTPS) ; l’agent ne publie qu’avec l’accord explicite du propriétaire, puis vérifie (`deploy_cloud.py verifier`, `check_published_web.py`).
 
 ## Interface administrateur Web
 
