@@ -139,7 +139,7 @@ Cette règle s’applique à tout développement ESP32, ESP8266 et Arduino.
 
 ### Cible de build
 
-Le moteur historique a été supprimé le 8 septembre 2026 (commit `2750866`) : V4 est le seul moteur d’exécution. `ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` ne sont plus que deux alias de `ProgrammeArrosage` (carte CYD historique, en cours d’abandon).
+Le moteur historique a été supprimé le 8 septembre 2026 (commit `2750866`) : V4 est le seul moteur d’exécution. `ProgrammeArrosage` est la carte CYD historique, en cours d’abandon ; ses alias `_legacy` et `_v4` ont été retirés le 14 octobre 2026 (D021). Une release du programme (S3 seule, signée sur le poste du propriétaire) suit `docs/codex/05_BUILD_AND_TEST.md`, section « Release du programme ».
 
 - La cible de production et de validation est `ProgrammeArrosage_s3` (ESP32-S3). Le module de banc `192.168.1.141` est flashé avec `ProgrammeArrosage_s3_banc`, même firmware avec les routes de développement `/api/debug/*` ouvertes (D020) ; `ProgrammeArrosage_s3` est le binaire de production, sans ces routes.
 - `ProgrammeArrosage` (CYD) n’est compilé que si le support de cette carte est explicitement demandé.

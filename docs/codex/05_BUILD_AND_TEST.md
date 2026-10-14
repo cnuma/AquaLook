@@ -14,8 +14,8 @@ plus dans aucune procédure.
 | `test_*_s3` (`test_relay_s3`, `test_sd_s3`, …) | bancs matériels ciblés |
 | `ProgrammeArrosage` | carte CYD en cours d’abandon : compilée **seulement** sur demande explicite |
 
-`ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4` ne sont que des alias
-historiques de `ProgrammeArrosage` ; ne pas les utiliser.
+Les alias historiques `ProgrammeArrosage_legacy` et `ProgrammeArrosage_v4`
+ont été retirés le 14 octobre 2026 (D021).
 
 Les fichiers `test_*.cpp` définissent chacun `setup()`/`loop()` : tout nouveau
 banc doit être exclu du `build_src_filter` de `[env:ProgrammeArrosage]`
@@ -69,6 +69,30 @@ pio run -e ProgrammeArrosage_s3 -t buildfs
 Les pages Web vivent sur la SD (`data/`) : elles se déposent sur `.141`
 (`/api/debug/deploy-*`) ou se publient par `tools/publish_web_assets.py`
 (fichiers d’abord, manifeste en dernier) puis `tools/check_published_web.py`.
+
+## Release du programme (D021)
+
+Une release publie le binaire de production `ProgrammeArrosage_s3` pour les
+modules. La clé de signature reste sur le poste du propriétaire.
+
+```powershell
+# 1. VERSION = X.Y.Z (supérieure à la dernière release), commit, puis :
+git tag -a vX.Y.Z -m "AquaLook X.Y.Z"
+git push origin vX.Y.Z            # GitHub Actions : compilation + release BROUILLON
+gh run list -R cnuma/AquaLook --workflow ota-release.yml --limit 1
+# 2. Contrôle sans rien changer, puis signature et publication :
+python tools/release_firmware.py verifier X.Y.Z
+python tools/release_firmware.py signer X.Y.Z
+```
+
+- `signer` refuse une release non conforme (version, cible `s3`, carte
+  `jc4827w543c_i`, environnement, taille, SHA-256, image ESP32-S3, binaire
+  de production) et relit ce que les modules reçoivent.
+- Le cache de GitHub peut servir l'état précédent pendant environ une minute.
+- Essai OTA sur `.141` : le flasher par USB en `ProgrammeArrosage_s3` (le
+  binaire de banc répond `environment-mismatch`), `POST
+  /api/maintenance/check-version`, `stage-update-test`, `install-update`
+  (`tools/module_session.py`), puis retour au banc par USB.
 
 ## NVS
 

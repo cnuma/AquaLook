@@ -143,3 +143,15 @@ P1.8, décision du propriétaire du 13 octobre 2026.
 - **Visible** : bannière série (`Routes debug : OUVERTES (binaire de banc)` / `fermees (production)`) et `/api/diagnostics` (`build.env`, `build.devRoutes`).
 - **Toutes fermées, lectures comprises** : `heap-info` et `nvs-stats` étaient des diagnostics temporaires ; `/api/diagnostics` et `/api/health` couvrent le service.
 - **OTA firmware** : `MaintenanceBoot` compare l'environnement du manifeste à celui du binaire ; un binaire de banc ne recevra donc jamais un firmware de production par OTA (et inversement). À reprendre avec P1.4 si le banc doit suivre l'OTA.
+
+## D021 — Release du programme S3 seule, compilée par GitHub, signée sur le poste du propriétaire (14 oct. 2026)
+
+P1.4 et P1.9 lot 2b, choix du propriétaire du 14 octobre 2026.
+
+- **Compilation par GitHub Actions** (`.github/workflows/ota-release.yml`, déclenché par une étiquette `vX.Y.Z` égale à `VERSION`) : binaire de **production** `ProgrammeArrosage_s3` seul, manifeste `aqualook-manifest.json` (une seule cible `s3`, carte `jc4827w543c_i`, environnement `ProgrammeArrosage_s3`), `SHA256SUMS.txt`. Plus de carte historique ni de pages Web dans la release (les pages ont leur catalogue signé sur AlwaysData).
+- **Release en brouillon** : invisible des modules (`releases/latest` ignore les brouillons). La CI refuse de modifier une release déjà publiée.
+- **Signature hors ligne** (D018) : la clé privée ne quitte pas le poste du propriétaire ; `tools/release_firmware.py signer X.Y.Z` télécharge le brouillon, contrôle tout ce que le module contrôlera (version, cible, carte, environnement, adresse, taille, SHA-256, image ESP32-S3, binaire de production et non de banc), signe le manifeste, ajoute `aqualook-manifest.json.sig`, publie comme dernière release et relit ce que reçoivent les modules. `verifier` ne change rien ; `publier-sans-signature` sert seulement à l'essai du refus.
+- **Module** : `CHECK_VERSION` télécharge `<manifeste>.sig` et vérifie la signature sur les octets exacts **avant** toute analyse ; aucun repli non signé (`signature-absente`, `-injoignable`, `-illisible`, `-cle-inconnue`, `-invalide`). Le téléchargement (`OtaStageUpdate`) n'accepte qu'une vérification réussie, et une version antérieure ou identique n'est jamais proposée.
+- **Identité** : cible OTA et carte fixées par `tools/version_build.py` (`s3` / `jc4827w543c_i` pour les environnements S3 ; carte historique `unsupported`) ; alias `ProgrammeArrosage_legacy` et `_v4` retirés.
+- **Banc** : `ProgrammeArrosage_s3_banc` ne suit pas l'OTA (`environment-mismatch`, D020) ; un essai OTA se fait en flashant `.141` en production par USB, puis retour au banc par USB.
+- **Leçon** : la lecture du manifeste ajoutait un octet parasite (invisible pour le JSON) ; tout contenu signé se lit aux octets exacts (`Content-Length`, `read()` en échec ignoré, corps tronqué refusé). Un module en **5.17.1** garde ce défaut et refuse toute release signée : le remettre à jour par USB.
