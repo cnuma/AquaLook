@@ -28,6 +28,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -142,8 +143,15 @@ def relire_cote_modules(brut):
                 return r.read()
         except urllib.error.HTTPError as e:
             return "http-%d" % e.code
-    recu = lire(MANIFESTE)
-    sig = lire(SIG)
+    # Le cache de GitHub sert parfois l'etat precedent pendant ~1 min
+    # (constate le 14 oct. 2026) : on relit jusqu'a 2 min avant de conclure.
+    for essai in range(7):
+        recu = lire(MANIFESTE)
+        sig = lire(SIG)
+        if recu == brut and isinstance(sig, bytes):
+            break
+        if essai < 6:
+            time.sleep(20)
     if recu != brut:
         print("  ATTENTION : le manifeste servi aux modules n'est pas encore celui-ci "
               "(cache GitHub ?). Relancer 'verifier' dans une minute.")
