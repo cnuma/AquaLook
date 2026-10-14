@@ -1,71 +1,85 @@
 # AquaLook — Situation du projet
 
+Mis à jour le 14 octobre 2026 (version 5.16.0). Vue consolidée : l'état du
+jour est dans le checkpoint le plus récent de `docs/checkpoints/`, le reste à
+faire dans `docs/TODO.md` (liste unique), les décisions dans
+`docs/codex/02_DECISIONS.md`. En cas d'écart, ces sources et le code priment.
+
 ## 1. Finalité
 
-AquaLook est un contrôleur d'arrosage embarqué sur ESP32, conçu pour rester autonome localement tout en évoluant vers un écosystème comprenant interface Web, écran tactile, stockage SD, mise à jour distante, notifications, MQTT, application Flutter et services sur VPS.
+AquaLook est un programmateur d'arrosage autonome sur ESP32-S3 : planification
+locale de 1 à 8 zones, pilotage de vannes par cartes relais I²C, écran tactile,
+interface Web locale, moteur de scripts, et un espace en ligne optionnel
+(service PHP sur AlwaysData) pour suivre et régler ses modules à distance.
 
-Le produit doit continuer à exécuter les programmes d'arrosage et les sécurités matérielles même lorsque le Wi-Fi, Internet, le cloud, la carte SD ou un service distant sont indisponibles.
+Le produit doit continuer à exécuter les programmes d'arrosage et les sécurités
+matérielles même lorsque le Wi-Fi, Internet, le serveur, la carte SD ou un
+service distant sont indisponibles.
 
 ## 2. Plateforme matérielle de référence
 
-- carte : ESP32-2432S028, dite CYD 2,8 pouces ;
-- écran : ILI9341, 320 × 240, rotation 1 ;
-- tactile résistif : XPT2046 sur bus SPI séparé ;
-- PSRAM : absente ;
-- relais actuel : carte basée sur XL9535-K2V5, adresse I2C 0x20 ;
-- I2C principal : SDA 27, SCL 22 ;
-- stockage additionnel : lecteur microSD de la CYD ;
-- extensions envisagées : MCP23017, relais unitaires, débitmètres et Lolin S2 Mini.
+- carte : Guition JC4827W543C_I, ESP32-S3 (module de banc `.141` : N4R8,
+  4 Mo de flash, PSRAM OPI 8 Mo) ;
+- écran : NV3041A 480 × 272 en QSPI ; tactile capacitif GT911 sur I²C dédié ;
+- relais : XL9535 sur le second bus I²C (`Wire1`), adresse `0x20` ;
+  MCP23017 pris en charge ; câblage décrit comme une donnée (topologie) ;
+- SD : SPI dédié (SPI3) ; voyant : ruban WS2812 (une LED d'état + une par zone) ;
+- partitions : deux emplacements OTA de 1 920 Kio, NVS 84 Kio, LittleFS 108 Kio.
 
-## 3. Capacités validées
+Brochage centralisé dans la section `[jc4827w543c_i]` de `platformio.ini`.
+L'ancienne carte CYD (ESP32-2432S028) est en cours d'abandon : compilée
+seulement sur demande explicite.
 
-Les éléments suivants sont considérés comme acquis au regard des checkpoints disponibles :
+## 3. Capacités validées sur matériel
 
-- fonctionnement local du moteur d'arrosage ;
-- configuration de 1 à 8 zones ;
-- persistance active en NVS ;
-- écran LCD et tactile opérationnels ;
-- interface Web locale et portail captif ;
-- planification jours fixes et intervalle ;
-- intégration météo avec comportement de repli ;
-- abstraction progressive des relais et topologie multi-cartes ;
-- architecture V4 avec orchestrateur et runtime shadow développée par étapes ;
-- migration progressive des ressources Web vers SD avec mode de secours ;
-- partitions OTA doubles validées sur matériel réel ;
-- récupération automatique de la carte SD et persistance des incidents ;
-- journalisation enrichie et configuration ntfy persistée.
+- moteur d'exécution unique V4 (zones → équipements → cartes → ports → voies),
+  le moteur historique ayant été supprimé le 8 septembre 2026 ;
+- planification jours fixes et intervalle, décalage ou annulation sur pluie
+  (OpenWeatherMap ou Open-Meteo) ;
+- persistance en NVS versionnée (magic, schéma, taille, CRC) ;
+- écran et tactile, page À propos (version et build), LED de zones ;
+- ressources Web sur la SD avec secours embarqué ;
+- moteur de scripts (compilé dans le navigateur, revalidé par le module),
+  éditeur graphique, sur le module et dans l'espace en ligne (D014, D015) ;
+- notifications ntfy en HTTPS ;
+- synchronisation avec l'espace en ligne (CloudSync), enrôlement par code
+  court, PIN sur l'écran, session Web locale obligatoire pour toute écriture
+  (D016) ; nom local `http://<nom>.local` (D019) ;
+- mises à jour des pages Web signées (ECDSA P-256) avec anti-rejeu (D018),
+  progression affichée sur l'écran pendant la maintenance (P2.14) ;
+- routes de développement absentes du binaire de production (D020).
 
-## 4. État actuel des chantiers majeurs
+## 4. État des chantiers majeurs
 
 ### 4.1 Cœur fonctionnel
 
-Le moteur local reste la fonction critique. Les décisions de planification ne doivent jamais dépendre d'un service distant. Le planificateur ne commande pas directement les sorties : la commande passe par les couches d'abstraction et de sécurité prévues.
+Le moteur local reste la fonction critique. Les décisions de planification ne
+dépendent jamais d'un service distant. Le planificateur ne commande pas
+directement les sorties : la commande passe par le callback relais câblé dans
+`main.cpp` et par les sécurités de `RelaisManager`.
 
-### 4.2 Relais et équipements
+### 4.2 Mise à jour du programme (OTA firmware)
 
-Le projet évolue d'un modèle simple « zone vers numéro de relais » vers une topologie explicite : zone logique, affectation, carte physique, contrôleur et voie. La compatibilité avec la carte unique actuelle doit rester le comportement par défaut.
+Les partitions doubles et le chemin d'installation sont validés. Reste à faire
+(P1.4 et P1.9 lot 2b) : une release GitHub qui contienne le binaire S3 (elle ne
+contient aujourd'hui que des cibles CYD) et la signature du manifeste firmware,
+faite localement par le propriétaire, la clé privée restant hors ligne.
 
-### 4.3 Stockage SD
+### 4.3 Service en ligne
 
-La SD sert à déplacer les ressources Web volumineuses et à libérer la flash. Le démarrage, le portail captif et le diagnostic minimal doivent rester possibles sans SD. La récupération automatique après incident est validée, mais les effets de concurrence SPI, de retrait à chaud et de corruption doivent continuer à être surveillés.
+PHP et MySQL sur AlwaysData (`cloud/php-mutualized/`), déployé depuis Git
+(`tools/deploy_cloud.py`). La trajectoire MQTT, HiveMQ, Flutter et VPS
+envisagée en juillet 2026 a été remplacée par ce service et ne fait plus
+partie du périmètre.
 
-### 4.4 OTA
+### 4.4 Cybersécurité
 
-Les partitions doubles sont validées. L'architecture distante s'appuie sur GitHub comme source de firmware. Les travaux futurs doivent intégrer signature, contrôle d'intégrité, rollback sûr, journalisation et politique de version.
-
-### 4.5 Notifications
-
-Le diagnostic ntfy a établi que DNS et TCP fonctionnent mais que TLS échoue sur l'ESP32 avec une erreur d'allocation mémoire. Avec environ 74 Ko de heap libre et un plus grand bloc contigu proche de 39 Ko, le problème est principalement la fragmentation mémoire. La tentative de libération des sprites graphiques a provoqué une régression tactile et portail captif et ne doit pas être réintroduite.
-
-Les architectures robustes à comparer sont notamment une passerelle ESP32-S2, un relais local ou un service MQTT/VPS.
-
-### 4.6 MQTT, Flutter et VPS
-
-Ces éléments sont inscrits dans la trajectoire produit : HiveMQ pour les échanges MQTT, Flutter pour l'application mobile et migration éventuelle vers un VPS OVH. Ils ne doivent pas être considérés comme nécessaires au fonctionnement local de base.
-
-### 4.7 Cybersécurité
-
-La cybersécurité est désormais un pilier transverse permanent. Les priorités sont l'authentification réelle de l'administration Web, la gestion des secrets, le TLS, les ACL MQTT, la sécurité OTA, le durcissement du VPS et la supervision des incidents.
+Pilier transverse permanent et référentiel vivant (D017) :
+`docs/security/CYBERSECURITY_ARCHITECTURE.md`,
+`docs/security/SECURITY_RISK_REGISTER.md` et
+`docs/architecture/ENROLEMENT_ET_SECURITE_LOCALE.md`. Ouverts : HTTPS sur le
+réseau local (P0.5), secret Web en clair dans la NVS (P1.6), longueur du PIN
+(P1.7), pages intégrées au firmware avec script inline (P3.13).
 
 ## 5. Invariants majeurs
 
@@ -75,33 +89,22 @@ La cybersécurité est désormais un pilier transverse permanent. Les priorités
 4. La durée maximale de sécurité des relais ne doit pas être supprimée.
 5. La SD n'est jamais indispensable au démarrage minimal et à la récupération.
 6. Une modification de schéma NVS est versionnée et migrée ou explicitement réinitialisée.
-7. Les bus écran, tactile, SD et I2C doivent conserver leurs contraintes matérielles validées.
+7. Les bus écran, tactile, SD et I²C conservent leurs contraintes matérielles validées.
 8. Une recommandation intelligente ne modifie pas silencieusement les programmes.
 9. Une fonction distante confirme l'exécution réelle au lieu de supposer qu'une commande reçue a réussi.
-10. Toute évolution importante met à jour code, tests, risques et documentation.
+10. Aucune mise à jour n'est déclenchée à distance : le module signale, l'utilisateur déclenche (D014).
+11. Toute évolution importante met à jour code, tests, risques et documentation.
 
 ## 6. Risques techniques principaux
 
-- fragmentation mémoire sur ESP32 sans PSRAM ;
-- concurrence et stabilité des périphériques SPI ;
-- évolution simultanée Legacy et V4 ;
+- mise à jour du programme à distance encore impossible sur S3 (P1.4) ;
+- binaire de production jamais observé longtemps : `.141` tourne le binaire
+  de banc (D020) ;
+- concurrence entre la boucle principale et la tâche réseau sur le même cœur ;
 - complexité croissante de la configuration persistée ;
-- ouverture réseau avant mise en place d'une authentification forte ;
-- dépendance future aux certificats et à leur renouvellement ;
-- régressions tactiles ou Web provoquées par les optimisations mémoire ;
-- dérive entre documentation, roadmap et code réel ;
-- difficulté de test exhaustif sans banc matériel automatisé.
+- peu de tests automatiques (pas de CI de compilation, P4.1 ; planning, P4.2) ;
+- dépôt dans OneDrive (`.pio/` resynchronisé, P4.6).
 
-## 7. Priorités recommandées
+## 7. Priorités
 
-1. maintenir un checkpoint exact par chantier ;
-2. sécuriser l'administration locale avant l'exposition distante ;
-3. finaliser une architecture de notification compatible avec les contraintes mémoire ;
-4. poursuivre OTA avec signature et rollback ;
-5. stabiliser le contrat MQTT avant Flutter et VPS ;
-6. développer les extensions de débit de manière découplée du cœur de commande ;
-7. augmenter progressivement la maturité documentaire des composants critiques vers D5.
-
-## 8. Référence de reprise documentaire
-
-Ce document est une vue consolidée. Lorsqu'un détail diffère d'un checkpoint plus récent sur une branche de travail, le checkpoint et le dépôt réel de cette branche priment. Toute consolidation future doit citer la branche, le commit et les validations matérielles correspondantes.
+Voir `docs/TODO.md`, qui fait foi et est tenu à jour à chaque palier.
