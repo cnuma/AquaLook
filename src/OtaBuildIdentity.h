@@ -16,8 +16,14 @@
 #define AQUALOOK_GIT_BRANCH "unknown"
 #endif
 
+// Cible OTA et carte : fixees par tools/version_build.py selon
+// l'environnement (P1.4, P3.1). Defauts sans script : rien a publier.
 #ifndef AQUALOOK_OTA_TARGET
-#define AQUALOOK_OTA_TARGET "legacy"
+#define AQUALOOK_OTA_TARGET "unsupported"
+#endif
+
+#ifndef AQUALOOK_BOARD
+#define AQUALOOK_BOARD "unknown"
 #endif
 
 #ifndef AQUALOOK_PIO_ENV
@@ -45,7 +51,7 @@
 namespace OtaBuildIdentity {
 constexpr char PRODUCT[] = "AquaLook";
 constexpr char PRODUCT_LINE[] = AQUALOOK_PRODUCT_LINE;
-constexpr char BOARD[] = "esp32-2432S028";
+constexpr char BOARD[] = AQUALOOK_BOARD;
 constexpr char MANIFEST_HOST[] = "github.com";
 constexpr char MANIFEST_PATH[] = "/cnuma/AquaLook/releases/latest/download/aqualook-manifest.json";
 constexpr char VERSION[] = AQUALOOK_VERSION;

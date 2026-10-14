@@ -24,6 +24,7 @@
 #include "StorageManager.h"
 #include "OtaBuildIdentity.h"
 #include "OtaTlsTrust.h"
+#include "UpdateSignature.h"
 
 namespace {
 constexpr char HTTPS_HOST[] = "api.github.com";
@@ -317,6 +318,41 @@ ManifestFetchOutcome fetchManifestUrl(const String& url, uint8_t redirectCount) 
     }
     outcome.success = true;
     return outcome;
+}
+
+// P1.9 lot 2b (D018) : le manifeste du programme n'est utilise que s'il est
+// signe par une cle dont ce firmware connait la cle publique, comme celui
+// des pages Web. Signature cherchee a cote (<manifeste>.sig, meme release),
+// verifiee AVANT l'analyse, sur les octets exacts recus. Aucun repli non
+// signe : en cas d'echec, la verification echoue avec le code de refus, et
+// OtaStageUpdate n'accepte qu'une verification reussie, donc rien n'est
+// telecharge. La cle privee reste hors ligne : chaque release est signee
+// sur le poste du proprietaire (tools/release_firmware.py).
+void requireManifestSignature(ManifestFetchOutcome& fetch, const String& manifestUrl) {
+    if (!fetch.success) return;
+    const ManifestFetchOutcome sig = fetchManifestUrl(manifestUrl + ".sig", 0U);
+    char refusal[32] = "";
+    char keyId[17] = {0};
+    if (!sig.success) {
+        copyText(refusal, sizeof(refusal),
+                 strcmp(sig.detail, "http-status-404") == 0 ? "signature-absente" :
+                 strcmp(sig.detail, "manifest-too-large") == 0 ? "signature-illisible" :
+                                                                  "signature-injoignable");
+    } else {
+        const UpdateSignature::Result r = UpdateSignature::verify(
+            reinterpret_cast<const uint8_t*>(fetch.body.c_str()), fetch.body.length(),
+            sig.body.c_str(), sig.body.length(), keyId, sizeof(keyId));
+        if (r == UpdateSignature::Result::OK) {
+            EventLog::log(LOG_INFO, "[MAJ-SIGNATURE] manifeste programme authentifie (cle %s)", keyId);
+            return;
+        }
+        copyText(refusal, sizeof(refusal), UpdateSignature::code(r));
+    }
+    EventLog::log(LOG_ERROR, "[MAJ-SIGNATURE] manifeste programme refuse : %s (cle %s, %s)",
+                  refusal, keyId[0] ? keyId : "?", sig.success ? "lue" : sig.detail);
+    fetch.success = false;
+    fetch.body = "";
+    copyText(fetch.detail, sizeof(fetch.detail), refusal);
 }
 
 bool validVersion(const char* value) {
@@ -668,7 +704,8 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
     } else if (request == MaintenanceRequest::CHECK_VERSION) {
         const String manifestUrl = String("https://") + OtaBuildIdentity::MANIFEST_HOST +
                                    OtaBuildIdentity::MANIFEST_PATH;
-        const ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
+        ManifestFetchOutcome fetch = fetchManifestUrl(manifestUrl, 0U);
+        requireManifestSignature(fetch, manifestUrl);
         MaintenanceResult result = validateManifest(fetch);
         success = result.success;
 

@@ -12,7 +12,13 @@ import re
 import sys
 
 SCHEMA = "aqualook-ota-manifest-v1"
-BOARD = "esp32-2432S028"
+# Release S3 seule (P1.4) : cible, carte et environnement doivent etre
+# exactement ceux que tools/version_build.py integre au binaire de
+# production, sinon le module refuse (target-missing, board-mismatch,
+# environment-mismatch).
+TARGET = "s3"
+BOARD = "jc4827w543c_i"
+ENVIRONMENT = "ProgrammeArrosage_s3"
 # Doit suivre la taille des slots OTA dans aqualook_partitions.csv : ramenee de
 # 2 031 616 (0x1F0000) a 1 966 080 (0x1E0000) le 16 aout 2026 pour agrandir la
 # partition NVS. Publier un firmware plus gros que le slot le rendrait
@@ -56,8 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--repository", default="cnuma/AquaLook")
     parser.add_argument("--channel", default="stable")
-    parser.add_argument("--legacy", type=Path, required=True)
-    parser.add_argument("--v4", type=Path, required=True)
+    parser.add_argument("--s3", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -72,8 +77,7 @@ def main() -> int:
         raise ValueError(f"Tag {args.tag!r} must equal {expected_tag!r}")
 
     base = f"https://github.com/{args.repository}/releases/download/{args.tag}"
-    legacy_name = f"AquaLook-legacy-{version}.bin"
-    v4_name = f"AquaLook-v4-{version}.bin"
+    s3_name = f"AquaLook-s3-{version}.bin"
 
     manifest = {
         "schema": SCHEMA,
@@ -84,15 +88,10 @@ def main() -> int:
             "notesUrl": f"https://github.com/{args.repository}/releases/tag/{args.tag}",
         },
         "targets": {
-            "legacy": firmware_entry(
-                args.legacy,
-                "ProgrammeArrosage",
-                f"{base}/{legacy_name}",
-            ),
-            "v4": firmware_entry(
-                args.v4,
-                "ProgrammeArrosage_v4",
-                f"{base}/{v4_name}",
+            TARGET: firmware_entry(
+                args.s3,
+                ENVIRONMENT,
+                f"{base}/{s3_name}",
             ),
         },
     }
