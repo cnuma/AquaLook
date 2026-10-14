@@ -1476,12 +1476,17 @@ function addLog(msg) {
   if (logsEl) logsEl.innerHTML =
     logEntries.map(l=>`<div class="log-entry">${l}</div>`).join('');
 }
+// Deux boutons pilotent le bandeau (carte Activite et reglages) : l'ID ne
+// peut en designer qu'un, le second porte la classe (P3.4).
+function setActivityButtons(text) {
+  document.querySelectorAll('#btn-toggle-activity, .btn-toggle-activity')
+    .forEach(b => { b.textContent = text; });
+}
 function toggleActivity() {
   const card = document.getElementById('activity-card');
-  const btn  = document.getElementById('btn-toggle-activity');
   const hidden = card.style.display === 'none';
   card.style.display = hidden ? '' : 'none';
-  btn.textContent = hidden ? 'Masquer' : 'Afficher';
+  setActivityButtons(hidden ? 'Masquer' : 'Afficher');
   try { localStorage.setItem('showActivity', hidden?'1':'0'); } catch(e){}
 }
 (function() {
@@ -1489,9 +1494,8 @@ function toggleActivity() {
     const pref = localStorage.getItem('showActivity');
     if (pref === '0') {
       const card = document.getElementById('activity-card');
-      const btn  = document.getElementById('btn-toggle-activity');
       if (card) card.style.display = 'none';
-      if (btn)  btn.textContent = 'Afficher';
+      setActivityButtons('Afficher');
     }
   } catch(e){}
   _applyZonesViewBtn();
