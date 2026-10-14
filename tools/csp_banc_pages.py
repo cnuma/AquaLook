@@ -62,6 +62,13 @@ ALIAS = {"/setup": "setup.html", "/logs": "logs.html"}
 # "simule" : une valeur None repond 404 (ex. image absente -> onerror).
 # "post" : ecritures qui DOIVENT avoir ete demandees (methode, debut d'URL).
 # "simule" : reponses GET locales (chemin -> objet JSON) au lieu du module.
+# Resultat enregistre par .141 apres l'installation 5.17.1 -> 5.17.2 (14 oct. 2026).
+OTA_INSTALLE = {"valid": True, "command": "install_update", "success": True,
+                "detail": "activated-app1-pending-validation", "updateAvailable": False,
+                "installedVersion": "5.17.1", "availableVersion": "5.17.2",
+                "webAssetsInstalledVersion": "5.17.3", "webAssetsAvailableVersion": "5.17.3",
+                "recordedEpoch": 1791997071, "target": "s3", "firmwareUrl": "x", "firmwareSize": 1575296,
+                "sha256": "65ac", "calculatedSha256": "65ac"}
 SCENARIOS = {
     "sante": {
         "page": "/sante.html",
@@ -168,6 +175,35 @@ SCENARIOS = {
                    ["clic", "#syncNow", 1],
                    ["attendre", 1200]],
         "post": [["POST", "/api/cloudSyncNow"]],
+    },
+    # P3.17 : apres une installation reussie, le resultat enregistre porte la
+    # version d'AVANT le redemarrage ; la page doit afficher celle en marche.
+    "ota": {
+        "page": "/ota.html",
+        "simule": {"/api/maintenance/last-result": OTA_INSTALLE,
+                   "/api/diagnostics": {"build": {"version": "5.17.2"}}},
+        "etapes": [["attendre", 2500],
+                   ["texte", ".chan .chip", "egal", "installe"],
+                   ["texte", "#chans", "contient", "installee : 5.17.2"]],
+        "post": [],
+    },
+    "ota-repli": {
+        "page": "/ota.html",
+        "simule": {"/api/maintenance/last-result": OTA_INSTALLE, "/api/diagnostics": None},
+        "etapes": [["attendre", 2500],
+                   ["texte", ".chan .chip", "egal", "non verifie"],
+                   ["texte", "#chans", "contient", "installee : 5.17.1"]],
+        "post": [],
+    },
+    "ota-dispo": {
+        "page": "/ota.html",
+        "simule": {"/api/maintenance/last-result": dict(OTA_INSTALLE, command="check_version", updateAvailable=True,
+                                                         detail="update-available"),
+                   "/api/diagnostics": {"build": {"version": "5.17.1"}}},
+        "etapes": [["attendre", 2500],
+                   ["texte", ".chan .chip", "egal", "a installer"],
+                   ["texte", "#chans", "contient", "disponible : 5.17.2"]],
+        "post": [],
     },
 }
 

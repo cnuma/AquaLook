@@ -1,6 +1,9 @@
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let LAST=null,WEB=null,timer=null,poll=null,BUSY=false;
+// FW : version du programme EN MARCHE (/api/diagnostics, build.version). Le
+// resultat enregistre porte celle d'avant le redemarrage d'une installation.
+let FW=null,FWKEY='';
 
 // Les explications d'echec vivent sur la carte SD (/ota-help.json), pas ici.
 // Deux raisons : la flash est comptee, et surtout ces textes sont ce qu'on
@@ -84,7 +87,8 @@ function render(){
   // cloudWebAvailable : version des pages publiee, annoncee par le service en
   // ligne (synchro), plus recente que l'installee -- meme info que la pastille.
   const cloudWeb=(j&&j.cloudWebAvailable)||'';
-  const fwAv=!!(j&&j.valid&&j.updateAvailable),webAv=!!(j&&j.valid&&j.webAssetsUpdateAvailable)||!!cloudWeb;
+  const fi=FW||(j&&j.installedVersion);
+  const fwAv=!!(j&&j.valid&&j.updateAvailable)&&!(FW&&FW===j.availableVersion),webAv=!!(j&&j.valid&&j.webAssetsUpdateAvailable)||!!cloudWeb;
 
   // -- Verdict : la reponse a "qu&rsquo;est-ce que je fais maintenant ?".
   //
@@ -167,12 +171,14 @@ function render(){
   // Le module ne gardant qu'un seul resultat pour deux canaux, la seule
   // reponse honnete hors verification est de ne pas se prononcer.
   const fwVerifie = !!(j && j.valid && j.command === 'check_version');
-  if(!j || !j.valid) h += chan('Programme du module', j && j.installedVersion, null, 'jamais verifie', '', '');
-  else if(fwAv) h += chan('Programme du module', j.installedVersion, j.availableVersion, 'a installer', 'av', '');
-  else if(!fwVerifie) h += chan('Programme du module', j.installedVersion, null, 'non verifie', '', '');
-  else if(failed) h += chan('Programme du module', j.installedVersion, null,
+  if(!j || !j.valid) h += chan('Programme du module', fi, null, 'jamais verifie', '', '');
+  else if(fwAv) h += chan('Programme du module', fi, j.availableVersion, 'a installer', 'av', '');
+  else if(j.command==='install_update' && j.success && FW && FW===j.availableVersion)
+    h += chan('Programme du module', FW, null, 'installe', 'up', '');
+  else if(!fwVerifie) h += chan('Programme du module', fi, null, 'non verifie', '', '');
+  else if(failed) h += chan('Programme du module', fi, null,
         j.target === 'unsupported' ? 'aucune version publiee' : 'non verifiable', 'ko', '');
-  else h += chan('Programme du module', j.installedVersion, null, 'a jour', 'up', '');
+  else h += chan('Programme du module', fi, null, 'a jour', 'up', '');
   // Le canal Web se juge sur SA propre reponse, jamais sur j.success qui
   // est le resultat du canal firmware. Une version disponible renseignee
   // prouve que checkForUpdate() est alle au bout : il ne la remplit
@@ -225,6 +231,10 @@ function renderLast(){const e=document.getElementById('last'),j=LAST;
 async function refresh(){
   if(HELP===null){try{const r=await fetch('/ota-help.json',{cache:'no-store'});HELP=r.ok?await r.json():false}catch(_){HELP=false}}
   try{LAST=await readLast()}catch(_){}
+  // Relue au chargement et apres chaque nouvelle operation (redemarrage possible).
+  const k=LAST?(LAST.command+'|'+LAST.recordedEpoch):'';
+  if(FW===null||k!==FWKEY){try{const r=await fetch('/api/diagnostics',{cache:'no-store'});
+    if(r.ok){const d=await r.json();FW=(d.build&&d.build.version)||FW;FWKEY=k}}catch(_){}}
   try{const r=await fetch('/assets-version.json',{cache:'no-store'});WEB=r.ok?await r.json():WEB}catch(_){}
   render()}
 // Rafraichissement autonome : apres une verification, l'etat et les etapes se
