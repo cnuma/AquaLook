@@ -8,6 +8,7 @@
 #include "OtaTlsTrust.h"
 #include "StorageManager.h"
 #include "UpdateSignature.h"
+#include "VersionCompare.h"
 #include <ArduinoJson.h>
 
 namespace {
@@ -424,6 +425,28 @@ bool verifyManifestSignature(const String& body, char* detail, size_t detailSize
     EventLog::log(LOG_ERROR, "[MAJ-SIGNATURE] manifeste refuse : %s (%s)", detail, dl.detail);
     return false;
 }
+
+// P1.9 lot 2 : anti-rejeu. Un ancien manifeste signe reste authentique ;
+// le republier (hebergeur compromis, cache, erreur) ramenerait des pages
+// anterieures, peut-etre vulnerables. Refuse toute version anterieure a la
+// version installee. Sans reference comparable (version inconnue, "depot
+// direct", SHA Git), on laisse passer : c'est le chemin qui remet un module
+// sur une version publiee. Revenir en arriere = publier un numero superieur.
+bool replayRefused(const char* available, const char* installed,
+                   char* detail, size_t detailSize) {
+    unsigned long inst[3], avail[3];
+    if (!VersionCompare::parse(installed, inst)) return false;
+    if (!VersionCompare::parse(available, avail)) {
+        copyText(detail, detailSize, "version-illisible");
+    } else if (VersionCompare::compare(avail, inst) < 0) {
+        copyText(detail, detailSize, "version-anterieure");
+    } else {
+        return false;
+    }
+    EventLog::log(LOG_ERROR, "[MAJ-VERSION] manifeste refuse : %s (installee %s, publiee %s)",
+                  detail, installed, available);
+    return true;
+}
 }  // namespace
 
 WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* storage) {
@@ -481,6 +504,10 @@ WebAssetsUpdater::CheckResult WebAssetsUpdater::checkForUpdate(StorageManager* s
     strncpy(result.availableVersion, version, sizeof(result.availableVersion) - 1U);
     result.fileCount = static_cast<uint8_t>(files.size());
     readInstalledVersion(storage, result.installedVersion, sizeof(result.installedVersion));
+    if (replayRefused(result.availableVersion, result.installedVersion,
+                      result.detail, sizeof(result.detail))) {
+        return result;   // ok=false : aucune mise a jour signalee
+    }
 
     result.ok = true;
     result.updateAvailable =
@@ -558,6 +585,9 @@ WebAssetsUpdater::DeployResult WebAssetsUpdater::deployFromManifest(
         copyText(out.detail, sizeof(out.detail), "deja-a-jour");
         EventLog::log(LOG_INFO, "WebAssets: deja a jour en version %s", out.version);
         return out;
+    }
+    if (replayRefused(out.version, installed, out.detail, sizeof(out.detail))) {
+        return out;   // /www jamais touche
     }
 
     if (!storage->beginAssetStaging()) {

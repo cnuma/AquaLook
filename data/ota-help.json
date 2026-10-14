@@ -166,6 +166,14 @@
       "quoi": "La signature ne correspond pas au catalogue : il a ete modifie apres sa signature, ou contrefait. Rien n'a ete installe.",
       "faire": "Ne forcez rien. Republiez depuis le poste du proprietaire (catalogue et signature) ; si vous n'avez rien publie, l'hebergement a peut-etre ete compromis."
     },
+    "version-anterieure": {
+      "quoi": "Le catalogue publie est authentique mais plus ancien que les pages installees. Rien n'a ete installe : les pages actuelles restent en service.",
+      "faire": "Ne forcez rien. Si vous n'avez rien republie, un ancien catalogue est servi a la place du dernier (cache, erreur ou tiers). Pour revenir volontairement en arriere, republiez les pages sous un numero superieur."
+    },
+    "version-illisible": {
+      "quoi": "Le numero de version du catalogue publie n'a pas la forme attendue (X.Y.Z). Rien n'a ete installe.",
+      "faire": "Republiez avec tools/publish_web_assets.py en donnant un numero de la forme 5.16.0."
+    },
     "signature-erreur-interne": {
       "quoi": "Le module n'a pas pu effectuer la verification de signature.",
       "faire": "Relancez ; si cela persiste, notez le code et signalez-le."
