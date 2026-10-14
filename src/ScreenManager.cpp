@@ -419,6 +419,17 @@ void ScreenManager::renderZones(uint16_t activeZoneMask, uint16_t rainBlockedMas
 
     AquaLook::StatusLed::setZoneCount(nbZones);
 
+    // Mise a jour ENGAGEE (P2.14) : toutes les zones au violet fixe, comme le
+    // voyant d'etat (updateLed) et comme en mode maintenance
+    // (MaintenanceScreen) : le module ne pilote plus les vannes, aucune
+    // couleur d'arrosage ne doit laisser croire le contraire.
+    if (EventBus::updateInProgress) {
+        for (uint8_t z = 0; z < nbZones; z++) {
+            AquaLook::StatusLed::setZone(z, 102, 51, 204);
+        }
+        return;
+    }
+
     // Respiration commune : sinusoide sur 2 s, jamais totalement eteinte
     // pour que la zone reste identifiable meme au creux.
     const float phase = (millis() % 2000UL) / 2000.0f;
