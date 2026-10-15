@@ -37,29 +37,51 @@ struct FailureEntry {
     uint32_t lastFailMs = 0U;
 };
 FailureEntry g_failures[MAX_TRACKED_IPS];
+// Compteur toutes adresses confondues (P1.10) : memes champs, sans adresse.
+FailureEntry g_global;
+
+bool stillLocked(const FailureEntry& e, uint32_t now) {
+    return e.locked && (int32_t)(e.lockUntilMs - now) > 0;
+}
+
+// Attente apres le n-ieme echec : 0 tant que les essais libres ne sont pas
+// epuises, puis 30 s doublees a chaque echec, plafonnees a 15 min.
+uint32_t lockSecAfter(uint32_t failures, uint32_t freeFailures) {
+    if (failures < freeFailures) return 0U;
+    uint32_t lockSec = FIRST_LOCK_SEC;
+    for (uint32_t k = freeFailures; k < failures && lockSec < MAX_LOCK_SEC; ++k) {
+        lockSec *= 2U;
+    }
+    return lockSec > MAX_LOCK_SEC ? MAX_LOCK_SEC : lockSec;
+}
 
 // Appele sous section critique. Rend l'entree de cette adresse, en oubliant
 // au passage les compteurs restes une heure sans nouvel echec. create=false :
-// nullptr si l'adresse n'a pas d'echec en cours.
+// nullptr si l'adresse n'a pas d'echec en cours. create=true : nullptr si la
+// table est pleine d'adresses encore en attente (l'echec ne compte alors que
+// dans le plafond global).
 FailureEntry* failureEntry(uint32_t ip, uint32_t now, bool create) {
     FailureEntry* freeSlot = nullptr;
     FailureEntry* oldest = nullptr;
     FailureEntry* found = nullptr;
     for (uint8_t i = 0U; i < MAX_TRACKED_IPS; ++i) {
         FailureEntry& e = g_failures[i];
-        if (e.used && now - e.lastFailMs > FAILURE_MEMORY_MS &&
-            !(e.locked && (int32_t)(e.lockUntilMs - now) > 0)) {
+        if (e.used && now - e.lastFailMs > FAILURE_MEMORY_MS && !stillLocked(e, now)) {
             e.used = false;
         }
         if (!e.used) { if (!freeSlot) freeSlot = &e; continue; }
         if (e.ip == ip) found = &e;
+        // Une adresse encore en attente ne cede jamais sa place (P1.10) :
+        // l'effacer lui rendait cinq essais libres des qu'un attaquant
+        // faisait tourner neuf adresses ou plus.
+        if (stillLocked(e, now)) continue;
         if (!oldest || now - e.lastFailMs > now - oldest->lastFailMs) oldest = &e;
     }
     if (found || !create) return found;
-    // Table pleine : la plus ancienne cede la place. Un attaquant qui change
-    // d'adresse ne gagne que cinq essais par adresse, et un mot de passe de
-    // douze caracteres ne se devine pas a ce rythme.
+    // Table pleine : la plus ancienne adresse sans attente en cours cede la
+    // place. Le plafond global borne de toute facon le total des essais.
     FailureEntry* e = freeSlot ? freeSlot : oldest;
+    if (!e) return nullptr;
     *e = FailureEntry();
     e->used = true;
     e->ip = ip;
@@ -174,9 +196,18 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     bool locked = false;
     portENTER_CRITICAL(&g_mux);
     FailureEntry* f = failureEntry(clientIp, now, false);
-    if (f && f->locked && (int32_t)(f->lockUntilMs - now) > 0) {
+    if (f && stillLocked(*f, now)) {
         locked = true;
         retryInSec = (f->lockUntilMs - now + 999U) / 1000U;
+    }
+    if (g_global.used && now - g_global.lastFailMs > FAILURE_MEMORY_MS &&
+        !stillLocked(g_global, now)) {
+        g_global = FailureEntry();
+    }
+    if (stillLocked(g_global, now)) {
+        locked = true;
+        const uint32_t globalSec = (g_global.lockUntilMs - now + 999U) / 1000U;
+        if (globalSec > retryInSec) retryInSec = globalSec;
     }
     // Le defi est consomme meme en cas de verrou : une reponse ne se rejoue
     // jamais.
@@ -200,24 +231,37 @@ LoginResult login(const char* challengeHex, const char* signatureHex,
     if (!signatureHex || !ApiAuth::verifyMessage(message, signatureHex)) {
         portENTER_CRITICAL(&g_mux);
         FailureEntry* e = failureEntry(clientIp, now, true);
-        if (e->failures < 255U) ++e->failures;
-        e->lastFailMs = now;
         uint32_t lockSec = 0U;
-        if (e->failures >= FREE_FAILURES) {
-            lockSec = FIRST_LOCK_SEC;
-            for (uint8_t k = FREE_FAILURES; k < e->failures && lockSec < MAX_LOCK_SEC; ++k) {
-                lockSec *= 2U;
+        uint8_t failures = 0U;
+        if (e) {
+            if (e->failures < 255U) ++e->failures;
+            e->lastFailMs = now;
+            lockSec = lockSecAfter(e->failures, FREE_FAILURES);
+            if (lockSec > 0U) {
+                e->locked = true;
+                e->lockUntilMs = now + lockSec * 1000UL;
             }
-            if (lockSec > MAX_LOCK_SEC) lockSec = MAX_LOCK_SEC;
-            e->locked = true;
-            e->lockUntilMs = now + lockSec * 1000UL;
+            failures = e->failures;
         }
-        const uint8_t failures = e->failures;
+        g_global.used = true;
+        if (g_global.failures < 255U) ++g_global.failures;
+        g_global.lastFailMs = now;
+        const uint32_t globalSec = lockSecAfter(g_global.failures, GLOBAL_FREE_FAILURES);
+        if (globalSec > 0U) {
+            g_global.locked = true;
+            g_global.lockUntilMs = now + globalSec * 1000UL;
+        }
+        const uint8_t globalFailures = g_global.failures;
         portEXIT_CRITICAL(&g_mux);
-        retryInSec = lockSec;
-        EventLog::log(LOG_WARN, "[WEB-SESSION] mot de passe refuse depuis %u.%u.%u.%u (%u echec(s), attente %lu s)",
+        retryInSec = lockSec > globalSec ? lockSec : globalSec;
+        EventLog::log(LOG_WARN, "[WEB-SESSION] mot de passe refuse depuis %u.%u.%u.%u (%u echec(s), %u au total, attente %lu s)",
                       ip[0], ip[1], ip[2], ip[3],
-                      static_cast<unsigned>(failures), static_cast<unsigned long>(lockSec));
+                      static_cast<unsigned>(failures), static_cast<unsigned>(globalFailures),
+                      static_cast<unsigned long>(retryInSec));
+        if (globalSec > 0U) {
+            EventLog::log(LOG_WARN, "[WEB-SESSION] verrou global : %u echecs toutes adresses, connexion Web fermee %lu s",
+                          static_cast<unsigned>(globalFailures), static_cast<unsigned long>(globalSec));
+        }
         return LoginResult::REFUSED;
     }
 
