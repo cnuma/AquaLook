@@ -2,33 +2,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>AquaLook - URLs</title>
+<link rel="stylesheet" href="/style-base.css">
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}
-body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}
-header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}
-header h1{font-size:1.05rem;margin:0}
-header a{margin-left:auto;color:#4fc3f7;text-decoration:none}
-main{padding:1rem;display:grid;gap:1rem;max-width:900px;margin:0 auto}
-.card{background:#151515;border:1px solid #333;border-radius:8px;padding:1rem}
-.card h2{margin:.1rem 0 .8rem;font-size:1rem;color:#4fc3f7}
-.card p.help{margin:0 0 .8rem;font-size:.8rem;color:#8fa3ad;line-height:1.4}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #262626;vertical-align:top}
-th{color:#8fa3ad;font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
-td.path{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;color:#81c784;white-space:nowrap}
+/* Meme bandeau, memes boutons de navigation que Sante et Journal
+   (regle d'ergonomie du 12 oct. 2026 : navigation en haut, toujours visible). */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
+.wrap{max-width:1100px;margin:0 auto}
+nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:-16px -16px 12px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border2)}
+nav.top h1{margin:0 auto 0 0;font-size:21px;color:var(--text)}
+a.back{display:inline-block;padding:9px 14px;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+main{display:grid;gap:12px}
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px}
+.card h2{font-size:11px;margin:0 0 8px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.card p.help{margin:0 0 8px;font-size:12px;color:var(--muted);line-height:1.4}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border2);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+td.path{font-family:var(--mono);color:var(--green);white-space:nowrap}
 td.path a{color:inherit;text-decoration:none}
 td.path a:hover{text-decoration:underline}
-td.method{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.75rem;font-weight:700;white-space:nowrap}
-td.method.get{color:#4fc3f7}
-td.method.post{color:#ffb300}
-td.desc{color:#ccc}
-.note{font-size:.78rem;color:#8fa3ad;line-height:1.4}
-</style></head><body>
-<header>
-<h1>🔗 URLs disponibles</h1>
-<a href="/sante.html">Santé</a>
-<a href="/index.html">Retour</a>
-</header>
+td.method{font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
+td.method.get{color:var(--blue)}
+td.method.post{color:var(--amber)}
+td.desc{color:var(--text)}
+.note{font-size:12px;color:var(--muted);line-height:1.4}
+</style></head><body><div class="wrap">
+<nav class="top"><h1>URLs disponibles</h1>
+<a class="back" href="/index.html">&#8249; Retour a AquaLook</a>
+<a class="back" href="/sante.html">Sante du module</a></nav>
 <main>
 
 <section class="card">
@@ -130,4 +134,4 @@ td.desc{color:#ccc}
 
 <p class="note">Page de référence maintenue à la main — si une route a été ajoutée ou retirée dans le firmware sans mise à jour ici, se fier à <code>src/WebManager.h</code> / <code>src/WebManager.cpp</code> (recherche <code>_server.on(</code>) qui font foi.</p>
 
-</main></body></html>
+</main></div></body></html>
