@@ -41,6 +41,8 @@ Ce registre est vivant. Il est révisé lors de chaque évolution touchant le r�
 | SEC-025 | Clé privée de signature volée ou perdue | Poste du propriétaire | Faible | Critique | Hors dépôt et hors OneDrive, droits restreints, sauvegarde hors ligne ; plusieurs clés publiques acceptées pour la rotation et la révocation par firmware | clé créée le 13 oct. 2026 ; sauvegarde hors ligne faite par le propriétaire (confirmée le 14 oct. 2026) | Réduit |
 | SEC-027 | Écriture arbitraire de pages sur la SD par les routes de développement `/api/debug/*` (dépôt direct, catalogue), sous session | Module / API locale | Moyenne | Critique | Routes absentes du binaire de production (D020, `AQUALOOK_DEV_ROUTES=0` par défaut) ; ouvertes seulement dans `ProgrammeArrosage_s3_banc` ; `build.devRoutes` dans `/api/diagnostics` | 404 sur `/api/debug/*` avec le binaire de production, vérifié sur `.141` | réduit |
 | SEC-028 | Programme malveillant flashé par USB, ou flash copiée, par quelqu'un qui a le module en main | Module / accès physique (port USB) | Moyenne | Critique | Aucune mesure matérielle aujourd'hui (ni Secure Boot, ni chiffrement de la flash). Prévu : Secure Boot v2, chiffrement de la flash, téléchargement USB sécurisé (P1.6, décision avant mise en service). En attendant : Wi-Fi invité ou dédié isolé, prise USB inaccessible sans outil. Par le réseau, l'installation d'un programme exige le manifeste signé (D021) : SEC-004 | revue de code du 14 oct. 2026 (`OtaStageUpdate.cpp`, aucune route d'envoi direct de firmware) ; fiche §2.1 | Ouvert |
+| SEC-029 | Mot de passe Web du module deviné par essais répétés depuis plusieurs adresses IP du réseau local | Module / `/api/session/login` | Moyenne | Critique | Compteur d'échecs **par adresse IP** (5 essais libres, puis 30 s doublées jusqu'à 15 min, oubli après 1 h), défi à usage unique (un nouveau jeton ne remet rien à zéro), mot de passe de 12 caractères au moins. Faille : table de 8 adresses, la plus ancienne est effacée même bloquée, aucun plafond global → 5 essais libres par adresse en tournant sur 9 adresses ou plus. Prévu : P1.10 | revue de code du 15 oct. 2026 (`WebSession.cpp` `failureEntry`, `login`) ; fiche §2.2 | Ouvert |
+| SEC-030 | Mot de passe de la console d'administration deviné par essais répétés | Service en ligne / console (HTTP Basic) | Faible à moyenne | Critique | `password_verify` (bcrypt, lent), comparaison sans fuite de durée ; **aucun compteur d'échecs** (l'espace utilisateur en a un : 10 par adresse mail et 30 par IP sur 15 min, en base). Prévu : P1.11 | revue de code du 15 oct. 2026 (`console_page.php`) ; fiche §2.2 | Ouvert |
 
 ### 2.1 Fiche SEC-028 — accès physique au module
 
@@ -52,6 +54,17 @@ Ce registre est vivant. Il est révisé lors de chaque évolution touchant le r�
 - **Réponse et récupération** : reflasher par USB le binaire de production, changer le mot de passe Wi-Fi de la maison et le mot de passe Web, révoquer le jeton du module côté service en ligne et le réenrôler (SEC-017).
 - **Risque résiduel** : tant que les eFuses ne sont pas posés, entier pour qui a le module en main ; le réseau seul ne suffit pas (SEC-004).
 - **Révision** : à la décision de P1.6, au passage à ESP-IDF 5, à toute faille publiée sur le Secure Boot ou le chiffrement de flash de l'ESP32-S3.
+
+### 2.2 Fiche SEC-029 / SEC-030 — essais répétés de mot de passe
+
+- **Scénario et actifs** : un attaquant essaie des mots de passe en boucle. Module : il est sur le Wi-Fi de la maison et change d'adresse IP (facile sur un réseau local) pour échapper au compteur ; le mot de passe Web donne toute écriture sur le module (zones, câblage, mises à jour signées). Console : depuis Internet, le mot de passe de la console donne la vue de tous les modules et comptes.
+- **Préconditions** : module, accès au réseau local ; console, connaître l'adresse de la console (non indexée, mais le dépôt est public).
+- **Propriétaire du traitement** : agent (code), propriétaire (choix des mots de passe).
+- **Mesures préventives prévues** : P1.10 — ne jamais effacer une adresse encore bloquée, plafond global d'échecs toutes adresses confondues (l'attente s'applique alors à tous, le LCD reste utilisable). P1.11 — compteur d'échecs en base pour la console (par IP et global), même mécanisme que `login_attempt`.
+- **Détection** : module, lignes `[WEB-SESSION] mot de passe refuse depuis …` (journal RAM, série) ; console, aucune aujourd'hui (journaux d'accès de l'hébergeur).
+- **Réponse et récupération** : changer le mot de passe visé (éditeur du module, `ADMIN_PAGE_HASH` du `.env` serveur), relire les journaux, révoquer les sessions.
+- **Risque résiduel** : faible avec un mot de passe long et aléatoire ; réel avec un mot de passe court ou courant.
+- **Révision** : à la livraison de P1.10 et P1.11, à toute évolution de `WebSession` ou de `console_page.php`.
 | SEC-026 | Module annoncé sur le réseau local par mDNS (nom, service http) | Réseau local | Moyenne | Faible | Nom choisi par l'utilisateur ou générique, aucun secret annoncé ; écritures toujours sous session (D016) ; filtre d'hôte inchangé (.local déjà admis) | mDNS actif depuis 5.15.1 (13 oct. 2026) | Accepté |
 
 ## 3. Contrats exécutables
