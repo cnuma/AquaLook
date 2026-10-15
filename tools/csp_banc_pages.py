@@ -26,6 +26,7 @@ import argparse
 import http.server
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,39 @@ EDGE_CANDIDATS = [
 
 # Chemins "hybrides" servis par le module depuis la SD (SdStaticHandler).
 ALIAS = {"/setup": "setup.html", "/logs": "logs.html"}
+
+# Pages integrees au firmware (P3.13) : lues dans les sources a chaque
+# lancement, donc toujours celles du code courant. Servies sous /__fw/<nom>
+# pour ne pas se confondre avec les pages de la SD ; leurs scripts sous le
+# chemin reel (/fw-*.js) que le module sert.
+SRC = os.path.join(RACINE, "src")
+FW_PAGES = {
+    "/__fw/login": ("WebManager.cpp", "LOGIN_HTML"),
+    "/__fw/setup": ("WebManager.cpp", "CAPTIVE_HTML"),
+    "/__fw/secours": ("WebManager.cpp", "HOME_FALLBACK_HTML"),
+    "/__fw/ota": ("WebManager.h", "AquaLook - Mises a jour (secours)"),
+}
+FW_JS = {
+    "/fw-login.js": ("WebManager.cpp", "LOGIN_JS"),
+    "/fw-setup.js": ("WebManager.cpp", "SETUP_JS"),
+    "/fw-secours.js": ("WebManager.cpp", "HOME_FALLBACK_JS"),
+    "/fw-ota.js": ("WebManager.cpp", "OTA_FALLBACK_JS"),
+}
+
+
+def lire_firmware(fichier, cle):
+    """Contenu d'une chaine brute C++ R"delim(...)delim" : par le nom de la
+    constante, ou, a defaut, la premiere qui contient `cle` (page /ota
+    declaree localement sous le nom PAGE)."""
+    with open(os.path.join(SRC, fichier), encoding="utf-8") as f:
+        texte = f.read()
+    m = re.search(r"\b%s\[\] PROGMEM = R\"(\w*)\((.*?)\)\1\"" % re.escape(cle), texte, re.S)
+    if m:
+        return m.group(2)
+    for m in re.finditer(r"R\"(\w*)\((.*?)\)\1\"", texte, re.S):
+        if cle in m.group(2):
+            return m.group(2)
+    raise KeyError("%s : %s introuvable" % (fichier, cle))
 
 # Scenario : liste d'etapes jouees dans l'ordre par /__banc.js.
 #   ["attendre", ms]
@@ -205,6 +239,46 @@ SCENARIOS = {
                    ["texte", "#chans", "contient", "disponible : 5.17.2"]],
         "post": [],
     },
+    # Pages integrees au firmware (P3.13), lues dans src/ (voir FW_PAGES).
+    "fw-login": {
+        "page": "/__fw/login",
+        "simule": {"/api/session/state": {"configure": True, "active": False},
+                   "/api/session/challenge": {"configure": True, "nonce": "00112233445566778899aabbccddeeff"}},
+        "repond": {"/api/session/login": [401, {"error": "refus banc"}]},
+        "etapes": [["attendre", 1500],
+                   ["texte", "#m", "egal", "Non connecte."],
+                   ["saisir", "#p", "mot-de-passe-banc", "input"],
+                   ["clic", "#f button", 0],
+                   ["attendre", 1000],
+                   ["texte", "#m", "egal", "refus banc"]],
+        "post": [["POST", "/api/session/login"]],
+    },
+    "fw-setup": {
+        "page": "/__fw/setup",
+        "simule": {},
+        "etapes": [["attendre", 800],
+                   ["saisir", "#ssid", "reseau-banc", "input"],
+                   ["clic", "#save", 0],
+                   ["attendre", 800],
+                   ["texte", "#msg", "contient", "Enregistre"]],
+        "post": [["POST", "/api/wifi"]],
+    },
+    "fw-secours": {
+        "page": "/__fw/secours",
+        "simule": {"/api/diagnostics": {"build": {"version": "5.17.4", "number": "1", "gitSha": "abc1234"}}},
+        "etapes": [["attendre", 1500],
+                   ["texte", "#v", "egal", "Version 5.17.4 - build 1 (abc1234)"]],
+        "post": [],
+    },
+    "fw-ota": {
+        "page": "/__fw/ota",
+        "simule": {},
+        "etapes": [["attendre", 800],
+                   ["clic", "#b1", 0],
+                   ["attendre", 800],
+                   ["texte", "#msg", "contient", "Verification acceptee"]],
+        "post": [["POST", "/api/maintenance/check-version"]],
+    },
 }
 
 BANC_JS = r"""
@@ -297,6 +371,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.envoyer(200, TEMOIN.encode(), "text/html; charset=utf-8", csp=True)
         if chemin == "/__temoin.js":
             return self.envoyer(200, TEMOIN_JS.encode(), "application/javascript")
+        if chemin in FW_PAGES:
+            corps = lire_firmware(*FW_PAGES[chemin]).encode("utf-8")
+            corps = corps.replace(b"</body>", b'<script src="/__banc.js"></script></body>', 1)
+            return self.envoyer(200, corps, "text/html; charset=utf-8", csp=True)
+        if chemin in FW_JS:
+            return self.envoyer(200, lire_firmware(*FW_JS[chemin]).encode("utf-8"), "application/javascript")
         if chemin in sc.get("simule", {}):
             if sc["simule"][chemin] is None:
                 return self.envoyer(404, b"absent (banc)", "text/plain")
@@ -337,6 +417,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.envoyer(204, b"", "text/plain")
         # Ecriture de la page : enregistree, JAMAIS transmise au module.
         ETAT.ecritures.append((self.command, self.path))
+        # Reponse imposee par le scenario (ex. connexion refusee, pour que la
+        # page reste affichee et que son message se verifie).
+        rep = (ETAT.scen or {}).get("repond", {}).get(chemin)
+        if rep:
+            return self.envoyer(rep[0], json.dumps(rep[1]).encode(), "application/json")
         return self.envoyer(200, b'{"ok":true}', "application/json")
 
     do_PUT = do_POST
