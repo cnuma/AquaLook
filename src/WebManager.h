@@ -131,6 +131,10 @@ public:
                 doc["lastEpoch"] = incident.lastEpoch;
                 doc["pendingNotifications"] = incident.pendingNotifications;
                 doc["lastReason"] = incident.lastReason;
+                doc["lastSdError"] = incident.lastSdError;
+                if (incident.lastSdError != 0U) {
+                    doc["lastSdErrorText"] = StorageManager::sdErrorText(incident.lastSdError);
+                }
                 String body;
                 serializeJson(doc, body);
                 AsyncWebServerResponse* response =
@@ -186,6 +190,11 @@ public:
                 sdo["state"] = IncidentManager::stateCode(sd.state);
                 sdo["active"] = sd.state == IncidentState::ACTIVE;
                 sdo["lastReason"] = sd.lastReason;
+                sdo["occurrences"] = sd.occurrences;
+                sdo["lastSdError"] = sd.lastSdError;
+                if (sd.lastSdError != 0U) {
+                    sdo["lastSdErrorText"] = StorageManager::sdErrorText(sd.lastSdError);
+                }
 
                 const NotificationStatus ns = NotificationManager::status();
                 JsonObject no = doc["notifications"].to<JsonObject>();

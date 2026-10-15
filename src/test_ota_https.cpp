@@ -21,7 +21,7 @@ void FaultManager::begin() {
 
 void FaultManager::update() {}
 
-void FaultManager::setActive(FaultId id, bool active) {
+void FaultManager::setActive(FaultId id, bool active, bool) {
     const uint32_t mask = 1UL << static_cast<uint8_t>(id);
     if (active) {
         _activeMask |= mask;

@@ -63,6 +63,9 @@ public:
     void closeFile(FsFile& file);
     void reportReadError(const char* path);
     const char* cardTypeName() const;
+    // Texte d'un code d'erreur SdFat (liste de la bibliotheque), pour
+    // l'incident SD expose par l'API (P3.2).
+    static const char* sdErrorText(uint8_t code);
 
     // ── Ecriture (deploiement distant des ressources Web — voir ROADMAP.md,
     //    "Mise a jour distante des ressources Web") ──────────────────────
@@ -123,7 +126,8 @@ private:
     void resetCardMetadata();
     void markUnavailable(StorageStatus status,
                          const char* reason,
-                         const char* path);
+                         const char* path,
+                         uint8_t sdError = 0U);
     void scheduleRecovery(uint32_t nowMs);
     void scheduleSlowRecovery(uint32_t nowMs);
     void startRecoveryTask(uint32_t nowMs);

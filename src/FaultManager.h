@@ -60,7 +60,11 @@ public:
     static void begin();
     static void update();
 
-    static void setActive(FaultId id, bool active);
+    // raiseAlarm=false : le defaut devient actif (rappel LED, triangle fixe)
+    // sans lever l'alarme non acquittee -- pour un defaut qui se repare seul
+    // et dont le proprietaire decide lui-meme de l'escalade (incident SD
+    // isole, P3.2 : c'est IncidentManager qui alerte en cas de rafale).
+    static void setActive(FaultId id, bool active, bool raiseAlarm = true);
     // message : texte de la ligne de journal LOG_ERROR a l'origine de cet
     // appel, conserve tel quel (voir lastErrorMessage()) -- pour qu'un
     // defaut sans FaultId dedie (n'importe lequel des autres appels
