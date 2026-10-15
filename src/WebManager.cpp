@@ -36,7 +36,7 @@
 //  Formulaire SSID/PWD minimaliste, POST vers /api/wifi
 // ─────────────────────────────────────────────────────────────
 static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Mode de secours : saisissez manuellement le nom exact de votre reseau.</p><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" placeholder="Mot de passe"><button type="button" onclick="saveWifi()">Enregistrer et connecter</button><div id="msg"></div></main><script>const $=x=>document.getElementById(x);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value.trim(),m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}</script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Mode de secours : saisissez manuellement le nom exact de votre reseau.</p><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" placeholder="Mot de passe"><button type="button" id="save">Enregistrer et connecter</button><div id="msg"></div></main><script src="/fw-setup.js"></script></body></html>
 )rawhtml";
 
 // Page de connexion integree au firmware (D016 lot F). Elle ne depend pas de
@@ -44,7 +44,25 @@ static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
 // illisibles reste administrable. Le HMAC-SHA256 y est calcule en JS pur
 // (crypto.subtle n'existe pas en HTTP simple), verifie contre Python.
 static const char LOGIN_HTML[] PROGMEM = R"rawlogin(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Connexion</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:420px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{color:#bed0dc;font-size:14px;line-height:1.5}input,button{box-sizing:border-box;width:100%;padding:10px;margin-top:10px;border-radius:7px;font-size:15px}button{border:0;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}#m{margin-top:12px;min-height:19px;color:#ffd88b}a{display:block;margin-top:14px;color:#9fd8f5}</style></head><body><main><h1>AquaLook - Connexion</h1><p>Page integree au module : elle fonctionne meme si la carte SD est absente ou ancienne. Le mot de passe ne quitte pas ce navigateur.</p><form id="f"><input id="p" type="password" autocomplete="current-password" placeholder="Mot de passe Web"><button>Se connecter</button></form><div id="m"></div><a href="/index.html">Retour a AquaLook</a></main><script>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Connexion</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:420px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{color:#bed0dc;font-size:14px;line-height:1.5}input,button{box-sizing:border-box;width:100%;padding:10px;margin-top:10px;border-radius:7px;font-size:15px}button{border:0;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}#m{margin-top:12px;min-height:19px;color:#ffd88b}a{display:block;margin-top:14px;color:#9fd8f5}</style></head><body><main><h1>AquaLook - Connexion</h1><p>Page integree au module : elle fonctionne meme si la carte SD est absente ou ancienne. Le mot de passe ne quitte pas ce navigateur.</p><form id="f"><input id="p" type="password" autocomplete="current-password" placeholder="Mot de passe Web"><button>Se connecter</button></form><div id="m"></div><a href="/index.html">Retour a AquaLook</a></main><script src="/fw-login.js"></script></body></html>
+)rawlogin";
+
+// Accueil de secours servi a la place de /index.html quand la SD ne le fournit
+// pas. Sans lui, /login (et le lien "Retour" de /ota) menait sans SD a une
+// page "Not found" -- constate sur .141 le 11 oct. 2026 (phase 6, D016).
+static const char HOME_FALLBACK_HTML[] PROGMEM = R"rawhome(
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Secours</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{line-height:1.5;color:#bed0dc;font-size:14px}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b;border-radius:8px;padding:12px}a{display:block;margin-top:10px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-decoration:none}#v{font-size:12px;color:#8fa6b6}</style></head><body><main><h1>AquaLook</h1><p id="v">-</p><p class="warn">Interface de secours : la carte SD est absente ou illisible, l'interface complete n'est pas disponible. L'arrosage programme continue normalement.</p><a href="/ota">Mises a jour</a><a href="/setup">Configuration WiFi</a><a href="/logs">Journal</a><a href="/api/diagnostics">Diagnostic (JSON)</a></main><script src="/fw-secours.js"></script></body></html>
+)rawhome";
+
+// Scripts des pages integrees ci-dessus (P3.13) : servis comme fichiers
+// (/fw-*.js, voir setupRoutes) et non plus inline, pour que ces pages
+// tiennent sous la CSP stricte qu'elles recoivent (script-src 'self', sans
+// 'unsafe-inline') -- meme regle que les pages de la SD et du service en
+// ligne. Le contenu est celui des anciens blocs inline, inchange ; seuls les
+// onclick sont devenus des addEventListener.
+static const char SETUP_JS[] PROGMEM = R"rawjs(const $=x=>document.getElementById(x);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value.trim(),m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}$('save').addEventListener('click',saveWifi);)rawjs";
+
+static const char LOGIN_JS[] PROGMEM = R"rawjs(
 const K=[],I=[];(()=>{let n=2,c=0;const fr=x=>(x-Math.floor(x))*4294967296|0;while(c<64){let p=1;for(let d=2;d*d<=n;d++)if(n%d==0){p=0;break}if(p){if(c<8)I[c]=fr(Math.pow(n,.5));K[c++]=fr(Math.pow(n,1/3))}n++}})();
 function sha(b){const l=b.length,L=((l+9+63)>>6)<<6,m=new Uint8Array(L),w=new Int32Array(64),H=I.slice();m.set(b);m[l]=128;const n=l*8;m[L-1]=n&255;m[L-2]=n>>>8&255;m[L-3]=n>>>16&255;m[L-4]=n>>>24&255;
 for(let o=0;o<L;o+=64){for(let i=0;i<16;i++)w[i]=m[o+4*i]<<24|m[o+4*i+1]<<16|m[o+4*i+2]<<8|m[o+4*i+3];
@@ -58,15 +76,24 @@ const M=t=>{document.getElementById('m').textContent=t};
 async function st(){try{const s=await(await fetch('/api/session/state')).json();M(!s.configure?'Aucun mot de passe pose : module ouvert.':s.active?'Session ouverte.':'Non connecte.')}catch(e){M('Module injoignable.')}}
 document.getElementById('f').onsubmit=async ev=>{ev.preventDefault();try{const c=await(await fetch('/api/session/challenge')).json();if(!c.configure){M('Aucun mot de passe pose : module ouvert.');return}const r=await fetch('/api/session/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:c.nonce,sig:hm(document.getElementById('p').value,'session|'+c.nonce)})});const j=await r.json();if(r.ok){location.href='/index.html';return}M((j.error||'refus')+(j.retryInSec?' (nouvel essai dans '+j.retryInSec+' s)':''))}catch(e){M('Module injoignable.')}};
 st();
-</script></body></html>
-)rawlogin";
+)rawjs";
 
-// Accueil de secours servi a la place de /index.html quand la SD ne le fournit
-// pas. Sans lui, /login (et le lien "Retour" de /ota) menait sans SD a une
-// page "Not found" -- constate sur .141 le 11 oct. 2026 (phase 6, D016).
-static const char HOME_FALLBACK_HTML[] PROGMEM = R"rawhome(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Secours</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{line-height:1.5;color:#bed0dc;font-size:14px}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b;border-radius:8px;padding:12px}a{display:block;margin-top:10px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-decoration:none}#v{font-size:12px;color:#8fa6b6}</style></head><body><main><h1>AquaLook</h1><p id="v">-</p><p class="warn">Interface de secours : la carte SD est absente ou illisible, l'interface complete n'est pas disponible. L'arrosage programme continue normalement.</p><a href="/ota">Mises a jour</a><a href="/setup">Configuration WiFi</a><a href="/logs">Journal</a><a href="/api/diagnostics">Diagnostic (JSON)</a></main><script>fetch('/api/diagnostics').then(r=>r.json()).then(d=>{const b=d.build;document.getElementById('v').textContent='Version '+b.version+' - build '+b.number+' ('+b.gitSha+')'}).catch(()=>{})</script></body></html>
-)rawhome";
+static const char HOME_FALLBACK_JS[] PROGMEM = R"rawjs(fetch('/api/diagnostics').then(r=>r.json()).then(d=>{const b=d.build;document.getElementById('v').textContent='Version '+b.version+' - build '+b.number+' ('+b.gitSha+')'}).catch(()=>{}))rawjs";
+
+static const char OTA_FALLBACK_JS[] PROGMEM = R"rawjs(
+function go(url,label){
+  if(!confirm(label+' : le module va redemarrer en mode maintenance. Continuer ?'))return;
+  for(const id of ['b1','b2','b3','b4'])document.getElementById(id).disabled=true;
+  const m=document.getElementById('msg');
+  m.textContent=label+' demandee, le module redemarre...';
+  fetch(url,{method:'POST'}).then(r=>r.text()).then(t=>{
+    m.textContent=label+' acceptee. Rechargez cette page dans une minute. Reponse : '+t.slice(0,200);
+  }).catch(()=>{
+    m.textContent=label+' envoyee. Le module a coupe la connexion, ce qui est normal : il redemarre. Rechargez dans une minute.';
+  });
+}
+for(const id of ['b1','b2','b3','b4']){const b=document.getElementById(id);b.addEventListener('click',()=>go(b.dataset.url,b.dataset.label))}
+)rawjs";
 
 // ───── Diffusion des pages HTML embarquees ──────────────────────────────
 //
@@ -113,6 +140,30 @@ uint8_t  g_pageInflight        = 0U;
 uint32_t g_pageInflightSinceMs = 0U;
 uint32_t g_pageRejectCount     = 0U;
 uint32_t g_pageRejectLogAtMs   = 0U;
+
+// CSP des pages integrees au firmware (P3.13) : la meme que celle du service
+// en ligne (.htaccess) et du banc des pages de la SD (csp_banc_pages.py).
+// Aucune n'a plus de script inline ; les <style> le restent, d'ou
+// style-src 'unsafe-inline'.
+constexpr const char* EMBEDDED_PAGE_CSP =
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
+    "form-action 'self'; frame-ancestors 'none'; object-src 'none'";
+
+// Scripts des pages integrees (/fw-*.js). Hors du compteur de pages en vol :
+// le navigateur les demande pendant que la connexion de la page n'est pas
+// encore refermee, un 503 laisserait la page sans script. Ils tiennent en un
+// seul bloc TCP (2,5 Ko au plus), loin du defaut de troncature qui motive ce
+// compteur (pages de 12 Ko, voir plus haut). Lus depuis la flash, sans copie
+// dans le tas (meme surcharge que sendEmbeddedPage).
+void sendEmbeddedScript(AsyncWebServerRequest* req, const char* js, size_t length) {
+    AsyncWebServerResponse* response = req->beginResponse(
+        200, "application/javascript; charset=utf-8",
+        reinterpret_cast<const uint8_t*>(js), length);
+    response->addHeader("Cache-Control", "no-cache");
+    response->addHeader("X-Content-Type-Options", "nosniff");
+    req->send(response);
+}
 
 }  // namespace
 
@@ -208,6 +259,7 @@ void WebManager::sendEmbeddedPage(AsyncWebServerRequest* req,
     // Ni cadre (piege au clic depuis un autre site), ni devinette de type.
     response->addHeader("X-Frame-Options", "DENY");
     response->addHeader("X-Content-Type-Options", "nosniff");
+    response->addHeader("Content-Security-Policy", EMBEDDED_PAGE_CSP);
     if (extraHeaderName != nullptr && extraHeaderValue != nullptr) {
         response->addHeader(extraHeaderName, extraHeaderValue);
     }
@@ -566,7 +618,25 @@ void WebManager::setupRoutes() {
 
     // Page portail captif — accessible même sans LittleFS
     _server.on("/setup", HTTP_GET, [](AsyncWebServerRequest* req) {
-        req->send(200, "text/html", CAPTIVE_HTML);
+        // Meme envoi que les autres pages integrees : depuis la flash, avec
+        // la CSP (P3.13) ; l'ancien send(const char*) recopiait la page dans
+        // le tas.
+        sendEmbeddedPage(req, CAPTIVE_HTML, sizeof(CAPTIVE_HTML) - 1U);
+    });
+    // Scripts des pages integrees (P3.13). Enregistres avant onNotFound : en
+    // mode portail captif, toute URL inconnue est redirigee vers /setup, et
+    // /fw-setup.js doit rester servi.
+    _server.on("/fw-setup.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedScript(req, SETUP_JS, sizeof(SETUP_JS) - 1U);
+    });
+    _server.on("/fw-login.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedScript(req, LOGIN_JS, sizeof(LOGIN_JS) - 1U);
+    });
+    _server.on("/fw-secours.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedScript(req, HOME_FALLBACK_JS, sizeof(HOME_FALLBACK_JS) - 1U);
+    });
+    _server.on("/fw-ota.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedScript(req, OTA_FALLBACK_JS, sizeof(OTA_FALLBACK_JS) - 1U);
     });
     // Redirect captif — répond à toute URL inconnue en mode AP
     _server.onNotFound([this](AsyncWebServerRequest* req) {
