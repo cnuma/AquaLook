@@ -5,13 +5,11 @@
 #include "IncidentManager.h"
 #include <cstring>
 
-namespace {
-
 // Traduit le code d'erreur brut de SdFat (sdErrorCode()) en texte -- reutilise
 // la meme liste que la bibliotheque (SD_ERROR_CODE_LIST, SdCardInfo.h) pour
 // ne jamais diverger d'elle. "code=0x1E" seul ne dit rien sans le header
 // sous les yeux ; "Read data timeout" se comprend seul.
-const char* sdErrorText(uint8_t code) {
+const char* StorageManager::sdErrorText(uint8_t code) {
     switch (code) {
 #define SD_CARD_ERROR(e, m) case SD_CARD_ERROR_##e: return m;
         SD_ERROR_CODE_LIST
@@ -20,11 +18,14 @@ const char* sdErrorText(uint8_t code) {
     }
 }
 
+namespace {
+
 constexpr uint32_t SD_HEALTH_CHECK_INTERVAL_MS = 2000U;
-// Trois confirmations, chacune deja doublee par une seconde lecture : il
-// faut donc six lectures ratees d'affilee sur ~6 s pour demonter. Une
-// carte reellement retiree echoue a chaque fois et sera vue en 6 s ; un
-// alea sous charge, lui, ne franchit plus ce seuil.
+// Trois lectures ratees d'affilee, une par controle (toutes les 2 s) : la
+// carte est declaree indisponible ~4 s apres la premiere erreur. (Un ancien
+// commentaire parlait d'une seconde lecture par controle : elle n'a jamais
+// existe, verifie le 15 oct. 2026 depuis 00ea342.) Une carte reellement
+// retiree echoue a chaque fois ; un alea isole ne franchit pas ce seuil.
 constexpr uint8_t SD_HEALTH_FAILURE_CONFIRMATIONS = 3U;
 constexpr uint8_t SD_RECOVERY_MAX_ATTEMPTS = 5U;
 constexpr uint32_t SD_SLOW_RECOVERY_INTERVAL_MS = 10UL * 60UL * 1000UL;
@@ -104,7 +105,9 @@ void StorageManager::begin() {
         return;
     }
 
-    FaultManager::setActive(FaultId::STORAGE_SD, true);
+    // Sans alarme : si la carte ne revient pas, l'escalade apres les essais
+    // de remontage la leve (IncidentManager, P3.2).
+    FaultManager::setActive(FaultId::STORAGE_SD, true, false);
     IncidentManager::activateStorageSd(_lastMountFailureReason);
 
     EventLog::log(
@@ -250,7 +253,8 @@ void StorageManager::update() {
     markUnavailable(
         StorageStatus::READ_ERROR,
         "health_check_failed",
-        "/www/index.html"
+        "/www/index.html",
+        sdError
     );
 }
 
@@ -727,7 +731,8 @@ void StorageManager::resetCardMetadata() {
 
 void StorageManager::markUnavailable(StorageStatus status,
                                      const char* reason,
-                                     const char* path) {
+                                     const char* path,
+                                     uint8_t sdError) {
     if (_recoveryState != StorageRecoveryState::IDLE) return;
 
     _status = status;
@@ -738,11 +743,17 @@ void StorageManager::markUnavailable(StorageStatus status,
     _slowRecoveryCount = 0;
     _lastMountFailureReason = reason ? reason : "unknown";
 
-    FaultManager::setActive(FaultId::STORAGE_SD, true);
-    IncidentManager::activateStorageSd(_lastMountFailureReason);
+    // P3.2 : un episode isole, repare seul en quelques secondes, ne doit pas
+    // laisser le module en alarme non acquittee (LED rouge, triangle
+    // clignotant) -- decision du 28 sept. 2026 que ce LOG_ERROR et ce
+    // setActive contournaient. Le defaut reste visible tant que la carte
+    // manque ; l'alarme vient d'IncidentManager en cas de rafale ou
+    // d'echec des remontages.
+    FaultManager::setActive(FaultId::STORAGE_SD, true, false);
+    IncidentManager::activateStorageSd(_lastMountFailureReason, sdError);
 
     EventLog::log(
-        LOG_ERROR,
+        LOG_WARN,
         "Stockage: SD indisponible raison=%s chemin=%s",
         _lastMountFailureReason,
         path ? path : "inconnu"

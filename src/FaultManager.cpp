@@ -102,13 +102,13 @@ void FaultManager::update() {
     }
 }
 
-void FaultManager::setActive(FaultId id, bool active) {
+void FaultManager::setActive(FaultId id, bool active, bool raiseAlarm) {
     const uint32_t bit = 1UL << static_cast<uint8_t>(id);
     const bool wasActive = (_activeMask & bit) != 0;
 
     if (active) {
         _activeMask |= bit;
-        if (!wasActive) _unacknowledged = true;
+        if (!wasActive && raiseAlarm) _unacknowledged = true;
     } else {
         _activeMask &= ~bit;
     }

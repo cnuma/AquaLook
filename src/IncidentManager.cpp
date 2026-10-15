@@ -56,7 +56,9 @@ struct StoredIncidentRecord {
     uint8_t schema;
     uint8_t state;
     uint8_t pendingNotifications;
-    uint8_t reserved;
+    // Ex-octet reserve, toujours ecrit a 0 avant P3.2 : un enregistrement
+    // ancien se lit donc "pas de code", sans changer ni taille ni schema.
+    uint8_t lastSdError;
     uint32_t occurrences;
     uint32_t firstEpoch;
     uint32_t lastEpoch;
@@ -106,7 +108,7 @@ void IncidentManager::begin() {
     }
 }
 
-void IncidentManager::activateStorageSd(const char* reason) {
+void IncidentManager::activateStorageSd(const char* reason, uint8_t sdError) {
     begin();
 
     const bool newOccurrence =
@@ -130,15 +132,23 @@ void IncidentManager::activateStorageSd(const char* reason) {
 
     g_storageSd.state = IncidentState::ACTIVE;
     if (nowEpoch != 0U) g_storageSd.lastEpoch = nowEpoch;
+    if (newOccurrence) g_storageSd.lastSdError = sdError;
     copyReason(g_storageSd.lastReason, sizeof(g_storageSd.lastReason), reason);
 
     save();
 
+    // Seule une rafale leve l'alarme non acquittee (LOG_ERROR ->
+    // FaultManager::notifyError : LED rouge, triangle clignotant). Un
+    // episode isole reste un avertissement : StorageManager active le
+    // defaut sans alarme, il disparait avec la reprise (P3.2).
     EventLog::log(
-        LOG_WARN,
-        "Incident SD: actif occurrences=%lu raison=%s",
+        g_sdEscalatedThisEpisode ? LOG_ERROR : LOG_WARN,
+        g_sdEscalatedThisEpisode
+            ? "Incident SD: rafale occurrences=%lu raison=%s code=0x%02X"
+            : "Incident SD: actif occurrences=%lu raison=%s code=0x%02X",
         static_cast<unsigned long>(g_storageSd.occurrences),
-        g_storageSd.lastReason
+        g_storageSd.lastReason,
+        static_cast<unsigned>(g_storageSd.lastSdError)
     );
 }
 
@@ -288,6 +298,7 @@ void IncidentManager::load() {
     g_storageSd.firstEpoch = stored.firstEpoch;
     g_storageSd.lastEpoch = stored.lastEpoch;
     g_storageSd.pendingNotifications = stored.pendingNotifications;
+    g_storageSd.lastSdError = stored.lastSdError;
     copyReason(
         g_storageSd.lastReason,
         sizeof(g_storageSd.lastReason),
@@ -300,6 +311,7 @@ void IncidentManager::save() {
     stored.schema = INCIDENT_SCHEMA;
     stored.state = static_cast<uint8_t>(g_storageSd.state);
     stored.pendingNotifications = g_storageSd.pendingNotifications;
+    stored.lastSdError = g_storageSd.lastSdError;
     stored.occurrences = g_storageSd.occurrences;
     stored.firstEpoch = g_storageSd.firstEpoch;
     stored.lastEpoch = g_storageSd.lastEpoch;

@@ -21,6 +21,10 @@ struct PersistentIncidentSnapshot {
     uint32_t firstEpoch = 0;
     uint32_t lastEpoch = 0;
     uint8_t pendingNotifications = 0;
+    // Code d'erreur SdFat (sdErrorCode) de la derniere occurrence, 0 si la
+    // carte n'en a pas donne : survit au redemarrage, contrairement au
+    // journal (P3.2). Conserve apres la reprise.
+    uint8_t lastSdError = 0;
     char lastReason[32] = "";
 };
 
@@ -28,7 +32,7 @@ class IncidentManager {
 public:
     static void begin();
 
-    static void activateStorageSd(const char* reason);
+    static void activateStorageSd(const char* reason, uint8_t sdError = 0U);
     static void escalateStorageSdRecoveryFailure();
     static void recoverStorageSd(const char* reason);
     static void acknowledgeStorageSd();
