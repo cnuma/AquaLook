@@ -19,6 +19,7 @@
 #include "FaultManager.h"
 #include "BootLoopGuard.h"
 #include "IncidentManager.h"
+#include "HealthOverall.h"
 #include "NotificationManager.h"
 #include "SdStaticHandler.h"
 #include "EquipmentOutputRuntimeAdapter.h"
@@ -165,9 +166,7 @@ public:
         _server.on("/api/health", HTTP_GET,
             [](AsyncWebServerRequest* req) {
                 JsonDocument doc;
-                doc["overall"] = BootLoopGuard::isDegraded() ? "degrade"
-                                : BootLoopGuard::isOnProbation() ? "essai"
-                                : "normal";
+                doc["overall"] = healthOverallCode(healthOverall());
 
                 JsonObject bl = doc["bootLoop"].to<JsonObject>();
                 bl["degraded"] = BootLoopGuard::isDegraded();
