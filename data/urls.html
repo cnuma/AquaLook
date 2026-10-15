@@ -2,37 +2,42 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>AquaLook - URLs</title>
+<link rel="stylesheet" href="/style-base.css">
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}
-body{margin:0;background:#0a0a0a;color:#ddd;font-family:sans-serif}
-header{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.8rem 1rem;background:#151515;position:sticky;top:0;z-index:2}
-header h1{font-size:1.05rem;margin:0}
-header a{margin-left:auto;color:#4fc3f7;text-decoration:none}
-main{padding:1rem;display:grid;gap:1rem;max-width:900px;margin:0 auto}
-.card{background:#151515;border:1px solid #333;border-radius:8px;padding:1rem}
-.card h2{margin:.1rem 0 .8rem;font-size:1rem;color:#4fc3f7}
-.card p.help{margin:0 0 .8rem;font-size:.8rem;color:#8fa3ad;line-height:1.4}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #262626;vertical-align:top}
-th{color:#8fa3ad;font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
-td.path{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;color:#81c784;white-space:nowrap}
+/* Meme bandeau, memes boutons de navigation que Sante et Journal
+   (regle d'ergonomie du 12 oct. 2026 : navigation en haut, toujours visible). */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
+.wrap{max-width:1100px;margin:0 auto}
+nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin:-16px -16px 12px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border2)}
+nav.top h1{margin:0 auto 0 0;font-size:21px;color:var(--text)}
+a.back{display:inline-block;padding:9px 14px;border:1px solid var(--border2);
+  border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+main{display:grid;gap:12px}
+.card{display:block;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px}
+.card summary{font-size:12px;color:var(--text2);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;padding:2px 0}
+.card[open] summary{margin-bottom:8px}
+.card p.help{margin:0 0 8px;font-size:12px;color:var(--muted);line-height:1.4}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border2);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+td.path{font-family:var(--mono);color:var(--green);white-space:nowrap}
 td.path a{color:inherit;text-decoration:none}
 td.path a:hover{text-decoration:underline}
-td.method{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.75rem;font-weight:700;white-space:nowrap}
-td.method.get{color:#4fc3f7}
-td.method.post{color:#ffb300}
-td.desc{color:#ccc}
-.note{font-size:.78rem;color:#8fa3ad;line-height:1.4}
-</style></head><body>
-<header>
-<h1>🔗 URLs disponibles</h1>
-<a href="/sante.html">Santé</a>
-<a href="/index.html">Retour</a>
-</header>
+td.method{font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
+td.method.get{color:var(--blue)}
+td.method.post{color:var(--amber)}
+td.desc{color:var(--text)}
+.note{font-size:12px;color:var(--muted);line-height:1.4}
+</style></head><body><div class="wrap">
+<nav class="top"><h1>URLs disponibles</h1>
+<a class="back" href="/index.html">&#8249; Retour a AquaLook</a>
+<a class="back" href="/sante.html">Sante du module</a></nav>
 <main>
 
-<section class="card">
-<h2>Pages</h2>
+<details class="card">
+<summary>Pages</summary>
 <table>
 <tr><th>URL</th><th>Description</th></tr>
 <tr><td class="path"><a href="/index.html">/index.html</a></td><td class="desc">Page principale — zones, planning semaine, météo, tiroir de réglages.</td></tr>
@@ -42,21 +47,25 @@ td.desc{color:#ccc}
 <tr><td class="path"><a href="/setup">/setup</a></td><td class="desc">Portail captif de secours (choix SSID/mot de passe) — servi même sans carte SD.</td></tr>
 <tr><td class="path"><a href="/logs">/logs</a></td><td class="desc">Journal technique, acquittement des alarmes et de l'incident carte SD.</td></tr>
 <tr><td class="path"><a href="/ota">/ota</a></td><td class="desc">Mise à jour firmware (OTA) — vérifier, télécharger, installer une nouvelle version.</td></tr>
+<tr><td class="path"><a href="/ota.html">/ota.html</a></td><td class="desc">Mises à jour du programme et des pages Web — état, vérification, installation (page complète, sur la carte SD ; /ota est la page de secours intégrée au programme).</td></tr>
+<tr><td class="path"><a href="/diagnostic.html">/diagnostic.html</a></td><td class="desc">Diagnostic système — mémoire, boucle, serveur Web, WiFi, rafraîchi en continu (bouton Pause).</td></tr>
+<tr><td class="path"><a href="/login">/login</a></td><td class="desc">Connexion à l'interface (mot de passe Web du module) — page intégrée au programme.</td></tr>
+<tr><td class="path"><a href="/logs.html">/logs.html</a></td><td class="desc">Même page que /logs.</td></tr>
 <tr><td class="path"><a href="/urls.html">/urls.html</a></td><td class="desc">Cette page.</td></tr>
 </table>
-</section>
+</details>
 
-<section class="card">
-<h2>Espace cloud</h2>
+<details class="card">
+<summary>Espace cloud</summary>
 <p class="help">Hébergé à part, sur un service cloud externe — pas servi par ce module. Miroir en lecture des créneaux programmés, alimenté par la synchronisation cloud (CloudSync, /api/cloudSync ci-dessous). L'adresse exacte se règle dans le tiroir de réglages.</p>
 <table>
 <tr><th>URL</th><th>Description</th></tr>
 <tr><td class="path"><a href="/cloudsync.html">/cloudsync.html</a></td><td class="desc">État de la synchro sur ce module, avec un lien « Ouvrir l&rsquo;espace de synchro cloud » vers le planning de la semaine par zone (appliqué / en attente / refusé), l'historique des modifications envoyées et les sauvegardes de l'installation.</td></tr>
 </table>
-</section>
+</details>
 
-<section class="card">
-<h2>API — lecture (GET)</h2>
+<details class="card">
+<summary>API — lecture (GET)</summary>
 <table>
 <tr><th>URL</th><th>Description</th></tr>
 <tr><td class="path"><a href="/api/status">/api/status</a></td><td class="desc">État complet pour la page principale (zones, planning, météo, WiFi, heure...). Interrogé toutes les 8s.</td></tr>
@@ -71,11 +80,20 @@ td.desc{color:#ccc}
 <tr><td class="path"><a href="/api/wifi/scan">/api/wifi/scan</a></td><td class="desc">Résultat du scan réseau WiFi (portail captif uniquement).</td></tr>
 <tr><td class="path"><a href="/api/logs.txt">/api/logs.txt</a></td><td class="desc">Journal technique brut, au format texte.</td></tr>
 <tr><td class="path">/api/logs</td><td class="desc">Redirige vers /api/logs.txt (ancien lien).</td></tr>
+<tr><td class="path"><a href="/api/health">/api/health</a></td><td class="desc">Synthèse de santé (normal / attention / essai / dégradé), lue par la page Santé.</td></tr>
+<tr><td class="path"><a href="/api/zonesConfig">/api/zonesConfig</a></td><td class="desc">Configuration des zones (noms, modes, créneaux) — séparée de /api/status pour l'alléger.</td></tr>
+<tr><td class="path"><a href="/api/forecast">/api/forecast</a></td><td class="desc">Prévisions météo détaillées (chargées à part de /api/status).</td></tr>
+<tr><td class="path"><a href="/api/storage">/api/storage</a></td><td class="desc">État de la carte SD et des pages Web qu'elle porte.</td></tr>
+<tr><td class="path"><a href="/api/logConfig">/api/logConfig</a></td><td class="desc">Réglages du journal technique.</td></tr>
+<tr><td class="path"><a href="/api/log-messages">/api/log-messages</a></td><td class="desc">Catalogue des codes du journal (explication de chaque code entre crochets).</td></tr>
+<tr><td class="path"><a href="/api/io">/api/io</a></td><td class="desc">Entrées et sorties tout ou rien : configuration et état.</td></tr>
+<tr><td class="path"><a href="/api/relay/topology">/api/relay/topology</a></td><td class="desc">Câblage des relais (cartes, ports, voies) tel qu'il est appliqué.</td></tr>
+<tr><td class="path">/api/relay/input</td><td class="desc">Lecture d'une entrée tout ou rien par son identifiant (vérifier un câblage).</td></tr>
 </table>
-</section>
+</details>
 
-<section class="card">
-<h2>API — écriture (POST)</h2>
+<details class="card">
+<summary>API — écriture (POST)</summary>
 <p class="help">Non cliquables (nécessitent un corps JSON) — listées pour référence.</p>
 <table>
 <tr><th>URL</th><th>Description</th></tr>
@@ -108,11 +126,84 @@ td.desc{color:#ccc}
 <tr><td class="path">/api/maintenance/download-update-test</td><td class="desc">OTA : télécharge et vérifie le SHA256 du firmware.</td></tr>
 <tr><td class="path">/api/maintenance/stage-update-test</td><td class="desc">OTA : prépare la partition de mise à jour.</td></tr>
 <tr><td class="path">/api/maintenance/install-update</td><td class="desc">OTA : installe la mise à jour préparée et redémarre.</td></tr>
+<tr><td class="path">/api/io/config</td><td class="desc">Configuration des entrées et sorties tout ou rien.</td></tr>
+<tr><td class="path">/api/io/output</td><td class="desc">Commande manuelle d'une sortie tout ou rien.</td></tr>
+<tr><td class="path">/api/relay/topology/persist</td><td class="desc">Enregistre le câblage des relais.</td></tr>
+<tr><td class="path">/api/relay/topology/reset</td><td class="desc">Revient au câblage par défaut.</td></tr>
+<tr><td class="path">/api/zoneIdentify</td><td class="desc">Fait clignoter une zone pour la repérer.</td></tr>
+<tr><td class="path">/api/logConfig</td><td class="desc">Réglages du journal technique.</td></tr>
+<tr><td class="path">/api/updateCheck</td><td class="desc">Réglage de la vérification automatique des mises à jour.</td></tr>
+<tr><td class="path">/api/webAssetsUrl</td><td class="desc">Adresse du catalogue des pages Web.</td></tr>
+<tr><td class="path">/api/webassets/update</td><td class="desc">Lance la mise à jour des pages Web (redémarrage en mode maintenance).</td></tr>
+<tr><td class="path">/api/cloudSync</td><td class="desc">Réglages de la synchronisation cloud.</td></tr>
+<tr><td class="path">/api/cloudSyncNow</td><td class="desc">Demande une synchronisation cloud tout de suite.</td></tr>
+<tr><td class="path">/api/notifications/config</td><td class="desc">Configuration des notifications ntfy (serveur, sujet, activation).</td></tr>
+<tr><td class="path">/api/bootguard/clear</td><td class="desc">Sort du mode dégradé après une boucle de redémarrages.</td></tr>
+<tr><td class="path">/api/auth-secret</td><td class="desc">Change le mot de passe Web du module (envoi chiffré).</td></tr>
+<tr><td class="path">/api/restart</td><td class="desc">Redémarre le module.</td></tr>
 </table>
-</section>
+</details>
 
-<section class="card">
-<h2>Détection de portail captif</h2>
+<details class="card">
+<summary>Session et connexion</summary>
+<p class="help">Toute écriture exige une session ouverte par défi-réponse sur /login.</p>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path"><a href="/api/auth/state">/api/auth/state</a></td><td class="desc">GET — l'interface est-elle protégée par un mot de passe (sans rien révéler).</td></tr>
+<tr><td class="path"><a href="/api/session/state">/api/session/state</a></td><td class="desc">GET — une session est-elle ouverte pour ce navigateur.</td></tr>
+<tr><td class="path">/api/session/challenge</td><td class="desc">GET — défi à usage unique pour la connexion.</td></tr>
+<tr><td class="path">/api/session/login</td><td class="desc">POST — réponse au défi : ouvre la session.</td></tr>
+<tr><td class="path">/api/session/logout</td><td class="desc">POST — ferme la session.</td></tr>
+</table>
+</details>
+
+<details class="card">
+<summary>Scripts</summary>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path"><a href="/api/scripts">/api/scripts</a></td><td class="desc">GET — liste des scripts.</td></tr>
+<tr><td class="path">/api/script-one?i=N</td><td class="desc">GET — un script (programme compilé et réglages).</td></tr>
+<tr><td class="path">/api/script-source?i=N</td><td class="desc">GET — texte source d'un script, tel que l'utilisateur l'a écrit.</td></tr>
+<tr><td class="path"><a href="/api/script-messages">/api/script-messages</a></td><td class="desc">GET — bibliothèque de phrases ; POST (signé) pour l'enregistrer.</td></tr>
+<tr><td class="path"><a href="/api/script-globals">/api/script-globals</a></td><td class="desc">GET — variables globales g1 à g16 ; POST (signé) pour les enregistrer.</td></tr>
+<tr><td class="path">/api/script-save</td><td class="desc">POST — enregistre un script.</td></tr>
+<tr><td class="path">/api/script-erase</td><td class="desc">POST — efface un script.</td></tr>
+<tr><td class="path">/api/script-run</td><td class="desc">POST — lance un script.</td></tr>
+</table>
+</details>
+
+<details class="card">
+<summary>Fichiers intégrés au programme</summary>
+<p class="help">Scripts des pages intégrées (connexion, portail, secours, OTA) — servis même sans carte SD.</p>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path">/fw-login.js</td><td class="desc">Script de la page /login.</td></tr>
+<tr><td class="path">/fw-setup.js</td><td class="desc">Script du portail captif /setup.</td></tr>
+<tr><td class="path">/fw-secours.js</td><td class="desc">Script de la page de secours sans SD.</td></tr>
+<tr><td class="path">/fw-ota.js</td><td class="desc">Script de la page /ota intégrée.</td></tr>
+</table>
+</details>
+
+<details class="card">
+<summary>Développement (binaire de banc seulement)</summary>
+<p class="help">Absentes du programme de production (réponse 404) ; présentes seulement dans le binaire de banc <code>ProgrammeArrosage_s3_banc</code>.</p>
+<table>
+<tr><th>URL</th><th>Description</th></tr>
+<tr><td class="path">/api/debug/deploy-begin</td><td class="desc">POST — ouvre un dépôt direct de pages sur la SD.</td></tr>
+<tr><td class="path">/api/debug/deploy-file</td><td class="desc">POST — dépose un fichier du dépôt en cours.</td></tr>
+<tr><td class="path">/api/debug/deploy-commit</td><td class="desc">POST — bascule sur les pages déposées.</td></tr>
+<tr><td class="path">/api/debug/log-messages</td><td class="desc">POST — dépose le catalogue des codes du journal.</td></tr>
+<tr><td class="path">/api/debug/verify-web-asset</td><td class="desc">POST — essai de téléchargement d'une page Web ; /status pour le résultat.</td></tr>
+<tr><td class="path">/api/debug/heap-info</td><td class="desc">GET — détail de la mémoire.</td></tr>
+<tr><td class="path">/api/debug/nvs-stats</td><td class="desc">GET — occupation de la NVS.</td></tr>
+<tr><td class="path">/api/debug/sd-selftest</td><td class="desc">POST — autotest de la carte SD.</td></tr>
+<tr><td class="path">/api/debug/script-selftest</td><td class="desc">GET — autotest de la machine à scripts (aucune vanne touchée).</td></tr>
+<tr><td class="path">/api/debug/script-dryrun</td><td class="desc">GET — essai à blanc d'un script contre le module réel, en lecture seule.</td></tr>
+</table>
+</details>
+
+<details class="card">
+<summary>Détection de portail captif</summary>
 <p class="help">Utilisées automatiquement par iOS/Android/Windows pour détecter le portail WiFi et ouvrir le navigateur captif — pas d'usage manuel.</p>
 <table>
 <tr><th>URL</th><th>Système</th></tr>
@@ -126,8 +217,8 @@ td.desc{color:#ccc}
 <tr><td class="path">/canonical.html</td><td class="desc">Générique</td></tr>
 <tr><td class="path">/chat</td><td class="desc">Générique</td></tr>
 </table>
-</section>
+</details>
 
-<p class="note">Page de référence maintenue à la main — si une route a été ajoutée ou retirée dans le firmware sans mise à jour ici, se fier à <code>src/WebManager.h</code> / <code>src/WebManager.cpp</code> (recherche <code>_server.on(</code>) qui font foi.</p>
+<p class="note">Page de référence maintenue à la main — si une route a été ajoutée ou retirée dans le firmware sans mise à jour ici, se fier à <code>src/WebManager.h</code> / <code>src/WebManager.cpp</code> (recherche <code>_server.on(</code> et <code>POST_JSON(</code>) qui font foi.</p>
 
-</main></body></html>
+</main></div></body></html>
