@@ -32,6 +32,34 @@ def git_value(args, fallback):
         return fallback
 
 
+# Chemins qui entrent dans le binaire (P3.9). Sans ce controle, un binaire
+# compile avec du code non commite portait le build et le SHA du commit de
+# base, identiques a ceux du binaire propre : seule l'empreinte ELF les
+# distinguait (constate deux fois sur .141 le 15 oct. 2026). littlefs/ et
+# data/ n'en font pas partie (image de fichiers, pages sur la SD).
+FIRMWARE_PATHS = (
+    "src",
+    "include",
+    "lib",
+    "platformio.ini",
+    "VERSION",
+    "aqualook_partitions.csv",
+    "tools/version_build.py",
+    "tools/patch_asyncwebserver.py",
+)
+DIRTY_SUFFIX = "+modif"
+
+
+def firmware_sources_modified():
+    # Fichiers suivis modifies ET fichiers nouveaux non suivis : un .cpp
+    # ajoute mais pas encore commite change aussi le binaire.
+    status = git_value(
+        ["status", "--porcelain", "--untracked-files=all", "--", *FIRMWARE_PATHS],
+        "",
+    )
+    return status != ""
+
+
 def read_version(project_dir):
     version_path = Path(project_dir) / "VERSION"
     version = version_path.read_text(encoding="utf-8").strip()
@@ -44,6 +72,12 @@ project_dir = env.subst("$PROJECT_DIR")
 version = read_version(project_dir)
 build_number = git_value(["rev-list", "--count", "HEAD"], "local")
 git_sha = git_value(["rev-parse", "--short=7", "HEAD"], "unknown")
+if git_sha != "unknown" and firmware_sources_modified():
+    # Porte par le SHA lui-meme, donc visible partout ou il s'affiche (serie,
+    # splash, LCD Systeme, /api/diagnostics, sante.html, synchro cloud) sans
+    # toucher a ces affichages. Une release (GitHub Actions, depot propre)
+    # n'est jamais concernee.
+    git_sha += DIRTY_SUFFIX
 git_branch = git_value(["rev-parse", "--abbrev-ref", "HEAD"], "unknown")
 pio_environment = env.subst("$PIOENV")
 
