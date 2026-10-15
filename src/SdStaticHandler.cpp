@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "EventLog.h"
+#include "WebCsp.h"
 #include <esp_heap_caps.h>
 
 namespace {
@@ -239,6 +240,12 @@ void SdStaticHandler::handleRequest(AsyncWebServerRequest* request) {
     // Ni cadre (piege au clic depuis un autre site), ni devinette de type.
     response->addHeader("X-Frame-Options", "DENY");
     response->addHeader("X-Content-Type-Options", "nosniff");
+    // CSP sur les documents (P3.19) : pages HTML et SVG ouvert directement,
+    // seuls a pouvoir executer un script. Une page deposee sur la SD avec un
+    // script inline ou une ressource externe ne s'execute donc pas.
+    if (sdPath.endsWith(".html") || sdPath.endsWith(".svg")) {
+        response->addHeader("Content-Security-Policy", AquaLook::PAGE_CSP);
+    }
     request->send(response);
 }
 
