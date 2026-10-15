@@ -47,6 +47,20 @@ constexpr uint32_t FIRST_LOCK_SEC = 30UL;
 constexpr uint32_t MAX_LOCK_SEC = 15UL * 60UL;
 constexpr uint8_t MAX_TRACKED_IPS = 8;
 constexpr uint32_t FAILURE_MEMORY_MS = 60UL * 60UL * 1000UL;
+// Plafond global (P1.10, SEC-029) : le compte par adresse ne suffit pas, un
+// poste du reseau local change d'adresse a volonte. Au-dela de 20 echecs
+// toutes adresses confondues (oublies apres une heure sans nouvel echec),
+// l'attente s'applique a TOUS, proprietaire compris, avec la meme
+// progression (30 s doublees jusqu'a 15 min). Choix assume : mieux vaut
+// une interface Web fermee un moment qu'un mot de passe devine ; l'ecran
+// du module reste utilisable.
+// Surcharge reservee a l'essai sur banc (une seule adresse IP ne peut pas
+// atteindre 20 echecs : son propre compteur l'arrete a 5) ; jamais posee
+// dans platformio.ini.
+#ifndef AQUALOOK_WEB_GLOBAL_FREE_FAILURES
+#define AQUALOOK_WEB_GLOBAL_FREE_FAILURES 20
+#endif
+constexpr uint8_t GLOBAL_FREE_FAILURES = AQUALOOK_WEB_GLOBAL_FREE_FAILURES;
 constexpr uint8_t TOKEN_HEX_LEN = 32;   // 128 bits
 constexpr const char* COOKIE_NAME = "aqls";
 
