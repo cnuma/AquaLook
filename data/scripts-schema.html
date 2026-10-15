@@ -362,7 +362,7 @@ body.cloud .app{grid-template-rows:auto auto auto minmax(0,1fr)}
 }
 @media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,.a-enregistrer{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
-body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud.sansvars #t-var{display:none!important}
+body.cloud #b-retour,body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud.sansvars #t-var{display:none!important}
 /* Variables en ligne : lecture seule (D015), pas de saisie ni d'envoi */
 body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv-enregistrer{display:none!important}
 </style></head><body>
@@ -396,6 +396,7 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
   </nav>
   <header class="top">
     <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
+    <a class="btn" id="b-retour" href="/index.html">&#8249; Retour à AquaLook</a>
     <span class="gamme" id="gamme" hidden></span>
     <select id="slot" aria-label="Emplacement du script"></select>
     <span class="nomwrap"><input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script"><span class="dirty" id="dirty" hidden>Script non enregistré</span></span>

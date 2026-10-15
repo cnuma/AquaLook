@@ -8,6 +8,7 @@
 #include "ScriptHostRuntime.h"
 #include "ApiAuth.h"
 #include "WebSession.h"
+#include "WebCsp.h"
 #include "ScriptAdmin.h"
 #include "ScriptStore.h"
 #include "ScriptMessageCatalogue.h"
@@ -141,14 +142,9 @@ uint32_t g_pageInflightSinceMs = 0U;
 uint32_t g_pageRejectCount     = 0U;
 uint32_t g_pageRejectLogAtMs   = 0U;
 
-// CSP des pages integrees au firmware (P3.13) : la meme que celle du service
-// en ligne (.htaccess) et du banc des pages de la SD (csp_banc_pages.py).
-// Aucune n'a plus de script inline ; les <style> le restent, d'ou
-// style-src 'unsafe-inline'.
-constexpr const char* EMBEDDED_PAGE_CSP =
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
-    "form-action 'self'; frame-ancestors 'none'; object-src 'none'";
+// CSP des pages integrees au firmware (P3.13) : source unique dans WebCsp.h,
+// partagee avec les pages de la SD (P3.19).
+constexpr const char* EMBEDDED_PAGE_CSP = AquaLook::PAGE_CSP;
 
 // Scripts des pages integrees (/fw-*.js). Hors du compteur de pages en vol :
 // le navigateur les demande pendant que la connexion de la page n'est pas
