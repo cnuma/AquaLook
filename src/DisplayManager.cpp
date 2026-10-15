@@ -8,6 +8,7 @@
 #include "BootLoopGuard.h"
 #include "NotificationManager.h"   // marqueur "MAJ DISPO" du bandeau
 #include "IncidentManager.h"       // page Sante : etat incident SD
+#include "HealthOverall.h"         // page Sante : etat general (P3.18)
 #include "RuntimeProfiler.h"       // sous-composants de update(), voir la note du 27/09/2026
 #include "EventLog.h"
 #include "OtaBuildIdentity.h"       // page A propos : identite du build
@@ -4145,9 +4146,16 @@ void DisplayManager::drawHealthFull() {
 
     const bool degraded   = BootLoopGuard::isDegraded();
     const bool onProbation = BootLoopGuard::isOnProbation();
+    const HealthOverall overall = healthOverall();   // meme source que /api/health
     row("Etat general :",
-        degraded ? "DEGRADE" : onProbation ? "A l'essai" : "Normal",
-        degraded ? Theme::AMBER : onProbation ? Theme::CYAN : Theme::GREEN);
+        overall == HealthOverall::DEGRADE ? "DEGRADE"
+            : overall == HealthOverall::ESSAI ? "A l'essai"
+            : overall == HealthOverall::ATTENTION ? "Attention"
+            : "Normal",
+        overall == HealthOverall::DEGRADE ? Theme::AMBER
+            : overall == HealthOverall::ESSAI ? Theme::CYAN
+            : overall == HealthOverall::ATTENTION ? Theme::AMBER
+            : Theme::GREEN);
 
     if (degraded || onProbation || BootLoopGuard::suspectBootCount() > 0U) {
         row("Demarrages sans stabilite :",

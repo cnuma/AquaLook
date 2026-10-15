@@ -39,8 +39,8 @@ function rendreActions(d) {
 
 function rendre(d) {
   const ov = $('overall');
-  const overallLabel = { degrade: 'DEGRADE', essai: 'A l’essai', normal: 'Normal' }[d.overall] || d.overall;
-  const overallClass = { degrade: 'bad', essai: 'warn', normal: 'ok' }[d.overall] || '';
+  const overallLabel = { degrade: 'DEGRADE', essai: 'A l’essai', attention: 'Attention', normal: 'Normal' }[d.overall] || d.overall;
+  const overallClass = { degrade: 'bad', essai: 'warn', attention: 'warn', normal: 'ok' }[d.overall] || '';
   ov.textContent = overallLabel;
   ov.className = 'v ' + overallClass;
 
