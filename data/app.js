@@ -584,7 +584,9 @@ function renderPlanning() {
           ? (enabled.length
               ? enabled.map(s=>`<div class="mini-slot">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
               : `<span class="pg-zone-label-${zoneColor}" style="color:${zHex};font-size:11px">&#8635; /${intervalD}j</span>`)
-          : `<div class="pg-cross">--</div>`;
+          // Jour non arrose (P2.15) : chevrons vers le prochain jour arrose,
+          // comme sur le LCD ; les hachures restent reservees a la pluie.
+          : `<svg class="pg-chev" viewBox="0 0 30 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 1l7 4-7 4M12 1l7 4-7 4M22 1l7 4-7 4"/></svg>`;
         const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
                       data-onclick="openIntervalModal(${zi},${todayEpoch + col})" title="/${intervalD}j - cliquer pour consulter ou proposer cette date comme nouveau depart">

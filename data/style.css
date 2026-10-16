@@ -35,9 +35,8 @@
   box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent);
 }
 .planning-grid>.pg-header.zone-hdr.interval-zone-hdr{
-  background:repeating-linear-gradient(135deg,
-    color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
-    color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px);
+  /* Teinte unie (P2.15) : les hachures sont reservees a la pluie. */
+  background:color-mix(in srgb,var(--zc) 10%,transparent);
 }
 /* Pastille pleine cellule : meme taille pour toutes les zones, quel que
    soit le nom ; le "/Nj" du mode intervalle est dans la pastille. */
@@ -56,27 +55,25 @@
   box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 45%,transparent);
 }
 
-/* Jours non prevus en mode intervalle. */
+/* Jours non prevus en mode intervalle (P2.15) : fond uni et chevrons vers
+   le prochain jour arrose, comme sur le LCD (DisplayPlanningDecor.cpp) ;
+   les hachures restent reservees a la pluie (.pg-day.rain). */
 .pg-day.interval-off{
-  background:repeating-linear-gradient(135deg,
-    #f3f3f3 0,
-    #f3f3f3 5px,
-    #e5e5e5 5px,
-    #e5e5e5 10px)!important;
+  background:#f3f3f3!important;
   border-color:#c4c4c4!important;
   border-style:solid!important;
-  filter:saturate(.35);
 }
+/* Chevrons etires sur toute la case (viewBox sans proportions imposees),
+   trait d'epaisseur constante ; base 0 : remplit sans agrandir la ligne. */
+.pg-chev{flex:1 1 0;height:0;min-height:0;margin:6px 8px;fill:none;stroke:#a8a8a8;stroke-width:4;
+  stroke-linecap:round;stroke-linejoin:round}
+.pg-chev path{vector-effect:non-scaling-stroke}
 
 /* Fenetre de configuration : effet immediat selon la valeur courante du select. */
 #modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-header{
   padding:7px 9px;
   border-radius:5px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.11) 0,
-    rgba(102,51,204,.11) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
   box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
 }
 #modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-name{
@@ -87,23 +84,16 @@
 #modal-body:has(#zcfg-mode option[value="1"]:checked) #zcfg-interval-row{
   padding:8px;
   border-radius:5px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.08) 0,
-    rgba(102,51,204,.08) 5px,
-    rgba(255,255,255,.55) 5px,
-    rgba(255,255,255,.55) 10px);
+  background:rgba(102,51,204,.05);
 }
 
-/* Partie haute : hachures sur le bandeau, pas sur toute la carte. */
+/* Partie haute : teinte sur le bandeau, pas sur toute la carte (unie,
+   P2.15 : les hachures sont reservees a la pluie). */
 .zone-card.zone-interval .zone-card-header{
   margin:-7px -11px 8px;
   padding:7px 11px;
   border-radius:6px 6px 4px 4px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.10) 0,
-    rgba(102,51,204,.10) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
 }
 .zone-card.zone-interval .zone-name{
   padding:2px 6px;
@@ -115,17 +105,13 @@
   border-top-color:rgba(102,51,204,.22);
 }
 
-/* Vue dense : seule la cellule nom reprend les hachures. */
+/* Vue dense : seule la cellule nom reprend la teinte. */
 .zones-table tr.zone-interval .zt-name{
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.10) 0,
-    rgba(102,51,204,.10) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
 }
 
-/* Correction : ne pas zebrer toute la carte de zone en mode intervalle.
-   Les hachures restent limitees au bandeau d'entete ci-dessus. */
+/* Correction : ne pas teinter toute la carte de zone en mode intervalle.
+   La teinte reste limitee au bandeau d'entete ci-dessus. */
 .zone-card.zone-interval{
   background-image:none!important;
   background-color:var(--bg)!important;

@@ -536,7 +536,7 @@ private:
     uint16_t _g2Gw    = 126;
     uint16_t _g2Gh    = 50;
     // Geometrie interne de la colonne planning du mode 5-8 zones. Partagee
-    // avec DisplayPlanningDecor, qui superpose ses hachures aux cellules
+    // avec DisplayPlanningDecor, qui superpose ses chevrons aux cellules
     // tracees par renderPlanSpriteCompact() : ce fichier recopiait
     // labelW=12 / colW=26 / hdrH=42, valeurs calees sur une colonne de
     // 64 px. Passee a 150 px, les hachures tombaient sur la mauvaise
