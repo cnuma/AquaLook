@@ -23,6 +23,13 @@
      quel que soit le fond pastel choisi. */
   --slot-bg:    #33475b;
   --slot-text:  #eef3f7;
+  /* Etats des pages de statut (Sante, Synchro, Diagnostic) : texte et fond
+     d'une valeur bonne ou a surveiller, texte pose sur --amber. */
+  --ok-text:     #1d6b34;
+  --warn-text:   #8a5a00;
+  --ok-bg:       #e9f5ec;
+  --warn-bg:     #fff8e6;
+  --on-amber:    #3a2a00;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -997,3 +1004,113 @@ header {
   padding: 1px 5px;
   flex: 0 0 auto;
 }
+
+/* ====================================================================
+ * Pages de statut (P4.11, 16 oct. 2026) : sante, cloudsync, logs, urls,
+ * diagnostic n'ont plus de <style> interne. Chacune porte p-<page> sur
+ * <body> ; une regle partagee par plusieurs pages les nomme toutes.
+ * ==================================================================== */
+/* -- sante.html -- */
+/* Meme contenu, meme ordre, memes libelles que la page Sante de l'ecran
+   du module (DisplayManager::drawHealthFull) -- les deux lisent
+   /api/health et ne doivent jamais raconter deux histoires differentes. */
+body.p-sante,body.p-cloudsync,body.p-logs,body.p-urls{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans,Arial,sans-serif);padding:16px}
+.p-sante .wrap,.p-cloudsync .wrap,.p-logs .wrap,.p-urls .wrap{max-width:1100px;margin:0 auto}
+.p-sante nav.top,.p-cloudsync nav.top,.p-logs nav.top,.p-urls nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap; margin:-16px -16px 12px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border2)}
+.p-sante nav.top h1,.p-cloudsync nav.top h1{margin:0 auto 0 0}
+.p-sante .cols,.p-cloudsync .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px;align-items:start}
+@media(min-width:900px){
+  .p-sante .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+.p-sante h1,.p-cloudsync h1{font-size:21px;margin:0 0 4px;color:var(--text)}
+.p-sante .sub,.p-cloudsync .sub{color:var(--text2);font-size:13px;margin:0 0 16px;line-height:1.6}
+.p-sante .card,.p-cloudsync .card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px;margin-bottom:12px}
+.p-sante .card h2,.p-cloudsync .card h2{font-size:11px;margin:0 0 6px;color:var(--muted);font-family:var(--mono); text-transform:uppercase;letter-spacing:.06em}
+.p-sante .row,.p-cloudsync .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:13.5px}
+.p-sante .row:last-child,.p-cloudsync .row:last-child{border-bottom:none}
+.p-sante .k,.p-cloudsync .k{color:var(--text2)}
+.p-sante .v,.p-cloudsync .v,.p-diagnostic .v{font-family:var(--mono);text-align:right}
+.p-sante .v.ok,.p-cloudsync .v.ok{color:var(--ok-text)}
+.p-sante .v.warn,.p-cloudsync .v.warn{color:var(--warn-text)}
+.p-sante .v.bad,.p-cloudsync .v.bad{color:var(--red)}
+.p-sante .faults{margin:0;padding:0;list-style:none}
+.p-sante .faults li{padding:5px 0;font-size:13px;color:var(--red);border-bottom:1px solid var(--border2)}
+.p-sante .faults li:last-child{border-bottom:none}
+.p-sante .vide,.p-cloudsync .vide{font-size:13px;color:var(--muted);padding:4px 0}
+.p-sante .bar{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px}
+.p-sante .bar button{width:auto;padding:9px 14px;border-radius:5px;font-family:var(--mono);font-size:11px; font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer; background:var(--bg2);color:var(--text);border:1px solid var(--border2)}
+.p-sante .bar button.principal{background:var(--amber);color:var(--on-amber);border-color:var(--amber)}
+.p-sante a.back,.p-cloudsync a.back,.p-logs a.back,.p-urls a.back{display:inline-block;padding:9px 14px;border:1px solid var(--border2); border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+.p-sante #msg,.p-cloudsync #msg{margin:0 0 12px;padding:9px 12px;border-radius:6px;font-size:12.5px;font-family:var(--mono); line-height:1.6;border:1px solid var(--border2);background:var(--bg2);color:var(--text)}
+.p-sante #msg:empty,.p-cloudsync #msg:empty{display:none}
+.p-sante #msg.ok{border-color:var(--green);color:var(--ok-text);background:var(--ok-bg)}
+.p-sante #msg.ko,.p-cloudsync #msg.ko{border-color:var(--amber);color:var(--warn-text);background:var(--warn-bg)}
+/* -- cloudsync.html -- */
+/* Memes classes que sante.html : meme famille de page de statut, memes
+   conventions (card/row/k/v), pour ne pas reinventer un style par page. */
+@media(min-width:900px){
+  .p-cloudsync .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+.p-cloudsync button.ext{width:100%;cursor:pointer}
+.p-cloudsync button.ext:disabled{opacity:.5;cursor:default}
+.p-cloudsync a.ext,.p-cloudsync button.ext{display:block;text-align:center;padding:9px 14px;border:1px solid var(--border2); border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono); background:var(--bg2);margin-bottom:12px}
+/* -- logs.html -- */
+/* Meme bandeau, memes boutons de navigation que Sante et Synchro cloud
+   (regle d'ergonomie du 12 oct. 2026 : navigation en haut, toujours visible). */
+.p-logs nav.top h1,.p-urls nav.top h1,.p-diagnostic nav.top h1{margin:0 auto 0 0;font-size:21px;color:var(--text)}
+.p-logs .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 12px}
+.p-logs button{width:auto;padding:9px 14px;border-radius:5px;font-family:var(--mono);font-size:11px; font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer; background:var(--bg2);color:var(--text);border:1px solid var(--border2)}
+.p-logs #ack-btn{background:var(--amber);color:var(--on-amber);border-color:var(--amber)}
+.p-logs button.good{background:var(--green);color:#fff;border-color:var(--green)}
+.p-logs button:disabled{opacity:.5;cursor:default}
+.p-logs #state{font-size:13px;color:var(--text2)}
+.p-logs #state.active{color:var(--red);font-weight:700}
+.p-logs #state.acked{color:var(--green);font-weight:700}
+.p-logs main,.p-urls main{display:grid;gap:12px}
+.p-logs .card{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px}
+.p-logs .card h2{font-size:11px;margin:0 0 8px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.p-logs .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.p-logs .meta{font-size:13px;color:var(--text2);line-height:1.5}
+.p-logs .help{font-size:12px;color:var(--muted);line-height:1.4}
+.p-logs .danger{color:var(--red)}
+.p-logs .ok{color:var(--green)}
+.p-logs input{accent-color:var(--green)}
+.p-logs #journal{width:100%;height:56vh;overflow:auto;margin:8px 0 0;padding:10px;border:1px solid var(--border2);border-radius:6px; background:var(--bg1);color:var(--text);font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;box-sizing:border-box}
+.p-logs #journal-state{font-size:12px;color:var(--muted)}
+.p-logs .log-err{color:var(--red)}
+.p-logs .log-wrn{color:var(--amber)}
+.p-logs .log-inf{color:var(--muted)}
+.p-logs .log-code{border-bottom:1px dotted var(--blue);cursor:help}
+/* -- urls.html -- */
+/* Meme bandeau, memes boutons de navigation que Sante et Journal
+   (regle d'ergonomie du 12 oct. 2026 : navigation en haut, toujours visible). */
+.p-urls *{box-sizing:border-box}
+.p-urls .card{display:block;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 16px}
+.p-urls .card summary{font-size:12px;color:var(--text2);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;padding:2px 0}
+.p-urls .card[open] summary{margin-bottom:8px}
+.p-urls .card p.help{margin:0 0 8px;font-size:12px;color:var(--muted);line-height:1.4}
+.p-urls table{width:100%;border-collapse:collapse;font-size:13px}
+.p-urls th,.p-urls td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border2);vertical-align:top}
+.p-urls th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.p-urls td.path{font-family:var(--mono);color:var(--green);white-space:nowrap}
+.p-urls td.path a{color:inherit;text-decoration:none}
+.p-urls td.path a:hover{text-decoration:underline}
+.p-urls td.method{font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap}
+.p-urls td.method.get{color:var(--blue)}
+.p-urls td.method.post{color:var(--amber)}
+.p-urls td.desc{color:var(--text)}
+.p-urls .note{font-size:12px;color:var(--muted);line-height:1.4}
+/* -- diagnostic.html -- */
+body.p-diagnostic{padding:16px;max-width:1100px;margin:auto}
+.p-diagnostic nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-16px -16px 12px;padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border2)}
+.p-diagnostic a.back{display:inline-block;padding:9px 14px;border:1px solid var(--border2);border-radius:5px;color:var(--text2);text-decoration:none;font-size:13px;font-family:var(--mono)}
+.p-diagnostic .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.p-diagnostic .p{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px}
+.p-diagnostic .p h2{font-size:12px;color:var(--muted);text-transform:uppercase}
+.p-diagnostic .r{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)}
+.p-diagnostic .k{color:var(--muted)}
+.p-diagnostic .ok{color:var(--ok-text)}
+.p-diagnostic .w{color:var(--warn-text)}
+.p-diagnostic .b{color:var(--red)}
+.p-diagnostic button{width:auto;font:12px var(--mono);padding:9px 14px;cursor:pointer;border:1px solid var(--border2);border-radius:5px;background:var(--bg2);color:var(--text);text-decoration:none}
+.p-diagnostic #e{display:none;background:#5c1f1f;color:#ffd8d8;padding:8px}
