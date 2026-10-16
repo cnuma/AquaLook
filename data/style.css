@@ -199,3 +199,16 @@
 .ix-w80{width:80px !important}
 .ix-point-journal{position:fixed !important;bottom:6px !important;left:8px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#ffffff18 !important;display:block !important;text-decoration:none !important}
 #btn-zones-view{font-family:var(--mono);font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--bg2);color:var(--text2);cursor:pointer}
+/* P3.25 : #cloud-badge (index seul, sorti de style-base.css). Vert a jour,
+   .pending orange (en transmission), .broken rouge (FaultId::CLOUD_SYNC).
+   Telephone : icone seule, detail dans title et /cloudsync.html. */
+#cloud-badge{font-family:var(--mono);font-size:11px;color:var(--green);padding:3px 8px;border:1px solid var(--green);border-radius:4px;background:var(--bg2);text-decoration:none;white-space:nowrap}
+#cloud-badge.pending{color:var(--amber);border-color:var(--amber)}
+#cloud-badge.broken{color:var(--red);border-color:var(--red)}
+#cloud-badge .cb-ico{font-size:15px;line-height:1;vertical-align:-2px}
+#cloud-badge .cb-txt{margin-left:5px}
+/* Barre du haut sur telephone : sur iPhone la fleche de MAJ est un emoji et
+   passait a la ligne, le bouton menu sortait de l'ecran (photo du 16 oct.). En dernier
+   recours, c'est le logo qui retrecit, jamais le menu. */
+#update-badge{white-space:nowrap}
+@media (max-width:700px){header{gap:6px;padding:8px 10px}.header-logo{letter-spacing:.03em;min-width:0;flex-shrink:1;overflow:hidden;align-items:flex-start}header>:not(.header-logo){flex-shrink:0}#update-badge{font-size:12px;padding:3px 6px}#wifi-badge{padding:3px 5px}#cloud-badge{padding:2px 6px}#cloud-badge .cb-ico{font-size:18px}#cloud-badge .cb-txt{display:none}}
