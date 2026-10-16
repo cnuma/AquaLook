@@ -1,0 +1,108 @@
+/* style-sombre.css -- theme sombre des pages du module qui ne chargent pas
+ * style-base.css (P4.11, 16 oct. 2026) : ota.html (p-ota) et setup.html
+ * (p-setup). style-base.css remet a zero body, button, input... : le charger
+ * ici changerait ces pages.
+ *
+ * Ces couleurs sont aussi celles des trois pages integrees au firmware
+ * (connexion, secours sans SD, Wi-Fi de secours, WebManager.cpp), qui gardent
+ * leur propre copie pour fonctionner sans carte SD (decision du proprietaire).
+ */
+:root{
+  --bg:#101820; --bg1:#172532; --bg2:#0a1219; --bg3:#263b4b;
+  --border:#385064; --border2:#526d80;
+  --text:#eef; --text2:#bed0dc; --text-fort:#d7e9f3; --muted:#91aabd;
+  --blue:#4fc3f7; --on-blue:#06141b;
+  --green:#6fcf97; --green-line:#41956b; --green-bg:#10241a;
+  --amber:#ffd88b; --amber-line:#d59b35; --amber-bg:#2a2114;
+  --purple:#b388ff; --purple-line:#7e57c2; --purple-bg:#1b1430;
+  --red:#ff8a8a;
+}
+/* Portail Wi-Fi (setup.html) : bleu nuit, meme famille que la page Wi-Fi
+   de secours du firmware. */
+body.p-setup{
+  --bg:#1a1a2e; --bg1:#16213e; --bg2:#0f3460; --border:#334;
+  --text:#eee; --text2:#90caf9; --on-blue:#000;
+}
+/* -- ota.html -- */
+body.p-ota{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+.p-ota .card{box-sizing:border-box;width:96%;max-width:1200px;padding:0 20px 20px;margin:16px auto;background:var(--bg1);border:1px solid var(--border);border-radius:12px}
+.p-ota h1{margin:0 0 14px;font-size:22px}
+.p-ota h2{margin:24px 0 8px;font-size:16px;color:var(--text2)}
+.p-ota p{line-height:1.5;color:var(--text2);margin:6px 0}
+.p-ota .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.p-ota .verdict{border-radius:10px;padding:16px;border:1px solid var(--border);background:var(--bg)}
+.p-ota .verdict.av{border-color:var(--purple-line);background:var(--purple-bg)}
+.p-ota .verdict.ko{border-color:var(--amber-line);background:var(--amber-bg)}
+.p-ota .verdict.ok{border-color:var(--green-line);background:var(--green-bg)}
+.p-ota .verdict.un{border-color:var(--border2)}
+.p-ota #alert:empty{display:none}
+.p-ota #alert{margin-top:10px;border:1px solid var(--amber-line);background:var(--amber-bg);border-radius:10px;padding:14px}
+.p-ota #alert .vt{font-size:15px;color:var(--amber)}
+.p-ota #alert.info{border-color:var(--border);background:var(--bg)}
+.p-ota #alert.info .vt{color:var(--text2)}
+.p-ota .vt{font-size:18px;font-weight:700;margin:0 0 8px}
+.p-ota .verdict.av .vt{color:var(--purple)}
+.p-ota .verdict.ko .vt{color:var(--amber)}
+.p-ota .verdict.ok .vt{color:var(--green)}
+.p-ota .vw{margin:10px 0 0;padding:10px 12px;background:var(--bg2);border-radius:6px;font-size:13.5px;color:var(--text-fort)}
+.p-ota .vw b{color:#fff}
+.p-ota .when{color:var(--muted);font-size:12.5px;margin-top:6px}
+.p-ota .chan{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 13px;border:1px solid var(--border);border-radius:8px;margin-top:8px;background:var(--bg)}
+.p-ota .cn{flex:1 1 150px;font-weight:700}
+.p-ota .cv{font-family:monospace;font-size:12.5px;color:var(--text-fort)}
+.p-ota .cv i{font-style:normal;color:var(--muted)}
+.p-ota .chip{font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--border2);color:var(--muted);white-space:nowrap}
+.p-ota .chip.up{color:var(--green);border-color:var(--green-line)}
+.p-ota .chip.av{color:var(--purple);border-color:var(--purple-line);font-weight:700}
+.p-ota .chip.ko{color:var(--amber);border-color:var(--amber-line)}
+.p-ota .step{border:1px solid var(--border);border-radius:9px;padding:13px;margin-bottom:9px;background:var(--bg)}
+.p-ota .step.on{border-color:var(--blue)}
+.p-ota .step.off{opacity:.6}
+.p-ota .sh{display:flex;align-items:center;gap:10px;margin-bottom:5px}
+.p-ota .num{flex:none;width:23px;height:23px;border-radius:50%;background:var(--border);color:var(--text);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.p-ota .step.on .num{background:var(--blue);color:var(--on-blue)}
+.p-ota .st{font-weight:700;font-size:15px}
+.p-ota .why{margin:8px 0 0;padding:8px 10px;border-left:3px solid var(--amber-line);background:var(--amber-bg);color:var(--amber);font-size:13px;border-radius:0 6px 6px 0}
+.p-ota button{box-sizing:border-box;display:block;width:100%;margin-top:10px;padding:11px;border:0;border-radius:7px;font-size:15px;font-weight:700;background:var(--blue);color:var(--on-blue);cursor:pointer}
+.p-ota button.pu{background:var(--purple-line);color:#fff}
+.p-ota button.sec{background:var(--border2);color:var(--text);font-weight:400;font-size:14px}
+.p-ota button:disabled{opacity:.42;cursor:not-allowed}
+.p-ota nav.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 -20px 16px;padding:12px 20px;background:var(--bg1);border-bottom:1px solid var(--border);border-radius:12px 12px 0 0}
+.p-ota nav.top h1{margin:0 auto 0 0}
+.p-ota a.nav{padding:8px 14px;border:1px solid var(--border2);border-radius:7px;color:var(--text-fort);text-decoration:none;font-size:14px;white-space:nowrap}
+.p-ota a.nav:hover{border-color:var(--blue)}
+.p-ota .head,.p-ota .cols{display:grid;grid-template-columns:minmax(0,1fr);gap:12px 22px;align-items:start}
+.p-ota .cols h2{margin-top:18px}
+@media(min-width:900px){
+  .p-ota .head{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  .p-ota .head #chans .chan:first-child{margin-top:0}
+  .p-ota .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+.p-ota details{margin-top:9px;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.p-ota summary{cursor:pointer;color:var(--muted);font-size:14px}
+.p-ota .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+.p-ota .lb{color:var(--muted)}
+.p-ota .vl{text-align:right;overflow-wrap:anywhere}
+.p-ota .v-ok{color:var(--green);font-weight:700}
+.p-ota .v-ko{color:var(--red);font-weight:700}
+.p-ota #act{min-height:20px;margin-top:10px;font-weight:700;color:var(--blue)}
+.p-ota .wait{display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.p-ota .wait.on{display:block}
+.p-ota .wl{display:flex;align-items:center;gap:11px}
+.p-ota .sp{width:21px;height:21px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:s .9s linear infinite}
+.p-ota .el{margin-top:7px;color:var(--muted);font-size:13px}
+.p-ota .pg{height:6px;margin-top:9px;overflow:hidden;border-radius:4px;background:var(--bg3)}
+.p-ota .pg span{display:block;width:35%;height:100%;background:var(--blue);animation:t 1.5s ease-in-out infinite}
+.p-ota @keyframes s{to{transform:rotate(360deg)}}
+.p-ota @keyframes t{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
+/* -- setup.html -- */
+body.p-setup{font-family:sans-serif;background:var(--bg);color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+.p-setup .card{background:var(--bg1);border-radius:12px;padding:2rem;width:90%;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.p-setup h2{margin:0 0 1.5rem;text-align:center;color:var(--blue)}
+.p-setup label{display:block;margin-bottom:.3rem;font-size:.9rem;color:var(--text2)}
+.p-setup input,.p-setup select{width:100%;box-sizing:border-box;padding:.6rem .8rem;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:1rem;margin-bottom:1rem}
+.p-setup select:disabled{opacity:.6}
+.p-setup select option{background:var(--bg2)}
+.p-setup button{width:100%;padding:.75rem;border:0;border-radius:6px;background:var(--blue);color:var(--on-blue);font-size:1rem;font-weight:600;cursor:pointer}
+.p-setup #scan-hint{font-size:.78rem;color:var(--text2);margin:-.6rem 0 1rem;line-height:1.4}
+.p-setup #msg{margin-top:1rem;text-align:center;font-size:.9rem}

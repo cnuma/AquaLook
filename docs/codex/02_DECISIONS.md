@@ -155,3 +155,12 @@ P1.4 et P1.9 lot 2b, choix du propriétaire du 14 octobre 2026.
 - **Identité** : cible OTA et carte fixées par `tools/version_build.py` (`s3` / `jc4827w543c_i` pour les environnements S3 ; carte historique `unsupported`) ; alias `ProgrammeArrosage_legacy` et `_v4` retirés.
 - **Banc** : `ProgrammeArrosage_s3_banc` ne suit pas l'OTA (`environment-mismatch`, D020) ; un essai OTA se fait en flashant `.141` en production par USB, puis retour au banc par USB.
 - **Leçon** : la lecture du manifeste ajoutait un octet parasite (invisible pour le JSON) ; tout contenu signé se lit aux octets exacts (`Content-Length`, `read()` en échec ignoré, corps tronqué refusé). Un module en **5.17.1** garde ce défaut et refuse toute release signée : le remettre à jour par USB.
+
+## D022 — Accès physique au module : protections sans irréversible d'abord, verrouillage matériel avant toute mise en service chez un tiers (16 oct. 2026)
+
+P1.6 (SEC-028), choix A du propriétaire du 16 octobre 2026.
+
+- **Principe acquis** : Secure Boot v2, chiffrement de la flash et téléchargement USB sécurisé seront posés sur **tout module installé chez quelqu'un d'autre que le propriétaire**, avant sa mise en service. Ce chantier (eFuses irréversibles, module par module ; passage d'Arduino précompilé à ESP-IDF 5 ; signature des binaires par la clé Secure Boot ; procédure d'atelier ; `.141` reste non verrouillé) est mené avec P0.5, qui demande la même chaîne de build. Il n'est pas lancé aujourd'hui.
+- **En attendant, sans code** (à la charge du propriétaire) : module sur un **Wi-Fi invité** ou dédié, isolé des autres appareils de la maison ; **boîtier** dont la prise USB ne s'ouvre qu'avec un outil.
+- **Empreinte du mot de passe Web** (PBKDF2 au lieu du secret `ApiAuth` en clair) : **secondaire**. La session s'ouvre par défi-réponse HMAC ; la clé conservée resterait suffisante pour ouvrir une session à qui copie la flash. Le seul gain est de ne pas révéler le mot de passe lui-même (réutilisé ailleurs) ; ce chantier touche le format NVS, `session.js`/`hmac.js` (pages en HTTP : pas de WebCrypto, PBKDF2 en JavaScript) et les outils de banc.
+- **Inchangé** : par le réseau, aucun programme non signé ne s'installe (D018, D021) ; le mot de passe Wi-Fi et le jeton du service en ligne restent lisibles dans une copie de la flash tant que le chiffrement n'est pas posé.

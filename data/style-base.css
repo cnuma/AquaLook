@@ -23,6 +23,13 @@
      quel que soit le fond pastel choisi. */
   --slot-bg:    #33475b;
   --slot-text:  #eef3f7;
+  /* Etats des pages de statut (Sante, Synchro, Diagnostic) : texte et fond
+     d'une valeur bonne ou a surveiller, texte pose sur --amber. */
+  --ok-text:     #1d6b34;
+  --warn-text:   #8a5a00;
+  --ok-bg:       #e9f5ec;
+  --warn-bg:     #fff8e6;
+  --on-amber:    #3a2a00;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

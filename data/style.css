@@ -136,3 +136,66 @@
 .zones-table tbody tr.zone-interval{
   background-image:none!important;
 }
+
+/* Page d'accueil : anciens <style> internes d'index.html (P4.11). */
+    /* Affichage LCD -- tokens de design */
+    .cfg-color {
+      width: 100%; height: 32px; padding: 2px; cursor: pointer;
+      border: 1px solid var(--border2); border-radius: 5px;
+      background: var(--bg); box-sizing: border-box;
+    }
+    .cfg-subsection-title {
+      font-family: var(--mono); font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin-bottom: 6px; padding-bottom: 3px;
+      border-bottom: 1px solid var(--border);
+    }
+
+.wx-tooltip-host{position:relative;cursor:help}
+.wx-tooltip{display:none;position:fixed;z-index:10000;left:0;top:0;transform:none;min-width:220px;max-width:300px;max-height:calc(100vh - 16px);overflow:auto;padding:10px 12px;border:1px solid var(--border2);border-radius:7px;background:var(--bg2);color:var(--text2);font-family:var(--mono);font-size:11px;line-height:1.55;text-align:left;box-shadow:0 8px 24px #0008;white-space:normal;pointer-events:none}
+/* L'affichage est pilote exclusivement par bindWeatherTooltips() (app.js),
+   jamais par ce CSS : le montrer via :hover ici l'affichait un instant a sa
+   position par defaut (haut-gauche) avant que le JS n'ait pu la calculer,
+   d'ou un flash visible a chaque activation. */
+.wx-tooltip-title{color:var(--text);font-weight:700;margin-bottom:5px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
+@media (max-width:700px){.wx-tooltip{min-width:200px;max-width:calc(100vw - 16px)}}
+
+/* Page d'accueil : anciens attributs style= d'index.html (P4.11 lot 4).
+   !important garde la priorite qu'avait l'attribut ; display reste dans la
+   page quand app.js le bascule ; #btn-zones-view sans !important car app.js
+   recolore ce bouton en ligne. */
+.ix-logo{height:28px !important;width:auto !important;border-radius:4px !important}
+.ix-titre{display:block !important}
+.ix-btn-masquer{font-family:var(--mono) !important;font-size:10px !important;padding:2px 8px !important;border:1px solid var(--border2) !important;border-radius:4px !important;background:var(--bg2) !important;color:var(--muted) !important;cursor:pointer !important;margin-left:auto !important}
+.ix-version-pages{text-align:center !important;font-family:var(--mono) !important;font-size:10px !important;color:var(--muted) !important;padding:6px 0 2px !important}
+.ix-btn-avance{margin:8px 12px !important;width:calc(100% - 24px) !important}
+.ix-lien-page{margin:0 12px 8px !important}
+.ix-lien-outil{display:block !important;padding:8px 10px !important;font-family:var(--mono) !important;font-size:11px !important;color:var(--text2) !important;text-decoration:none !important;border:1px solid var(--border2) !important;border-radius:6px !important;text-align:center !important;background:var(--bg2) !important}
+.ix-mt8{margin-top:8px !important}
+.ix-mt14{margin-top:14px !important}
+.ix-bandeau-bootguard{margin:0 0 12px !important;padding:14px !important;border-radius:10px !important;background:#4a1010 !important;border:1px solid #a33 !important;color:#ffd9d9 !important}
+.ix-bandeau-texte{margin:.5rem 0 !important;font-size:.92rem !important;line-height:1.45 !important}
+.ix-bandeau-texte2{margin:.5rem 0 !important;font-size:.92rem !important}
+.ix-lien-bandeau{display:inline-block !important;text-decoration:none !important;margin-left:8px !important}
+.ix-select{width:100% !important;background:var(--bg) !important;border:1px solid var(--border2) !important;border-radius:5px !important;color:var(--text) !important;font-family:var(--mono) !important;font-size:13px !important;padding:8px 10px !important;outline:none !important}
+.ix-majuscules{text-transform:uppercase !important}
+.ix-mt10{margin-top:10px !important}
+.ix-alerte-relais{padding:10px !important;border:1px dashed var(--amber) !important;border-radius:6px !important;background:var(--bg2) !important;color:var(--amber) !important;margin-bottom:12px !important}
+.ix-entete-champ{display:flex !important;align-items:center !important;justify-content:space-between !important;margin-top:14px !important}
+.ix-mb0{margin-bottom:0 !important}
+.ix-ligne{flex-direction:row !important;align-items:center !important;gap:8px !important}
+.ix-case{width:auto !important;margin:0 !important}
+.ix-label-case{margin:0 !important;cursor:pointer !important}
+.ix-mono{font-family:var(--mono) !important}
+.ix-btn-bascule{font-family:var(--mono) !important;font-size:11px !important;padding:4px 12px !important;border:1px solid var(--border2) !important;border-radius:4px !important;background:var(--bg2) !important;color:var(--text2) !important;cursor:pointer !important}
+.ix-ligne-large{flex-direction:row !important;align-items:center !important;gap:8px !important;flex-wrap:wrap !important}
+.ix-label-retrait{margin:0 0 0 12px !important}
+.ix-w64{width:64px !important}
+.ix-mt6{margin-top:6px !important}
+.ix-mb10{margin-bottom:10px !important}
+.ix-ligne-mb12{flex-direction:row !important;align-items:center !important;gap:8px !important;margin-bottom:12px !important}
+.ix-btn-secondaire{margin-top:6px !important;background:var(--bg2) !important;color:var(--muted) !important;border:1px solid var(--border2) !important}
+.ix-pleine{width:100% !important}
+.ix-w80{width:80px !important}
+.ix-point-journal{position:fixed !important;bottom:6px !important;left:8px !important;width:6px !important;height:6px !important;border-radius:50% !important;background:#ffffff18 !important;display:block !important;text-decoration:none !important}
+#btn-zones-view{font-family:var(--mono);font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--bg2);color:var(--text2);cursor:pointer}

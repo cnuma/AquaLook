@@ -82,7 +82,10 @@ def fichiers_du_commit(rev):
         if '/' in nom or nom in EXCLUS_NOMS or nom.endswith(EXCLUS_SUFFIXES):
             continue
         retenus.append(nom)
-    retenus.sort(key=lambda n: (n in ORDRE_FINAL, ORDRE_FINAL.index(n) if n in ORDRE_FINAL else 0, n))
+    # Les feuilles .css d'abord : une page publiee avant sa feuille (site.css,
+    # P4.11) s'afficherait sans style jusqu'a la fin de la publication.
+    retenus.sort(key=lambda n: (n in ORDRE_FINAL, ORDRE_FINAL.index(n) if n in ORDRE_FINAL else 0,
+                                not n.endswith('.css'), n))
     return {nom: git('show', '%s:%s/%s' % (rev, SRC, nom)) for nom in retenus}
 
 

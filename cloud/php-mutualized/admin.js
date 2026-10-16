@@ -324,7 +324,7 @@ async function selectModule(id) {
     + '<h2>Module</h2>'
     + '<div class="row"><span class="dot ' + f + '"></span>'
     + '<strong style="font-size:16px">' + esc(m.module_id) + '</strong>'
-    + '<span class="mono" style="color:var(--muted)">' + esc(m.firmware || 'firmware inconnu') + '</span></div>'
+    + '<span class="mono" style="color:var(--text2)">' + esc(m.firmware || 'firmware inconnu') + '</span></div>'
     + '<div class="row"><label>Dernier contact</label><span class="mono">'
     + stamp(m.last_seen) + ' &nbsp;(' + ago(m.last_seen) + ')</span></div>'
     // Identifiant materiel (D016, lot C) ; absent tant que schema-v5 n'est

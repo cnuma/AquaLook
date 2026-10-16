@@ -1037,7 +1037,7 @@ function celluleJour(i, mode, d, large){
       + hhmm(c.effectif.h, c.effectif.m) + ' ' + c.effectif.dur + APO + '</span>');
   }
   const corps = lignes.length ? lignes.join('')
-                              : '<span style="color:var(--muted)">&ndash;</span>';
+                              : '<span style="color:var(--text2)">&ndash;</span>';
   // Une mention, pas un compte : le nombre d'objets envoyes est un detail
   // d'implementation, pas une information. Cinq creneaux partent toujours
   // ensemble, y compris ceux qu'on n'a pas touches.
