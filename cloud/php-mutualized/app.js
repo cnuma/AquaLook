@@ -302,7 +302,9 @@ async function voirListe(){
         ? '<a class="upd-open" href="' + lienMaj(enRetard.length === 1 ? enRetard[0] : null) + '">'
           + 'Mettre à jour ' + (enRetard.length === 1 ? esc(enRetard[0].label || enRetard[0].module_id)
                                                      : 'les modules') + ' : comment faire</a>'
-        : '<p class="hint"><a href="/maj.html">Mettre à jour un module : mode d&rsquo;emploi</a></p>')
+        // Lien seulement quand une mise a jour attend (P3.22) ; la page Mises
+        // a jour reste accessible depuis le module.
+        : '')
     + '</div>';
   el.querySelectorAll('.mod').forEach(b => {
     b.onclick = () => ouvrir(b.dataset.id).catch(e => toast(e.message, true));
