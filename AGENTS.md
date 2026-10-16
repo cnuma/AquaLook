@@ -166,7 +166,7 @@ Consigner le profil réellement flashé, le port série utilisé, le point d’e
 - `littlefs/` contient uniquement les secours techniques embarqués réellement nécessaires et constitue le `data_dir` PlatformIO.
 - Ne jamais déposer dans `littlefs/` : sauvegarde, patch, script, fichier `.bak`, copie de travail ou documentation.
 - Après toute modification de `littlefs/`, exécuter obligatoirement `pio run -e ProgrammeArrosage_s3 -t buildfs`.
-- Les pages Web servies par le module vivent sur la carte SD (`data/`). Toute modification d’un des 7 fichiers de l’éditeur (`data/scripts-schema.html`, `script-editeur.js`, `script-lang.js`, `script-schema.js`, `session.js`, `hmac.js`, `style-base.css`) se recopie aussi dans `/editeur/` sur AlwaysData, qui ne contient que ces fichiers ; une publication des ressources Web passe par `tools/publish_web_assets.py` (fichiers d’abord, manifeste en dernier).
+- Les pages Web servies par le module vivent sur la carte SD (`data/`). Toute modification d’un des 8 fichiers de l’éditeur (`data/scripts-schema.html`, `script-editeur.js`, `script-lang.js`, `script-schema.js`, `session.js`, `hmac.js`, `style-base.css`, `style-editeur.css` depuis P4.11) se recopie aussi dans `/editeur/` sur AlwaysData, qui ne contient que ces fichiers ; une publication des ressources Web passe par `tools/publish_web_assets.py` (fichiers d’abord, manifeste en dernier).
 - Un changement Web doit avoir un bilan de taille maîtrisé. La partition est proche de sa limite.
 
 ### Persistance
