@@ -82,6 +82,12 @@ const SETTINGS_REGISTRY = [
         'label' => 'Espace utilisateur sans « Rester connecté » : déconnexion après inactivité (min)'],
     'SESSION_MAX_H' => ['type' => 'int', 'secret' => false, 'default' => '12', 'min' => 1, 'max' => 24,
         'label' => 'Espace utilisateur sans « Rester connecté » : durée maximale (h)'],
+    // Console d'administration (console_page.php, P1.11) : mots de passe faux
+    // en 15 minutes avant refus (429). Le total ferme la console a tous.
+    'CONSOLE_MAX_FAILURES_IP' => ['type' => 'int', 'secret' => false, 'default' => '10', 'min' => 3, 'max' => 100,
+        'label' => 'Console : mots de passe faux par adresse IP en 15 minutes'],
+    'CONSOLE_MAX_FAILURES_TOTAL' => ['type' => 'int', 'secret' => false, 'default' => '30', 'min' => 5, 'max' => 1000,
+        'label' => 'Console : mots de passe faux au total en 15 minutes (ferme la console à tous)'],
     'INVITE_TOKEN_TTL_H' => ['type' => 'int', 'secret' => false, 'default' => '72', 'min' => 1, 'max' => 336,
         'label' => "Validite d'un lien d'invitation (h)"],
 ];
