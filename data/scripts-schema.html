@@ -340,14 +340,6 @@ body.dragging .plus{opacity:1;transform:scale(1.25);border-color:var(--green);co
 .menu button:hover,.menu button:focus-visible{background:var(--cat-dim)}
 .menu .ico{color:var(--cat)}
 .mobile-banner{display:none}
-/* Bandeau du site (espace en ligne seulement), comme l'en-tete d'app.html. */
-.sitebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--bg1);
-  border:1px solid var(--border);border-radius:8px;padding:8px 12px}
-.sitebar[hidden]{display:none}
-.sb-titre{font-size:16px;font-weight:600}
-.sb-titre span{color:var(--green)}
-.sitebar .btn{text-decoration:none}
-body.cloud .app{grid-template-rows:auto auto auto minmax(0,1fr)}
 
 @media (max-width:860px){
   body{overflow:auto}
@@ -357,12 +349,11 @@ body.cloud .app{grid-template-rows:auto auto auto minmax(0,1fr)}
   .plus{display:none}
   .mobile-banner{display:block;background:var(--blue-dim);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px}
   .app{grid-template-rows:auto auto auto minmax(420px,1fr)}
-  body.cloud .app{grid-template-rows:auto auto auto auto minmax(420px,1fr)}
   .nomwrap{max-width:none;flex-basis:100%}
 }
 @media (prefers-reduced-motion:reduce){.node.run{animation:none;outline:3px solid var(--cat)}.dirty,.a-enregistrer{animation:none}}
 /* Espace en ligne (?module=) : rien ne se lance, pas de secret. */
-body.cloud #b-retour,body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud.sansvars #t-var{display:none!important}
+body.cloud #b-lancer,body.cloud #b-secret,body.cloud #b-oublier,body.cloud.sansvars #t-var{display:none!important}
 /* Variables en ligne : lecture seule (D015), pas de saisie ni d'envoi */
 body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv-enregistrer{display:none!important}
 </style></head><body>
@@ -386,14 +377,8 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
 </svg>
 
 <div class="app">
-  <!-- Espace en ligne (?module=) : MEME bandeau que le site (app.html),
-       navigation en haut a toute largeur, pastille MAJ comme partout. -->
-  <nav class="sitebar" id="sitebar" hidden>
-    <span class="sb-titre">Aqua<span>Look</span> &mdash; mes arrosages</span>
-    <span class="spacer"></span>
-    <a id="update-badge" href="/maj.html" hidden title="Une mise à jour est disponible — comment l’installer">&#11014; MAJ</a>
-    <a class="btn" href="/app.html">&#8249; Mes modules</a>
-  </nav>
+  <!-- Une seule barre, sur le module comme en ligne (P3.21) : en ligne,
+       « Retour » mene a Mes modules et la pastille MAJ s'y affiche. -->
   <header class="top">
     <a class="brand" href="/index.html"><svg class="ic"><use href="#i-drop"/></svg>AquaLook</a>
     <a class="btn" id="b-retour" href="/index.html">&#8249; Retour à AquaLook</a>
@@ -402,6 +387,7 @@ body.cloud #p-var .nv,body.cloud #gv-relire,body.cloud #gv-fermer,body.cloud #gv
     <span class="nomwrap"><input id="nom" maxlength="23" placeholder="Sans nom" aria-label="Nom du script"><span class="dirty" id="dirty" hidden>Script non enregistré</span></span>
     <label class="actif-top edit-only" title="Un script inactif reste enregistré mais ne part jamais"><input type="checkbox" id="actif-top"> Actif</label>
     <span class="spacer"></span>
+    <a id="update-badge" href="/maj.html" hidden title="Une mise à jour est disponible — comment l’installer">&#11014; MAJ</a>
     <button class="btn" id="b-reglages" title="Aide, mot de passe du module, effacer le script (touche Échap)"><svg class="ic"><use href="#i-reglages"/></svg>Réglages généraux</button>
     <button class="btn edit-only" id="b-undo" title="Annuler (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg>Annuler</button>
     <button class="btn edit-only" id="b-essai" title="Parcourt le schéma ici, sans rien envoyer au module"><svg class="ic"><use href="#i-run"/></svg>Essai à blanc</button>
