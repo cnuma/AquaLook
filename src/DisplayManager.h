@@ -389,7 +389,8 @@ private:
     // Les rendus de planning notent ici, en coordonnees ecran, la barre du
     // creneau programme qui arrose ; updateSlotBlink() ne repeint ensuite
     // que ce rectangle (I4 : ni fillScreen ni redraw complet). Un arrosage
-    // manuel ou lance par un script ne clignote pas.
+    // manuel ou lance par un script ne clignote pas ; un creneau prolonge
+    // par un script continue de clignoter (P3.23).
     struct SlotBlink {
         bool     valid = false;
         int16_t  x = 0, y = 0, w = 0, h = 0;

@@ -67,7 +67,8 @@ struct ActiveSlot {
     uint32_t pausedAtMs  = 0;
 
     // Creneau programme qui a declenche l'arrosage (P2.11, LCD) : -1 pour un
-    // depart manuel ou par script. slotEpochDay situe le creneau dans le
+    // depart manuel ou par script, sauf un script qui prolonge un creneau
+    // deja en cours (P3.23). slotEpochDay situe le creneau dans le
     // planning : passe minuit, il n'est plus dans la colonne du jour.
     int8_t   slotIdx      = -1;
     uint32_t slotEpochDay = 0;
