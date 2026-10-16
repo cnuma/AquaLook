@@ -18,9 +18,29 @@ function depuisEpochSec(epochSec) {
   return 'il y a ' + Math.round(sec / 86400) + ' j';
 }
 
+// Rappel en tete de page (P3.25) : niveau ok / warn / bad / na, memes
+// couleurs que le badge de l'accueil.
+function etat(niveau, texte, detail) {
+  $('etat').className = 'etat ' + niveau;
+  $('etatTxt').textContent = texte;
+  $('etatDetail').textContent = detail || '';
+}
+
+// Intervalle respecte : dernier succes date de moins d'un intervalle + 2 min.
+// Au-dela orange (la synchro attend la fin d'un arrosage, P3.15), rouge
+// au-dela de 3 intervalles.
+function rythme(c, attente) {
+  if (attente || !c.intervalMinutes) return 'na';
+  if (!c.lastSuccessEpochSec) return 'bad';
+  const sec = Date.now() / 1000 - c.lastSuccessEpochSec;
+  const iv = c.intervalMinutes * 60;
+  return sec <= iv + 120 ? 'ok' : sec <= 3 * iv ? 'warn' : 'bad';
+}
+
 function rendre(d) {
   const c = d.cloudSync;
   if (!c) {
+    etat('na', 'Synchro cloud non configurée');
     dire('Synchro cloud non configuree sur ce module.', 'ko');
     $('cycleCard').style.display = 'none';
     $('enabled').textContent = 'Non configuree';
@@ -29,14 +49,16 @@ function rendre(d) {
   }
 
   const en = $('enabled');
-  en.textContent = c.enabled ? 'Activee' : 'Desactivee';
-  en.className = 'v ' + (c.enabled ? 'ok' : 'warn');
+  en.textContent = c.enabled ? 'Activée' : 'Désactivée';
+  en.className = 'v ' + (c.enabled ? 'ok' : 'bad');
 
   $('host').textContent = c.host ? (c.host + ':' + c.port) : '—';
   $('moduleId').textContent = c.moduleId || '—';
   $('interval').textContent = c.intervalMinutes ? (c.intervalMinutes + ' min') : '—';
 
+  $('interval').className = 'v na';
   if (!c.enabled) {
+    etat('bad', 'Synchro désactivée', "Le module n'échange plus avec le service en ligne.");
     $('cycleCard').style.display = 'none';
     $('cloudLink').style.display = 'none';
     $('syncNow').style.display = 'none';
@@ -58,7 +80,12 @@ function rendre(d) {
   const ok = $('lastOk');
   ok.textContent = attente ? 'En attente du 1er cycle depuis le redemarrage'
     : c.lastSyncOk ? 'OK' : (c.lastAttemptEpochSec ? 'Échec' : 'Aucun cycle encore');
-  ok.className = 'v ' + (attente ? '' : c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : ''));
+  ok.className = 'v ' + (attente ? 'na' : c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : 'na'));
+
+  const ry = rythme(c, attente);
+  $('interval').textContent = c.intervalMinutes + ' min' +
+    (ry === 'ok' ? ' · respecté' : ry === 'warn' ? ' · en retard' : ry === 'bad' ? ' · non respecté' : '');
+  $('interval').className = 'v ' + ry;
 
   $('lastAttempt').textContent = depuisEpochSec(c.lastAttemptEpochSec) +
     (attente && c.lastAttemptEpochSec ? ' (avant redemarrage)' : '');
@@ -73,7 +100,24 @@ function rendre(d) {
 
   const cu = $('caughtUp');
   cu.textContent = attente ? 'Inconnu (pas encore echange)' : c.serverCaughtUp ? 'À jour' : 'En retard';
-  cu.className = 'v ' + (attente ? '' : c.serverCaughtUp ? 'ok' : 'warn');
+  cu.className = 'v ' + (attente ? 'na' : c.fault === true ? 'bad' : c.serverCaughtUp ? 'ok' : 'warn');
+
+  // c.fault : meme drapeau que le panneau rouge (FaultId::CLOUD_SYNC,
+  // 3 echecs de suite) ; absent d'un ancien firmware -> jamais rouge ici.
+  if (c.fault === true) {
+    etat('bad', 'Synchro en panne', '3 échecs de suite ou plus ; dernière tentative ' +
+      depuisEpochSec(c.lastAttemptEpochSec) + ', dernier succès ' + depuisEpochSec(c.lastSuccessEpochSec) + '.');
+  } else if (attente) {
+    etat('warn', 'En attente du premier échange', 'Le module vient de redémarrer.');
+  } else if (!c.lastSyncOk || !c.serverCaughtUp) {
+    etat('warn', 'Transmission en cours', c.lastSyncOk
+      ? 'Une modification locale part au prochain échange.'
+      : 'Le dernier échange a échoué, le module réessaie.');
+  } else {
+    const retard = ry === 'warn' || ry === 'bad';
+    etat(retard ? 'warn' : 'ok', retard ? 'Synchro OK, mais en retard' : 'Synchro OK',
+      'Dernier succès ' + depuisEpochSec(c.lastSuccessEpochSec) + ', serveur à jour (n°' + c.lastSyncedRevision + ').');
+  }
 
   const link = $('cloudLink');
   if (c.host) {

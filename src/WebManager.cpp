@@ -1679,6 +1679,10 @@ void WebManager::handleAdminStatus(AsyncWebServerRequest* req) {
         // jamais se comparer egal a une vraie revision par accident.
         cloud["serverCaughtUp"] = _config != nullptr &&
             _config->configRevision() == _cloudSync->lastSyncedRevision();
+        // Badge rouge de index.html (P3.25) : meme drapeau que #fault-panel
+        // (FaultId::CLOUD_SYNC, 3 echecs consecutifs), jamais recalcule en JS.
+        cloud["fault"] = (FaultManager::activeMask() &
+            (1UL << static_cast<uint8_t>(FaultId::CLOUD_SYNC))) != 0U;
     }
 
     // OWM

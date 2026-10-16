@@ -133,10 +133,10 @@ function depuisEpochSec(epochSec) {
   if (sec < 172800) return 'il y a ' + Math.round(sec / 3600) + ' h';
   return 'il y a ' + Math.round(sec / 86400) + ' j';
 }
-// Badge purement informatif : l'alarme d'echec persistant (FaultId::
-// CLOUD_SYNC, >=3 cycles) passe par #fault-panel (alarm.js) -- ce badge ne
-// fait que dater et numeroter la derniere synchro, jamais de rouge d'alarme
-// ici, pour ne pas dupliquer deux endroits qui pourraient diverger.
+// Trois etats (P3.25) : vert a jour, orange en transmission, rouge en panne.
+// Le rouge lit c.fault, le meme drapeau que #fault-panel (FaultId::CLOUD_SYNC,
+// >=3 echecs), jamais recalcule ici : les deux ne peuvent pas diverger.
+// Sur telephone, seule l'icone reste (CSS) ; le texte complet est en title.
 function renderCloudBadge() {
   const el = document.getElementById('cloud-badge');
   if (!el || !adminStatus || !adminStatus.cloudSync) return;
@@ -144,7 +144,10 @@ function renderCloudBadge() {
   if (!c.enabled) { el.style.display = 'none'; return; }
   el.style.display = 'inline-block';
   const upToDate = c.serverCaughtUp && c.lastSyncOk;
-  el.classList.toggle('pending', !upToDate);
+  const broken = c.fault === true;
+  const pending = !broken && (c.resultSinceBoot === false || !upToDate);
+  el.classList.toggle('broken', broken);
+  el.classList.toggle('pending', pending);
   // 4294967295 = sentinelle "jamais confirmee" (CloudSyncScheduler::
   // _lastSyncedRevision avant le tout premier envoi reussi) -- ne pas
   // l'afficher comme un vrai numero, constate le 28 septembre 2026 sur un
@@ -152,10 +155,17 @@ function renderCloudBadge() {
   const rev = (c.lastSyncedRevision != null && c.lastSyncedRevision !== 4294967295)
     ? ('n°' + c.lastSyncedRevision) : 'jamais confirmée';
   // resultSinceBoot === false : redemarre, aucun cycle encore (voir cloudsync.html).
-  el.textContent = c.resultSinceBoot === false ? '☁ · en attente (redémarrage)'
+  const txt = broken ? rev + ' · en échec (dernier essai ' + depuisEpochSec(c.lastAttemptEpochSec) + ')'
+    : c.resultSinceBoot === false ? 'en attente (redémarrage)'
     : upToDate
-    ? '☁ ' + rev + ' · à jour (' + depuisEpochSec(c.lastSuccessEpochSec) + ')'
-    : '☁ ' + rev + ' · sync… (' + depuisEpochSec(c.lastAttemptEpochSec) + ')';
+    ? rev + ' · à jour (' + depuisEpochSec(c.lastSuccessEpochSec) + ')'
+    : rev + ' · sync… (' + depuisEpochSec(c.lastAttemptEpochSec) + ')';
+  // \uFE0E : nuage en caractere texte, sinon les telephones l'affichent en
+  // emoji colore et la couleur d'etat ne s'applique plus.
+  el.querySelector('.cb-ico').textContent =
+    '☁\uFE0E' + (broken ? '✕' : pending ? '⇅' : '');
+  el.querySelector('.cb-txt').textContent = txt;
+  el.title = 'Synchro cloud : ' + txt;
 }
 function jsToEsp(d) { return d === 0 ? 6 : d - 1; }
 function getTodayEspIdx() { return jsToEsp(new Date().getDay()); }

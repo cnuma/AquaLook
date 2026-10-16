@@ -27,13 +27,10 @@
        ce badge est souvent la premiere chose qui signale une mise a jour. -->
   <a id="update-badge" href="/ota" style="display:none"
      title="Une mise à jour est disponible — ouvrir la page de gestion">⬆ MAJ</a>
-  <!-- Purement informatif : l'alarme d'echec persistant (FaultId::CLOUD_SYNC,
-       3 echecs consecutifs) passe deja par #fault-panel -- ce badge ne fait
-       que dater et numeroter la derniere synchro reussie, jamais de rouge
-       d'alarme ici, pour ne pas dupliquer deux endroits qui pourraient
-       diverger. Lien vers /cloudsync.html pour le detail complet, meme
-       principe que #update-badge vers /ota. -->
-  <a id="cloud-badge" href="/cloudsync.html" style="display:none"></a>
+  <!-- Vert / orange / rouge (P3.25, renderCloudBadge) ; le rouge suit le
+       meme drapeau que #fault-panel. Icone seule sur telephone. Lien vers
+       /cloudsync.html pour le detail, comme #update-badge vers /ota. -->
+  <a id="cloud-badge" href="/cloudsync.html" style="display:none"><span class="cb-ico"></span><span class="cb-txt"></span></a>
   <button id="btn-menu" data-onclick="openDrawer()" title="Configuration">
     <span></span><span></span><span></span>
   </button>
