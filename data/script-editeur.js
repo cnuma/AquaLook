@@ -1468,9 +1468,11 @@ async function envoyerPhrasesCloud() {
 if (CLOUD) {
   document.body.classList.add('cloud');
   document.querySelector('.brand').href = '/app.html';
-  // Bandeau du site et pastille MAJ, comme sur Mes modules (app.js) :
-  // visible si un module a des pages Web plus anciennes que celles publiees.
-  $('sitebar').hidden = false;
+  // Une seule barre (P3.21) : le retour mene a Mes modules ; pastille MAJ
+  // comme sur Mes modules (app.js), visible si un module a des pages Web
+  // plus anciennes que celles publiees.
+  $('b-retour').href = '/app.html';
+  $('b-retour').textContent = '‹ Mes modules';
   (async function () {
     try {
       const mods = await apiCloud('/app/modules');
