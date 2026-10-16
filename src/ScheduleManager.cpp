@@ -114,7 +114,9 @@ bool ScheduleManager::getScheduledSlot(uint8_t zone, uint8_t& slotIdx,
                                        uint32_t& epochDay) const {
     if (zone >= MAX_ZONES) return false;
     const ActiveSlot& a = _active[zone];
-    if (!a.running || a.isManual || a.slotIdx < 0) return false;
+    // slotIdx seul fait foi : un arrosage de creneau prolonge par un script
+    // passe en manuel (journal) mais garde son creneau (P3.23).
+    if (!a.running || a.slotIdx < 0) return false;
     slotIdx  = (uint8_t)a.slotIdx;
     epochDay = a.slotEpochDay;
     return true;
@@ -294,7 +296,23 @@ bool ScheduleManager::startZoneForSeconds(uint8_t zone, uint32_t seconds) {
     // Une reprise ou un demarrage decide par un script est traite comme
     // MANUEL : il ne vient pas du planning, et le confondre avec un
     // creneau planifie fausserait le journal comme l affichage.
+    //
+    // Exception (P3.23) : un script qui relance une zone DEJA en cours pour
+    // un creneau (declencheur "debut de zone", par exemple) prolonge cet
+    // arrosage sans l'interrompre : le creneau reste celui qui l'a
+    // declenche, et sa barre continue de clignoter sur le LCD. Une zone
+    // arretee puis relancee par le script repart, elle, sans creneau.
+    const ActiveSlot& cur = _active[zone];
+    const bool     keepSlot     = cur.running && cur.slotIdx >= 0;
+    const int8_t   slotIdx      = cur.slotIdx;
+    const uint32_t slotEpochDay = cur.slotEpochDay;
     activateZoneMs(zone, seconds * 1000UL, true);
+    if (keepSlot) {
+        _active[zone].slotIdx      = slotIdx;
+        _active[zone].slotEpochDay = slotEpochDay;
+        Serial.printf("[Schedule] Zone %d — script : creneau %d conserve\n",
+                      zone + 1, slotIdx + 1);
+    }
     return true;
 }
 
@@ -350,10 +368,10 @@ bool ScheduleManager::resumeZone(uint8_t zone) {
     EventLog::log(LOG_INFO, "Schedule: zone %u reprise pour %lus",
                   (unsigned)(zone + 1U), (unsigned long)(remaining / 1000UL));
     activateZoneMs(zone, remaining, manual);
-    if (!manual) {
-        slot.slotIdx      = slotIdx;
-        slot.slotEpochDay = slotEpochDay;
-    }
+    // slotIdx vaut -1 pour un depart sans creneau : le recopier sans
+    // condition couvre aussi un creneau prolonge par un script (P3.23).
+    slot.slotIdx      = slotIdx;
+    slot.slotEpochDay = slotEpochDay;
     if (_pauseObserver) _pauseObserver();
     return true;
 }
