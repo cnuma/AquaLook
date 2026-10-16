@@ -192,6 +192,7 @@ Consigner le profil réellement flashé, le port série utilisé, le point d’e
 - Après un POST qui modifie l’affichage, positionner le mécanisme de rafraîchissement prévu (`EventBus::displayDirty`).
 - Pour les opérations suivies d’un redémarrage, répondre au client avant le reboot.
 - Le verrouillage administrateur actuel est un verrouillage visuel côté navigateur, pas une authentification forte.
+- Toutes les pages Web (module et site AlwaysData) sont responsives : rien ne dépasse ni n'est coupé sur un écran de type iPhone (390 px de large). Toute page créée ou retouchée est mesurée à 390 px avant livraison : `python tools/csp_banc_pages.py --largeur 390` pour les pages du module, `tools/apercu_web/apercu.py` pour l'espace en ligne ; validation finale à l'œil sur iPhone par le propriétaire (emoji et police plus larges que dans Edge). Règle du propriétaire, 16 octobre 2026.
 
 ### Cybersécurité : référentiel vivant
 
