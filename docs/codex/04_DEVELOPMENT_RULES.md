@@ -96,6 +96,20 @@ Appliquée progressivement : à chaque page créée ou retouchée.
 - Une seule chose à la fois : menu d'options plutôt qu'empilement de cartes
   (voir P2.9, « Mon compte »).
 
+### Responsive (règle du propriétaire, 16 octobre 2026)
+
+- Toutes les pages Web, du module comme du site AlwaysData, sont
+  responsives : sur un écran de type iPhone (390 px de large), rien ne
+  dépasse à droite et rien n'est coupé (`style-base.css` masque le
+  débordement horizontal : un texte trop large devient invisible).
+- Une valeur longue passe à la ligne : pas de `white-space:nowrap` sur un
+  texte de longueur variable, sauf dans un bloc qui défile.
+- Toute page créée ou retouchée est mesurée à 390 px avant livraison :
+  `python tools/csp_banc_pages.py --largeur 390` (pages du module, y compris
+  les états aux textes les plus longs) ou `tools/apercu_web/apercu.py`
+  (espace en ligne). La validation finale se fait à l'œil sur iPhone par le
+  propriétaire : les emoji et la police y sont plus larges que dans Edge.
+
 ### JavaScript
 
 - Conserver les signatures appelées par les attributs HTML.

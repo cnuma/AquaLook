@@ -69,6 +69,8 @@ pio run -e ProgrammeArrosage_s3 -t buildfs
 Les pages Web vivent sur la SD (`data/`) : elles se déposent sur `.141`
 (`/api/debug/deploy-*`) ou se publient par `tools/publish_web_assets.py`
 (fichiers d’abord, manifeste en dernier) puis `tools/check_published_web.py`.
+Avant, `python tools/csp_banc_pages.py --largeur 390` : CSP, scénarios et
+aucun débordement à la largeur d’un iPhone (règle responsive, 16 oct. 2026).
 
 ## Release du programme (D021)
 

@@ -18,11 +18,19 @@ le resultat.
     python tools/csp_banc_pages.py                 # toutes les pages
     python tools/csp_banc_pages.py sante logs -v   # quelques pages, detail
     python tools/csp_banc_pages.py --module ""     # sans module : GET -> 502
+    python tools/csp_banc_pages.py --largeur 390   # en plus : rien ne deborde a 390 px (iPhone)
+
+--largeur : la page est rendue dans un <iframe> de cette largeur (Edge sans
+fenetre ignore --window-size pour la mise en page, cf. tools/apercu_web) ;
+a la fin du scenario, la page ne doit pas etre plus large que le cadre et
+aucun element visible ne doit en sortir. Les elements des blocs qui
+defilent ou coupent (overflow autre que visible) ne comptent pas.
 
 Code de sortie : 0 si tout passe, 1 sinon. Rien n'est ecrit dans le depot.
 """
 
 import argparse
+import html
 import http.server
 import json
 import os
@@ -34,6 +42,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -103,6 +112,7 @@ OTA_INSTALLE = {"valid": True, "command": "install_update", "success": True,
                 "webAssetsInstalledVersion": "5.17.3", "webAssetsAvailableVersion": "5.17.3",
                 "recordedEpoch": 1791997071, "target": "s3", "firmwareUrl": "x", "firmwareSize": 1575296,
                 "sha256": "65ac", "calculatedSha256": "65ac"}
+CLOUDSYNC = {'enabled': True, 'host': 'aqualook.alwaysdata.net', 'port': 443, 'moduleId': 'Jardin-01', 'intervalMinutes': 5, 'lastSyncOk': True, 'lastAttemptEpochSec': 1792182517, 'lastSuccessEpochSec': 1792182524, 'lastSyncedRevision': 117, 'syncInProgress': False, 'forcePending': False, 'serverCaughtUp': True}
 SCENARIOS = {
     "sante": {
         "page": "/sante.html",
@@ -210,6 +220,25 @@ SCENARIOS = {
                    ["attendre", 1200]],
         "post": [["POST", "/api/cloudSyncNow"]],
     },
+    # P3.27 : pages sans scenario propre, pour la mesure --largeur (et la CSP).
+    "urls": {"page": "/urls.html", "etapes": [["attendre", 2000], ["compte", "nav.top a", 1]]},
+    "editeur": {"page": "/scripts-schema.html", "etapes": [["attendre", 2500], ["compte", "body *", 10]]},
+    # P3.27 : etats aux textes les plus longs (debordement sur iPhone, --largeur 390).
+    "cloudsync-attente": {
+        "page": "/cloudsync.html",
+        "simule": {"/api/adminStatus": {"cloudSync": dict(CLOUDSYNC, resultSinceBoot=False, fault=False)}},
+        "etapes": [["attendre", 2000],
+                   ["texte", "#lastOk", "contient", "En attente du 1er cycle"],
+                   ["classe", "#etat", "a", "warn"]],
+    },
+    "cloudsync-panne": {
+        "page": "/cloudsync.html",
+        "simule": {"/api/adminStatus": {"cloudSync": dict(CLOUDSYNC, lastSyncOk=False, resultSinceBoot=True,
+                                                          serverCaughtUp=False, fault=True)}},
+        "etapes": [["attendre", 2000],
+                   ["texte", "#etatTxt", "egal", "Synchro en panne"],
+                   ["classe", "#etat", "a", "bad"]],
+    },
     # P3.17 : apres une installation reussie, le resultat enregistre porte la
     # version d'AVANT le redemarrage ; la page doit afficher celle en marche.
     "ota": {
@@ -308,6 +337,20 @@ BANC_JS = r"""
         else if(t==='cocher'){el.checked=!!e[2];el.dispatchEvent(new Event('change',{bubbles:true}));ok(true,'coche '+e[1])}
       }catch(x){ok(false,t+' '+e[1]+' : exception '+x.message)}
     }
+    if(window.__LARGEUR__){
+      const W=document.documentElement.clientWidth,L=document.documentElement.scrollWidth;
+      const nom=x=>x.tagName.toLowerCase()+(x.id?'#'+x.id:'')+(x.className&&typeof x.className==='string'?'.'+x.className.trim().split(/\s+/).join('.'):'');
+      const trop=[];
+      document.querySelectorAll('body *').forEach(x=>{
+        const r=x.getBoundingClientRect();
+        if(!r.width||r.right<=W+1||r.left>=W)return;
+        for(let p=x.parentElement;p&&p!==document.body;p=p.parentElement)if(getComputedStyle(p).overflowX!=='visible')return;
+        trop.push(x);
+      });
+      const feuilles=trop.filter(x=>!trop.some(y=>y!==x&&x.contains(y)));
+      ok(L<=W&&!feuilles.length,'largeur '+window.__LARGEUR__+' px : page '+L+' px pour '+W+' visibles'+
+        (feuilles.length?' ; deborde : '+feuilles.slice(0,4).map(x=>nom(x)+' ('+Math.round(x.getBoundingClientRect().right)+' px)').join(', '):''));
+    }
     await fetch('/__result',{method:'POST',body:JSON.stringify(res)});
   }
   if(document.readyState==='complete')jouer();else window.addEventListener('load',jouer);
@@ -338,6 +381,7 @@ class Etat:
 
 ETAT = Etat()
 MODULE = "192.168.1.141"
+LARGEUR = 0  # --largeur : 0 = pas de mesure de debordement
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -365,8 +409,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         chemin = self.path.split("?")[0]
         sc = ETAT.scen or {}
         if chemin == "/__banc.js":
-            js = "window.__SCEN__=%s;%s" % (json.dumps(sc.get("etapes", [])), BANC_JS)
+            js = "window.__SCEN__=%s;window.__LARGEUR__=%d;%s" % (
+                json.dumps(sc.get("etapes", [])), LARGEUR, BANC_JS)
             return self.envoyer(200, js.encode(), "application/javascript")
+        if chemin == "/__cadre.html":
+            page = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("p", ["/"])[0]
+            cadre = ('<!doctype html><html><body style="margin:0"><iframe src="%s" '
+                     'style="width:%dpx;height:844px;border:0"></iframe></body></html>'
+                     % (html.escape(page, quote=True), LARGEUR))
+            return self.envoyer(200, cadre.encode(), "text/html; charset=utf-8")
         if chemin == "/__temoin.html":
             return self.envoyer(200, TEMOIN.encode(), "text/html; charset=utf-8", csp=True)
         if chemin == "/__temoin.js":
@@ -452,13 +503,16 @@ def ouvrir(edge, url, delai):
 
 
 def main():
-    global MODULE
+    global MODULE, LARGEUR
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pages", nargs="*", help="scenarios (defaut : tous)")
     ap.add_argument("--module", default=MODULE, help="adresse du module pour les lectures GET")
     ap.add_argument("--edge", help="chemin du navigateur")
+    ap.add_argument("--largeur", type=int, default=0,
+                    help="largeur d'ecran en px (390 = iPhone) : verifie en plus que rien ne deborde")
     ap.add_argument("-v", action="store_true", help="toutes les lignes")
     a = ap.parse_args()
+    LARGEUR = a.largeur
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     MODULE = a.module
     edge = trouver_edge(a.edge)
@@ -492,7 +546,10 @@ def main():
     for nom in noms:
         sc = SCENARIOS[nom]
         ETAT.reset(sc)
-        fini = ouvrir(edge, base + sc["page"], 40)
+        url = sc["page"]
+        if LARGEUR:
+            url = "/__cadre.html?p=" + urllib.parse.quote(url, safe="")
+        fini = ouvrir(edge, base + url, 40)
         lignes = list(ETAT.resultat or [])
         if not fini:
             lignes.append("FAIL scenario non termine (script de page bloque ?)")
