@@ -1,0 +1,360 @@
+/* site.css -- feuille unique du service en ligne (P4.11, 16 oct. 2026).
+ *
+ * But : changer l'aspect du site en ne modifiant que ce fichier. Les pages
+ * (accueil, maj, app, admin) n'ont plus de <style> interne ; chacune porte
+ * une classe sur <body> (p-accueil, p-maj, p-app, p-console) qui limite ses
+ * regles propres a elle seule.
+ *
+ * Couleurs : MEMES noms et MEMES valeurs que data/style-base.css du module
+ * (regle du proprietaire : interface identique sur le reseau local et en
+ * ligne). Une couleur se change ici, pas dans une regle. La console
+ * d'administration garde son theme sombre en redefinissant ces variables.
+ */
+:root{
+  --bg:#f0f4f1; --bg1:#ffffff; --bg2:#e8efe9;
+  --border:#c8daca; --border2:#b0ccb2;
+  --green:#1a7a34; --green-dim:#d4edda; --green-mid:#8fc99a;
+  --blue:#0077aa; --amber:#b06000; --red:#cc2200; --purple:#6633cc;
+  --text:#1a2e1e; --text2:#4a6e50; --muted:#7a9e80;
+  /* Fonds pales propres au site (alertes, mise a jour). */
+  --amber-dim:#fdf3e0; --red-dim:#fbeceb; --purple-dim:#f1ebfb;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+/* Console d'administration : theme sombre. */
+body.p-console{
+  --bg:#0e1720; --bg1:#16232f; --bg2:#1e3040; --border:#27394a;
+  --text:#e7f1f8; --text2:#8ba6ba;
+  --blue:#29b6f6; --green:#4caf50; --amber:#ffb300; --red:#ef5350;
+}
+*{box-sizing:border-box}
+
+/* ==== accueil (accueil.html) ==== */
+body.p-accueil{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center; background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+.p-accueil main{background:var(--bg1);border:1px solid var(--border);border-radius:14px;padding:36px 32px; max-width:420px;width:100%;text-align:center}
+.p-accueil svg{width:48px;height:48px;color:var(--green)}
+.p-accueil h1{font-size:24px;margin:10px 0 4px;font-weight:650}
+.p-accueil h1 span{color:var(--green)}
+.p-accueil p{color:var(--text2);margin:0 0 26px}
+.p-accueil a.primary{display:inline-block;background:var(--green);color:#fff;text-decoration:none;font-weight:600; border-radius:8px;padding:11px 22px}
+.p-accueil a.primary:hover{filter:brightness(.92)}
+
+/* ==== maj (maj.html) ==== */
+body.p-maj{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+.p-maj header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:var(--bg1); border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.p-maj h1{font-size:17px;margin:0 auto 0 0;font-weight:600}
+.p-maj h1 span{color:var(--green)}
+.p-maj header a{padding:8px 13px;border:1px solid var(--border);border-radius:7px;color:var(--text);text-decoration:none;font-size:14px}
+.p-maj header a:hover{border-color:var(--green)}
+.p-maj main{max-width:1000px;margin:0 auto;padding:20px}
+.p-maj .intro{margin:0 0 16px;color:var(--text2)}
+.p-maj .etape{background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px; display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:center}
+@media(min-width:800px){
+  .p-maj .etape{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+.p-maj .etape h2{margin:0 0 8px;font-size:20px}
+.p-maj .etape .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%; background:var(--green);color:#fff;font-weight:700;font-size:15px;margin-right:8px;vertical-align:2px}
+.p-maj .etape p{margin:0 0 10px}
+.p-maj .etape.violet{border:2px solid var(--purple);background:var(--purple-dim)}
+.p-maj .etape.violet .num{background:var(--purple)}
+.p-maj .etape svg{width:100%;height:auto;max-height:300px;display:block}
+.p-maj .aller{display:inline-block;background:var(--purple);color:#fff;text-decoration:none;font-weight:700; font-size:18px;padding:12px 22px;border-radius:9px;margin:4px 0 10px}
+.p-maj .aller:hover{filter:brightness(.92)}
+.p-maj code{font-family:var(--mono);font-size:15px;background:var(--green-dim);border-radius:5px;padding:1px 7px}
+.p-maj .violet code{background:var(--bg1)}
+.p-maj .astuce{font-size:14px;color:var(--text2);border-left:3px solid var(--border);padding-left:10px}
+.p-maj .nom-connu{display:none}
+.p-maj.avec-nom .nom-connu{display:block}
+.p-maj.avec-nom .nom-inconnu{display:none}
+/* Pas a pas (classe posee par maj.js) : une etape a la fois. */
+.p-maj .nav{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 16px}
+.p-maj.js .nav{display:flex}
+.p-maj.js .etape{display:none}
+.p-maj.js .etape.active{display:grid}
+.p-maj .nav button{font:inherit;font-size:16px;padding:10px 18px;border-radius:8px;border:1px solid var(--border); background:var(--bg1);color:var(--text);cursor:pointer}
+.p-maj .nav button.suiv{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.p-maj .nav button:disabled{opacity:.4;cursor:default}
+.p-maj .nav .ou{flex:1;text-align:center;color:var(--text2);font-size:14px}
+.p-maj .points{display:flex;gap:6px;justify-content:center;width:100%;order:3}
+.p-maj .points span{width:10px;height:10px;border-radius:50%;background:var(--border)}
+.p-maj .points span.fait{background:var(--green)}
+.p-maj .points span.ici{background:var(--purple)}
+
+/* ==== app (app.html) ==== */
+.p-app [hidden]{display:none!important}
+body.p-app{margin:0;background:var(--bg);color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+.p-app header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px; background:var(--bg1);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.p-app h1{font-size:17px;margin:0;font-weight:600}
+.p-app h1 span{color:var(--green)}
+.p-app .spacer{flex:1}
+.p-app main{max-width:1000px;margin:0 auto;padding:20px}
+.p-app input,.p-app select,.p-app button{font:inherit;color:var(--text);background:var(--bg1); border:1px solid var(--border);border-radius:7px;padding:8px 11px}
+.p-app input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--green)}
+.p-app button{cursor:pointer}
+.p-app button:hover:not(:disabled){border-color:var(--green)}
+.p-app button.primary,.p-app a.primary{background:var(--green);color:#fff;border-color:var(--green);font-weight:600}
+.p-app button.primary:hover:not(:disabled){filter:brightness(.92)}
+.p-app button.ghost{background:transparent;border-color:transparent;color:var(--text2)}
+/* Regle d'interface (7 oct. 2026) : tout « Fermer » est bleu, sur la rangee
+   du bouton principal -- meme bleu que .btn.fermer de l'editeur de scripts. */
+.p-app button.fermer{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600}
+.p-app button.fermer:hover:not(:disabled){filter:brightness(.92)}
+.p-app button:disabled{opacity:.45;cursor:not-allowed}
+.p-app .card{background:var(--bg1);border:1px solid var(--border);border-radius:12px; padding:18px;margin-bottom:16px}
+.p-app .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2); margin:0 0 14px;font-weight:600}
+.p-app .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.p-app .row+.row{margin-top:12px}
+.p-app .paire{display:inline-flex;align-items:center;gap:8px}
+.p-app label{color:var(--text2);font-size:13px}
+.p-app .hint{color:var(--text2);font-size:13px;margin-top:10px}
+/* Mon compte : libelles de meme largeur, champs alignes les uns sous les autres. */
+.p-app #compte .row>label{min-width:140px}
+/* Mon compte : menu des options, puis une option seule avec retour au menu. */
+.p-app .op-s{display:block;color:var(--text2);font-size:13px;margin-top:3px}
+.p-app .fil{margin:0 0 12px}
+.p-app .fil button{background:none;border:none;padding:4px 0;color:var(--green);font-weight:600}
+/* Sauvegardes : une ligne cliquable par etat conserve. */
+.p-app .sv{display:flex;align-items:center;gap:10px;width:100%;text-align:left; padding:9px 11px;margin-bottom:6px;border:1px solid var(--border);border-radius:8px; background:var(--bg1);cursor:pointer;font-size:13px}
+.p-app .sv:hover{background:var(--green-dim)}
+.p-app .sv .nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-app .sv .qd{color:var(--text2);font-size:12px;white-space:nowrap}
+.p-app .sv .ep{color:var(--amber)}
+.p-app .sv.cour{border-color:var(--green)}
+.p-app .sv.cour .qd{color:var(--green)}
+/* Reglages sauvegardes, en lecture seule. */
+.p-app .reg{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:12px 0 0}
+.p-app .reg dt{color:var(--text2)}
+.p-app .reg dd{margin:0}
+.p-app .mod{display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px; border:1px solid var(--border);border-radius:10px;background:var(--bg1)}
+.p-app .mod:hover{border-color:var(--green);background:var(--green-dim)}
+.p-app .mod-t{font-weight:600;display:flex;align-items:center;gap:9px;font-size:16px}
+.p-app .mod-s{display:block;color:var(--text2);font-family:var(--mono);font-size:12px;margin-top:3px}
+.p-app .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--text2)}
+/* Mises a jour : MEMES styles que l'interface du module (data/style-base.css :
+   #update-badge, .upd-chan, .upd-chip, --purple) -- l'UI doit etre identique
+   sur le reseau local et en ligne (regle du proprietaire, 13 oct. 2026). */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.p-app #update-badge{font-size:14px;font-weight:bold;color:#fff;text-decoration:none;padding:3px 9px; border-radius:4px;background:var(--purple);animation:blink 2s infinite}
+@media (prefers-reduced-motion:reduce){
+  .p-app #update-badge{animation:none}
+}
+.p-app .mod.maj{border-color:var(--purple);background:var(--purple-dim)}
+.p-app .upd-chan-vers{font-family:var(--mono);font-size:11.5px;color:var(--text2);margin-top:3px; display:flex;gap:6px;flex-wrap:wrap;align-items:baseline}
+.p-app .upd-chan-vers b{color:var(--text);font-weight:600}
+.p-app .upd-arrow{color:var(--text2)}
+.p-app .upd-chip{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--border); color:var(--text2);white-space:nowrap;font-family:system-ui,sans-serif}
+.p-app .upd-chip.ok{color:var(--green);border-color:var(--green)}
+.p-app .upd-chip.avail{color:var(--purple);border-color:var(--purple);font-weight:600}
+.p-app .upd-open{display:block;text-align:center;text-decoration:none;background:var(--purple);color:#fff; border-radius:7px;padding:9px 12px;font-weight:600;margin-top:4px}
+.p-app .upd-open:hover{filter:brightness(.9)}
+.p-app .hint a{color:var(--green);font-weight:600}
+.p-app .dot.ok{background:var(--green)}
+.p-app .dot.warn{background:var(--amber)}
+.p-app .dot.ko{background:var(--red)}
+/* Planning : seule vue des horaires. */
+.p-app .plan{width:100%;border-collapse:separate;border-spacing:5px;font-size:12px}
+.p-app .plan th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2); font-weight:600;padding:2px 4px;text-align:center}
+.p-app .plan td{padding:0;vertical-align:top}
+.p-app .jour{display:block;width:100%;min-width:92px;min-height:64px;text-align:left; background:var(--green-dim);border:1px solid var(--border);border-radius:8px;padding:6px}
+.p-app .jour:hover{border-color:var(--green);background:color-mix(in srgb,var(--green) 22%,var(--bg1))}
+.p-app .jour.vide{background:var(--bg);color:var(--text2);text-align:center;padding-top:22px}
+/* La couleur de la zone court sur toute la ligne, comme sur le planning du
+   module : jours programmes teintes, et la CELLULE du nom porte fond,
+   liseret et hachures (mode "tous les N jours"). Une cellule prend toujours
+   la hauteur de sa ligne, dans tous les navigateurs -- etirer le bouton par
+   height:100% ne marchait que sous Chrome (bandeau ecrase ailleurs). */
+.p-app .plan tr[style] .jour:not(.vide){background:color-mix(in srgb,var(--zc) 9%,var(--bg1)); border-color:color-mix(in srgb,var(--zc) 30%,var(--border))}
+.p-app .plan tr[style] .jour:hover{border-color:var(--zc)}
+.p-app .plan tr[style] .jour.vide{background:color-mix(in srgb,var(--zc) 3%,var(--bg))}
+.p-app .plan tr[style]>td:first-child{vertical-align:middle;border-radius:5px; background:color-mix(in srgb,var(--zc) 8%,transparent); box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent)}
+.p-app .plan tr.inter>td:first-child{background:repeating-linear-gradient(135deg, color-mix(in srgb,var(--zc) 12%,transparent) 0 4px, color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px)}
+.p-app .znom{display:block;width:100%;border:none;background:transparent;font-weight:600; text-align:left;padding:6px 8px 6px 9px;white-space:nowrap;color:var(--text)}
+/* Pastille en couleur adoucie (--zp, pastelZone()), nom noir ou blanc
+   selon le contraste sur ce fond (--zt, texteZone()) : lisible quelle que
+   soit la couleur choisie. Pleine largeur : meme taille pour toutes les
+   zones, comme sur le module. */
+.p-app .znom .zn{display:block;padding:2px 6px;border-radius:3px;background:var(--zp,var(--zc)); color:var(--zt,#000);box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 45%,transparent)}
+.p-app .znom:hover .zn{text-decoration:underline}
+.p-app .znom small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--text2);font-weight:400}
+.p-app .jc{display:block}
+.p-app .cr{display:block;border-radius:5px;padding:2px 6px;margin-bottom:3px; font-family:var(--mono);font-size:11px;background:var(--text);color:#fff}
+.p-app .cr:last-child{margin-bottom:0}
+.p-app .cr.att{background:var(--amber);color:#fff}
+/* Suppression en attente : horaire du module, barre, cadre ambre. */
+.p-app .cr.sup{background:transparent;color:var(--amber);border:1px dashed var(--amber); padding:1px 5px;text-decoration:line-through}
+.p-app .echec{display:block;margin-top:4px;font-size:10.5px;color:var(--red);font-weight:600}
+.p-app .legende{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:12px; color:var(--text2);align-items:center}
+.p-app .legende .ex{display:inline-block;width:11px;height:11px;border-radius:3px; margin-right:5px;vertical-align:-1px}
+/* Fenetre de detail. */
+.p-app #voile{position:fixed;inset:0;background:color-mix(in srgb,var(--text) 60%,transparent);display:none;z-index:30; align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+.p-app #voile.on{display:flex}
+.p-app #panneau{background:var(--bg1);border-radius:14px;width:100%;max-width:560px; padding:20px;box-shadow:0 18px 50px color-mix(in srgb,var(--text) 25%,transparent)}
+.p-app #panneau h3{margin:0 0 4px;font-size:18px}
+.p-app #panneau .sous{color:var(--text2);font-size:13px;margin:0 0 16px}
+.p-app .slot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 8px; border-bottom:1px solid var(--bg2);border-radius:7px}
+.p-app .slot:last-of-type{border-bottom:none}
+.p-app .slot.off{opacity:.55}
+.p-app .slot.att{background:var(--amber-dim)}
+.p-app .slot.ref{background:var(--red-dim)}
+.p-app .slot-n{width:18px;color:var(--text2);font-family:var(--mono);font-size:12px}
+.p-app .slot input[type=time]{width:108px}
+.p-app .slot input[type=number]{width:76px}
+.p-app .badge{font-size:10.5px;border-radius:999px;padding:1px 8px;white-space:nowrap; border:1px solid currentColor}
+.p-app .badge.att{color:var(--amber)}
+.p-app .badge.ref{color:var(--red)}
+.p-app .note{padding:11px 13px;border-radius:8px;font-size:13.5px;margin:12px 0}
+.p-app .note.warn{background:var(--amber-dim);border:1px solid color-mix(in srgb,var(--amber) 35%,var(--bg1));color:var(--amber)}
+.p-app .note.ko{background:var(--red-dim);border:1px solid color-mix(in srgb,var(--red) 30%,var(--bg1));color:var(--red)}
+.p-app table.hist{width:100%;border-collapse:collapse;font-size:13px}
+.p-app .hist th{text-align:left;color:var(--text2);font-weight:600;font-size:11px; text-transform:uppercase;letter-spacing:.05em;padding:6px 8px; border-bottom:1px solid var(--border)}
+.p-app .hist td{padding:7px 8px;border-bottom:1px solid var(--bg2);vertical-align:top}
+.p-app .hist tr:last-child td{border-bottom:none}
+.p-app .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px; font-family:var(--mono);border:1px solid var(--border);color:var(--text2)}
+.p-app .tag.pending{color:var(--amber);border-color:var(--amber)}
+.p-app .tag.accepted{color:var(--green);border-color:var(--green)}
+.p-app .tag.refused,.p-app .tag.failed{color:var(--red);border-color:var(--red)}
+.p-app .demande{font-size:12.5px;line-height:1.45}
+.p-app .demande b{color:var(--text)}
+/* Reference cliquable vers la sauvegarde dont une modification est partie :
+   ouvre directement le meme panneau de detail que la liste des sauvegardes,
+   sans avoir a defiler jusqu'a elle pour retrouver l'etat correspondant. */
+.p-app .lien-etat{background:none;border:none;padding:0;margin:0;font:inherit; font-size:11px;color:var(--text2);text-decoration:underline;cursor:pointer}
+.p-app .lien-etat:hover{color:var(--green)}
+.p-app #login,.p-app #oubli,.p-app #nm{max-width:380px;margin:60px auto}
+.p-app #login input,.p-app #oubli input,.p-app #nm input{width:100%;margin-top:6px}
+.p-app #login .row,.p-app #oubli .row,.p-app #nm .row{display:block}
+.p-app #login input[type=checkbox]{width:18px;margin:0;flex:none}
+.p-app #login label.paire{color:var(--text);font-size:14px;cursor:pointer}
+.p-app #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px); background:var(--text);color:#fff;border-radius:8px;padding:11px 18px;opacity:0; transition:.2s;pointer-events:none;max-width:90vw;z-index:40;font-size:14px}
+.p-app #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.p-app #toast.err{background:var(--red)}
+/* ── Ecrans etroits ────────────────────────────────────────────────────────
+ *
+ * Le planning est un tableau de 8 colonnes : le nom de zone et les sept
+ * jours. Chaque cellule reserve 92 px pour qu'un horaire y tienne, soit
+ * environ 700 px de large -- le double d'un telephone. La table debordait
+ * donc, et les derniers jours de la semaine etaient hors de l'ecran, sans
+ * rien pour le signaler.
+ *
+ * Plutot qu'un defilement horizontal, le tableau devient une liste : une
+ * zone, puis ses sept jours l'un sous l'autre. Meme balisage, meme code de
+ * rendu, memes zones cliquables -- seule la mise en page change. Le libelle
+ * du jour, porte par data-jl, remplace l'en-tete de colonne qui n'a plus de
+ * sens en liste.
+ */
+@media (max-width: 720px){
+  .p-app main{padding:12px}
+  .p-app header{padding:10px 14px;gap:8px}
+  .p-app .card{padding:14px;border-radius:10px}
+  .p-app .plan{display:block;border-spacing:0}
+  .p-app .plan tbody{display:block}
+  .p-app .plan tr{display:block;padding-bottom:12px;margin-bottom:12px; border-bottom:1px solid var(--bg2)}
+  .p-app .plan tr:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+  .p-app .plan tr:first-child{display:none}
+  /* en-tetes de colonnes */
+  .p-app .plan td{display:block}
+  .p-app .plan td:first-child{margin-bottom:7px}
+  .p-app .znom{padding:4px 8px 4px 9px;font-size:15px}
+  /* Le jour devient une ligne : son nom a gauche, ses creneaux a droite. */
+  .p-app .jour{display:flex;align-items:flex-start;gap:10px;min-width:0;min-height:0; margin-bottom:5px;padding:8px 10px}
+  .p-app .jour::before{content:attr(data-jl);flex:none;width:34px;padding-top:2px; font-size:10.5px;text-transform:uppercase;letter-spacing:.05em; color:var(--text2);font-weight:600}
+  .p-app .jour[data-jl=""]::before{display:none}
+  /* Un jour sans arrosage garde sa ligne -- il faut pouvoir le toucher pour y
+   * ajouter un creneau -- mais pas son poids : sept jours pleine hauteur par
+   * zone rendaient la page interminable. Le tiret disparait, le libelle du
+   * jour suffit a dire qu'il n'y a rien. */
+  .p-app .jour.vide{padding:6px 10px;text-align:left;background:transparent; border-style:dashed}
+  .p-app .jour.vide .jc{display:none}
+  .p-app .jc{flex:1;min-width:0}
+  /* Plusieurs creneaux dans la meme journee tiennent sur une ligne. */
+  .p-app .cr{display:inline-block;margin:0 4px 3px 0}
+  .p-app .legende{gap:8px 14px;font-size:11.5px}
+  /* La fenetre de detail occupe l'ecran : a cette largeur, une fenetre
+   * flottante ne gagne rien et perd de la place utile. */
+  .p-app #voile{padding:0;align-items:stretch}
+  .p-app #panneau{max-width:none;border-radius:0;padding:16px 14px}
+  .p-app #panneau h3{font-size:17px}
+  /* Un creneau ne tient pas sur une ligne : on choisit ou il se coupe plutot
+   * que de laisser le navigateur decider. Les mentions d'etat passent seules
+   * en dessous. */
+  .p-app .slot{gap:8px 9px;padding:10px 6px}
+  /* Le champ heure ne grandit pas : laisse a lui-meme il occupait toute la
+   * largeur restante et repoussait << pendant >> et la duree hors de l'ecran. */
+  .p-app .slot input[type=time]{flex:0 0 auto;width:112px}
+  .p-app .slot input[type=number]{flex:0 0 auto;width:72px}
+  .p-app .slot label{flex:0 0 auto}
+  .p-app .slot .badge{flex-basis:100%;margin-left:28px}
+  /* Boutons a la taille du pouce, et jamais deux moities illisibles. */
+  .p-app input,.p-app select,.p-app button{padding:10px 12px}
+  .p-app #panneau .row button{flex:1 1 auto}
+  /* Le journal des modifications est un tableau de quatre colonnes dont deux
+   * portent des phrases. Un tableau ne descend pas sous sa largeur minimale :
+   * c'est lui, et non le planning, qui elargissait la page entiere et faisait
+   * deborder jusqu'a l'en-tete. Chaque ligne devient un bloc. */
+  .p-app .hist{display:block;font-size:12.5px}
+  .p-app .hist tbody{display:block}
+  .p-app .hist tr:first-child{display:none}
+  /* en-tetes de colonnes */
+  .p-app .hist tr{display:block;padding:10px 0;border-bottom:1px solid var(--bg2)}
+  .p-app .hist tr:last-child{border-bottom:none;padding-bottom:0}
+  .p-app .hist td{display:block;padding:0;border:none}
+  .p-app .hist td:first-child{color:var(--text2);font-size:11.5px}
+  .p-app .hist td:nth-child(2){margin:4px 0 6px}
+  .p-app .hist td:nth-child(4){margin-top:5px;color:var(--text2);font-size:12px}
+  .p-app .hist td:nth-child(5){margin-top:2px;font-family:var(--mono);font-size:11px;color:var(--text2)}
+  .p-app .reg{grid-template-columns:1fr;gap:0 0}
+  .p-app .reg dt{margin-top:8px}
+}
+
+/* ==== console (admin.html) ==== */
+body.p-console{margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;}
+.p-console header{display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 18px; background: var(--bg1); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5;}
+.p-console h1{font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .02em;}
+.p-console h1 span{color: var(--blue);}
+.p-console .spacer{flex: 1;}
+.p-console input,.p-console select,.p-console textarea,.p-console button{font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;}
+.p-console textarea{font-family: var(--mono); font-size: 12px; width: 100%; resize: vertical;}
+.p-console button{cursor: pointer; background: var(--bg2);}
+.p-console button:hover:not(:disabled){border-color: var(--blue);}
+.p-console button.primary{background: var(--blue); color: var(--bg); border-color: var(--blue); font-weight: 600;}
+.p-console button.danger:hover:not(:disabled){border-color: var(--red); color: var(--red);}
+.p-console button:disabled{opacity: .45; cursor: not-allowed;}
+.p-console main{display: grid; grid-template-columns: 280px 1fr; gap: 0; min-height: calc(100vh - 53px);}
+@media (max-width: 800px){
+  .p-console main{grid-template-columns: 1fr;}
+}
+.p-console #modules{border-right: 1px solid var(--border); background: var(--bg1); padding: 10px;}
+.p-console #detail{padding: 18px; min-width: 0;}
+.p-console .mod{display: block; width: 100%; text-align: left; margin-bottom: 6px; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 9px 11px;}
+.p-console .mod:hover{background: var(--bg2);}
+.p-console .mod.sel{background: var(--bg2); border-color: var(--blue);}
+.p-console .mod-id{font-weight: 600; display: flex; align-items: center; gap: 7px;}
+.p-console .mod-meta{color: var(--text2); font-size: 11.5px; font-family: var(--mono); margin-top: 2px;}
+.p-console .dot{width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text2);}
+.p-console .dot.ok{background: var(--green);}
+.p-console .dot.warn{background: var(--amber);}
+.p-console .dot.ko{background: var(--red);}
+.p-console .card{background: var(--bg1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;}
+.p-console .card h2{font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 0 0 12px; font-weight: 600;}
+.p-console .row{display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
+.p-console .row + .row{margin-top: 10px;}
+.p-console label{color: var(--text2); font-size: 12px;}
+.p-console table{width: 100%; border-collapse: collapse; font-size: 12.5px;}
+.p-console th{text-align: left; color: var(--text2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--border);}
+.p-console td{padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top;}
+.p-console tr:last-child td{border-bottom: none;}
+.p-console .mono{font-family: var(--mono); font-size: 11.5px;}
+.p-console .tag{display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-family: var(--mono); border: 1px solid var(--border);}
+.p-console .tag.pending{color: var(--amber); border-color: var(--amber);}
+.p-console .tag.accepted{color: var(--green); border-color: var(--green);}
+.p-console .tag.refused,.p-console .tag.failed{color: var(--red); border-color: var(--red);}
+.p-console .tag.expired{color: var(--text2);}
+.p-console details > summary{cursor: pointer; color: var(--text2); font-size: 11.5px;}
+.p-console pre{margin: 6px 0 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; overflow-x: auto; font-size: 11.5px; font-family: var(--mono);}
+.p-console .tabs{display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;}
+.p-console .tabs button.on{border-color: var(--blue); color: var(--blue);}
+.p-console .empty{color: var(--text2); font-style: italic; padding: 8px;}
+.p-console #toast{position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; opacity: 0; transition: .2s; pointer-events: none; max-width: 90vw; z-index: 20;}
+.p-console #toast.show{opacity: 1; transform: translateX(-50%) translateY(0);}
+.p-console #toast.err{border-color: var(--red); color: var(--red);}
+.p-console .hint{color: var(--text2); font-size: 11.5px; margin-top: 8px;}
+.p-console .token-out{font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--amber); background: var(--bg); padding: 10px; border-radius: 6px; margin-top: 10px;}
