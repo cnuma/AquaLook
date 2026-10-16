@@ -571,6 +571,14 @@ function renderPlanning() {
         if (offset >= nbCols) break;
         triggerCols.add(offset);
       }
+      // Prochain jour arrose strictement apres le jour d (jours epoch) :
+      // [jour abrege, quantieme] ("lun.", 19) ; null sans date de depart.
+      const nextDay = d => {
+        if (anchorDay <= 0) return null;
+        const n = new Date((d < anchorDay ? anchorDay : d + intervalD - ((d - anchorDay) % intervalD)) * 86400000);
+        return [n.toLocaleDateString('fr-FR', { weekday: 'short', timeZone: 'UTC' }), n.getUTCDate()];
+      };
+      const nextLbl = d => { const n = nextDay(d); return n ? n[0] + ' ' + n[1] : ''; };
       html += `<div class="pg-header zone-hdr interval-zone-hdr" style="--zc:${zHex};--zp:${zPas};--zt:${zTxt}">
         <span class="zn pg-zone-label-${zoneColor}">${name}<span style="font-size:9px;opacity:.7;margin-left:4px">/${intervalD}j</span></span>
       </div>`;
@@ -584,12 +592,17 @@ function renderPlanning() {
           ? (enabled.length
               ? enabled.map(s=>`<div class="mini-slot">${pad(s.h??s.hour)}:${pad(s.m??s.minute)} ${s.d??s.duration}'</div>`).join('')
               : `<span class="pg-zone-label-${zoneColor}" style="color:${zHex};font-size:11px">&#8635; /${intervalD}j</span>`)
-          // Jour non arrose (P2.15) : chevrons vers le prochain jour arrose,
-          // comme sur le LCD ; les hachures restent reservees a la pluie.
-          : `<svg class="pg-chev" viewBox="0 0 30 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 1l7 4-7 4M12 1l7 4-7 4M22 1l7 4-7 4"/></svg>`;
+          // Jour non arrose (P2.15) : la fleche est dessinee par le CSS
+          // (.pg-day.interval-off) ; elle porte le prochain jour arrose.
+          // Trois niveaux de detail selon la largeur de la case (style.css).
+          : (nd => `<div class="pg-chev-txt">${nd ? `<span class="pc-p">prochain</span><b><span class="pc-j">${nd[0]} </span>${nd[1]}</b>` : '&mdash;'}</div>`)(nextDay(todayEpoch + col));
         const bgStyle   = (isTrigger && !rainBlk && zHex) ? ` style="background:${zHex}14"` : '';
+        const tip       = isTrigger
+          ? `/${intervalD}j - cliquer pour consulter ou proposer cette date comme nouveau depart`
+          : `Pas d'arrosage ce jour (/${intervalD}j)` + (nextLbl(todayEpoch + col) ? ` - prochain : ${nextLbl(todayEpoch + col)}` : '')
+            + ` - cliquer pour faire partir le cycle ce jour-la`;
         html += `<div class="pg-day ${cls} ${col===0?'today-col':''}"${bgStyle}
-                      data-onclick="openIntervalModal(${zi},${todayEpoch + col})" title="/${intervalD}j - cliquer pour consulter ou proposer cette date comme nouveau depart">
+                      data-onclick="openIntervalModal(${zi},${todayEpoch + col})" title="${tip}">
           ${inner}
         </div>`;
       });
