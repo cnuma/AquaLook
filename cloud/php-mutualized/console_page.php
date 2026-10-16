@@ -52,6 +52,30 @@ function console_basic_credentials(): ?array
     return explode(':', $decoded, 2);
 }
 
+// Echecs de la console comptes dans login_attempt (P1.11, SEC-030), sous un
+// identifiant qui ne peut pas etre une adresse mail : aucune migration de
+// schema, et la purge de cleanup.php s'applique deja. Par adresse IP ET au
+// total, sur la fenetre de l'espace utilisateur (RATE_WINDOW_MIN, auth.php) ;
+// plafonds reglables dans la console (CONSOLE_MAX_FAILURES_*). Le plafond
+// total ferme la console a tous, proprietaire compris, tant que la fenetre
+// glissante en contient trop : choix assume, un mot de passe devine coute
+// plus cher (remede : attendre, ou relever le plafond en base).
+const CONSOLE_ATTEMPT_KEY = '#console';
+
+/** Echecs recents de la console : [par cette adresse, toutes adresses]. */
+function console_recent_failures(string $ip): array
+{
+    $stmt = db()->prepare(
+        'SELECT SUM(ip = ?) AS par_ip, COUNT(*) AS total'
+        . ' FROM login_attempt'
+        . ' WHERE email = ? AND succeeded = 0'
+        . ' AND ts > (UTC_TIMESTAMP(3) - INTERVAL ? MINUTE)'
+    );
+    $stmt->execute([$ip, CONSOLE_ATTEMPT_KEY, RATE_WINDOW_MIN]);
+    $row = $stmt->fetch() ?: [];
+    return [(int)($row['par_ip'] ?? 0), (int)($row['total'] ?? 0)];
+}
+
 function serve_console_page(string $path): never
 {
     header('Cache-Control: no-store');
@@ -64,12 +88,40 @@ function serve_console_page(string $path): never
         exit;
     }
     $cred = console_basic_credentials();
+    $ip = client_ip();
+    if ($cred !== null) {
+        // Essais repetes (P1.11, SEC-030) : verifie AVANT password_verify, un
+        // poste bloque ne fait plus travailler bcrypt. Une requete sans
+        // identifiant (premier appel du navigateur, qui attend le 401 pour
+        // ouvrir la fenetre de saisie) ne compte pas.
+        try {
+            [$parIp, $total] = console_recent_failures($ip);
+        } catch (Throwable $e) {
+            // Base injoignable : on ne sert pas une page protegee sans pouvoir
+            // compter les essais (la console ne fonctionne pas sans base).
+            http_response_code(503);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo "Console non disponible : base de donnees injoignable.\n";
+            exit;
+        }
+        if ($parIp >= setting_int('CONSOLE_MAX_FAILURES_IP')
+            || $total >= setting_int('CONSOLE_MAX_FAILURES_TOTAL')) {
+            http_response_code(429);
+            header('Retry-After: ' . (RATE_WINDOW_MIN * 60));
+            header('Content-Type: text/plain; charset=utf-8');
+            echo "Trop d'essais : reessayer dans " . RATE_WINDOW_MIN . " minutes.\n";
+            exit;
+        }
+    }
     // Mot de passe verifie AVANT l'identifiant : la duree de reponse ne dit
     // pas si l'identifiant essaye est le bon.
     $ok = $cred !== null
         && password_verify($cred[1], $hash)
         && hash_equals($user, $cred[0]);
     if (!$ok) {
+        if ($cred !== null) {
+            record_attempt(CONSOLE_ATTEMPT_KEY, $ip, false);
+        }
         http_response_code(401);
         header('WWW-Authenticate: Basic realm="AquaLook console", charset="UTF-8"');
         header('Content-Type: text/plain; charset=utf-8');
