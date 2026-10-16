@@ -85,23 +85,28 @@ bool intervalDayIsPlanned(const ZoneSchedule& zs,
            ((targetDay - anchor) % interval) == 0;
 }
 
-void hatchRect(TFT_eSPI& tft, int16_t x, int16_t y,
-               int16_t w, int16_t h) {
-    if (w < 4 || h < 4) return;
+// Jours non arroses d'un intervalle (P2.15) : trois chevrons vers la
+// droite (>>>) qui pointent vers le prochain jour arrose. Les hachures
+// restent reservees a la pluie (fillHatchRect, DisplayManager.cpp) pour que
+// les deux cas se distinguent d'un coup d'oeil, comme sur la page Web
+// (.pg-day.interval-off et .pg-chev, data/style.css).
+void drawChevrons(TFT_eSPI& tft, int16_t x, int16_t y,
+                  int16_t w, int16_t h) {
+    int16_t half = min<int16_t>((h - 4) / 2, 6);   // demi-hauteur d'un chevron
+    // Trois chevrons de trait 2 px, espaces de 3 px : reduire si la cellule
+    // est trop etroite plutot que de deborder sur la journee voisine.
+    while (half > 2 && 3 * half + 8 > w - 2) --half;
+    if (half < 2) return;
 
-    const int16_t spacing = 6;
-    const int16_t maxX = w - 1;
-    const int16_t maxY = h - 1;
-
-    for (int16_t startX = -maxY; startX <= maxX; startX += spacing) {
-        const int16_t x1 = startX < 0 ? 0 : startX;
-        const int16_t y1 = startX < 0 ? maxY + startX : maxY;
-        const int16_t x2 = min(maxX, (int16_t)(startX + maxY));
-        const int16_t y2 = maxY - (x2 - startX);
-
-        tft.drawLine(x + x1, y + y1, x + x2, y + y2, Theme::TEXT2);
-        if (y1 > 0 && y2 > 0) {
-            tft.drawLine(x + x1, y + y1 - 1, x + x2, y + y2 - 1, Theme::TEXT2);
+    const int16_t step = half + 3;
+    const int16_t total = 2 * step + half + 2;
+    const int16_t x0 = x + (w - total) / 2;
+    const int16_t cy = y + h / 2;
+    for (int16_t i = 0; i < 3; ++i) {
+        const int16_t cx = x0 + i * step;
+        for (int16_t t = 0; t < 2; ++t) {
+            tft.drawLine(cx + t, cy - half, cx + half + t, cy, Theme::TEXT2);
+            tft.drawLine(cx + half + t, cy, cx + t, cy + half, Theme::TEXT2);
         }
     }
 }
@@ -211,7 +216,7 @@ void redrawGrid2Weather(DisplayManager& d) {
     }
 }
 
-void hatchIntervalDaysList(DisplayManager& d) {
+void markIntervalDaysList(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced()) return;
 
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
@@ -225,24 +230,24 @@ void hatchIntervalDaysList(DisplayManager& d) {
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
             // Geometrie reprise de DisplayManager plutot que recopiee : ces
-            // hachures se superposent aux colonnes tracees par
+            // chevrons se superposent aux colonnes tracees par
             // renderPlanSprite(). Les valeurs figees 22/42/38 valaient pour
             // des colonnes de 42 px et decalaient visiblement les jours non
             // arroses des que la colonne passait a 65 px (constate sur
             // materiel reel le 29 aout 2026).
-            hatchRect(d._tft,
-                      DisplayManager::PL_LABEL_W + col * DisplayManager::PL_DAY_W + 2,
-                      rowY + 1,
-                      DisplayManager::PL_DAY_W - 4,
-                      d._planZoneH - 2);
+            drawChevrons(d._tft,
+                         DisplayManager::PL_LABEL_W + col * DisplayManager::PL_DAY_W + 2,
+                         rowY + 1,
+                         DisplayManager::PL_DAY_W - 4,
+                         d._planZoneH - 2);
         }
     }
 }
 
-void hatchIntervalDaysGrid2(DisplayManager& d) {
+void markIntervalDaysGrid2(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced()) return;
 
-    // Geometrie reprise de DisplayManager, plus recopiee : ces hachures se
+    // Geometrie reprise de DisplayManager, plus recopiee : ces chevrons se
     // superposent aux cellules tracees par renderPlanSpriteCompact(). Les
     // valeurs figees 12 / (64-12)/2 / 42 / 215 valaient pour une colonne
     // planning de 64 px ; passee a 150 px sur la carte 480x272, les hachures
@@ -261,12 +266,12 @@ void hatchIntervalDaysGrid2(DisplayManager& d) {
         const uint16_t rowY = DisplayManager::G2_CONTENT_Y + d._g2PlanHdrH + z * zoneH;
         for (uint8_t col = 0; col < 2; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft, labelW + col * colW + 1, rowY + 1, colW - 2, zoneH - 2);
+            drawChevrons(d._tft, labelW + col * colW + 1, rowY + 1, colW - 2, zoneH - 2);
         }
     }
 }
 
-void hatchIntervalDaysGrid4(DisplayManager& d) {
+void markIntervalDaysGrid4(DisplayManager& d) {
     if (!d._schedule || !d._ntp || !d._ntp->isSynced() || d._grid4View > 1) return;
 
     const uint8_t zStart = d._grid4View == 0 ? 0 : 8;
@@ -277,9 +282,9 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
     uint16_t zoneH = (198 - 28) / nbZ;
     if (zoneH < 4) zoneH = 4;
     // Doit reproduire EXACTEMENT le calcul de colonnes de
-    // DisplayManager::renderPlanSpriteFull() : ce hachurage se superpose a
-    // la grille dessinee la-bas, un ecart d'un pixel decale les hachures
-    // des colonnes. D'ou les memes constantes plutot que 320/22 en dur,
+    // DisplayManager::renderPlanSpriteFull() : ces chevrons se superposent a
+    // la grille dessinee la-bas, un ecart d'un pixel les decale d'une
+    // colonne. D'ou les memes constantes plutot que 320/22 en dur,
     // qui devenaient faux des que l'ecran n'est plus large de 320 px.
     const uint16_t dayW = (DisplayManager::SCREEN_W - DisplayManager::PL_LABEL_W) / 7;
     const uint32_t todayEpochDay = d._ntp->getEpochDay();
@@ -292,8 +297,8 @@ void hatchIntervalDaysGrid4(DisplayManager& d) {
         const uint16_t rowY = 20 + 28 + zi * zoneH;
         for (uint8_t col = 0; col < 7; ++col) {
             if (intervalDayIsPlanned(zs, todayEpochDay, col)) continue;
-            hatchRect(d._tft, DisplayManager::PL_LABEL_W + col * dayW + 1,
-                      rowY + 1, dayW - 2, zoneH - 2);
+            drawChevrons(d._tft, DisplayManager::PL_LABEL_W + col * dayW + 1,
+                         rowY + 1, dayW - 2, zoneH - 2);
         }
     }
 }
@@ -383,14 +388,14 @@ void displayPlanningDecorDraw(DisplayManager& display) {
 
     switch (display._homeMode) {
         case HomeMode::LIST:
-            hatchIntervalDaysList(display);
+            markIntervalDaysList(display);
             simplifyWideButtons(display);
             break;
         case HomeMode::GRID2:
-            hatchIntervalDaysGrid2(display);
+            markIntervalDaysGrid2(display);
             break;
         case HomeMode::GRID4:
-            hatchIntervalDaysGrid4(display);
+            markIntervalDaysGrid4(display);
             break;
     }
 

@@ -35,9 +35,8 @@
   box-shadow:inset 3px 0 0 color-mix(in srgb,var(--zc) 55%,transparent);
 }
 .planning-grid>.pg-header.zone-hdr.interval-zone-hdr{
-  background:repeating-linear-gradient(135deg,
-    color-mix(in srgb,var(--zc) 12%,transparent) 0 4px,
-    color-mix(in srgb,var(--zc) 3%,transparent) 4px 8px);
+  /* Teinte unie (P2.15) : les hachures sont reservees a la pluie. */
+  background:color-mix(in srgb,var(--zc) 10%,transparent);
 }
 /* Pastille pleine cellule : meme taille pour toutes les zones, quel que
    soit le nom ; le "/Nj" du mode intervalle est dans la pastille. */
@@ -56,27 +55,40 @@
   box-shadow:0 0 0 1px color-mix(in srgb,var(--zc) 45%,transparent);
 }
 
-/* Jours non prevus en mode intervalle. */
+/* Jours non prevus en mode intervalle (P2.15) : un grand chevron gris uni
+   qui remplit la case et pointe vers le prochain jour arrose ; les hachures
+   restent reservees a la pluie (.pg-day.rain). */
 .pg-day.interval-off{
-  background:repeating-linear-gradient(135deg,
-    #f3f3f3 0,
-    #f3f3f3 5px,
-    #e5e5e5 5px,
-    #e5e5e5 10px)!important;
+  position:relative;container-type:inline-size;
+  background:#f6f6f6!important;
   border-color:#c4c4c4!important;
   border-style:solid!important;
-  filter:saturate(.35);
 }
+.pg-day.interval-off::before{
+  content:"";position:absolute;inset:5px 8px;pointer-events:none;
+  clip-path:polygon(0 0,62% 0,100% 50%,62% 100%,0 100%,38% 50%);
+  background:#d0d0d0;
+}
+/* Texte dans le corps de la fleche (a droite de l'encoche) : prochain jour.
+   Taille calee sur la largeur de la case (cqw) et detail reduit quand la case
+   retrecit (telephone) : "prochain / dim. 18", puis "dim. 18", puis "18". */
+.pg-chev-txt{position:absolute;left:41%;right:9%;top:50%;transform:translateY(-50%);pointer-events:none;
+  overflow:hidden;white-space:nowrap;text-align:center;line-height:1.2;color:#4d4d4d;
+  font-size:9px;font-size:clamp(8px,9cqw,12px)}
+.pg-chev-txt .pc-p{display:block}
+.pg-chev-txt b{font-size:1.15em;color:#2f2f2f}
+@container (max-width:130px){
+  .pg-chev-txt .pc-p{display:none}
+  .pg-chev-txt{font-size:clamp(7px,10cqw,11px)}
+  .pg-chev-txt b{font-size:1em}
+}
+@container (max-width:80px){.pg-chev-txt{font-size:clamp(8px,15cqw,12px)}.pg-chev-txt .pc-j{display:none}}
 
 /* Fenetre de configuration : effet immediat selon la valeur courante du select. */
 #modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-header{
   padding:7px 9px;
   border-radius:5px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.11) 0,
-    rgba(102,51,204,.11) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
   box-shadow:inset 3px 0 0 rgba(102,51,204,.45);
 }
 #modal-body:has(#zcfg-mode option[value="1"]:checked) .zone-cfg-modal-name{
@@ -87,23 +99,16 @@
 #modal-body:has(#zcfg-mode option[value="1"]:checked) #zcfg-interval-row{
   padding:8px;
   border-radius:5px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.08) 0,
-    rgba(102,51,204,.08) 5px,
-    rgba(255,255,255,.55) 5px,
-    rgba(255,255,255,.55) 10px);
+  background:rgba(102,51,204,.05);
 }
 
-/* Partie haute : hachures sur le bandeau, pas sur toute la carte. */
+/* Partie haute : teinte sur le bandeau, pas sur toute la carte (unie,
+   P2.15 : les hachures sont reservees a la pluie). */
 .zone-card.zone-interval .zone-card-header{
   margin:-7px -11px 8px;
   padding:7px 11px;
   border-radius:6px 6px 4px 4px;
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.10) 0,
-    rgba(102,51,204,.10) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
 }
 .zone-card.zone-interval .zone-name{
   padding:2px 6px;
@@ -115,17 +120,13 @@
   border-top-color:rgba(102,51,204,.22);
 }
 
-/* Vue dense : seule la cellule nom reprend les hachures. */
+/* Vue dense : seule la cellule nom reprend la teinte. */
 .zones-table tr.zone-interval .zt-name{
-  background:repeating-linear-gradient(135deg,
-    rgba(102,51,204,.10) 0,
-    rgba(102,51,204,.10) 4px,
-    rgba(102,51,204,.02) 4px,
-    rgba(102,51,204,.02) 8px);
+  background:rgba(102,51,204,.07);
 }
 
-/* Correction : ne pas zebrer toute la carte de zone en mode intervalle.
-   Les hachures restent limitees au bandeau d'entete ci-dessus. */
+/* Correction : ne pas teinter toute la carte de zone en mode intervalle.
+   La teinte reste limitee au bandeau d'entete ci-dessus. */
 .zone-card.zone-interval{
   background-image:none!important;
   background-color:var(--bg)!important;

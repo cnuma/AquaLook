@@ -263,9 +263,9 @@ header {
 .pg-day.off  { background: var(--bg); }
 .pg-day.on   { background: var(--green-dim); border-color: var(--green-mid); }
 /* Hachurage plutot qu'un simple fond orange plein : plus explicite pour
-   signaler "arrosage suspendu (pluie)" au premier coup d'oeil, meme motif
-   que .interval-off ci-dessous mais en teinte orange. Alignee avec le
-   traitement de l'ecran LCD (memes tons). */
+   signaler "arrosage suspendu (pluie)" au premier coup d'oeil. Reserve a la
+   pluie : un jour non arrose d'un intervalle porte des chevrons (P2.15).
+   Aligne avec le traitement de l'ecran LCD (memes tons). */
 .pg-day.rain {
   background:
     repeating-linear-gradient(
@@ -283,14 +283,7 @@ header {
 }
 
 .pg-day.interval-off {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      #f8f5ff 0,
-      #f8f5ff 6px,
-      #e5dcf3 6px,
-      #e5dcf3 9px
-    );
+  background: #f8f5ff;
   border-color: #d8ccf0;
   border-style: dashed;
 }
@@ -703,20 +696,8 @@ header {
   background: #4aa3ff; min-height: 0;
 }
 
-/* Mode intervalle : zébrures cohérentes dans toute l'interface Web */
-.interval-zone-hdr,
-.zone-card.zone-interval,
-.zones-table tbody tr.zone-interval {
-  background-image:
-    repeating-linear-gradient(
-      135deg,
-      rgba(179, 157, 219, .20) 0,
-      rgba(179, 157, 219, .20) 6px,
-      rgba(248, 245, 255, .35) 6px,
-      rgba(248, 245, 255, .35) 10px
-    );
-}
-
+/* Mode intervalle : teinte violette unie dans toute l'interface Web ; les
+   hachures sont reservees a la pluie (P2.15). */
 .interval-zone-hdr {
   border-left: 3px solid #b39ddb;
   border-radius: 4px;

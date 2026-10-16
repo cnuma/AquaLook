@@ -2170,7 +2170,7 @@ void DisplayManager::renderPlanSpriteCompact(uint16_t sprH, uint16_t destY, uint
     // Mode 5-8 zones : densifier les huit lignes de planning afin de
     // réserver une vraie zone météo en haut (jour, icône, mini, maxi, pluie).
     // Geometrie partagee avec DisplayPlanningDecor (voir DisplayManager.h) :
-    // les hachures des jours non arroses doivent se superposer exactement
+    // les chevrons des jours non arroses doivent se superposer exactement
     // aux cellules tracees ici.
     const uint16_t HDR_H      = _g2PlanHdrH;
     const uint16_t LABEL_W_G2 = G2_PLAN_LABEL_W;
