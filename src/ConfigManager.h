@@ -247,6 +247,10 @@ class ConfigManager {
 public:
     // ── Cycle de vie ──────────────────────────────────────────
     void begin();   // mount LittleFS + charge NVS (migration JSON si nécessaire)
+    // Configuration absente a ce demarrage (module neuf ou efface) : les
+    // valeurs par defaut viennent d'etre enregistrees. Faux si la NVS etait
+    // seulement invalide (_nvsRejected). Sert a PanelSetup (P2.18).
+    bool startedFresh() const { return _startedFresh; }
     void save();    // écriture binaire versionnée dans NVS
     void update();  // à appeler dans loop() : applique une sauvegarde différée en attente
     void resetPersistent(); // efface uniquement la configuration NVS
@@ -436,6 +440,7 @@ private:
     uint32_t  _intervalAnchorDays[MAX_ZONES] = {};
     bool      _loaded = false;
     bool      _nvsRejected = false;
+    bool      _startedFresh = false;  // NVS absente a ce demarrage (module neuf)
     bool      _weatherVisualsEnabled = false;
 
     // Sauvegarde différée — voir deferSave()/update().

@@ -14,6 +14,7 @@ static constexpr uint32_t MIN_OTA_PARTITION_SIZE = 0x1E0000UL;
 #include "TimeUtils.h"
 #include "RuntimeProfiler.h"
 #include "FaultManager.h"
+#include "PanelSetup.h"
 #include <esp_heap_caps.h>
 
 #ifndef AQUALOOK_VERSION
@@ -452,6 +453,13 @@ void SystemDiagnostics::fillJson(JsonDocument& doc, const WiFiManager* wifi) {
     build["hwId"] = DeviceIdentity::hwId();
     build["compiledDate"] = compiledDate();
     build["compiledTime"] = compiledTime();
+
+    // Reglage de la dalle propre au module (P2.18), lecture seule.
+    JsonObject panel = doc["panel"].to<JsonObject>();
+    panel["screenFlipped"] = PanelSetup::screenFlipped();
+    panel["touchMirrored"] = PanelSetup::touchMirrored();
+    panel["colorsInverted"] = PanelSetup::colorsInverted();
+    panel["wizardPending"] = PanelSetup::needsWizard();
 
     JsonObject memory = doc["memory"].to<JsonObject>();
     memory["heapFree"] = ESP.getFreeHeap();

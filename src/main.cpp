@@ -18,6 +18,7 @@
 #include "ScriptMessageCatalogue.h"
 #include "ScriptGlobals.h"
 #include "PinLock.h"
+#include "PanelSetup.h"
 #include "EventLogCatalogue.h"
 #include "RelaisManager.h"
 #include "IoExpanderManager.h"
@@ -597,6 +598,9 @@ void setup() {
         static_cast<unsigned>(equipmentConfig.pump.relayAssignmentIndex)
     );
 
+    // Reglage de la dalle propre au module (P2.18) : avant initTft(), pour que
+    // le splash s'affiche deja dans le bon sens et les bonnes couleurs.
+    PanelSetup::begin(configMgr.startedFresh());
     displayMgr.initTft();
     displayMgr.showSplash(0, "Initialisation...");
 

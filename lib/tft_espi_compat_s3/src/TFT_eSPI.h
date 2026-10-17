@@ -118,6 +118,11 @@ public:
     // (NV3041A deja nativement 480x272 paysage).
     void setRotation(uint8_t r);
 
+    // Reglage propre au module (src/PanelSetup.h, P2.18) : image tournee de
+    // 180 degres (rotation 2 du NV3041A, memes dimensions 480x272) et
+    // couleurs inversees par rapport a AQ_S3_LCD_IPS. Sans effet avant init().
+    void setPanel(bool flip180, bool invertColors);
+
     void fillScreen(uint16_t color);
     void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color);
     void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color);
@@ -153,6 +158,7 @@ public:
 
 protected:
     Arduino_GFX *_target = nullptr;  // panneau (this) ou canvas (sprite)
+    Arduino_NV3041A *_panel = nullptr;  // panneau seul (init()), jamais un sprite
     const GFXfont *_font = nullptr;
     uint8_t _datum = TL_DATUM;
     uint16_t _fg = TFT_WHITE;

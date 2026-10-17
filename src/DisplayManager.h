@@ -49,7 +49,8 @@ class StorageManager;
 // ── Écrans disponibles ─────────────────────────
 enum class Screen : uint8_t {
     HOME, ZONE, STATUS, SYSTEM, ADMIN, HEALTH,
-    PIN   // pave de saisie du code PIN (D016, lot E)
+    PIN,   // pave de saisie du code PIN (D016, lot E)
+    PANEL  // assistant de reglage de la dalle (P2.18, src/PanelSetup.h)
 };
 
 // Ce que la saisie du PIN debloque ou enregistre.
@@ -335,6 +336,12 @@ private:
     // debloque, et l'ecran ou revenir sur "Annuler".
     PinPurpose _pinPurpose = PinPurpose::ENTER_ADMIN;
     Screen     _pinReturn  = Screen::HOME;
+
+    // Assistant de reglage de la dalle (P2.18) : etape 0 croix (accord
+    // image/tactile), 1 sens du texte, 2 couleurs. Reglage essaye en RAM
+    // (PanelSetup::preview) et enregistre a la derniere reponse.
+    uint8_t _panelStep   = 0;
+    Screen  _panelReturn = Screen::HOME;
     char       _pinBuf[8]   = {0};
     char       _pinFirst[8] = {0};   // premiere saisie d'un nouveau PIN
     char       _pinMsg[48]  = {0};
@@ -712,6 +719,10 @@ private:
     void handleTouchPin(uint16_t tx, uint16_t ty);
     void pinValidate();
     void pinRecoveryGesture();    // appele une fois a la fin de begin()
+    void applyPanel();            // reglage PanelSetup -> dalle (S3)
+    void openPanelWizard(Screen returnTo);
+    void drawPanelFull();
+    void handleTouchPanel(uint16_t tx, uint16_t ty);
     uint8_t lockIconState() const;
     void renderLockIcon();        // cadenas du bandeau, voir HDR_LOCK_X
 

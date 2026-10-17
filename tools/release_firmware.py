@@ -34,6 +34,7 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import generate_ota_manifest as gen  # noqa: E402
+import preparer_module as fab  # noqa: E402  (P2.18)
 import update_signing as signing  # noqa: E402
 
 DEPOT = "cnuma/AquaLook"
@@ -116,8 +117,25 @@ def preparer(version, dossier, avec_sig=False):
     noms = [MANIFESTE, "AquaLook-s3-%s.bin" % version]
     if avec_sig and SIG in assets:
         noms.append(SIG)
+    if fab.FAB in assets:
+        noms += [fab.FAB] + [n for _, n, _ in fab.images_attendues(version) if n not in noms]
+        if avec_sig and fab.FAB + ".sig" in assets:
+            noms.append(fab.FAB + ".sig")
     telecharger(tag, dossier, noms)
     return tag, brouillon, assets
+
+
+def controler_fabrication(version, dossier, assets):
+    """Manifeste de fabrication (P2.18) : absent des releases anterieures."""
+    if fab.FAB not in assets:
+        print("  --    pas de manifeste de fabrication (release anterieure a P2.18)")
+        return None
+    brut = (dossier / fab.FAB).read_bytes()
+    man = json.loads(brut)
+    fichiers = {i["name"]: (dossier / i["name"]).read_bytes() for i in man.get("images", [])}
+    print("Fabrication :")
+    fab.controler(man, fichiers, version)
+    return brut
 
 
 def cmd_verifier(version):
@@ -132,6 +150,13 @@ def cmd_verifier(version):
                 sys.exit(1)
         else:
             print("  --    pas encore de signature")
+        brut_fab = controler_fabrication(version, dossier, assets)
+        if brut_fab is not None and fab.FAB + ".sig" in assets:
+            ok, motif = signing.verifier_octets(
+                brut_fab, (dossier / (fab.FAB + ".sig")).read_text("ascii", "replace"))
+            print(("  ok    " if ok else "  ECHEC ") + "signature fabrication : " + motif)
+            if not ok:
+                sys.exit(1)
     print("Release %s conforme." % tag)
 
 
@@ -166,12 +191,20 @@ def relire_cote_modules(brut):
 def cmd_signer(version):
     with tempfile.TemporaryDirectory() as d:
         dossier = pathlib.Path(d)
-        tag, brouillon, _ = preparer(version, dossier)
+        tag, brouillon, assets = preparer(version, dossier)
         brut = controler(version, dossier)
+        brut_fab = controler_fabrication(version, dossier, assets)
         sig_chemin = signing.signer(dossier / MANIFESTE)
         ok, motif = signing.verifier_octets(brut, sig_chemin.read_text("ascii"))
         if not ok:
             sys.exit("Signature produite invalide (%s) : rien n'a ete envoye." % motif)
+        if brut_fab is not None:
+            sig_fab = signing.signer(dossier / fab.FAB)
+            ok, motif = signing.verifier_octets(brut_fab, sig_fab.read_text("ascii"))
+            if not ok:
+                sys.exit("Signature de fabrication invalide (%s) : rien n'a ete envoye." % motif)
+            gh("release", "upload", tag, str(sig_fab), "--clobber")
+            print("Signature de fabrication ajoutee a la release %s." % tag)
         gh("release", "upload", tag, str(sig_chemin), "--clobber")
         print("Signature ajoutee a la release %s." % tag)
         if brouillon:

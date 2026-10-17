@@ -298,9 +298,20 @@ SCENARIOS = {
     },
     "fw-setup": {
         "page": "/__fw/setup",
-        "simule": {},
-        "etapes": [["attendre", 800],
-                   ["saisir", "#ssid", "reseau-banc", "input"],
+        # P2.18 : liste des reseaux, cause du dernier echec, nom tres long
+        # (contrôle de largeur a 390 px).
+        "simule": {"/api/wifi/scan": {"scanning": False, "networks": [
+            {"ssid": "Banc-A", "rssi": -50, "secured": True},
+            {"ssid": "Reseau-de-banc-au-nom-tres-long-pour-la-largeur", "rssi": -80,
+             "secured": False}],
+            "lastFail": {"ssid": "Banc-A", "hint": "mot de passe refuse"}}},
+        "etapes": [["attendre", 1500],
+                   ["compte", "#nets button.net", 2],
+                   ["texte", "#fail", "contient", "mot de passe refuse"],
+                   ["clic", "#nets button.net:nth-child(2)", 0],
+                   ["texte", "#ssid", "egal",
+                    "Reseau-de-banc-au-nom-tres-long-pour-la-largeur"],
+                   ["clic", "#show", 0],
                    ["clic", "#save", 0],
                    ["attendre", 800],
                    ["texte", "#msg", "contient", "Enregistre"]],

@@ -37,7 +37,7 @@
 //  Formulaire SSID/PWD minimaliste, POST vers /api/wifi
 // ─────────────────────────────────────────────────────────────
 static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Mode de secours : saisissez manuellement le nom exact de votre reseau.</p><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" placeholder="Mot de passe"><button type="button" id="save">Enregistrer et connecter</button><div id="msg"></div></main><script src="/fw-setup.js"></script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - WiFi</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#eee;font-family:sans-serif}.card{box-sizing:border-box;width:90%;max-width:360px;padding:2rem;background:#16213e;border-radius:12px;box-shadow:0 4px 20px #0006}h2{margin:0 0 .5rem;text-align:center;color:#4fc3f7}p{margin:0 0 1.4rem;text-align:center;color:#90caf9;font-size:.9rem;line-height:1.4}label{display:block;margin:.8rem 0 .3rem;color:#90caf9;font-size:.9rem}input,button{box-sizing:border-box;width:100%;padding:.75rem;border-radius:6px;font-size:1rem}input{border:1px solid #334;background:#0f3460;color:#eee}button{margin-top:1.2rem;border:0;background:#4fc3f7;color:#000;font-weight:700}#msg{min-height:1.2rem;margin-top:1rem;text-align:center;font-size:.9rem}#nets{max-height:40vh;overflow-y:auto;color:#90caf9;font-size:.9rem}button.net{margin-top:.4rem;background:#0f3460;color:#eee;font-weight:400;text-align:left;overflow-wrap:anywhere}button.sec{margin-top:.6rem;background:#334;color:#eee;font-weight:400}#fail{margin:0 0 1rem;padding:.6rem;border-radius:6px;background:#4a2a00;color:#ffcc80;font-size:.9rem;overflow-wrap:anywhere}label.chk{display:flex;gap:.5rem;align-items:center}label.chk input{width:auto}</style></head><body><main class="card"><h2>&#127807; Configuration WiFi</h2><p>Choisissez votre reseau dans la liste, ou saisissez son nom.</p><div id="fail" hidden></div><div id="nets">Recherche des reseaux...</div><button type="button" id="rescan" class="sec">Relancer la recherche</button><label for="ssid">Reseau WiFi (SSID)</label><input id="ssid" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Nom du reseau"><label for="pwd">Mot de passe</label><input id="pwd" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Mot de passe"><label class="chk"><input type="checkbox" id="show">Afficher le mot de passe</label><button type="button" id="save">Enregistrer et connecter</button><div id="msg"></div></main><script src="/fw-setup.js"></script></body></html>
 )rawhtml";
 
 // Page de connexion integree au firmware (D016 lot F). Elle ne depend pas de
@@ -61,7 +61,10 @@ static const char HOME_FALLBACK_HTML[] PROGMEM = R"rawhome(
 // 'unsafe-inline') -- meme regle que les pages de la SD et du service en
 // ligne. Le contenu est celui des anciens blocs inline, inchange ; seuls les
 // onclick sont devenus des addEventListener.
-static const char SETUP_JS[] PROGMEM = R"rawjs(const $=x=>document.getElementById(x);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value.trim(),m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}$('save').addEventListener('click',saveWifi);)rawjs";
+// P2.18 : liste des reseaux (GET /api/wifi/scan, ouvert en mode portail),
+// cause du dernier echec, mot de passe affichable et non rogne (une espace
+// peut en faire partie). Noms des reseaux poses en textContent, jamais en HTML.
+static const char SETUP_JS[] PROGMEM = R"rawjs(const $=x=>document.getElementById(x);function lvl(r){return r>-60?'fort':r>-75?'moyen':'faible'}async function scan(n){const l=$('nets');try{const d=await (await fetch('/api/wifi/scan')).json();if(d.scanning){l.textContent='Recherche des reseaux...';if(n<20)setTimeout(()=>scan(n+1),1500);return}if(d.lastFail){const f=$('fail');f.textContent='Dernier essai sur '+d.lastFail.ssid+' : '+d.lastFail.hint+'.';f.hidden=false}l.textContent='';(d.networks||[]).forEach(w=>{const b=document.createElement('button');b.type='button';b.className='net';b.textContent=(w.secured?'\u{1F512} ':'')+w.ssid+' - signal '+lvl(w.rssi);b.addEventListener('click',()=>{$('ssid').value=w.ssid;$('pwd').focus()});l.appendChild(b)});if(!l.childNodes.length)l.textContent='Aucun reseau trouve : saisissez son nom.'}catch(e){l.textContent='Liste indisponible : saisissez le nom du reseau.'}}$('rescan').addEventListener('click',async()=>{$('nets').textContent='Recherche des reseaux...';try{await fetch('/api/wifi/scan?refresh=1')}catch(e){}setTimeout(()=>scan(0),1500)});$('show').addEventListener('change',e=>{$('pwd').type=e.target.checked?'text':'password'});scan(0);async function saveWifi(){const s=$('ssid').value.trim(),p=$('pwd').value,m=$('msg');if(!s){m.textContent='SSID requis';m.style.color='#f66';return}m.textContent='Enregistrement...';m.style.color='#4fc3f7';try{const r=await fetch('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:s,pwd:p})});m.textContent=r.ok?'Enregistre - redemarrage...':'Erreur serveur';m.style.color=r.ok?'#81c784':'#f66'}catch(e){m.textContent='Erreur reseau';m.style.color='#f66'}}$('save').addEventListener('click',saveWifi);)rawjs";
 
 static const char LOGIN_JS[] PROGMEM = R"rawjs(
 const K=[],I=[];(()=>{let n=2,c=0;const fr=x=>(x-Math.floor(x))*4294967296|0;while(c<64){let p=1;for(let d=2;d*d<=n;d++)if(n%d==0){p=0;break}if(p){if(c<8)I[c]=fr(Math.pow(n,.5));K[c++]=fr(Math.pow(n,1/3))}n++}})();
@@ -601,7 +604,13 @@ void WebManager::setupRoutes() {
     _server.on("/chat",                  HTTP_GET, captiveRedirect);
 
     // Racine
-    _server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        // Portail captif (P2.18) : http://192.168.4.1/ mene au reglage Wi-Fi,
+        // seule page utile tant que le module n'est pas sur le reseau.
+        if (_wifi && _wifi->isCaptivePortal()) {
+            req->redirect("/setup");
+            return;
+        }
         // Entree par l'adresse du module : sans session ouverte (et un mot de
         // passe pose), on commence par la connexion (D016 lot F, demande du
         // proprietaire). /login renvoie ensuite vers /index.html.
@@ -3220,6 +3229,14 @@ void WebManager::handleWifiScan(AsyncWebServerRequest* req) {
                  e.bssid[0], e.bssid[1], e.bssid[2], e.bssid[3], e.bssid[4], e.bssid[5]);
         net["bssid"]   = bssid;
         net["channel"] = e.channel;
+    }
+
+    // Cause probable du dernier echec (P2.18), pour le reseau enregistre.
+    const char* hint = WiFiManager::lastFailHint();
+    if (hint && _wifi->getSsid()[0] != '\0') {
+        JsonObject fail = doc["lastFail"].to<JsonObject>();
+        fail["ssid"] = _wifi->getSsid();
+        fail["hint"] = hint;
     }
 
     // Le résultat n'est volontairement pas libéré ici (pas de clearScan()) :
