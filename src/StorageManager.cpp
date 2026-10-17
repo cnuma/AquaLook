@@ -674,6 +674,15 @@ bool StorageManager::mountSd(bool publishAvailability) {
 #endif
 
     if (!_sd.begin(sdConfig)) {
+        // P3.34 : le code SdFat dit a quelle commande la carte ne repond
+        // plus. Carte Lenovo 64 Go SDXC (17 oct. 2026) : apres un redemarrage
+        // logiciel qui suit des ecritures, 0x17 (ACMD41) data=0x01, carte
+        // restee "occupee" ; ni un essai a 4 MHz precede d'horloge a vide, ni
+        // une reinitialisation de la puce ne la rendent : seule une coupure
+        // d'alimentation (pas d'alimentation SD commandable sur cette carte).
+        const uint8_t code = _sd.sdErrorCode();
+        EventLog::log(LOG_WARN, "[SD-MONTAGE] echec code=0x%02X (%s) data=0x%02X",
+                      code, sdErrorText(code), static_cast<unsigned>(_sd.sdErrorData()));
         _status = StorageStatus::SD_UNAVAILABLE;
         _lastMountFailureReason = "sd_begin_failed";
         unlockSd();

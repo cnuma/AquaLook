@@ -775,6 +775,9 @@ bool MaintenanceBoot::runIfRequested(ConfigManager& configManager) {
         const WebAssetsUpdater::DeployResult r =
             WebAssetsUpdater::deployFromManifest(&storage);
         success = r.ok;
+        // P3.34 : refermer la carte apres les ecritures, avant le redemarrage
+        // de fin de maintenance (certaines cartes restaient muettes ensuite).
+        storage.end();
         EventLog::log(r.ok ? LOG_INFO : LOG_ERROR,
                       "Maintenance: WEB_ASSETS_UPDATE success=%s version=%s "
                       "fichiers=%u/%u detail=%s otaWrite=no",
