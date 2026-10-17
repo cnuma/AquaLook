@@ -32,7 +32,12 @@ import tempfile
 
 RACINE = pathlib.Path(__file__).resolve().parents[2]
 ICI = pathlib.Path(__file__).resolve().parent
-PAGE = RACINE / "cloud" / "php-mutualized" / "app.html"
+SITE = RACINE / "cloud" / "php-mutualized"
+PAGE = SITE / "app.html"
+# Depuis la CSP du site (pas de script inline), la page charge app.js et
+# site.css : le banc recopie la feuille et integre le script instrumente.
+SCRIPT = SITE / "app.js"
+BALISE_SCRIPT = '<script src="app.js"></script>'
 
 EDGE = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -40,7 +45,7 @@ EDGE = [
 ]
 
 # Point d'entree de la page, remplace par le banc.
-AMORCE = "demarrer().catch(() => { $('login').hidden = false; });"
+AMORCE = "demarrer().catch(() => { montrer('login'); });"
 
 # Ce que chaque vue ouvre apres chargement, et la hauteur de rendu.
 VUES = {
@@ -61,10 +66,11 @@ def edge():
 
 def construire(travail, vue, largeur):
     """Ecrit la page instrumentee et son cadre. Rend le chemin du cadre."""
-    source = PAGE.read_text(encoding="utf-8")
-    if AMORCE not in source:
-        raise SystemExit("Le point d'entree de app.html a change : "
-                         "adapter AMORCE dans ce fichier.")
+    page = PAGE.read_text(encoding="utf-8")
+    source = SCRIPT.read_text(encoding="utf-8")
+    if AMORCE not in source or BALISE_SCRIPT not in page:
+        raise SystemExit("Le point d'entree de app.js (ou sa balise dans app.html) a change : "
+                         "adapter AMORCE / BALISE_SCRIPT dans ce fichier.")
 
     fixtures = (ICI / "fixtures.js").read_text(encoding="utf-8")
     diagnostic = (ICI / "diagnostic.js").read_text(encoding="utf-8")
@@ -75,8 +81,11 @@ def construire(travail, vue, largeur):
         "    " + ouvrir + "\n    document.body.dataset.pret = '1';"
         "\n    window.APERCU_DIAG();")
 
+    script = source.replace(AMORCE, diagnostic + fixtures, 1)
+    (travail / "site.css").write_bytes((SITE / "site.css").read_bytes())
+    page = page.replace('href="/site.css"', 'href="site.css"')
     (travail / "page.html").write_text(
-        source.replace(AMORCE, diagnostic + fixtures, 1), encoding="utf-8")
+        page.replace(BALISE_SCRIPT, "<script>\n" + script + "\n</script>", 1), encoding="utf-8")
     cadre = travail / "cadre.html"
     cadre.write_text(
         '<!doctype html><meta charset="utf-8">'

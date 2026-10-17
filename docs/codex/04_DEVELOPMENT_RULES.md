@@ -106,8 +106,9 @@ Appliquée progressivement : à chaque page créée ou retouchée.
   texte de longueur variable, sauf dans un bloc qui défile.
 - Toute page créée ou retouchée est mesurée à 390 px avant livraison :
   `python tools/csp_banc_pages.py --largeur 390` (pages du module, y compris
-  les états aux textes les plus longs) ou `tools/apercu_web/apercu.py`
-  (espace en ligne). La validation finale se fait à l'œil sur iPhone par le
+  les états aux textes les plus longs), `tools/apercu_web/largeur_site.py`
+  (pages du site, console connectée) et `tools/apercu_web/apercu.py`
+  (vues connectées de l'espace en ligne). La validation finale se fait à l'œil sur iPhone par le
   propriétaire : les emoji et la police y sont plus larges que dans Edge.
 
 ### JavaScript
