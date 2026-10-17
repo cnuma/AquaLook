@@ -229,7 +229,20 @@ SCENARIOS = {
         "simule": {"/api/adminStatus": {"cloudSync": dict(CLOUDSYNC, resultSinceBoot=False, fault=False)}},
         "etapes": [["attendre", 2000],
                    ["texte", "#lastOk", "contient", "En attente du 1er cycle"],
-                   ["classe", "#etat", "a", "warn"]],
+                   ["classe", "#etat", "a", "warn"],
+                   # P3.30 : resultat de la couleur du bandeau ; inconnu = neutre
+                   ["classe", "#lastOk", "a", "warn"],
+                   ["classe", "#caughtUp", "a", "na"]],
+    },
+    # P3.30 : echec isole (sans panne) -> bandeau et resultat orange, pas rouge.
+    "cloudsync-echec": {
+        "page": "/cloudsync.html",
+        "simule": {"/api/adminStatus": {"cloudSync": dict(CLOUDSYNC, lastSyncOk=False, resultSinceBoot=True,
+                                                          fault=False)}},
+        "etapes": [["attendre", 2000],
+                   ["classe", "#etat", "a", "warn"],
+                   ["classe", "#lastOk", "a", "warn"],
+                   ["classe", "#lastOk", "pas", "bad"]],
     },
     "cloudsync-panne": {
         "page": "/cloudsync.html",
@@ -237,7 +250,8 @@ SCENARIOS = {
                                                           serverCaughtUp=False, fault=True)}},
         "etapes": [["attendre", 2000],
                    ["texte", "#etatTxt", "egal", "Synchro en panne"],
-                   ["classe", "#etat", "a", "bad"]],
+                   ["classe", "#etat", "a", "bad"],
+                   ["classe", "#lastOk", "a", "bad"]],
     },
     # P3.17 : apres une installation reussie, le resultat enregistre porte la
     # version d'AVANT le redemarrage ; la page doit afficher celle en marche.

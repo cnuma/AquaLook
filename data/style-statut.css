@@ -66,6 +66,10 @@ body.p-sante,body.p-cloudsync,body.p-logs,body.p-urls{margin:0;background:var(--
 .p-cloudsync .v.ok::before{background:var(--green)}
 .p-cloudsync .v.warn::before{background:var(--amber)}
 .p-cloudsync .v.bad::before{background:var(--red)}
+/* P3.30 : attente / inconnu = anneau gris neutre, jamais confondu avec le
+   vert OK (l'ancien gris-vert --muted s'y confondait). */
+.p-cloudsync{--neutral:#8c8c8c}
+.p-cloudsync .v.na::before{background:transparent;box-shadow:inset 0 0 0 2px var(--neutral)}
 /* -- logs.html -- */
 /* Meme bandeau, memes boutons de navigation que Sante et Synchro cloud
    (regle d'ergonomie du 12 oct. 2026 : navigation en haut, toujours visible). */
