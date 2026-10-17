@@ -55,6 +55,10 @@ public:
     IPAddress   getIP()           const { return WiFi.localIP(); }
     IPAddress   getApIP()         const { return WiFi.softAPIP(); }
     const char* getSsid()         const { return _ssid; }
+    // Cause probable du dernier echec de connexion, en clair ("mot de passe
+    // refuse", "reseau introuvable"), ou nullptr. Effacee a la connexion.
+    // Sert au portail et au LCD d'un module neuf (P2.18).
+    static const char* lastFailHint();
     int8_t      getRssi()         const;
     const char* stateStr()        const;
 

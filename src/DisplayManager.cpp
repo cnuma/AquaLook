@@ -295,6 +295,9 @@ void DisplayManager::initTft() {
     _tft.init();
     _tft.setRotation(1);
     applyPanel();
+    Serial.printf("[ECRAN] dalle : rotation %u, inversion %u (au splash)\n",
+                  PanelSetup::screenFlipped() ? 2U : 0U,
+                  PanelSetup::colorsInverted() ? 1U : 0U);
     _tft.fillScreen(TFT_WHITE);
     _tftInited = true;
 
@@ -486,6 +489,10 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _screenMgr.begin(_config);
     _needsFullRedraw = true;
     pinRecoveryGesture();
+    // Reglage reapplique ici, bien apres l'init de la dalle : au demarrage du
+    // 17 oct. 2026 le reglage enregistre etait lu mais l'ecran restait dans
+    // l'etat d'origine, alors que le meme appel marchait pendant l'assistant.
+    applyPanel();
     // Module neuf : l'assistant d'ecran passe avant tout le reste, sans
     // bloquer la boucle (portail captif, securites) -- il est un ecran.
     if (PanelSetup::needsWizard()) openPanelWizard(Screen::HOME);
@@ -749,6 +756,9 @@ void DisplayManager::update() {
     // Invariant I4 : fillScreen uniquement ici, sur _needsFullRedraw
     if (_needsFullRedraw) {
         _needsFullRedraw = false;
+        // Deux commandes courtes : la dalle reste dans le reglage du module
+        // meme si quelque chose l'a reinitialisee entre deux pages (P2.18).
+        applyPanel();
         _tft.fillScreen(Theme::BG);
         const uint32_t t0 = RuntimeProfiler::start();
         switch (_screen) {
@@ -3045,10 +3055,26 @@ void DisplayManager::drawHomeFull_unwired() {
     _tft.drawString("Interface web  >  Zones", cx, y);          y += 14;
     _tft.drawString(">  Cablage relais", cx, y);                y += 24;
 
-    _tft.setTextColor(Theme::BLUE, Theme::BG);
-    const String ip = WiFi.localIP().toString();
-    _tft.drawString(ip.length() > 6 ? ip.c_str() : "en attente du reseau",
-                    cx, y);
+    if (_wifi && _wifi->isCaptivePortal()) {
+        // Module neuf ou Wi-Fi refuse (P2.18) : dire quoi faire, sans quoi
+        // le portail passe pour un module bloque (constate le 17 oct. 2026).
+        _tft.setTextColor(Theme::AMBER, Theme::BG);
+        _tft.drawString("Wi-Fi a regler : reseau Arrosage-Setup", cx, y);  y += 14;
+        _tft.setTextColor(Theme::TEXT2, Theme::BG);
+        _tft.drawString("puis http://192.168.4.1", cx, y);               y += 14;
+        const char* hint = WiFiManager::lastFailHint();
+        if (hint && _wifi->getSsid()[0] != '\0') {
+            char line[96];
+            snprintf(line, sizeof(line), "Dernier essai (%s) : %s", _wifi->getSsid(), hint);
+            _tft.setTextColor(Theme::AMBER, Theme::BG);
+            _tft.drawString(line, cx, y);
+        }
+    } else {
+        _tft.setTextColor(Theme::BLUE, Theme::BG);
+        const String ip = WiFi.localIP().toString();
+        _tft.drawString(ip.length() > 6 ? ip.c_str() : "en attente du reseau",
+                        cx, y);
+    }
 
     _tft.setTextDatum(TL_DATUM);
 }
@@ -4648,6 +4674,11 @@ void DisplayManager::handleTouchPanel(uint16_t tx, uint16_t ty) {
     bool flip = PanelSetup::screenFlipped();
     bool tflip = PanelSetup::touchFlipRaw();
     bool inv = PanelSetup::colorsInverted();
+    // Trace de chaque appui : position lue et reglage en cours, pour
+    // retrouver apres coup ce que l'assistant a compris.
+    Serial.printf("[ECRAN] assistant etape %u : appui x=%u y=%u (image %u, tactile %u, couleurs %u)\n",
+                  (unsigned)(_panelStep + 1), (unsigned)tx, (unsigned)ty,
+                  (unsigned)flip, (unsigned)tflip, (unsigned)inv);
 
     if (_panelStep == 0) {
         if (nearPoint(tx, ty, SCREEN_W - 1 - PANEL_CROSS_X, SCREEN_H - 1 - PANEL_CROSS_Y)) {

@@ -71,7 +71,37 @@ static const char* wifiDisconnectReasonName(uint8_t reason) {
     }
 }
 
+// Seules les causes qu'un utilisateur peut corriger sont retenues : une
+// deconnexion provoquee ensuite par le module (raison 8, assoc_quittee_par_nous)
+// n'efface pas le "mot de passe refuse" qui l'a precedee. Ecrit par la tache
+// du pilote, lu par la boucle : un pointeur vers une chaine constante.
+static const char* volatile g_lastFailHint = nullptr;
+// Signal de la borne visee au dernier scan cible (0 = inconnu). Sous ce
+// seuil, la poignee de main se perd en route et le pilote annonce un echec
+// d'authentification avec le bon mot de passe : constate le 17 oct. 2026 sur
+// un module sans antenne (-90 a -92 dBm, .141 a -57 dBm au meme endroit).
+static volatile int8_t g_lastTargetRssi = 0;
+static constexpr int8_t WEAK_SIGNAL_DBM = -85;
+
+static const char* failHintFor(uint8_t reason) {
+    switch (reason) {
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_AUTH_EXPIRE:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+            return (g_lastTargetRssi != 0 && g_lastTargetRssi < WEAK_SIGNAL_DBM)
+                       ? "signal trop faible (antenne ?)"
+                       : "mot de passe refuse";
+        case WIFI_REASON_NO_AP_FOUND:            return "reseau introuvable";
+        default:                                 return nullptr;
+    }
+}
+
+const char* WiFiManager::lastFailHint() { return g_lastFailHint; }
+
 static void onWifiDisconnectedEvent(WiFiEvent_t, WiFiEventInfo_t info) {
+    const char* hint = failHintFor(info.wifi_sta_disconnected.reason);
+    if (hint) g_lastFailHint = hint;
     EventLog::log(
         LOG_WARN,
         "WiFi: deconnecte par le pilote, raison=%u (%s) rssi_avant=%ddBm "
@@ -319,6 +349,7 @@ void WiFiManager::beginTargeted(uint32_t now) {
         uint8_t bssid[6];
         memcpy(bssid, WiFi.BSSID(best), sizeof(bssid));
         const int32_t channel = WiFi.channel(best);
+        g_lastTargetRssi = static_cast<int8_t>(WiFi.RSSI(best));
         EventLog::log(
             LOG_INFO,
             "WiFi: cible BSSID=%02x:%02x:%02x:%02x:%02x:%02x ch=%ld RSSI=%ddBm (%u noeud(s), %lu+%lums)",
@@ -353,6 +384,7 @@ void WiFiManager::handleConnecting(uint32_t now) {
 
         _state = State::CONNECTED;
         _retryCount = 0;
+        g_lastFailHint = nullptr;
         FaultManager::setActive(FaultId::WIFI, false);
 
         EventLog::log(
