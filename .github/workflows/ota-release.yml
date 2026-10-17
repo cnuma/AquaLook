@@ -62,7 +62,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install PlatformIO
-        run: python -m pip install --upgrade platformio
+        run: python -m pip install --upgrade platformio cryptography
 
       # P1.4 : release S3 seule, binaire de PRODUCTION (routes de
       # developpement absentes, D020). Ni carte historique ni pages Web : les
