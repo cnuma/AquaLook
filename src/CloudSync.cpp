@@ -831,12 +831,29 @@ static bool isPrivateAddress(const char* host) {
 CloudSyncConfig CloudSync::loadConfig() {
     CloudSyncConfig cfg;
     Preferences prefs;
-    if (!prefs.begin(NVS_NAMESPACE, true)) return cfg;
+    // Module neuf : l'espace aq_cloud n'existe pas encore (rien n'a jamais ete
+    // enregistre). Serveur par defaut quand meme, sinon l'hote reste vide
+    // (constate sur le second module le 17 oct. 2026, 5.18.1 build 1684).
+    if (!prefs.begin(NVS_NAMESPACE, true)) {
+        copyText(cfg.host, sizeof(cfg.host), AQ_SERVICE_HOST_DEFAULT);
+        cfg.port = 443U;
+        cfg.useHttps = true;
+        return cfg;
+    }
     cfg.enabled = prefs.getBool(KEY_ENABLED, false);
     String host = prefs.getString(KEY_HOST, "");
     copyText(cfg.host, sizeof(cfg.host), host.c_str());
     cfg.port = static_cast<uint16_t>(prefs.getUShort(KEY_PORT, 80U));
     cfg.useHttps = prefs.getBool(KEY_HTTPS, false);
+    // Serveur non personnalise : celui du programme installe (config.h), en
+    // HTTPS. Un module neuf peut ainsi se rattacher et installer ses pages
+    // sans reglage, et suit le defaut d'une future release si l'hebergeur
+    // change (P2.18). save() n'enregistre jamais ce defaut.
+    if (cfg.host[0] == '\0') {
+        copyText(cfg.host, sizeof(cfg.host), AQ_SERVICE_HOST_DEFAULT);
+        cfg.port = 443U;
+        cfg.useHttps = true;
+    }
     String moduleId = prefs.getString(KEY_MODULE_ID, "");
     copyText(cfg.moduleId, sizeof(cfg.moduleId), moduleId.c_str());
     String token = prefs.getString(KEY_TOKEN, "");
@@ -1215,7 +1232,10 @@ void CloudSyncScheduler::save() {
         return;
     }
     prefs.putBool(KEY_ENABLED, _cfg.enabled);
-    prefs.putString(KEY_HOST, _cfg.host);
+    // Le serveur par defaut s'enregistre vide : le module continue de suivre
+    // le defaut du programme (voir loadConfig), au lieu de le figer.
+    prefs.putString(KEY_HOST,
+                    strcmp(_cfg.host, AQ_SERVICE_HOST_DEFAULT) == 0 ? "" : _cfg.host);
     prefs.putUShort(KEY_PORT, _cfg.port);
     prefs.putBool(KEY_HTTPS, _cfg.useHttps);
     prefs.putString(KEY_MODULE_ID, _cfg.moduleId);
@@ -1235,7 +1255,12 @@ void CloudSyncScheduler::saveLastSync(uint32_t epochSec) {
 bool CloudSyncScheduler::set(bool enabled, const char* host, uint16_t port, bool useHttps,
                               const char* moduleId, const char* token, uint16_t intervalMinutes) {
     if (intervalMinutes == 0U || intervalMinutes > 1440U) return false;
-    if (enabled && (!host || host[0] == '\0')) return false;
+    // Serveur efface = retour au serveur par defaut du programme, en HTTPS.
+    if (!host || host[0] == '\0') {
+        host = AQ_SERVICE_HOST_DEFAULT;
+        port = 443U;
+        useHttps = true;
+    }
 
     // HTTPS impose des que le serveur n'est pas sur le reseau local.
     //

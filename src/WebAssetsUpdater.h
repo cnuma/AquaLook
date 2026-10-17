@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <functional>
 
+#include "config.h"
+
 class StorageManager;
 
 // Etape 4 du plan "Mise a jour distante des ressources Web" (ROADMAP.md) :
@@ -46,13 +48,20 @@ public:
 
     // ── Detection d'une mise a jour disponible ────────────────────────────
     //
-    // Le manifeste est recupere via l'URL "latest" de GitHub, qui resout
-    // elle-meme la derniere release publiee — pas besoin d'interroger l'API ni
-    // de connaitre le numero de version a l'avance. Meme mecanisme que l'OTA
-    // firmware (OtaBuildIdentity::MANIFEST_PATH).
-    // Source par defaut. Reste la release GitHub publiee : un module qui n'a
-    // jamais rien configure se comporte exactement comme avant.
+    // Le catalogue signe des pages est publie sur le serveur AquaLook, pas
+    // dans la release GitHub (D021). Source par defaut : le serveur par defaut
+    // du programme (config.h). La source effective, poussee par ConfigManager,
+    // suit le reglage "Serveur" du module (P2.18).
+    //
+    // Jusqu'a 5.18.0 ce defaut visait encore la release GitHub, qui ne porte
+    // plus les pages depuis D021 : un module neuf obtenait http-404 et ne
+    // pouvait jamais installer ses pages (constate le 17 oct. 2026 sur le
+    // second module, carte SD vide).
     static constexpr const char* DEFAULT_MANIFEST_URL =
+        "https://" AQ_SERVICE_HOST_DEFAULT AQ_WEB_MANIFEST_PATH;
+    // Ancien defaut, reconnu pour etre oublie s'il a ete enregistre (voir
+    // ConfigManager::loadWebAssetsUrl).
+    static constexpr const char* LEGACY_GITHUB_MANIFEST_URL =
         "https://github.com/cnuma/AquaLook/releases/latest/download/aqualook-web-manifest.json";
 
     // Source effective, poussee par ConfigManager au chargement de la

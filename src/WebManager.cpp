@@ -2302,6 +2302,9 @@ void WebManager::handleSetCloudSync(AsyncWebServerRequest* req, JsonDocument& do
                        "ou HTTP refuse vers un hote hors reseau local (HTTPS obligatoire)");
         return;
     }
+    // Un seul parametre "Serveur" (P2.18) : le catalogue des pages suit le
+    // serveur tout de suite, sans attendre un redemarrage.
+    if (_config) _config->loadWebAssetsUrl();
     sendOk(req);
 }
 

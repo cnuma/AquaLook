@@ -15,6 +15,17 @@
 #define OWM_COUNTRY             "FR"
 #define OWM_CHECK_INTERVAL_MS   7200000UL
 
+// Serveur AquaLook par defaut : service en ligne (rattachement, synchro) et
+// catalogue des pages Web (https://<serveur>/aqualook-web-manifest.json).
+// SEULE mention de l'hebergeur dans le firmware. Ce n'est qu'un defaut : le
+// reglage "Serveur" du module (NVS aq_cloud/host) le remplace, et un module
+// qui ne l'a pas personnalise suit le defaut du programme installe. Changer
+// d'hebergeur = modifier cette ligne et publier une release (GitHub, qui ne
+// depend pas de l'hebergeur). La securite n'en depend pas : les pages sont
+// signees (D018), quel que soit le serveur qui les sert.
+#define AQ_SERVICE_HOST_DEFAULT "aqualook.alwaysdata.net"
+#define AQ_WEB_MANIFEST_PATH    "/aqualook-web-manifest.json"
+
 #if AQUALOOK_BOARD_S3
 // Guition JC4827W543C_I (ESP32-S3) - broches confirmees sur materiel
 // reel (docs/architecture/HW_JC4827W543_PORT_IMPACT.md §8), memes
