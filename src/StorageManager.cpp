@@ -457,6 +457,16 @@ bool StorageManager::commitAssetStaging() {
         return false;
     }
 
+    // Carte neuve : /www n'existe pas encore, et un renommage FAT vers un
+    // repertoire absent echoue. Sans cette creation, la premiere installation
+    // d'un module neuf telechargeait tout puis echouait a la bascule (P2.18).
+    if (!_sd.exists(ASSETS_DIR) && !_sd.mkdir(ASSETS_DIR)) {
+        dir.close();
+        unlockSd();
+        EventLog::log(LOG_ERROR, "Deploiement: creation de %s impossible", ASSETS_DIR);
+        return false;
+    }
+
     uint8_t moved = 0U;
     bool allMoved = true;
     char name[64];

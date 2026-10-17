@@ -1,5 +1,6 @@
 #include "ConfigManager.h"
 #include "WebAssetsUpdater.h"
+#include "CloudSync.h"
 #include "BootLoopGuard.h"
 #include "EventBus.h"
 #include "EventLog.h"
@@ -1035,24 +1036,51 @@ void ConfigManager::setWindAlert(const CfgWindAlert& w) {
 
 // URL du manifeste des ressources Web. Cle NVS distincte du blob principal
 // (voir la note sur CFG_NVS_WEBASSETS_URL_KEY dans ConfigManager.h).
-// Absence de la cle = URL par defaut, donc sans effet sur une installation
-// qui n'a jamais configure ce reglage.
-void ConfigManager::loadWebAssetsUrl() {
-    strlcpy(_webAssetsUrl, WebAssetsUpdater::DEFAULT_MANIFEST_URL,
-            sizeof(_webAssetsUrl));
+// Absence de la cle = catalogue du serveur AquaLook regle (P2.18) : un seul
+// parametre, le "Serveur" du module (CloudSync), sert au service en ligne et
+// aux pages. La cle ne garde qu'une source vraiment differente.
+namespace {
+void manifestUrlForServer(char* out, size_t outSize) {
+    const CloudSyncConfig cloud = CloudSync::loadConfig();
+    snprintf(out, outSize, "https://%s%s", cloud.host, AQ_WEB_MANIFEST_PATH);
+}
 
+void forgetWebAssetsUrl() {
     Preferences prefs;
-    if (!prefs.begin(CFG_NVS_NAMESPACE, true)) return;
-    char buf[WEBASSETS_URL_MAX] = "";
-    const size_t read = prefs.getBytes(CFG_NVS_WEBASSETS_URL_KEY, buf, sizeof(buf));
+    if (!prefs.begin(CFG_NVS_NAMESPACE, false)) return;
+    prefs.remove(CFG_NVS_WEBASSETS_URL_KEY);
     prefs.end();
+}
+}  // namespace
+
+void ConfigManager::loadWebAssetsUrl() {
+    char derived[WEBASSETS_URL_MAX] = "";
+    manifestUrlForServer(derived, sizeof(derived));
+    strlcpy(_webAssetsUrl, derived, sizeof(_webAssetsUrl));
+
+    // Espace NVS illisible : on garde l'adresse du serveur, et on la pousse
+    // quand meme vers WebAssetsUpdater (plus de sortie anticipee).
+    Preferences prefs;
+    char buf[WEBASSETS_URL_MAX] = "";
+    size_t read = 0;
+    if (prefs.begin(CFG_NVS_NAMESPACE, true)) {
+        read = prefs.getBytes(CFG_NVS_WEBASSETS_URL_KEY, buf, sizeof(buf));
+        prefs.end();
+    }
 
     // Relecture defensive : une valeur enregistree par une version anterieure,
     // ou corrompue, ne doit pas pouvoir degrader le canal en clair. On
     // repasse donc par la meme validation que l'ecriture.
     if (read > 0 && read <= sizeof(buf)) {
         buf[sizeof(buf) - 1] = '\0';
-        if (strncmp(buf, "https://", 8) == 0) {
+        if (strcmp(buf, derived) == 0 ||
+            strcmp(buf, WebAssetsUpdater::LEGACY_GITHUB_MANIFEST_URL) == 0) {
+            // Pas une personnalisation : la meme adresse que celle du serveur,
+            // ou l'ancien defaut GitHub qui ne porte plus les pages (D021).
+            // L'oublier fait suivre le serveur, y compris s'il change.
+            forgetWebAssetsUrl();
+            EventLog::log(LOG_INFO, "WebAssets: source enregistree oubliee, suit le serveur");
+        } else if (strncmp(buf, "https://", 8) == 0) {
             strlcpy(_webAssetsUrl, buf, sizeof(_webAssetsUrl));
         } else {
             EventLog::log(LOG_WARN,
@@ -1078,6 +1106,21 @@ void ConfigManager::loadWebAssetsUrl() {
 
 bool ConfigManager::setWebAssetsUrl(const char* url) {
     if (url == nullptr) return false;
+
+    // Adresse vide, ou celle du serveur regle : plus de source particuliere,
+    // les pages suivent le serveur.
+    char derived[WEBASSETS_URL_MAX] = "";
+    manifestUrlForServer(derived, sizeof(derived));
+    if (url[0] == '\0' || strcmp(url, derived) == 0) {
+        forgetWebAssetsUrl();
+        strlcpy(_webAssetsUrl, derived, sizeof(_webAssetsUrl));
+        WebAssetsUpdater::setManifestUrl(_webAssetsUrl);
+        bumpRevision();
+        persistRevision();
+        _revisionBumped = false;
+        EventLog::log(LOG_INFO, "WebAssets: source = serveur (%s)", _webAssetsUrl);
+        return true;
+    }
 
     // HTTPS obligatoire, et ce n'est pas une precaution de principe.
     //

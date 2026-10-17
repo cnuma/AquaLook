@@ -52,7 +52,7 @@ static const char LOGIN_HTML[] PROGMEM = R"rawlogin(
 // pas. Sans lui, /login (et le lien "Retour" de /ota) menait sans SD a une
 // page "Not found" -- constate sur .141 le 11 oct. 2026 (phase 6, D016).
 static const char HOME_FALLBACK_HTML[] PROGMEM = R"rawhome(
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Secours</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{line-height:1.5;color:#bed0dc;font-size:14px}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b;border-radius:8px;padding:12px}a{display:block;margin-top:10px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-decoration:none}#v{font-size:12px;color:#8fa6b6}</style></head><body><main><h1>AquaLook</h1><p id="v">-</p><p class="warn">Interface de secours : la carte SD est absente ou illisible, l'interface complete n'est pas disponible. L'arrosage programme continue normalement.</p><a href="/ota">Mises a jour</a><a href="/setup">Configuration WiFi</a><a href="/logs">Journal</a><a href="/api/diagnostics">Diagnostic (JSON)</a></main><script src="/fw-secours.js"></script></body></html>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Secours</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{line-height:1.5;color:#bed0dc;font-size:14px}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b;border-radius:8px;padding:12px}a{display:block;margin-top:10px;padding:11px;border:1px solid #526d80;border-radius:7px;color:#d7e9f3;text-decoration:none}#v{font-size:12px;color:#8fa6b6}</style></head><body><main><h1>AquaLook</h1><p id="v">-</p><p class="warn" id="w">Interface de secours : l'interface complète n'est pas disponible. L'arrosage programmé continue normalement.</p><a href="/ota">Mises à jour</a><a href="/setup">Configuration Wi-Fi</a><a href="/logs">Journal</a><a href="/api/diagnostics">Diagnostic (JSON)</a></main><script src="/fw-secours.js"></script></body></html>
 )rawhome";
 
 // Scripts des pages integrees ci-dessus (P3.13) : servis comme fichiers
@@ -82,21 +82,102 @@ document.getElementById('f').onsubmit=async ev=>{ev.preventDefault();try{const c
 st();
 )rawjs";
 
-static const char HOME_FALLBACK_JS[] PROGMEM = R"rawjs(fetch('/api/diagnostics').then(r=>r.json()).then(d=>{const b=d.build;document.getElementById('v').textContent='Version '+b.version+' - build '+b.number+' ('+b.gitSha+')'}).catch(()=>{}))rawjs";
+static const char HOME_FALLBACK_JS[] PROGMEM = R"rawjs(fetch('/api/diagnostics').then(r=>r.json()).then(d=>{const b=d.build;document.getElementById('v').textContent='Version '+b.version+' - build '+b.number+' ('+b.gitSha+')'}).catch(()=>{});fetch('/api/storage').then(r=>r.json()).then(s=>{const w=document.getElementById('w'),f=' L’arrosage programmé continue normalement.';if(s.status==='web-assets-missing'&&s.capacityBytes>0)w.textContent='La carte SD ne contient pas encore les pages de l’interface (carte neuve ou vidée) : installez-les depuis Mises à jour.'+f;else if(s.status==='sd-unavailable'||s.status==='read-error')w.textContent='Carte SD absente ou illisible : l’interface complète n’est pas disponible.'+f}).catch(()=>{}))rawjs";
 
 static const char OTA_FALLBACK_JS[] PROGMEM = R"rawjs(
-function go(url,label){
-  if(!confirm(label+' : le module va redemarrer en mode maintenance. Continuer ?'))return;
-  for(const id of ['b1','b2','b3','b4'])document.getElementById(id).disabled=true;
-  const m=document.getElementById('msg');
-  m.textContent=label+' demandee, le module redemarre...';
-  fetch(url,{method:'POST'}).then(r=>r.text()).then(t=>{
-    m.textContent=label+' acceptee. Rechargez cette page dans une minute. Reponse : '+t.slice(0,200);
-  }).catch(()=>{
-    m.textContent=label+' envoyee. Le module a coupe la connexion, ce qui est normal : il redemarre. Rechargez dans une minute.';
-  });
+const $=id=>document.getElementById(id);
+const BTN=['b1','b2','b3','b4','srvSave','srvDef'];
+const NOMS={check_version:'Vérification',stage_update_test:'Préparation du programme',install_update:'Installation du programme',web_assets_update:'Installation des pages Web',download_update_test:'Essai de téléchargement',probe_github:'Test de connexion à GitHub'};
+const CAUSES={'http-404':'catalogue des pages introuvable sur le serveur','deja-a-jour':'pages déjà à jour','version-anterieure':'la version publiée est plus ancienne que celle installée','transit-impossible':'écriture impossible sur la carte SD','manifeste-illisible':'catalogue illisible','manifeste-incomplet':'catalogue incomplet','manifeste-trop-gros':'catalogue trop volumineux','schema-inconnu':'catalogue d’un format inconnu','remote-version-older':'version publiée plus ancienne','environment-mismatch':'programme de banc, hors mises à jour'};
+function cause(d){const c=String(d||'').split(' ')[0];if(CAUSES[c])return CAUSES[c];if(c.indexOf('signature')===0)return 'signature refusée ('+c+'), rien n’a été installé';if(c.indexOf('http-')===0)return 'le serveur a répondu '+c.slice(5);return c||'cause inconnue'}
+function box(el,cls,txt){el.className='box '+cls;el.textContent=txt}
+async function j(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error('http '+r.status);return r.json()}
+function sig(r){return r?[r.command,r.recordedEpoch,r.recordedUptimeMs,r.detail].join('|'):''}
+function bilan(r){
+  if(!r||!r.valid)return null;
+  if(r.command==='check_version'){
+    let t='Vérification : programme '+(r.success?(r.updateAvailable?'nouvelle version '+r.availableVersion+' disponible':'à jour ('+r.installedVersion+' installé, '+(r.availableVersion||'?')+' publié)'):'non vérifié, '+cause(r.detail))+'.';
+    t+=r.webAssetsAvailableVersion?' Pages Web : '+(r.webAssetsUpdateAvailable?'version '+r.webAssetsAvailableVersion+' disponible.':'à jour.'):' Pages Web : catalogue injoignable sur le serveur.';
+    return [r.success&&r.webAssetsAvailableVersion?'ok':'err',t];
+  }
+  if(r.command==='web_assets_update'){
+    const m=String(r.detail||'').match(/version=(\S+) fichiers=(\d+)\/(\d+)/);
+    if(r.success)return ['ok',m&&m[2]!=='0'?'Pages Web '+m[1]+' installées ('+m[2]+' fichiers).':'Pages Web déjà à jour'+(m?' ('+m[1]+')':'')+'.'];
+    return ['err','Pages Web non installées : '+cause(r.detail)+'.'];
+  }
+  return [r.success?'ok':'err',(NOMS[r.command]||r.command)+' : '+(r.success?'réussie.':'échec, '+cause(r.detail)+'.')];
 }
-for(const id of ['b1','b2','b3','b4']){const b=document.getElementById(id);b.addEventListener('click',()=>go(b.dataset.url,b.dataset.label))}
+async function lire(){
+  let d=null,s=null,a=null,r=null,v=null;
+  try{d=await j('/api/diagnostics')}catch(e){box($('etat'),'err','Module injoignable. Vérifiez qu’il est allumé et sur le même réseau, puis rechargez la page.');return}
+  const b=d.build||{};$('vfw').textContent=(b.version||'?')+' (build '+(b.number||'?')+', '+(b.gitSha||'?')+')';
+  try{s=await j('/api/storage')}catch(e){}
+  try{a=await j('/api/adminStatus')}catch(e){}
+  try{r=await j('/api/maintenance/last-result')}catch(e){}
+  try{v=await j('/assets-version.json')}catch(e){}
+  const h=a&&a.cloudSync&&a.cloudSync.host;$('srv').textContent=h||'—';
+  if(h&&!$('srvIn').value)$('srvIn').value=h;
+  const st=s?s.status:'',e=$('etat'),b4=$('b4');b4.disabled=false;$('go').hidden=st!=='ready';
+  const installe=r&&r.valid&&r.command==='web_assets_update'&&r.success;
+  if(st==='ready'){
+    $('vweb').textContent=v&&v.version?v.version:'installées';b4.textContent='Mettre à jour les pages Web';
+    box(e,'ok','Le module est complet : programme et pages Web installés. L’interface détaillée est sur AquaLook (lien en haut).');
+  }else if(st==='web-assets-missing'&&s.capacityBytes>0){
+    $('vweb').textContent='aucune (carte SD neuve ou vidée)';b4.textContent='Installer les pages Web';
+    box(e,'warn','La carte SD est en place mais ne contient pas encore les pages de l’interface. Installez-les : le module les télécharge depuis le serveur, vérifie leur signature, puis redémarre seul (environ une minute).');
+  }else if(st==='read-error'){
+    $('vweb').textContent='carte SD illisible';b4.textContent='Installer les pages Web';
+    box(e,'err','La carte SD répond mais ses fichiers sont illisibles. Reformatez-la sur un ordinateur (FAT32 ou exFAT), remettez-la, puis installez les pages.');
+  }else if(installe){
+    $('vweb').textContent='installées, carte SD muette';b4.disabled=true;
+    box(e,'warn','Les pages sont installées, mais la carte SD ne répond plus depuis le redémarrage. Débranchez l’alimentation du module 10 secondes, rebranchez-le, puis revenez sur cette page.');
+  }else{
+    $('vweb').textContent='carte SD absente ou illisible';b4.disabled=true;
+    box(e,'err','Aucune carte SD lisible. Éteignez le module, insérez une carte formatée (FAT32 ou exFAT), rallumez-le, puis revenez sur cette page.');
+  }
+  const bl=bilan(r);if(bl&&!$('msg').dataset.attente)box($('msg'),bl[0],'Dernière opération. '+bl[1]);
+}
+function fin(){delete $('msg').dataset.attente;BTN.forEach(id=>$(id).disabled=false)}
+async function attendre(t0,avant){
+  await new Promise(ok=>setTimeout(ok,5000));
+  let r=null;try{r=await j('/api/maintenance/last-result')}catch(e){}
+  if(r&&sig(r)!==avant){fin();await lire();const bl=bilan(r);box($('msg'),bl?bl[0]:'ok',bl?bl[1]:'Opération terminée.');return}
+  const sec=Math.round((Date.now()-t0)/1000);
+  if(sec>240){fin();box($('msg'),'err','Le module ne répond pas depuis 4 minutes. Rechargez la page ; s’il reste injoignable, débranchez-le puis rebranchez-le.');return}
+  box($('msg'),'warn','Le module travaille en mode maintenance ('+sec+' s). Le résultat s’affichera ici dès son retour : inutile de recharger la page.');
+  attendre(t0,avant);
+}
+async function go(url,label){
+  if(!confirm(label+' : le module va redémarrer en mode maintenance (environ une minute). Continuer ?'))return;
+  BTN.forEach(id=>$(id).disabled=true);
+  const m=$('msg');m.dataset.attente='1';box(m,'warn',label+' demandée…');
+  let avant='';try{avant=sig(await j('/api/maintenance/last-result'))}catch(e){}
+  try{
+    const r=await fetch(url,{method:'POST'});
+    if(!r.ok){let t='';try{t=(await r.json()).error||''}catch(e){}
+      fin();box(m,'err',label+' refusée'+(r.status===401||r.status===403?' : connectez-vous d’abord (page Connexion).':t?' : '+t+'.':' (code '+r.status+').'));return}
+  }catch(e){}
+  box(m,'warn','Le module redémarre en mode maintenance. Le résultat s’affichera ici dès son retour (environ une minute) : inutile de recharger la page.');
+  attendre(Date.now(),avant);
+}
+async function serveur(h){
+  const m=$('msg');
+  try{
+    const r=await fetch('/api/cloudSync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host:h})});
+    let t='';try{t=(await r.json()).error||''}catch(e){}
+    if(!r.ok){box(m,'err','Serveur non enregistré'+(r.status===401||r.status===403?' : connectez-vous d’abord (page Connexion).':' : '+(t||'code '+r.status)+'.'));return}
+    $('srvIn').value='';await lire();
+    box(m,'ok','Serveur enregistré : '+$('srv').textContent+'. Les pages Web et le service en ligne l’utilisent désormais.');
+  }catch(e){box(m,'err','Module injoignable.')}
+}
+$('srvSave').addEventListener('click',()=>{
+  const h=$('srvIn').value.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'');
+  if(!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(h)){box($('msg'),'err','Adresse invalide : saisissez seulement le nom du serveur, par exemple exemple.net.');return}
+  if(confirm('Utiliser le serveur '+h+' ? Si le module est rattaché au service en ligne, il s’y connectera avec son jeton : n’indiquez qu’un serveur de confiance.'))serveur(h);
+});
+$('srvDef').addEventListener('click',()=>{if(confirm('Revenir au serveur par défaut du programme ?'))serveur('')});
+['b1','b2','b3','b4'].forEach(id=>{const b=$(id);b.addEventListener('click',()=>go(b.dataset.url,b.dataset.label))});
+lire();
 )rawjs";
 
 // ───── Diffusion des pages HTML embarquees ──────────────────────────────
@@ -2302,6 +2383,9 @@ void WebManager::handleSetCloudSync(AsyncWebServerRequest* req, JsonDocument& do
                        "ou HTTP refuse vers un hote hors reseau local (HTTPS obligatoire)");
         return;
     }
+    // Un seul parametre "Serveur" (P2.18) : le catalogue des pages suit le
+    // serveur tout de suite, sans attendre un redemarrage.
+    if (_config) _config->loadWebAssetsUrl();
     sendOk(req);
 }
 

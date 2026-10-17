@@ -113,6 +113,15 @@ OTA_INSTALLE = {"valid": True, "command": "install_update", "success": True,
                 "recordedEpoch": 1791997071, "target": "s3", "firmwareUrl": "x", "firmwareSize": 1575296,
                 "sha256": "65ac", "calculatedSha256": "65ac"}
 CLOUDSYNC = {'enabled': True, 'host': 'aqualook.alwaysdata.net', 'port': 443, 'moduleId': 'Jardin-01', 'intervalMinutes': 5, 'lastSyncOk': True, 'lastAttemptEpochSec': 1792182517, 'lastSuccessEpochSec': 1792182524, 'lastSyncedRevision': 117, 'syncInProgress': False, 'forcePending': False, 'serverCaughtUp': True}
+# Page /ota de secours (P2.18) : module neuf, carte SD vide mais montee.
+FW_OTA_BASE = {
+    "/api/diagnostics": {"build": {"version": "5.18.1", "number": "1700", "gitSha": "abc1234"}},
+    "/api/storage": {"status": "web-assets-missing", "sdAvailable": False, "webAssetsAvailable": False,
+                     "cardType": "SDHC/SDXC", "capacityBytes": 64424509440},
+    "/api/adminStatus": {"cloudSync": dict(CLOUDSYNC, enabled=False, moduleId="")},
+    "/api/maintenance/last-result": {"valid": False},
+    "/assets-version.json": None,
+}
 SCENARIOS = {
     "sante": {
         "page": "/sante.html",
@@ -324,14 +333,87 @@ SCENARIOS = {
                    ["texte", "#v", "egal", "Version 5.17.4 - build 1 (abc1234)"]],
         "post": [],
     },
+    # P2.18 : page /ota de secours d'un module neuf. Etat reel du second module
+    # le 17 oct. 2026 : carte SD vide, catalogue introuvable (ancien defaut).
     "fw-ota": {
         "page": "/__fw/ota",
-        "simule": {},
-        "etapes": [["attendre", 800],
-                   ["clic", "#b1", 0],
+        "simule": dict(FW_OTA_BASE, **{"/api/maintenance/last-result": dict(
+            OTA_INSTALLE, command="web_assets_update", success=False,
+            detail="http-404 version=n/a fichiers=0/0")}),
+        "etapes": [["attendre", 1500],
+                   ["texte", "#vfw", "contient", "5.18.1"],
+                   ["texte", "#vweb", "contient", "aucune"],
+                   ["texte", "#srv", "egal", "aqualook.alwaysdata.net"],
+                   ["texte", "#etat", "contient", "pas encore les pages"],
+                   ["texte", "#b4", "egal", "Installer les pages Web"],
+                   ["texte", "#msg", "contient", "introuvable sur le serveur"],
+                   ["clic", "#b4", 0],
                    ["attendre", 800],
-                   ["texte", "#msg", "contient", "Verification acceptee"]],
+                   ["texte", "#msg", "contient", "redémarre en mode maintenance"]],
+        "post": [["POST", "/api/webassets/update"]],
+    },
+    "fw-ota-complet": {
+        "page": "/__fw/ota",
+        "simule": dict(FW_OTA_BASE, **{
+            "/api/storage": {"status": "ready", "sdAvailable": True, "webAssetsAvailable": True,
+                             "cardType": "SDHC/SDXC", "capacityBytes": 64424509440},
+            "/assets-version.json": {"version": "5.17.14"},
+            "/api/maintenance/last-result": dict(
+                OTA_INSTALLE, command="web_assets_update", success=True,
+                detail="ok version=5.17.14 fichiers=27/27")}),
+        "etapes": [["attendre", 1500],
+                   ["texte", "#vweb", "egal", "5.17.14"],
+                   ["texte", "#b4", "egal", "Mettre à jour les pages Web"],
+                   ["texte", "#msg", "contient", "Pages Web 5.17.14 installées (27 fichiers)"],
+                   ["clic", "#b1", 1],
+                   ["attendre", 800]],
         "post": [["POST", "/api/maintenance/check-version"]],
+    },
+    "fw-ota-sans-carte": {
+        "page": "/__fw/ota",
+        "simule": dict(FW_OTA_BASE, **{
+            "/api/storage": {"status": "sd-unavailable", "sdAvailable": False,
+                             "webAssetsAvailable": False, "cardType": "aucune", "capacityBytes": 0},
+            "/api/maintenance/last-result": {"valid": False}}),
+        "etapes": [["attendre", 1500],
+                   ["texte", "#vweb", "contient", "absente"],
+                   ["texte", "#etat", "contient", "Aucune carte SD lisible"]],
+        "post": [],
+    },
+    # Second module, 17 oct. 2026 : pages installees, carte muette au retour
+    # de la maintenance (P3.34) ; seule une coupure d'alimentation la rend.
+    "fw-ota-carte-muette": {
+        "page": "/__fw/ota",
+        "simule": dict(FW_OTA_BASE, **{
+            "/api/storage": {"status": "sd-unavailable", "sdAvailable": False,
+                             "webAssetsAvailable": False, "cardType": "inconnue", "capacityBytes": 0},
+            "/api/maintenance/last-result": dict(
+                OTA_INSTALLE, command="web_assets_update", success=True,
+                detail="deploye version=5.17.14 fichiers=30/30")}),
+        "etapes": [["attendre", 1500],
+                   ["texte", "#vweb", "contient", "carte SD muette"],
+                   ["texte", "#etat", "contient", "Débranchez"],
+                   ["texte", "#msg", "contient", "Pages Web 5.17.14 installées (30 fichiers)"]],
+        "post": [],
+    },
+    "fw-ota-serveur": {
+        "page": "/__fw/ota",
+        "simule": FW_OTA_BASE,
+        "etapes": [["attendre", 1500],
+                   ["saisir", "#srvIn",
+                    "https://serveur-de-remplacement-au-nom-tres-long.exemple-hebergeur.net/chemin", "input"],
+                   ["clic", "#srvSave", 0],
+                   ["attendre", 1200],
+                   ["texte", "#msg", "contient", "Serveur enregistré"]],
+        "post": [["POST", "/api/cloudSync"]],
+    },
+    "fw-secours-carte-neuve": {
+        "page": "/__fw/secours",
+        "simule": {"/api/diagnostics": {"build": {"version": "5.18.1", "number": "1", "gitSha": "abc1234"}},
+                   "/api/storage": FW_OTA_BASE["/api/storage"]},
+        "etapes": [["attendre", 1500],
+                   ["texte", "#w", "contient", "pas encore les pages"]],
+        "post": [],
     },
 }
 
