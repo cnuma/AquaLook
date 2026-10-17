@@ -3,6 +3,7 @@
 #include "ApiAuth.h"                // page Systeme : oublier le secret API
 #include "WebSession.h"             // ... et fermer les sessions Web ouvertes avec lui
 #include "PinLock.h"                // code PIN : ADMIN et demarrage manuel (D016)
+#include "PanelSetup.h"             // reglage de la dalle propre au module (P2.18)
 #include "RainSchedule.h"
 #include "EventBus.h"
 #include "BootLoopGuard.h"
@@ -293,6 +294,7 @@ void DisplayManager::initTft() {
     if (_tftInited) return;
     _tft.init();
     _tft.setRotation(1);
+    applyPanel();
     _tft.fillScreen(TFT_WHITE);
     _tftInited = true;
 
@@ -417,6 +419,7 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     if (!_tftInited) {
         _tft.init();
         _tft.setRotation(1);
+        applyPanel();
         _tftInited = true;
     }
     _tft.fillScreen(Theme::BG);
@@ -483,6 +486,9 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     _screenMgr.begin(_config);
     _needsFullRedraw = true;
     pinRecoveryGesture();
+    // Module neuf : l'assistant d'ecran passe avant tout le reste, sans
+    // bloquer la boucle (portail captif, securites) -- il est un ecran.
+    if (PanelSetup::needsWizard()) openPanelWizard(Screen::HOME);
     Serial.printf("[Display] Heap libre : %u octets, %d zones, mode=%d\n",
                   ESP.getFreeHeap(), _nbZones, (uint8_t)_homeMode);
     Serial.println("[Display] OK");
@@ -753,6 +759,7 @@ void DisplayManager::update() {
             case Screen::ADMIN:  drawAdminFull();             break;
             case Screen::HEALTH: drawHealthFull();            break;
             case Screen::PIN:    drawPinFull();               break;
+            case Screen::PANEL:  drawPanelFull();             break;
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_FULLREDRAW, t0);
         // Le rendu complet contient déjà toutes les informations dynamiques.
@@ -788,6 +795,7 @@ void DisplayManager::update() {
             case Screen::ADMIN:  updateAdminDynamic();             break;
             case Screen::HEALTH: updateHealthDynamic();            break;
             case Screen::PIN:    if (PinLock::lockoutRemainingSec() > 0) drawPinEntry(); break;
+            case Screen::PANEL:  break;   // rien de dynamique
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_DYNAMIC, t0);
     }
@@ -1044,6 +1052,12 @@ bool DisplayManager::getTouchPoint(uint16_t& tx, uint16_t& ty) {
     if (!_touch.isTouched || _touch.touches < 1) return false;
     tx = (uint16_t)constrain((int)_touch.points[0].x, 0, SCREEN_W - 1);
     ty = (uint16_t)constrain((int)_touch.points[0].y, 0, SCREEN_H - 1);
+    // Reglage propre au module (P2.18) : tactile ramene dans le sens de
+    // l'image. Ici, source unique : tous les ecrans et le geste PIN en heritent.
+    if (PanelSetup::touchMirrored()) {
+        tx = (uint16_t)(SCREEN_W - 1 - tx);
+        ty = (uint16_t)(SCREEN_H - 1 - ty);
+    }
     return true;
 #else
     if (!_touch.tirqTouched() || !_touch.touched()) return false;
@@ -1089,7 +1103,7 @@ void DisplayManager::handleTouch() {
     // pas seulement depuis SYSTEM. ADMIN et HEALTH gèrent leur bandeau
     // eux-mêmes (flèche retour, pas de sortie vers soi-même).
     if (_screen != Screen::ADMIN && _screen != Screen::HEALTH &&
-        _screen != Screen::PIN && handleHeaderTouch(tx, ty)) {
+        _screen != Screen::PIN && _screen != Screen::PANEL && handleHeaderTouch(tx, ty)) {
         return;
     }
 
@@ -1101,6 +1115,7 @@ void DisplayManager::handleTouch() {
         case Screen::ADMIN:  handleTouchAdmin(tx, ty);  break;
         case Screen::HEALTH: handleTouchHealth(tx, ty); break;
         case Screen::PIN:    handleTouchPin(tx, ty);    break;
+        case Screen::PANEL:  handleTouchPanel(tx, ty);  break;
     }
 }
 
@@ -1413,6 +1428,12 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
     // (voir ApiAuth::forgetSecret()), donc pas d'affaiblissement du modele
     // de securite existant, juste un filet pour un secret oublie.
     if (_adminPage == AdminPage::SYSTEM) {
+        // "Regler l'ecran" (P2.18) -- coordonnees partagees avec
+        // drawAdminPageSystem().
+        if (hitTest(SCREEN_W - 180, ADM_CONTENT_Y + 8, 170, 34, tx, ty)) {
+            openPanelWizard(Screen::ADMIN);
+            return;
+        }
         if (hitTest(10, ADM_CONTENT_Y + 122, SCREEN_W - 20, 34, tx, ty)) {
             const uint32_t now = millis();
             if (!ApiAuth::hasSecret()) {
@@ -4510,6 +4531,154 @@ void DisplayManager::drawAdminPageSystem() {
                    : armed ? "Confirmer ? (retaper ici)" : "Oublier le mot de passe Web",
                armed ? Theme::AMBER : Theme::SURFACE,
                armed ? 0x0000 : Theme::TEXT);
+#if AQUALOOK_BOARD_S3
+    drawButton(SCREEN_W - 180, ADM_CONTENT_Y + 8, 170, 34, "Regler l'ecran",
+               Theme::SURFACE2, Theme::TEXT);
+#endif
+}
+
+// ─────────────────────────────────────────────
+//  Assistant de reglage de la dalle (P2.18)
+//
+//  Deux series de la meme carte different : image retournee par rapport au
+//  tactile, couleurs inversees. L'assistant ne suppose rien de la dalle :
+//    0. une croix en haut a gauche de l'image ; un appui lu dans le coin
+//       oppose prouve que tactile et image sont en sens contraires ;
+//    1. "texte a l'endroit ?" -- Retourner tourne image ET tactile ensemble
+//       (montage dans le boitier, USB a gauche ou a droite) ;
+//    2. "couleur du fond ?" -- fond envoye en blanc ; "Noir" inverse.
+//  Couleurs fixes (pas Theme::) : le theme n'est pas encore regle sur un
+//  module neuf et doit rester lisible quelle que soit l'inversion.
+//  Aucun relais, aucun delai : c'est un ecran comme un autre.
+// ─────────────────────────────────────────────
+namespace {
+constexpr uint16_t PANEL_CROSS_X = 60;
+constexpr uint16_t PANEL_CROSS_Y = 60;
+constexpr uint16_t PANEL_HIT_R   = 110;   // tolerance autour de la croix
+constexpr uint16_t PANEL_BTN_Y   = 170;
+constexpr uint16_t PANEL_BTN_W   = 190;
+constexpr uint16_t PANEL_BTN_H   = 64;
+constexpr uint16_t PANEL_BTN_L   = 40;
+constexpr uint16_t PANEL_BTN_R   = DisplayManager::SCREEN_W - PANEL_BTN_L - PANEL_BTN_W;
+constexpr uint16_t PANEL_GREY    = 0x8410;
+
+bool nearPoint(uint16_t x, uint16_t y, uint16_t px, uint16_t py) {
+    const int dx = (int)x - (int)px;
+    const int dy = (int)y - (int)py;
+    return dx * dx + dy * dy <= (int)PANEL_HIT_R * (int)PANEL_HIT_R;
+}
+}  // namespace
+
+void DisplayManager::applyPanel() {
+#if AQUALOOK_BOARD_S3
+    _tft.setPanel(PanelSetup::screenFlipped(), PanelSetup::colorsInverted());
+#endif
+}
+
+void DisplayManager::openPanelWizard(Screen returnTo) {
+    _panelReturn = returnTo;
+    _panelStep = 0;
+    // On repart des valeurs de compilation : rien n'est suppose de la dalle.
+    PanelSetup::preview(false, false, false);
+    applyPanel();
+    goTo(Screen::PANEL);
+}
+
+void DisplayManager::drawPanelFull() {
+    const bool white = _panelStep == 2;
+    const uint16_t bg = white ? 0xFFFF : 0x0000;
+    const uint16_t fg = white ? 0x0000 : 0xFFFF;
+    _tft.fillRect(0, 0, SCREEN_W, SCREEN_H, bg);
+    _tft.setTextDatum(TC_DATUM);
+    _tft.setTextSize(1);
+    _tft.setFreeFont(THEME_FONT_TITLE);
+    _tft.setTextColor(fg, bg);
+    char titre[32];
+    snprintf(titre, sizeof(titre), "Reglage de l'ecran %u/3", (unsigned)(_panelStep + 1));
+
+    if (_panelStep < 2) {
+        // Etapes 1 et 2 : chaque texte une fois dans chaque sens, une moitie
+        // d'ecran chacun -- on n'a jamais a lire a l'envers (demande du
+        // 17 oct. 2026). La dalle garde ce qui est deja ecrit quand son sens
+        // d'adressage change : la seconde moitie s'ecrit avec le sens oppose,
+        // aux memes coordonnees, sans tampon.
+        const uint16_t yel = 0xFFE0;
+        for (uint8_t pass = 0; pass < 2; ++pass) {
+#if AQUALOOK_BOARD_S3
+            _tft.setPanel(PanelSetup::screenFlipped() != (pass == 1),
+                          PanelSetup::colorsInverted());
+#else
+            if (pass == 1) break;
+#endif
+            _tft.drawString(titre, SCREEN_W / 2, 14);
+            if (_panelStep == 0) {
+                // Aucune couleur nommee : avant l'etape 3 elles peuvent etre
+                // inversees (le jaune s'affichait bleu, 17 oct. 2026).
+                _tft.drawString("Touchez le centre", SCREEN_W / 2 + 40, 56);
+                _tft.drawString("de la croix encadree", SCREEN_W / 2 + 40, 84);
+            } else {
+                _tft.drawRoundRect(PANEL_BTN_L, 44, SCREEN_W - 2 * PANEL_BTN_L, 80, 10, yel);
+                _tft.drawString("Si vous lisez ce texte", SCREEN_W / 2, 58);
+                _tft.drawString("normalement, touchez-le", SCREEN_W / 2, 90);
+            }
+        }
+        applyPanel();
+        if (_panelStep == 0) {
+            // La croix, une seule fois : sa position est la mesure.
+            _tft.drawFastHLine(PANEL_CROSS_X - 30, PANEL_CROSS_Y, 61, yel);
+            _tft.drawFastVLine(PANEL_CROSS_X, PANEL_CROSS_Y - 30, 61, yel);
+            _tft.fillCircle(PANEL_CROSS_X, PANEL_CROSS_Y, 6, yel);
+            // Cadre espace autour de la croix : designe ou poser le doigt.
+            for (uint8_t e = 0; e < 3; ++e) {
+                _tft.drawRect(PANEL_CROSS_X - 48 + e, PANEL_CROSS_Y - 48 + e,
+                              97 - 2 * e, 97 - 2 * e, fg);
+            }
+        }
+    } else {
+        _tft.drawString(titre, SCREEN_W / 2, 16);
+        _tft.drawString("De quelle couleur est ce fond ?", SCREEN_W / 2, 90);
+        drawButton(PANEL_BTN_L, PANEL_BTN_Y, PANEL_BTN_W, PANEL_BTN_H, "Blanc", PANEL_GREY, 0x0000);
+        drawButton(PANEL_BTN_R, PANEL_BTN_Y, PANEL_BTN_W, PANEL_BTN_H, "Noir", PANEL_GREY, 0x0000);
+    }
+    _tft.setFreeFont(nullptr);
+    _tft.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::handleTouchPanel(uint16_t tx, uint16_t ty) {
+    bool flip = PanelSetup::screenFlipped();
+    bool tflip = PanelSetup::touchFlipRaw();
+    bool inv = PanelSetup::colorsInverted();
+
+    if (_panelStep == 0) {
+        if (nearPoint(tx, ty, SCREEN_W - 1 - PANEL_CROSS_X, SCREEN_H - 1 - PANEL_CROSS_Y)) {
+            tflip = !tflip;   // appui lu a l'oppose : tactile et image contraires
+        } else if (!nearPoint(tx, ty, PANEL_CROSS_X, PANEL_CROSS_Y)) {
+            return;           // ni l'un ni l'autre : on attend un appui sur la croix
+        }
+        PanelSetup::preview(flip, tflip, inv);
+        _panelStep = 1;
+    } else if (_panelStep == 1) {
+        // Moitie haute = texte ecrit dans le sens courant ; moitie basse =
+        // texte ecrit retourne. Lire la seconde normalement, c'est avoir
+        // l'image a l'envers : on retourne image ET tactile ensemble.
+        if (ty >= SCREEN_H / 2) {
+            PanelSetup::preview(!flip, tflip, inv);
+            applyPanel();
+        }
+        _panelStep = 2;
+    } else {
+        if (hitTest(PANEL_BTN_R, PANEL_BTN_Y, PANEL_BTN_W, PANEL_BTN_H, tx, ty)) {
+            PanelSetup::preview(flip, tflip, !inv);   // on redemande, couleurs inversees
+            applyPanel();
+        } else if (hitTest(PANEL_BTN_L, PANEL_BTN_Y, PANEL_BTN_W, PANEL_BTN_H, tx, ty)) {
+            PanelSetup::save();
+            goTo(_panelReturn);
+            return;
+        } else {
+            return;
+        }
+    }
+    _needsFullRedraw = true;
 }
 
 // ─────────────────────────────────────────────

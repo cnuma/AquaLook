@@ -262,6 +262,7 @@ void ConfigManager::begin() {
     }
 
     EventLog::log(LOG_WARN, "Config: NVS/JSON absents — valeurs par defaut");
+    _startedFresh = true;
     defaults();
     save();
 }

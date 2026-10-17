@@ -24,6 +24,7 @@ void TFT_eSPI::init() {
     Arduino_NV3041A *panel = new Arduino_NV3041A(bus, GFX_NOT_DEFINED, 0, AQ_S3_LCD_IPS);
     panel->begin();
     _target = panel;
+    _panel = panel;
 
     ledcSetup(AQ_S3_LCD_BL_CHANNEL, 5000, 12);
     ledcAttachPin(AQ_S3_LCD_BL, AQ_S3_LCD_BL_CHANNEL);
@@ -32,6 +33,14 @@ void TFT_eSPI::init() {
 
 void TFT_eSPI::setRotation(uint8_t /*r*/) {
     // No-op documente dans le .h : orientation deja correcte.
+}
+
+void TFT_eSPI::setPanel(bool flip180, bool invertColors) {
+    if (!_panel) return;
+    // Rotation 2 = 0 sans MX/MY (Arduino_NV3041A::setRotation) : pas d'echange
+    // des axes, donc pas le debordement d'adressage decrit dans init().
+    _panel->setRotation(flip180 ? 2 : 0);
+    _panel->invertDisplay(invertColors);
 }
 
 void TFT_eSPI::fillScreen(uint16_t color) {
