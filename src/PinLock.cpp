@@ -15,6 +15,9 @@ namespace {
 constexpr const char* NVS_NAMESPACE = "aqlsec";
 constexpr const char* KEY_PIN = "pin";
 constexpr const char* KEY_FAILS = "fails";
+// P2.18 lot 3 : proposition du PIN au premier demarrage deja faite. Cle a
+// part, hors du bloc PIN : le format du bloc ne change pas.
+constexpr const char* KEY_OFFERED = "offered";
 constexpr uint32_t MAGIC = 0x4E495041UL;  // "APIN"
 constexpr uint8_t VERSION = 1;
 // Assez pour ralentir une recherche exhaustive sur un bloc NVS derobe sans
@@ -40,6 +43,7 @@ struct PinBlob {
 
 PinBlob g_blob = {};
 bool g_hasPin = false;
+bool g_offered = false;
 uint8_t g_failures = 0;
 uint32_t g_lastFailureMs = 0;
 uint32_t g_unlockedAtMs = 0;
@@ -116,6 +120,7 @@ void begin() {
     PinBlob b = {};
     const size_t n = prefs.getBytes(KEY_PIN, &b, sizeof(b));
     g_failures = prefs.getUChar(KEY_FAILS, 0);
+    g_offered = prefs.getUChar(KEY_OFFERED, 0) != 0;
     prefs.end();
 
     if (n == 0) {
@@ -156,6 +161,18 @@ uint32_t lockoutRemainingSec() {
 }
 
 uint8_t failures() { return g_failures; }
+
+bool offerPending() { return !g_hasPin && !g_offered; }
+
+void markOffered() {
+    if (g_offered) return;
+    g_offered = true;
+    Preferences prefs;
+    if (prefs.begin(NVS_NAMESPACE, false)) {
+        prefs.putUChar(KEY_OFFERED, 1);
+        prefs.end();
+    }
+}
 
 Result verify(const char* digits) {
     if (!g_hasPin) return Result::NO_PIN;

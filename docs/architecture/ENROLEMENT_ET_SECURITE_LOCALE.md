@@ -188,6 +188,9 @@ Règles :
 - Déverrouillage valable 5 minutes ou jusqu'à la mise en veille de l'écran.
 - Échecs : 5 essais, puis temporisation croissante (30 s, doublée, plafond
   15 min). Compteur **persisté** pour qu'un redémarrage ne remette pas à zéro.
+- **Premier démarrage** (P2.18 lot 3, 5.19.0) : après l'assistant d'écran, le
+  LCD propose une seule fois de choisir un PIN (« Choisir un PIN » ou « Plus
+  tard », clé NVS `aqlsec/offered`, hors du bloc PIN).
 - **Transition** : pas de PIN posé = comportement actuel, avec un rappel visible
   dans ADMIN. La mise à jour ne bloque jamais un module installé.
 - **PIN oublié** :
@@ -222,6 +225,12 @@ Règles :
   le secret `ApiAuth`).
 - Retirer `1598753` et le verrou visuel de `data/index.html` : les sections
   administrateur s'affichent selon la session réelle.
+- **Premier démarrage** (P2.18 lot 3, 5.19.0, décision du propriétaire du
+  17 oct. 2026) : sans secret, l'adresse du module (`/`) mène à `/securiser`,
+  page intégrée au firmware (12 à 64 caractères, deux fois), qui guide vers le
+  geste sur l'écran (ADMIN > Système > « Autoriser un mot de passe Web »,
+  10 min) et suit son état par `/api/auth/state` (`fenetreSec`, `nom`). Seule
+  l'entrée est détournée : l'API et l'arrosage restent ouverts.
 - **Transition** : pas de secret posé = comportement actuel + bandeau « accès non
   protégé » ; dès que le secret existe, les écritures exigent la session.
 - HTTP reste en clair sur le LAN : un cookie peut être capté par un poste qui

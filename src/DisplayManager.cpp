@@ -496,6 +496,8 @@ void DisplayManager::begin(NTPManager* ntp, WeatherManager* weather,
     // Module neuf : l'assistant d'ecran passe avant tout le reste, sans
     // bloquer la boucle (portail captif, securites) -- il est un ecran.
     if (PanelSetup::needsWizard()) openPanelWizard(Screen::HOME);
+    // P2.18 lot 3 : puis, une seule fois, la proposition d'un code PIN.
+    else if (PinLock::offerPending()) openPinOffer();
     Serial.printf("[Display] Heap libre : %u octets, %d zones, mode=%d\n",
                   ESP.getFreeHeap(), _nbZones, (uint8_t)_homeMode);
     Serial.println("[Display] OK");
@@ -770,6 +772,7 @@ void DisplayManager::update() {
             case Screen::HEALTH: drawHealthFull();            break;
             case Screen::PIN:    drawPinFull();               break;
             case Screen::PANEL:  drawPanelFull();             break;
+            case Screen::PIN_OFFER: drawPinOfferFull();       break;
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_FULLREDRAW, t0);
         // Le rendu complet contient déjà toutes les informations dynamiques.
@@ -806,6 +809,7 @@ void DisplayManager::update() {
             case Screen::HEALTH: updateHealthDynamic();            break;
             case Screen::PIN:    if (PinLock::lockoutRemainingSec() > 0) drawPinEntry(); break;
             case Screen::PANEL:  break;   // rien de dynamique
+            case Screen::PIN_OFFER: break;
         }
         RuntimeProfiler::stop(RuntimeProfiler::Component::DISPLAY_DYNAMIC, t0);
     }
@@ -1113,7 +1117,8 @@ void DisplayManager::handleTouch() {
     // pas seulement depuis SYSTEM. ADMIN et HEALTH gèrent leur bandeau
     // eux-mêmes (flèche retour, pas de sortie vers soi-même).
     if (_screen != Screen::ADMIN && _screen != Screen::HEALTH &&
-        _screen != Screen::PIN && _screen != Screen::PANEL && handleHeaderTouch(tx, ty)) {
+        _screen != Screen::PIN && _screen != Screen::PANEL &&
+        _screen != Screen::PIN_OFFER && handleHeaderTouch(tx, ty)) {
         return;
     }
 
@@ -1126,6 +1131,7 @@ void DisplayManager::handleTouch() {
         case Screen::HEALTH: handleTouchHealth(tx, ty); break;
         case Screen::PIN:    handleTouchPin(tx, ty);    break;
         case Screen::PANEL:  handleTouchPanel(tx, ty);  break;
+        case Screen::PIN_OFFER: handleTouchPinOffer(tx, ty); break;
     }
 }
 
@@ -1477,6 +1483,7 @@ void DisplayManager::handleTouchAdmin(uint16_t tx, uint16_t ty) {
     // 5 min a pu se refermer pendant qu'on restait dans ADMIN.
     if (_adminPage == AdminPage::SECURITE) {
         if (hitTest(10, ADM_CONTENT_Y + 70, SCREEN_W - 20, 34, tx, ty)) {
+            _pinSetReturn = Screen::ADMIN;
             if (PinLock::isUnlocked()) openPin(PinPurpose::SET_NEW);
             else                       openPin(PinPurpose::ENTER_ADMIN);
             return;
@@ -1683,7 +1690,7 @@ void DisplayManager::handleTouchPin(uint16_t tx, uint16_t ty) {
         armTouchGuard();
         _pinBuf[0] = '\0';
         goTo(_pinPurpose == PinPurpose::SET_NEW || _pinPurpose == PinPurpose::SET_CONFIRM
-                 ? Screen::ADMIN : _pinReturn);
+                 ? _pinSetReturn : _pinReturn);
         return;
     }
     for (uint8_t i = 0; i < 12; ++i) {
@@ -1749,8 +1756,8 @@ void DisplayManager::pinValidate() {
             memset(_pinFirst, 0, sizeof(_pinFirst));
             memset(_pinBuf, 0, sizeof(_pinBuf));
             if (ok) {
-                _adminPage = AdminPage::SECURITE;
-                goTo(Screen::ADMIN);
+                if (_pinSetReturn == Screen::ADMIN) _adminPage = AdminPage::SECURITE;
+                goTo(_pinSetReturn);
                 return;
             }
             _pinPurpose = PinPurpose::SET_NEW;
@@ -4703,13 +4710,72 @@ void DisplayManager::handleTouchPanel(uint16_t tx, uint16_t ty) {
             applyPanel();
         } else if (hitTest(PANEL_BTN_L, PANEL_BTN_Y, PANEL_BTN_W, PANEL_BTN_H, tx, ty)) {
             PanelSetup::save();
-            goTo(_panelReturn);
+            // Module neuf (P2.18 lot 3) : la proposition du PIN suit l'assistant.
+            if (_panelReturn == Screen::HOME && PinLock::offerPending()) openPinOffer();
+            else goTo(_panelReturn);
             return;
         } else {
             return;
         }
     }
     _needsFullRedraw = true;
+}
+
+// ─────────────────────────────────────────────
+//  Proposition du PIN au premier demarrage (P2.18 lot 3)
+//
+//  Une seule fois (PinLock::offerPending) : "Choisir un PIN" ouvre la pose
+//  habituelle (deux saisies) puis revient a l'accueil ; "Plus tard" laisse
+//  le module sans PIN, avec le rappel existant dans ADMIN. Aucun relais,
+//  aucun delai : c'est un ecran comme un autre.
+// ─────────────────────────────────────────────
+namespace {
+constexpr uint16_t OFFER_BTN_Y = 190;
+constexpr uint16_t OFFER_BTN_W = 200;
+constexpr uint16_t OFFER_BTN_H = 56;
+constexpr uint16_t OFFER_BTN_L = 30;
+constexpr uint16_t OFFER_BTN_R = DisplayManager::SCREEN_W - OFFER_BTN_L - OFFER_BTN_W;
+}  // namespace
+
+void DisplayManager::openPinOffer() {
+    goTo(Screen::PIN_OFFER);
+}
+
+void DisplayManager::drawPinOfferFull() {
+    _tft.setTextDatum(TC_DATUM);
+    _tft.setTextSize(1);
+    _tft.setFreeFont(THEME_FONT_TITLE);
+    _tft.setTextColor(Theme::TEXT, Theme::BG);
+    _tft.drawString("Code PIN de l'ecran", SCREEN_W / 2, 22);
+    _tft.setFreeFont(nullptr);
+    _tft.setTextSize(2);
+    _tft.setTextColor(Theme::TEXT2, Theme::BG);
+    _tft.drawString("Il protege l'administration", SCREEN_W / 2, 70);
+    _tft.drawString("et la marche manuelle des zones.", SCREEN_W / 2, 94);
+    _tft.drawString("4 a 6 chiffres.", SCREEN_W / 2, 126);
+    _tft.drawString("Arreter une zone reste libre.", SCREEN_W / 2, 150);
+    _tft.setTextSize(1);
+    _tft.setFreeFont(THEME_FONT_TITLE);
+    drawButton(OFFER_BTN_L, OFFER_BTN_Y, OFFER_BTN_W, OFFER_BTN_H, "Choisir un PIN",
+               Theme::BLUE, 0xFFFF);
+    drawButton(OFFER_BTN_R, OFFER_BTN_Y, OFFER_BTN_W, OFFER_BTN_H, "Plus tard",
+               Theme::SURFACE2, Theme::TEXT);
+    _tft.setFreeFont(nullptr);
+    _tft.setTextDatum(TL_DATUM);
+}
+
+void DisplayManager::handleTouchPinOffer(uint16_t tx, uint16_t ty) {
+    if (hitTest(OFFER_BTN_L, OFFER_BTN_Y, OFFER_BTN_W, OFFER_BTN_H, tx, ty)) {
+        PinLock::markOffered();
+        armTouchGuard();
+        _pinSetReturn = Screen::HOME;
+        openPin(PinPurpose::SET_NEW);
+    } else if (hitTest(OFFER_BTN_R, OFFER_BTN_Y, OFFER_BTN_W, OFFER_BTN_H, tx, ty)) {
+        PinLock::markOffered();
+        armTouchGuard();
+        EventLog::log(LOG_INFO, "[SEC] PIN: propose au premier demarrage, reporte");
+        goTo(Screen::HOME);
+    }
 }
 
 // ─────────────────────────────────────────────

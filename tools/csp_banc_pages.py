@@ -66,12 +66,14 @@ ALIAS = {"/setup": "setup.html", "/logs": "logs.html"}
 SRC = os.path.join(RACINE, "src")
 FW_PAGES = {
     "/__fw/login": ("WebManager.cpp", "LOGIN_HTML"),
+    "/__fw/securiser": ("WebManager.cpp", "SECURE_HTML"),
     "/__fw/setup": ("WebManager.cpp", "CAPTIVE_HTML"),
     "/__fw/secours": ("WebManager.cpp", "HOME_FALLBACK_HTML"),
     "/__fw/ota": ("WebManager.h", "AquaLook - Mises a jour (secours)"),
 }
 FW_JS = {
     "/fw-login.js": ("WebManager.cpp", "LOGIN_JS"),
+    "/fw-securiser.js": ("WebManager.cpp", "SECURE_JS"),
     "/fw-setup.js": ("WebManager.cpp", "SETUP_JS"),
     "/fw-secours.js": ("WebManager.cpp", "HOME_FALLBACK_JS"),
     "/fw-ota.js": ("WebManager.cpp", "OTA_FALLBACK_JS"),
@@ -304,6 +306,36 @@ SCENARIOS = {
                    ["attendre", 1000],
                    ["texte", "#m", "egal", "refus banc"]],
         "post": [["POST", "/api/session/login"]],
+    },
+    # P2.18 lot 3 : premier demarrage, mot de passe Web pas encore pose.
+    "fw-securiser-attente": {
+        "page": "/__fw/securiser",
+        "simule": {"/api/auth/state": {"configure": False, "nonce": 0, "fenetreSec": 0,
+                                       "nom": "aqualook-64cc"}},
+        "etapes": [["attendre", 1500],
+                   ["texte", "#e1", "contient", "Autoriser un mot de passe Web"],
+                   ["compte", "#f[hidden]", 1],
+                   ["texte", "#adr", "contient", "aqualook-64cc.local"]],
+        "post": [],
+    },
+    "fw-securiser": {
+        "page": "/__fw/securiser",
+        "simule": {"/api/auth/state": {"configure": False, "nonce": 0, "fenetreSec": 540}},
+        "repond": {"/api/auth-secret": [200, {"ok": True}]},
+        "etapes": [["attendre", 1500],
+                   ["texte", "#e1", "contient", "encore 9 min"],
+                   ["compte", "#f[hidden]", 0],
+                   ["saisir", "#p1", "mot-de-passe-de-banc-assez-long", "input"],
+                   ["saisir", "#p2", "autre-mot-de-passe-de-banc", "input"],
+                   ["clic", "#ok", 0],
+                   ["attendre", 500],
+                   ["texte", "#m", "contient", "diffèrent"],
+                   ["saisir", "#p2", "mot-de-passe-de-banc-assez-long", "input"],
+                   ["clic", "#ok", 0],
+                   ["attendre", 1000],
+                   ["texte", "#e1", "contient", "Mot de passe enregistré"],
+                   ["compte", "a.go", 1]],
+        "post": [["POST", "/api/auth-secret"]],
     },
     "fw-setup": {
         "page": "/__fw/setup",

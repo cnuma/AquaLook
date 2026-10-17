@@ -50,7 +50,8 @@ class StorageManager;
 enum class Screen : uint8_t {
     HOME, ZONE, STATUS, SYSTEM, ADMIN, HEALTH,
     PIN,   // pave de saisie du code PIN (D016, lot E)
-    PANEL  // assistant de reglage de la dalle (P2.18, src/PanelSetup.h)
+    PANEL,     // assistant de reglage de la dalle (P2.18, src/PanelSetup.h)
+    PIN_OFFER  // proposition du PIN au premier demarrage (P2.18 lot 3)
 };
 
 // Ce que la saisie du PIN debloque ou enregistre.
@@ -336,6 +337,9 @@ private:
     // debloque, et l'ecran ou revenir sur "Annuler".
     PinPurpose _pinPurpose = PinPurpose::ENTER_ADMIN;
     Screen     _pinReturn  = Screen::HOME;
+    // Ou revient la pose d'un PIN (Annuler ou enregistre) : ADMIN > Securite,
+    // ou l'accueil quand elle part de la proposition du premier demarrage.
+    Screen     _pinSetReturn = Screen::ADMIN;
 
     // Assistant de reglage de la dalle (P2.18) : etape 0 croix (accord
     // image/tactile), 1 sens du texte, 2 couleurs. Reglage essaye en RAM
@@ -721,6 +725,9 @@ private:
     void pinRecoveryGesture();    // appele une fois a la fin de begin()
     void applyPanel();            // reglage PanelSetup -> dalle (S3)
     void openPanelWizard(Screen returnTo);
+    void openPinOffer();
+    void drawPinOfferFull();
+    void handleTouchPinOffer(uint16_t tx, uint16_t ty);
     void drawPanelFull();
     void handleTouchPanel(uint16_t tx, uint16_t ty);
     uint8_t lockIconState() const;

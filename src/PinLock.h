@@ -73,4 +73,10 @@ uint32_t lockoutRemainingSec();
 
 uint8_t failures();
 
+// P2.18 lot 3 : proposer le PIN une seule fois au premier demarrage. Vrai
+// si aucun PIN n'est pose et que la proposition n'a jamais ete faite.
+bool offerPending();
+// Note la proposition comme faite (choix d'un PIN ou « Plus tard »).
+void markOffered();
+
 }  // namespace PinLock
