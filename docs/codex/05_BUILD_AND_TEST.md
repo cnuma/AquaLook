@@ -91,6 +91,13 @@ python tools/release_firmware.py signer X.Y.Z
   `jc4827w543c_i`, environnement, taille, SHA-256, image ESP32-S3, binaire
   de production) et relit ce que les modules reçoivent.
 - Le cache de GitHub peut servir l'état précédent pendant environ une minute.
+- Depuis 5.18.0 (P2.18), la release porte aussi les images d'un module neuf
+  (chargeur, partitions, otadata, LittleFS) et `aqualook-fabrication.json`,
+  signé par `signer` ; `python tools/preparer_module.py flasher --port
+  <PORT_COM> --effacer` flashe la dernière release signée sur un module neuf
+  (`--sauver-nvs` pour un module réglé, `--local` pour un build local).
+- Envoi du paquet Web : `python tools/publish_web_assets.py X.Y.Z --envoyer`
+  (accord du propriétaire ; ordre fichiers → `.sig` → manifeste → `/editeur/`).
 - Essai OTA sur `.141` : le flasher par USB en `ProgrammeArrosage_s3` (le
   binaire de banc répond `environment-mismatch`), `POST
   /api/maintenance/check-version`, `stage-update-test`, `install-update`
