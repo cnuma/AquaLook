@@ -96,6 +96,11 @@ python tools/release_firmware.py signer X.Y.Z
   signé par `signer` ; `python tools/preparer_module.py flasher --port
   <PORT_COM> --effacer` flashe la dernière release signée sur un module neuf
   (`--sauver-nvs` pour un module réglé, `--local` pour un build local).
+- Serveur AquaLook (5.18.1) : un seul réglage pour les pages et le service en
+  ligne ; défaut `AQ_SERVICE_HOST_DEFAULT` dans `include/config.h` (seule
+  mention de l'hébergeur), jamais enregistré en NVS ; modifiable dans la
+  page `/ota` de secours (« Changer de serveur ») ou par `POST /api/cloudSync`.
+  Changer d'hébergeur : modifier cette ligne et publier une release (GitHub).
 - Envoi du paquet Web : `python tools/publish_web_assets.py X.Y.Z --envoyer`
   (accord du propriétaire ; ordre fichiers → `.sig` → manifeste → `/editeur/`).
 - Essai OTA sur `.141` : le flasher par USB en `ProgrammeArrosage_s3` (le
