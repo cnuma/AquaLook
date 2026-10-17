@@ -673,7 +673,38 @@ bool StorageManager::mountSd(bool publishAvailability) {
     );
 #endif
 
-    if (!_sd.begin(sdConfig)) {
+    bool begun = _sd.begin(sdConfig);
+#if AQUALOOK_BOARD_S3
+    if (!begun) {
+        // P3.34 : certaines cartes (Lenovo 64 Go SDXC, 2/2 le 17 oct. 2026)
+        // restent muettes apres un redemarrage logiciel qui suit des
+        // ecritures ; seule une coupure d'alimentation les rendait. Le code
+        // SdFat dit a quelle commande la carte ne repond plus. Second essai :
+        // carte deselectionnee, 80 octets d'horloge a 400 kHz pour terminer
+        // toute transaction laissee ouverte, puis montage a 4 MHz.
+        const uint8_t code = _sd.sdErrorCode();
+        EventLog::log(LOG_WARN, "[SD-MONTAGE] echec code=0x%02X (%s) data=0x%02X, essai lent",
+                      code, sdErrorText(code), static_cast<unsigned>(_sd.sdErrorData()));
+        _sd.end();
+        pinMode(SD_CS_PIN, OUTPUT);
+        digitalWrite(SD_CS_PIN, HIGH);
+        _sdSpi.beginTransaction(SPISettings(400000U, MSBFIRST, SPI_MODE0));
+        for (uint8_t i = 0; i < 80U; i++) _sdSpi.transfer(0xFF);
+        _sdSpi.endTransaction();
+        delay(50);
+        const SdSpiConfig slowConfig(SD_CS_PIN, SHARED_SPI, SD_SCK_MHZ(4), &_sdSpi);
+        begun = _sd.begin(slowConfig);
+        if (begun) {
+            EventLog::log(LOG_WARN, "[SD-MONTAGE] montee a 4 MHz apres echec a 25 MHz");
+        } else {
+            const uint8_t slowCode = _sd.sdErrorCode();
+            EventLog::log(LOG_WARN, "[SD-MONTAGE] essai lent echoue code=0x%02X (%s) data=0x%02X",
+                          slowCode, sdErrorText(slowCode),
+                          static_cast<unsigned>(_sd.sdErrorData()));
+        }
+    }
+#endif
+    if (!begun) {
         _status = StorageStatus::SD_UNAVAILABLE;
         _lastMountFailureReason = "sd_begin_failed";
         unlockSd();
