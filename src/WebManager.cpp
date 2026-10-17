@@ -7,6 +7,7 @@
 #include "ScriptVmSelfTest.h"
 #include "ScriptHostRuntime.h"
 #include "ApiAuth.h"
+#include "NetName.h"
 #include "WebSession.h"
 #include "WebCsp.h"
 #include "ScriptAdmin.h"
@@ -47,6 +48,23 @@ static const char CAPTIVE_HTML[] PROGMEM = R"rawhtml(
 static const char LOGIN_HTML[] PROGMEM = R"rawlogin(
 <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Connexion</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:420px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}p{color:#bed0dc;font-size:14px;line-height:1.5}input,button{box-sizing:border-box;width:100%;padding:10px;margin-top:10px;border-radius:7px;font-size:15px}button{border:0;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}#m{margin-top:12px;min-height:19px;color:#ffd88b}a{display:block;margin-top:14px;color:#9fd8f5}</style></head><body><main><h1>AquaLook - Connexion</h1><p>Page integree au module : elle fonctionne meme si la carte SD est absente ou ancienne. Le mot de passe ne quitte pas ce navigateur.</p><form id="f"><input id="p" type="password" autocomplete="current-password" placeholder="Mot de passe Web"><button>Se connecter</button></form><div id="m"></div><a href="/index.html">Retour a AquaLook</a></main><script src="/fw-login.js"></script></body></html>
 )rawlogin";
+
+// Premier demarrage (P2.18 lot 3, decision du proprietaire du 17 oct. 2026) :
+// tant qu'aucun mot de passe Web n'est pose, l'adresse du module mene ici.
+// Integree au firmware : un module neuf n'a pas encore ses pages sur la SD.
+// La pose reste soumise au geste sur l'ecran (ApiAuth::allowFirstSecret) :
+// un poste du reseau ne peut pas la faire seul.
+static const char SECURE_HTML[] PROGMEM = R"rawsecure(
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AquaLook - Sécuriser</title><style>body{margin:0;background:#101820;color:#eef;font-family:Arial,sans-serif;display:flex;justify-content:center}main{box-sizing:border-box;width:94%;max-width:520px;padding:20px;margin:24px 0;background:#172532;border:1px solid #385064;border-radius:12px}h1{margin:0 0 6px;font-size:21px}h2{margin:18px 0 6px;font-size:16px;color:#9fd8f5}p{color:#bed0dc;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.box{border-radius:8px;padding:12px;font-size:14px;line-height:1.5}.warn{border:1px solid #d59b35;background:#2a2114;color:#ffd88b}.ok{border:1px solid #4caf50;background:#13261a;color:#b9f6ca}input,button{box-sizing:border-box;width:100%;padding:10px;margin-top:10px;border-radius:7px;font-size:15px}input:disabled,button:disabled{opacity:.45}button{border:0;font-weight:700;background:#4fc3f7;color:#06141b;cursor:pointer}label{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;color:#bed0dc}label input{width:auto;margin:0}#m{margin-top:12px;min-height:19px;color:#ffd88b;overflow-wrap:anywhere}a.go{display:block;margin-top:14px;padding:11px;border-radius:7px;background:#4fc3f7;color:#06141b;font-weight:700;text-align:center;text-decoration:none}#adr{font-size:13px;color:#8fa6b6}</style></head><body><main><h1>Sécuriser votre module</h1><p>Avant d’utiliser AquaLook, choisissez le mot de passe Web du module. Il sera demandé pour modifier les réglages depuis un navigateur.</p><h2>1. Autoriser sur l’écran du module</h2><p class="box warn" id="e1">Lecture de l’état du module…</p><h2>2. Choisir le mot de passe</h2><form id="f"><input id="p1" type="password" autocomplete="new-password" placeholder="Mot de passe (12 caractères minimum)" disabled><input id="p2" type="password" autocomplete="new-password" placeholder="Retaper le mot de passe" disabled><label><input type="checkbox" id="show">Afficher le mot de passe</label><button id="ok" disabled>Enregistrer le mot de passe</button></form><div id="m"></div><p id="adr"></p></main><script src="/fw-securiser.js"></script></body></html>
+)rawsecure";
+
+static const char SECURE_JS[] PROGMEM = R"rawjs(
+const $=x=>document.getElementById(x);let fen=0,fait=false;
+async function st(){if(fait)return;try{const s=await(await fetch('/api/auth/state',{cache:'no-store'})).json();if(s.configure){location.replace('/');return}fen=s.fenetreSec||0;const e=$('e1');if(fen>0){e.className='box ok';e.textContent='Autorisé : encore '+Math.ceil(fen/60)+' min pour enregistrer le mot de passe.'}else{e.className='box warn';e.textContent='Sur l’écran du module, touchez ≡ en haut à gauche, puis l’onglet « Système », puis « Autoriser un mot de passe Web ». Si un code PIN est demandé, saisissez-le.'}['p1','p2','ok'].forEach(i=>{$(i).disabled=!(fen>0)});$('adr').textContent='Adresse du module : http://'+location.host+'/'+(s.nom?' ou http://'+s.nom+'.local/':'')}catch(e){$('m').textContent='Module injoignable.'}}
+$('show').addEventListener('change',e=>{const t=e.target.checked?'text':'password';$('p1').type=t;$('p2').type=t});
+$('f').addEventListener('submit',async ev=>{ev.preventDefault();const a=$('p1').value,b=$('p2').value,n=new TextEncoder().encode(a).length;if(n<12||n>64){$('m').textContent='De 12 à 64 caractères.';return}if(a!==b){$('m').textContent='Les deux mots de passe diffèrent.';return}$('m').textContent='Enregistrement…';try{const r=await fetch('/api/auth-secret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actuel:'',nouveau:a})});let j={};try{j=await r.json()}catch(e){}if(!r.ok){$('m').textContent=j.error||('refus '+r.status);return}fait=true;$('f').hidden=true;$('e1').className='box ok';$('e1').textContent='Mot de passe enregistré. Notez-le : il sera demandé pour modifier les réglages depuis un navigateur.';$('m').textContent='';const g=document.createElement('a');g.className='go';g.href='/index.html';g.textContent='Ouvrir AquaLook';$('m').after(g)}catch(e){$('m').textContent='Module injoignable.'}});
+st();setInterval(st,2000);
+)rawjs";
 
 // Accueil de secours servi a la place de /index.html quand la SD ne le fournit
 // pas. Sans lui, /login (et le lien "Retour" de /ota) menait sans SD a une
@@ -692,6 +710,13 @@ void WebManager::setupRoutes() {
             req->redirect("/setup");
             return;
         }
+        // Premier demarrage (P2.18 lot 3) : sans mot de passe Web, l'adresse
+        // du module mene d'abord a sa pose. Seule l'entree est detournee :
+        // l'API et l'arrosage restent ouverts comme avant (transition D016).
+        if (!ApiAuth::hasSecret()) {
+            req->redirect("/securiser");
+            return;
+        }
         // Entree par l'adresse du module : sans session ouverte (et un mot de
         // passe pose), on commence par la connexion (D016 lot F, demande du
         // proprietaire). /login renvoie ensuite vers /index.html.
@@ -717,6 +742,12 @@ void WebManager::setupRoutes() {
     });
     _server.on("/fw-login.js", HTTP_GET, [](AsyncWebServerRequest* req) {
         sendEmbeddedScript(req, LOGIN_JS, sizeof(LOGIN_JS) - 1U);
+    });
+    _server.on("/securiser", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedPage(req, SECURE_HTML, sizeof(SECURE_HTML) - 1U);
+    });
+    _server.on("/fw-securiser.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        sendEmbeddedScript(req, SECURE_JS, sizeof(SECURE_JS) - 1U);
     });
     _server.on("/fw-secours.js", HTTP_GET, [](AsyncWebServerRequest* req) {
         sendEmbeddedScript(req, HOME_FALLBACK_JS, sizeof(HOME_FALLBACK_JS) - 1U);
@@ -1121,6 +1152,10 @@ void WebManager::setupRoutes() {
         JsonDocument doc;
         doc["configure"] = ApiAuth::hasSecret();
         doc["nonce"] = ApiAuth::lastNonce();
+        // P2.18 lot 3 : la page /securiser suit le geste sur l'ecran, et
+        // donne le nom local deja annonce par mDNS (rien de secret).
+        doc["fenetreSec"] = ApiAuth::firstSecretWindowLeftMs() / 1000UL;
+        if (NetName::announced()) doc["nom"] = NetName::name();
         String body;
         serializeJson(doc, body);
         req->send(200, "application/json", body);
