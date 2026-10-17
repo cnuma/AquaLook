@@ -80,7 +80,10 @@ function rendre(d) {
   const ok = $('lastOk');
   ok.textContent = attente ? 'En attente du 1er cycle depuis le redemarrage'
     : c.lastSyncOk ? 'OK' : (c.lastAttemptEpochSec ? 'Échec' : 'Aucun cycle encore');
-  ok.className = 'v ' + (attente ? 'na' : c.lastSyncOk ? 'ok' : (c.lastAttemptEpochSec ? 'bad' : 'na'));
+  // P3.30 : meme couleur que le bandeau, qui dit la meme chose (orange en
+  // attente ou echec isole, rouge seulement en panne : c.fault).
+  ok.className = 'v ' + (attente ? 'warn' : c.lastSyncOk ? 'ok'
+    : (c.lastAttemptEpochSec ? (c.fault === true ? 'bad' : 'warn') : 'na'));
 
   const ry = rythme(c, attente);
   $('interval').textContent = c.intervalMinutes + ' min' +
