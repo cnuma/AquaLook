@@ -685,7 +685,11 @@ bool StorageManager::mountSd(bool publishAvailability) {
         const uint8_t code = _sd.sdErrorCode();
         EventLog::log(LOG_WARN, "[SD-MONTAGE] echec code=0x%02X (%s) data=0x%02X, essai lent",
                       code, sdErrorText(code), static_cast<unsigned>(_sd.sdErrorData()));
+        // _sd.end() appelle SPIClass::end(), qui detache les broches : sans
+        // ce begin() avec les broches, le second essai partait sur un bus
+        // detache (« HSPI Does not have default pins », CMD0 sans reponse).
         _sd.end();
+        _sdSpi.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
         pinMode(SD_CS_PIN, OUTPUT);
         digitalWrite(SD_CS_PIN, HIGH);
         _sdSpi.beginTransaction(SPISettings(400000U, MSBFIRST, SPI_MODE0));
