@@ -1421,7 +1421,7 @@ function populateNotificationSection() {
   const enabledEl = document.getElementById('cfg-ntfy-enabled');
   if (!d || !enabledEl) { if (infoEl) infoEl.textContent = 'État indisponible'; return; }
   enabledEl.checked = !!d.enabled;
-  document.getElementById('cfg-ntfy-server').value = d.server || 'http://ntfy.sh';
+  document.getElementById('cfg-ntfy-server').value = d.server || 'https://ntfy.sh';
   document.getElementById('cfg-ntfy-topic').value  = d.topic  || '';
   document.getElementById('cfg-ntfy-token').value  = '';
   infoEl.innerHTML =
@@ -1433,11 +1433,11 @@ function validNtfyTopic(topic) {
   return topic.length >= 8 && /^[A-Za-z0-9_-]+$/.test(topic);
 }
 async function saveCfgNotifications() {
-  const server = document.getElementById('cfg-ntfy-server').value.trim() || 'http://ntfy.sh';
+  const server = document.getElementById('cfg-ntfy-server').value.trim() || 'https://ntfy.sh';
   const topic  = document.getElementById('cfg-ntfy-topic').value.trim();
   const token  = document.getElementById('cfg-ntfy-token').value;
   let enabled  = document.getElementById('cfg-ntfy-enabled').checked && topic.length > 0;
-  if (!server.startsWith('http://')) { toast('Le serveur doit commencer par http://', true); return; }
+  if (!/^https?:\/\/\S{3,}$/.test(server)) { toast('Le serveur doit commencer par https:// (ou http:// pour un relais local)', true); return; }
   if (enabled && !validNtfyTopic(topic)) {
     toast('Sujet invalide (8 caracteres min., lettres/chiffres/-/_ uniquement)', true);
     return;
@@ -1459,7 +1459,7 @@ async function testCfgNotifications() {
 async function resetCfgNotifications() {
   if (!confirm("Desactiver ntfy et effacer definitivement le sujet et le jeton enregistres en NVS ?")) return;
   const response = await api('/api/notifications/config',
-    {enabled:false, server:'http://ntfy.sh', topic:'', token:'', preserveToken:false});
+    {enabled:false, server:'https://ntfy.sh', topic:'', token:'', preserveToken:false});
   if (!response.ok) { toast('Reinitialisation impossible', true); return; }
   toast('Notifications reinitialisees');
   await fetchNotificationConfig();
