@@ -10,7 +10,7 @@ Les numéros ci-dessous reprennent les identifiants réellement présents dans l
 | I2 | LittleFS reste en lecture pour les ressources Web ; seul ConfigManager gère la persistance. |
 | I3 | Un setter Web persistant met à jour la RAM et ConfigManager. |
 | I4 | `fillScreen()` n’est appelé que dans le chemin de redraw complet contrôlé. |
-| I5 | Le XPT2046 utilise son bus VSPI séparé. |
+| I5 | Le tactile a son bus séparé : GT911 sur un I²C dédié (SDA 8, SCL 4) sur le S3, distinct du bus des relais (`Wire1`) ; XPT2046 sur VSPI sur la CYD. |
 | I6 | L’activation relais du planificateur passe par callback, câblé dans `main.cpp`. |
 | I7 | `RelaisManager::update()` maintient la sécurité de durée maximale. |
 | I9 | Les identifiants Wi-Fi viennent de la configuration flash/NVS. |
@@ -34,9 +34,9 @@ Les numéros ci-dessous reprennent les identifiants réellement présents dans l
 - **F4 — Limites :** 1 à 8 zones actives, capacité interne 16, 7 jours, 5 créneaux par jour et zone, fenêtre météo 48 h maximum.
 - **F5 — IDs frontend :** les IDs de `index.html` consommés par `app.js` sont stables.
 - **F6 — Routes :** les routes Web existantes sont des contrats.
-- **F7 — LittleFS :** un buildfs réussi est obligatoire pour toute modification de `data/`.
+- **F7 — LittleFS :** un buildfs réussi est obligatoire pour toute modification de `littlefs/` (le `data_dir` PlatformIO). Les pages de `data/` vont sur la carte SD et ne passent pas par buildfs.
 - **F8 — NVS :** la configuration valide est contrôlée par magic, schéma, taille et CRC.
-- **F9 — Migration :** l’ancien JSON n’est supprimé qu’après vérification du bloc NVS migré.
+- **F9 — Migration :** sans objet depuis le 8 septembre 2026 (lecture de l’ancien `/config.json` retirée de `ConfigManager`). Principe conservé pour toute migration future : l’ancienne donnée n’est effacée qu’après vérification de la nouvelle.
 - **F10 — Contrôleur relais :** le nombre de zones dépend du contrôleur ; une mauvaise logique peut activer les relais au boot.
 - **F11 — Noms de fichiers :** un fichier modifié, corrigé ou rendu à l’utilisateur conserve exactement son nom d’origine. Aucun suffixe, préfixe, renommage ou nom alternatif n’est autorisé sans demande explicite de l’utilisateur. Lorsqu’un fichier doit remplacer un fichier existant, il est fourni sous le nom exact du fichier cible.
 - **F12 — Version Git sur LCD :** la page Système de l’écran LCD permet de consulter sans outil externe l’identifiant de version Git intégré au firmware. L’information affichée doit permettre d’identifier sans ambiguïté le build réellement exécuté, au minimum par le SHA Git court ; la branche ou l’origine de build et la date de compilation sont affichées si l’espace le permet.
