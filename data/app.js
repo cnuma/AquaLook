@@ -903,10 +903,10 @@ const CFG_GROUPS = [
     sections: ['sec-upd'] },
   { id: 'g-systeme', icon: '&#9881;',   label: 'Système',
     sections: ['sec-system'] },
-  { id: 'g-io',      icon: '&#128268;', label: 'Entrées / Sorties',
-    sections: ['sec-io'] },
-  { id: 'g-relais',  icon: '&#9889;',   label: 'Câblage entrées / sorties',
+  { id: 'g-relais',  icon: '&#9889;',   label: 'Cartes interfaces',
     sections: ['sec-topo'] },
+  { id: 'g-io',      icon: '&#128268;', label: 'Capteurs et actionneurs',
+    sections: ['sec-io'] },
 ];
 
 // Sections presentes dans le DOM mais rattachees a aucune rubrique. Elles
