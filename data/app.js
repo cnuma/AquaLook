@@ -1978,7 +1978,7 @@ function renderTopoEditor() {
     let nb = 0;
     topoAssign.forEach((a, n) => {
       if ((sens === 'in') !== topoIsInput(a.role)) return;
-      h += topoLigne(a, n);
+      topoLigne(a, n);   // ajoute elle-meme sa ligne a h
       nb++;
     });
     if (!nb) h += '<div class="cfg-hint">' + vide + '</div>';

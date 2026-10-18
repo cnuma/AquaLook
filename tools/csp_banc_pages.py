@@ -246,6 +246,8 @@ SCENARIOS = {
                    ["attendre", 1500],
                    # D023 : cartes, puis sorties, puis entrees, un bouton par liste.
                    ["compte", "#topo-editor .cfg-subsection-title", 3],
+                   ["compte", "#topo-editor .io-bind", 1],
+                   ["texte", "#topo-editor", "non", "undefined"],
                    ["compte", "#topo-editor [data-onclick=\"topoAddAssign('out')\"]", 1],
                    ["compte", "#topo-editor [data-onclick=\"topoAddAssign('in')\"]", 1]],
     },
