@@ -905,8 +905,6 @@ const CFG_GROUPS = [
     sections: ['sec-system'] },
   { id: 'g-relais',  icon: '&#9889;',   label: 'Cartes interfaces',
     sections: ['sec-topo'] },
-  { id: 'g-io',      icon: '&#128268;', label: 'Capteurs et actionneurs',
-    sections: ['sec-io'] },
 ];
 
 // Sections presentes dans le DOM mais rattachees a aucune rubrique. Elles
@@ -957,7 +955,6 @@ function openCfgPage(groupId) {
   if (g.sections.indexOf('sec-zones') >= 0) buildCfgZoneList();
   if (g.sections.indexOf('sec-cloud') >= 0) populateCloudSync();
   if (g.sections.indexOf('sec-upd')   >= 0) refreshUpdateState();
-  if (g.sections.indexOf('sec-io')    >= 0) loadCfgIo();
   if (g.sections.indexOf('sec-topo')  >= 0) loadCfgTopo();
   if (g.sections.indexOf('sec-zones') >= 0) refreshWiringState();
 
@@ -1693,171 +1690,6 @@ async function resetCfgDisplay() {
   }
 }
 
-// ── Couche E/S TOR (MCP23017) — editeur configurable ───────────────────────
-// Convention : guillemets simples en JS, doubles en HTML, &rsquo; pour
-// l&rsquo;apostrophe. Aucun echappement fragile.
-
-let ioBoards = [];   // { addr }
-let ioBinds  = [];   // { board, pin, dir, role, zone, active, pullup, state, missing, command }
-let ioEnabled = false;
-let ioPoll = 5;
-
-const IO_ROLES_IN  = [[1, 'Presence vanne'], [2, 'Entree TOR']];
-const IO_ROLES_OUT = [[3, 'Eclairage'], [4, 'Ventilation'], [5, 'Sortie TOR']];
-
-function ioZoneCount() {
-  const s = adminStatus && adminStatus.system;
-  const n = s && Number(s.nbZones);
-  return (n && n > 0) ? n : 8;
-}
-
-async function loadCfgIo() {
-  let d;
-  try { d = await (await fetch('/api/io')).json(); }
-  catch (e) { document.getElementById('io-editor').innerHTML =
-    '<div class="cfg-hint">Lecture impossible : ' + e.message + '</div>'; return; }
-  ioEnabled = !!d.enabled;
-  ioPoll = d.pollSeconds || 5;
-  ioBoards = (d.boards || []).filter(b => b.enabled).map(b => ({ addr: b.addr, ready: b.ready }));
-  ioBinds = (d.bindings || []).filter(b => b.enabled).map(b => ({
-    board: b.board, pin: b.pin, dir: b.dir, role: b.role,
-    zone: (b.zone == null ? 255 : b.zone), active: b.activeLevel,
-    pullup: !!b.pullup, state: b.state, missing: b.missing, command: b.command
-  }));
-  document.getElementById('io-enabled').checked = ioEnabled;
-  document.getElementById('io-poll').value = ioPoll;
-  renderIoEditor();
-}
-
-function ioBoardOptions(sel) {
-  if (!ioBoards.length) return '<option value="0">(aucune carte)</option>';
-  return ioBoards.map((b, i) =>
-    '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>Carte ' + i +
-    ' (0x' + b.addr.toString(16) + ')</option>').join('');
-}
-
-function ioRoleOptions(dir, sel) {
-  const list = (dir === 1) ? IO_ROLES_OUT : IO_ROLES_IN;
-  return list.map(r => '<option value="' + r[0] + '"' +
-    (r[0] === sel ? ' selected' : '') + '>' + r[1] + '</option>').join('');
-}
-
-function ioZoneOptions(sel) {
-  let h = '<option value="255"' + (sel === 255 ? ' selected' : '') + '>aucune</option>';
-  for (let z = 0; z < ioZoneCount(); z++)
-    h += '<option value="' + z + '"' + (z === sel ? ' selected' : '') + '>Zone ' + (z + 1) + '</option>';
-  return h;
-}
-
-function ioPinOptions(sel) {
-  let h = '';
-  for (let p = 0; p < 16; p++) {
-    const lbl = (p < 8) ? ('A' + p) : ('B' + (p - 8));
-    h += '<option value="' + p + '"' + (p === sel ? ' selected' : '') + '>' + lbl + '</option>';
-  }
-  return h;
-}
-
-function ioStateBadge(b) {
-  if (b.dir === 1) return b.command ? '<span class="io-on">ON</span>' : 'OFF';
-  if (b.state === 'present') return '<span class="io-ok">presente</span>';
-  if (b.state === 'absent')  return '<span class="io-ko">ABSENTE</span>';
-  if (b.state === 'actif')   return '<span class="io-ok">actif</span>';
-  if (b.state === 'inactif') return 'inactif';
-  return '<span class="cfg-muted">&mdash;</span>';
-}
-
-function renderIoEditor() {
-  const el = document.getElementById('io-editor');
-  let h = '<div class="cfg-subsection-title">Cartes MCP23017</div>';
-  if (!ioBoards.length) h += '<div class="cfg-hint">Aucune carte declaree.</div>';
-  ioBoards.forEach((b, i) => {
-    h += '<div class="io-row"><span class="io-lbl">Carte ' + i + '</span>'
-      + '<label>Adresse</label><select data-io="baddr" data-i="' + i + '">';
-    for (let a = 0x20; a <= 0x27; a++)
-      h += '<option value="' + a + '"' + (a === b.addr ? ' selected' : '') + '>0x' + a.toString(16) + '</option>';
-    h += '</select><span class="io-st">' + (b.ready ? '<span class="io-ok">prete</span>' : '<span class="io-ko">absente</span>') + '</span>'
-      + '<button class="io-del" data-onclick="ioRemoveBoard(' + i + ')">&#10007;</button></div>';
-  });
-  h += '<button class="btn-cfg" data-onclick="ioAddBoard()" style="margin:6px 0">+ Ajouter une carte</button>';
-
-  h += '<div class="cfg-subsection-title" style="margin-top:12px">Broches</div>';
-  h += '<div class="cfg-hint">Chaque broche : carte, broche, sens, role, zone, niveau actif. '
-     + 'La presence de vanne n&rsquo;est lue qu&rsquo;au repos de sa zone.</div>';
-  if (!ioBinds.length) h += '<div class="cfg-hint">Aucune broche declaree.</div>';
-  ioBinds.forEach((b, i) => {
-    h += '<div class="io-bind">'
-      + '<select data-io="board" data-i="' + i + '">' + ioBoardOptions(b.board) + '</select>'
-      + '<select data-io="pin" data-i="' + i + '">' + ioPinOptions(b.pin) + '</select>'
-      + '<select data-io="dir" data-i="' + i + '" data-onchange="ioOnDirChange(' + i + ')">'
-      + '<option value="0"' + (b.dir === 0 ? ' selected' : '') + '>Entree</option>'
-      + '<option value="1"' + (b.dir === 1 ? ' selected' : '') + '>Sortie</option></select>'
-      + '<select data-io="role" data-i="' + i + '">' + ioRoleOptions(b.dir, b.role) + '</select>'
-      + '<select data-io="zone" data-i="' + i + '">' + ioZoneOptions(b.zone) + '</select>'
-      + '<select data-io="active" data-i="' + i + '" title="niveau logique actif/present">'
-      + '<option value="1"' + (b.active === 1 ? ' selected' : '') + '>actif=1</option>'
-      + '<option value="0"' + (b.active === 0 ? ' selected' : '') + '>actif=0</option></select>'
-      + '<label class="io-pu"><input type="checkbox" data-io="pullup" data-i="' + i + '"' + (b.pullup ? ' checked' : '') + '>pull-up</label>'
-      + '<span class="io-st">' + ioStateBadge(b) + '</span>'
-      + '<button class="io-del" data-onclick="ioRemoveBind(' + i + ')">&#10007;</button></div>';
-  });
-  h += '<button class="btn-cfg" data-onclick="ioAddBind()" style="margin:6px 0">+ Ajouter une broche</button>';
-  el.innerHTML = h;
-}
-
-// Recopie l'etat des selects/checkbox dans les tableaux avant tout re-render.
-function ioGatherFromDom() {
-  document.querySelectorAll('#io-editor [data-io]').forEach(elm => {
-    const k = elm.dataset.io, i = Number(elm.dataset.i);
-    const val = (elm.type === 'checkbox') ? elm.checked : Number(elm.value);
-    if (k === 'baddr' && ioBoards[i]) ioBoards[i].addr = val;
-    else if (ioBinds[i]) {
-      if (k === 'board') ioBinds[i].board = val;
-      else if (k === 'pin') ioBinds[i].pin = val;
-      else if (k === 'dir') ioBinds[i].dir = val;
-      else if (k === 'role') ioBinds[i].role = val;
-      else if (k === 'zone') ioBinds[i].zone = val;
-      else if (k === 'active') ioBinds[i].active = val;
-      else if (k === 'pullup') ioBinds[i].pullup = val;
-    }
-  });
-}
-
-function ioAddBoard() { ioGatherFromDom(); if (ioBoards.length < 8) { ioBoards.push({ addr: 0x21, ready: false }); renderIoEditor(); } }
-function ioRemoveBoard(i) { ioGatherFromDom(); ioBoards.splice(i, 1); renderIoEditor(); }
-function ioAddBind() { ioGatherFromDom(); if (ioBinds.length < 32) { ioBinds.push({ board: 0, pin: 0, dir: 0, role: 1, zone: 255, active: 0, pullup: true }); renderIoEditor(); } }
-function ioRemoveBind(i) { ioGatherFromDom(); ioBinds.splice(i, 1); renderIoEditor(); }
-
-// Quand le sens change, le role doit rester coherent (entree<->sortie).
-function ioOnDirChange(i) {
-  ioGatherFromDom();
-  const b = ioBinds[i];
-  b.role = (b.dir === 1) ? 3 : 1;
-  renderIoEditor();
-}
-
-async function saveCfgIo() {
-  ioGatherFromDom();
-  const body = {
-    enabled: document.getElementById('io-enabled').checked,
-    pollSeconds: Math.min(60, Math.max(1, Number(document.getElementById('io-poll').value) || 5)),
-    boards: ioBoards.map((b, i) => ({ i: i, enabled: true, addr: b.addr })),
-    bindings: ioBinds.map((b, i) => ({
-      i: i, enabled: true, board: b.board, pin: b.pin, dir: b.dir,
-      role: b.role, zone: b.zone, activeLevel: b.active, pullup: b.pullup
-    }))
-  };
-  try {
-    const r = await fetch('/api/io/config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) { toast((d && d.error) || ('Erreur ' + r.status), true); return; }
-    toast('Configuration E/S enregistree');
-    await loadCfgIo();
-  } catch (e) { toast('Erreur reseau', true); }
-}
-
 // ── Topologie relais (cablage) — editeur configurable ──────────────────────
 // Convention : guillemets simples en JS, doubles en HTML, &rsquo; pour
 // l&rsquo;apostrophe. Aucun echappement fragile.
@@ -2066,7 +1898,7 @@ function renderTopoEditor() {
   // des apostrophes, la droite doit etre echappee -- et un echappement se
   // perd trop facilement en passant par un script de retouche. Celle-ci ne
   // peut pas casser la chaine.
-  h += '<div class="cfg-subsection-title">Cartes d’interface</div>';
+  h += '<div class="cfg-subsection-title">Cartes</div>';
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
   topoBoards.forEach((b, n) => {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
@@ -2092,10 +1924,9 @@ function renderTopoEditor() {
        + 'pres. Une meme carte peut porter des sorties <b>et</b> des entrees.</div>';
   }
 
-  h += '<div class="cfg-subsection-title" style="margin-top:12px">Affectations</div>';
-  h += '<div class="cfg-hint">Chaque affectation relie un role (vanne de zone, pompe&hellip;) '
-     + 'a une voie physique : carte + canal.</div>';
-  if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
+  // D023 : sorties puis entrees, chacune sous son titre et avec son bouton.
+  // Une seule table derriere (topoAssign) : l'ordre d'affichage ne change
+  // ni les index ni le libelle « Affectation N » cite par les messages.
 
   // Calculee AVANT le rendu des lignes : chaque ligne fautive porte ainsi
   // elle-meme un surlignage, plutot que de laisser le message du bas seul a
@@ -2104,7 +1935,7 @@ function renderTopoEditor() {
   const topoLignesFautives = new Set();
   topoAlertes.forEach(al => al.lignes.forEach(l => topoLignesFautives.add(l)));
 
-  topoAssign.forEach((a, n) => {
+  const topoLigne = (a, n) => {
     // La classe distingue les deux formes de ligne : elles n'ont ni le meme
     // nombre de colonnes ni les memes etiquettes.
     // Le meme libelle que dans les messages de coherence, au mot pres : un
@@ -2135,20 +1966,25 @@ function renderTopoEditor() {
       + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
           '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" data-onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
+  };
+  // Un bouton par liste : le sens se choisit des la creation (memes couleurs
+  // que le badge SORTIE/ENTREE des lignes, .io-sens-out/.io-sens-in).
+  [['out', 'Sorties', 'Chaque sortie relie un role (vanne de zone, pompe&hellip;) a une voie physique : carte + canal.',
+    'Aucune sortie.', 'io-out', '+ Ajouter une sortie'],
+   ['in', 'Entr&eacute;es', 'Chaque entr&eacute;e lit une voie physique (capteur, contact) ; les scripts la citent par son identifiant.',
+    'Aucune entr&eacute;e.', 'io-in', '+ Ajouter une entr&eacute;e']].forEach(([sens, titre, aide, vide, cls, bouton]) => {
+    h += '<div class="cfg-subsection-title" style="margin-top:12px">' + titre + '</div>';
+    h += '<div class="cfg-hint">' + aide + '</div>';
+    let nb = 0;
+    topoAssign.forEach((a, n) => {
+      if ((sens === 'in') !== topoIsInput(a.role)) return;
+      topoLigne(a, n);   // ajoute elle-meme sa ligne a h
+      nb++;
+    });
+    if (!nb) h += '<div class="cfg-hint">' + vide + '</div>';
+    h += '<button class="btn-cfg ' + cls + '" style="width:auto;margin:6px 0" '
+       + 'data-onclick="topoAddAssign(\'' + sens + '\')">' + bouton + '</button>';
   });
-  // Deux boutons plutot qu'un choix a faire APRES coup : l'utilisateur
-  // demande explicitement de choisir des la creation si la nouvelle ligne
-  // est une entree ou une sortie, plutot que de recevoir une sortie par
-  // defaut et devoir la reconfigurer via le role. Memes couleurs que le
-  // badge SORTIE/ENTREE des lignes (.io-sens-out/.io-sens-in) : le bouton
-  // annonce d'avance ce que la ligne sera, dans le meme langage visuel.
-  h += '<div style="display:flex;gap:8px;margin:6px 0">'
-     + '<button class="btn-cfg io-out" style="width:auto;margin:0" '
-     + 'data-onclick="topoAddAssign(\'out\')">+ Ajouter une sortie</button>'
-     + '<button class="btn-cfg io-in" style="width:auto;margin:0" '
-     + 'data-onclick="topoAddAssign(\'in\')">+ Ajouter une entr&eacute;e</button>'
-     + '</div>';
-
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
   // sont : les lignes fautives sont deja surlignees ci-dessus (topoAlertes,
   // calculee plus haut). Le message ci-dessous nomme en plus le probleme --

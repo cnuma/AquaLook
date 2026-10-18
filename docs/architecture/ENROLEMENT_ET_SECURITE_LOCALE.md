@@ -264,7 +264,7 @@ elle écrit.
 | Classe | Routes |
 |---|---|
 | Lectures libres — pages | ressources Web (SD, LittleFS), `/`, `/setup`, `/logs`, `/ota`, redirections du portail captif (`/generate_204`…) |
-| Lectures libres — état | `/api/status`, `/api/zonesConfig`, `/api/zone`, `/api/forecast`, `/api/display`, `/api/io`, `/api/adminStatus` (secrets masqués), `/api/storage` |
+| Lectures libres — état | `/api/status`, `/api/zonesConfig`, `/api/zone`, `/api/forecast`, `/api/display`, `/api/adminStatus` (secrets masqués), `/api/storage` |
 | Lectures libres — diagnostic | `/api/diagnostics`, `/api/health`, `/api/faults`, `/api/logs.txt`, `/api/logs`, `/api/logConfig`, `/api/incidents/storage-sd`, `/api/maintenance/last-result`, `/api/debug/heap-info`, `/api/debug/nvs-stats`, `/api/debug/script-selftest`, `/api/debug/verify-web-asset/status`, `/api/relay/topology`, `/api/relay/input` |
 | Lectures libres — scripts | `/api/scripts`, `/api/script-one`, `/api/script-source`, `/api/script-messages`, `/api/script-globals`, `/api/log-messages` |
 | Lectures libres — session | `/api/auth/state`, `/api/session/*` (défi, état) |

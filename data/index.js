@@ -80,7 +80,7 @@ function masquer(el) { el.style.display = 'none'; }
    (reseau, affichage, serveur, cablage...) reste repliee pour l'usage
    courant et s'ouvre a la demande. Ce n'est pas un verrou : la protection
    est la session Web, exigee par le module pour toute ecriture. */
-const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","sec-cloud","sec-upd","sec-io","sec-topo","relay-admin","link-urls"],AV="aqualook-avance";
+const A=["sec-wifi","sec-ntp","sec-owm","sec-display","sec-system","sec-notifications","sec-cloud","sec-upd","sec-topo","relay-admin","link-urls"],AV="aqualook-avance";
 function adminApply(v){A.forEach(i=>{let e=document.getElementById(i);e&&(e.style.display=v?"":"none")});let b=document.getElementById("admin-btn");b&&(b.textContent=v?"Masquer les options avancées":"Options avancées du module");typeof buildCfgMenu=="function"&&buildCfgMenu()}
 function adminShow(s){let w=document.getElementById("unprotected-banner");if(s&&!s.configure&&!s.legacy){if(!w){w=document.createElement("div");w.id="unprotected-banner";w.textContent="Accès non protégé : définir un mot de passe Web";w.style.cssText="background:#8a5a00;color:#fff;padding:6px 12px;text-align:center;cursor:pointer;font-size:13px";w.onclick=adminSetPassword;document.body.prepend(w)}}else if(w)w.remove()}
 async function adminSetPassword(){let p=await AquaSession.promptSecret("Nouveau mot de passe Web","12 caractères au moins");if(!p)return;if(await AquaSession.promptSecret("Retaper le mot de passe")!==p){alert("Les deux saisies diffèrent");return}let r=await AquaSession.setPassword("",p);alert(r.ok?"Mot de passe posé : l'interface est désormais protégée.":"Refus : "+(r.error||"module injoignable"))}

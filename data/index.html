@@ -407,24 +407,6 @@
       </button>
     </div>
   </div>
-  <div class="cfg-section" id="sec-io">
-    <div class="cfg-section-header" data-onclick="toggleSection('sec-io')">
-      <span class="cfg-section-title"><span class="sec-icon">&#128268;</span>Capteurs et actionneurs</span>
-      <span class="cfg-chevron">&#9654;</span>
-    </div>
-    <div class="cfg-section-body">
-      <div class="cfg-field ix-ligne-large">
-        <input type="checkbox" id="io-enabled" class="ix-case">
-        <label for="io-enabled" class="ix-label-case">Activer la couche E/S</label>
-        <label class="ix-label-retrait">Période (s)</label>
-        <input type="number" id="io-poll" min="1" max="60" value="5" class="ix-w64">
-      </div>
-      <div id="io-editor"><div class="cfg-hint">Chargement&hellip;</div></div>
-      <button class="btn-cfg primary ix-mt8" data-onclick="saveCfgIo()">Enregistrer</button>
-      <button class="btn-cfg ix-mt6" data-onclick="loadCfgIo()">Rafraîchir l&rsquo;état</button>
-      <div class="cfg-hint ix-mt6">Surveillance de la présence des électrovannes (fuite au repos via optocoupleur), pilotage de sorties (éclairage, ventilation) et lecture de capteurs TOR. La présence n&rsquo;est évaluée que lorsque la zone est au repos.</div>
-    </div>
-  </div>
   <div class="cfg-section" id="sec-topo">
     <div class="cfg-section-header" data-onclick="toggleSection('sec-topo')">
       <span class="cfg-section-title"><span class="sec-icon">&#9889;</span>Cartes interfaces</span>
