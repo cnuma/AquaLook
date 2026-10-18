@@ -122,8 +122,8 @@ de celle du §2 à éviter ; en prévoir une autre).
 **Sans raccordement enregistré, le module ne pilote aucune sortie** : il ne
 devine pas comment il est câblé.
 
-Interface Web > « Options avancées du module » > rubrique « Raccordement des
-sorties » (nommée « Câblage entrées / sorties » avant P3.35) : pour chaque
+Interface Web > « Options avancées du module » > rubrique « Cartes
+interfaces » (nommée « Câblage entrées / sorties » avant P3.35) : pour chaque
 zone, indiquer la carte et le canal du relais qui commande sa vanne, puis
 « Enregistrer ». La modification prend effet au redémarrage suivant.
 
