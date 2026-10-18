@@ -172,7 +172,7 @@ modifier**, ils contiennent l'historique des incidents.
 | Point d'entrée | `main.cpp`, `MaintenanceSetupWrapper.cpp`, `DisplaySplashWrap.cpp` | `setup()` est **enveloppé** à l'édition de liens (`-Wl,--wrap=_Z5setupv`) pour permettre le démarrage en mode maintenance avant l'application normale. Câble le callback relais `onRelayRequest()`. |
 | Planification | `ScheduleManager`, `RainSchedule`, `PausedWateringStore` | Décide *quand* arroser ; ne touche jamais le matériel (callback). |
 | Moteur d'exécution V4 | `src/domain/*`, `EquipmentManager`, `EquipmentOrchestrator`, `EquipmentOutputRuntimeAdapter`, `EquipmentExecutionShadowRuntime`, `EquipmentRuntimeConfig*` | Modèle zones → équipements → cartes → ports → voies ; pilotes `I2cExpanderBinaryActuatorDriver` (XL9535, MCP23017), `GpioBinaryActuatorDriver`, `SimulatedBinaryActuatorDriver`. |
-| Topologie relais | `RelaisManager`, `RelayTopology`, `RelayTopologyStore`, `IoExpanderManager`, `IoExpanderConfig` | Table de câblage persistée (sorties **et** entrées TOR), logique directe/inverse. |
+| Topologie relais | `RelaisManager`, `RelayTopology`, `RelayTopologyStore` | Table de câblage persistée (sorties **et** entrées TOR), logique directe/inverse ; unique couche d'entrées/sorties depuis D023 (`IoExpander` retirée le 18 oct. 2026). |
 | Entrées et scripts | `InputSampler`, `domain/ScriptVm`, `ScriptRunner`, `ScriptStore`, `ScriptHostRuntime`, `ScriptMessageCatalogue`, `ScriptVmSelfTest` | Entrées avec anti-rebond ; VM à pile à budget d'instructions par tour ; état d'attente sérialisable (survit au redémarrage) ; bytecode validé avant stockage. |
 | Configuration | `ConfigManager` | Propriétaire unique de la NVS et du montage LittleFS. Blob versionné (**schéma 5**, `CFG_NVS_SCHEMA`), migrations 1→5 dans `load()`. |
 | Stockage | `StorageManager`, `SdStaticHandler`, `WebAssetsUpdater` | SD (SdFat) ; ressources Web servies depuis `/www` sur SD, repli LittleFS ; récupération SD en tâche dédiée. |
@@ -261,7 +261,7 @@ Routes principales (`WebManager.cpp`, et quelques-unes définies en ligne dans
 `/api/forecast` (séparées de `/api/status` pour alléger), `/api/zone`,
 `/api/display`, `/api/adminStatus`, `/api/diagnostics`, `/api/health`,
 `/api/logs`, `/api/logs.txt`, `/api/log-messages`, `/api/relay/topology[/persist|/reset]`,
-`/api/relay/input`, `/api/io`, `/api/scripts`, `/api/script-one`,
+`/api/relay/input`, `/api/scripts`, `/api/script-one`,
 `/api/script-source`, `/api/script-messages`, `/api/webassets/update`,
 `/api/wifi/scan`, `/api/bootguard/clear`, `/api/resetConfig`, routes
 `/api/debug/*`, et les URL de détection de portail captif.

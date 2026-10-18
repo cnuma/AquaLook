@@ -24,7 +24,6 @@
 #include "SdStaticHandler.h"
 #include "EquipmentOutputRuntimeAdapter.h"
 #include "WebAssetsUpdater.h"
-#include "IoExpanderManager.h"
 #include "MaintenanceRequest.h"
 #include "MaintenanceResult.h"
 
@@ -64,7 +63,6 @@ public:
     // autour d'une verification HTTPS de ressource Web (voir la note sur
     // _verifyPending plus bas et ROADMAP.md, "constat du 16 aout 2026").
     void setDisplay(DisplayManager* display) { _display = display; }
-    void setIoExpander(IoExpanderManager* io) { _ioExpander = io; }
 
     void setUpdateCheckScheduler(UpdateCheckScheduler* scheduler) {
         _updateCheck = scheduler;
@@ -595,7 +593,6 @@ private:
     // repond immediatement ; WebManager::update() (boucle principale)
     // l'execute, suspend/reprend le sprite autour, et range le resultat ici.
     DisplayManager* _display = nullptr;
-    IoExpanderManager* _ioExpander = nullptr;
     static constexpr size_t VERIFY_URL_MAX = 200;
     volatile bool _verifyPending = false;
     volatile bool _verifyRunning = false;
@@ -634,9 +631,6 @@ private:
     void handleSetWifiKeepalive(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetTouch(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetNtp(AsyncWebServerRequest* req, JsonDocument& doc);
-    void handleGetIo(AsyncWebServerRequest* req);
-    void handleSetIoConfig(AsyncWebServerRequest* req, JsonDocument& doc);
-    void handleSetIoOutput(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetOwm(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleSetSystem(AsyncWebServerRequest* req, JsonDocument& doc);
     void handleRestart(AsyncWebServerRequest* req, JsonDocument& doc);

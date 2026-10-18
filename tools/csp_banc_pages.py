@@ -222,7 +222,7 @@ SCENARIOS = {
                    ["attendre", 1500]],
         "post": [["POST", "/api/manual"], ["POST", "/api/display"], ["POST", "/api/system"]],
     },
-    # P3.35 : menu de configuration laisse ouvert (mesure --largeur des libelles).
+    # P3.35, D023 : menu de configuration laisse ouvert (mesure --largeur des libelles).
     "index-menu": {
         "page": "/index.html",
         "simule": {"/logo.png": None,
@@ -231,7 +231,6 @@ SCENARIOS = {
                    ["clic", "#admin-btn", 0],
                    ["clic", "[data-onclick='openDrawer()']", 0],
                    ["classe", "#drawer", "a", "open"],
-                   ["texte", "[data-onclick=\"openCfgPage('g-io')\"]", "contient", "Capteurs et actionneurs"],
                    ["texte", "[data-onclick=\"openCfgPage('g-relais')\"]", "contient", "Cartes interfaces"],
                    ["attendre", 300]],
     },
@@ -242,8 +241,6 @@ SCENARIOS = {
         "etapes": [["attendre", 4000],
                    ["clic", "#admin-btn", 0],
                    ["clic", "[data-onclick='openDrawer()']", 0],
-                   ["clic", "[data-onclick=\"openCfgPage('g-io')\"]", 0],
-                   ["texte", "#cfg-title", "egal", "Capteurs et actionneurs"],
                    ["clic", "[data-onclick=\"openCfgPage('g-relais')\"]", 0],
                    ["texte", "#cfg-title", "egal", "Cartes interfaces"],
                    ["attendre", 1500]],

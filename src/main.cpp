@@ -21,7 +21,6 @@
 #include "PanelSetup.h"
 #include "EventLogCatalogue.h"
 #include "RelaisManager.h"
-#include "IoExpanderManager.h"
 #include "ScheduleManager.h"
 #include "WebManager.h"
 #include "DisplayManager.h"
@@ -46,7 +45,6 @@ WiFiManager wifiMgr;
 NTPManager ntpMgr;
 WeatherManager weatherMgr;
 RelaisManager relaisMgr;
-IoExpanderManager ioExpander;
 AquaLook::Runtime::V4PilotRuntime v4PilotRuntime;
 InputSampler inputSampler;
 ScriptRunner scriptRunner;
@@ -624,9 +622,6 @@ void setup() {
 
     relaisMgr.setI2cExpanderSharedOutputState(&sharedOutputState);
     relaisMgr.begin(&configMgr);
-    // Couche E/S TOR (MCP23017 configurables) : inerte tant qu'aucune
-    // carte n'est declaree. Apres relaisMgr.begin : le bus I2C est pret.
-    ioExpander.begin(&relaisMgr);
 
     const bool v4PilotReady = v4PilotRuntime.begin(
         relaisMgr.topology(),
@@ -787,7 +782,6 @@ void setup() {
     webMgr.setDisplay(&displayMgr);
     webMgr.setUpdateCheckScheduler(&updateCheckScheduler);
     webMgr.setCloudSyncScheduler(&cloudSyncScheduler);
-    webMgr.setIoExpander(&ioExpander);
     // L'echantillonneur lit la broche ; le reste du module lit
     // l'echantillonneur. Personne d'autre ne touche l'entree.
     inputSampler.begin(&relaisMgr.topology(), [](uint16_t id, bool& active) {
@@ -945,13 +939,6 @@ void loop() {
         }
     }
     RuntimeProfiler::stop(RuntimeProfiler::Component::RELAY, startedUs);
-
-    // Couche E/S TOR : scrute les entrees a sa propre periode, pilote les
-    // sorties. Non bloquant, inerte si desactivee. Apres relaisMgr.update()
-    // pour que l'etat des zones (gating presence-vanne) soit a jour.
-    startedUs = RuntimeProfiler::start();
-    ioExpander.update(millis(), configMgr.nbZones());
-    RuntimeProfiler::stop(RuntimeProfiler::Component::IO_EXPANDER, startedUs);
 
     startedUs = RuntimeProfiler::start();
     webMgr.update();

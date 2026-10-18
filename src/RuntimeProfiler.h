@@ -51,7 +51,6 @@ public:
         CLOUD_SYNC,     // cloudSyncScheduler.update() — verif timer + apply
         UPDATE_CHECK,   // updateCheckScheduler.update() — verif timer MAJ
         PRE_LOOP,       // BootLoopGuard/OtaBootGuard/configMgr.update() en tete de loop()
-        IO_EXPANDER,    // ioExpander.update() — apres relaisMgr, avant webMgr
         COUNT
     };
 
