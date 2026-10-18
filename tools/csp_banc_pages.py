@@ -231,8 +231,8 @@ SCENARIOS = {
                    ["clic", "#admin-btn", 0],
                    ["clic", "[data-onclick='openDrawer()']", 0],
                    ["classe", "#drawer", "a", "open"],
-                   ["texte", "[data-onclick=\"openCfgPage('g-io')\"]", "contient", "Capteurs et surveillance"],
-                   ["texte", "[data-onclick=\"openCfgPage('g-relais')\"]", "contient", "Raccordement des sorties"],
+                   ["texte", "[data-onclick=\"openCfgPage('g-io')\"]", "contient", "Capteurs et actionneurs"],
+                   ["texte", "[data-onclick=\"openCfgPage('g-relais')\"]", "contient", "Cartes interfaces"],
                    ["attendre", 300]],
     },
     "index-raccordement": {
@@ -243,9 +243,9 @@ SCENARIOS = {
                    ["clic", "#admin-btn", 0],
                    ["clic", "[data-onclick='openDrawer()']", 0],
                    ["clic", "[data-onclick=\"openCfgPage('g-io')\"]", 0],
-                   ["texte", "#cfg-title", "egal", "Capteurs et surveillance"],
+                   ["texte", "#cfg-title", "egal", "Capteurs et actionneurs"],
                    ["clic", "[data-onclick=\"openCfgPage('g-relais')\"]", 0],
-                   ["texte", "#cfg-title", "egal", "Raccordement des sorties"],
+                   ["texte", "#cfg-title", "egal", "Cartes interfaces"],
                    ["attendre", 1500]],
     },
     "cloudsync": {
