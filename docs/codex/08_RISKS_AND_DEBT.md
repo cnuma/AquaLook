@@ -122,8 +122,8 @@ première association souvent refusée (`raison=202`), réussie ~1 s après.
 
 ## Limites connues
 
-- OpenWeatherMap dépend d’un service externe.
+- La météo dépend d’un service externe (OpenWeatherMap ou Open-Meteo).
 - La météo ne garantit pas la pluie réelle sur le jardin.
 - Le système n’a pas encore de mesure de débit intégrée.
-- Le support MCP23017 doit être validé matériellement.
+- Le MCP23017, déclarable comme carte dans « Cartes interfaces » (D023), n’a pas encore été validé sur matériel (seul le XL9535 l’est).
 - La YellowCard n’expose pas tous les GPIO ; l’I²C est l’axe d’extension privilégié.
