@@ -243,7 +243,11 @@ SCENARIOS = {
                    ["clic", "[data-onclick='openDrawer()']", 0],
                    ["clic", "[data-onclick=\"openCfgPage('g-relais')\"]", 0],
                    ["texte", "#cfg-title", "egal", "Cartes interfaces"],
-                   ["attendre", 1500]],
+                   ["attendre", 1500],
+                   # D023 : cartes, puis sorties, puis entrees, un bouton par liste.
+                   ["compte", "#topo-editor .cfg-subsection-title", 3],
+                   ["compte", "#topo-editor [data-onclick=\"topoAddAssign('out')\"]", 1],
+                   ["compte", "#topo-editor [data-onclick=\"topoAddAssign('in')\"]", 1]],
     },
     "cloudsync": {
         "page": "/cloudsync.html",

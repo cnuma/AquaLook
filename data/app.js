@@ -1898,7 +1898,7 @@ function renderTopoEditor() {
   // des apostrophes, la droite doit etre echappee -- et un echappement se
   // perd trop facilement en passant par un script de retouche. Celle-ci ne
   // peut pas casser la chaine.
-  h += '<div class="cfg-subsection-title">Cartes d’interface</div>';
+  h += '<div class="cfg-subsection-title">Cartes</div>';
   if (!topoBoards.length) h += '<div class="cfg-hint">Aucune carte.</div>';
   topoBoards.forEach((b, n) => {
     h += '<div class="io-row"><span class="io-lbl">Carte ' + b.i + '</span>'
@@ -1924,10 +1924,9 @@ function renderTopoEditor() {
        + 'pres. Une meme carte peut porter des sorties <b>et</b> des entrees.</div>';
   }
 
-  h += '<div class="cfg-subsection-title" style="margin-top:12px">Affectations</div>';
-  h += '<div class="cfg-hint">Chaque affectation relie un role (vanne de zone, pompe&hellip;) '
-     + 'a une voie physique : carte + canal.</div>';
-  if (!topoAssign.length) h += '<div class="cfg-hint">Aucune affectation.</div>';
+  // D023 : sorties puis entrees, chacune sous son titre et avec son bouton.
+  // Une seule table derriere (topoAssign) : l'ordre d'affichage ne change
+  // ni les index ni le libelle « Affectation N » cite par les messages.
 
   // Calculee AVANT le rendu des lignes : chaque ligne fautive porte ainsi
   // elle-meme un surlignage, plutot que de laisser le message du bas seul a
@@ -1936,7 +1935,7 @@ function renderTopoEditor() {
   const topoLignesFautives = new Set();
   topoAlertes.forEach(al => al.lignes.forEach(l => topoLignesFautives.add(l)));
 
-  topoAssign.forEach((a, n) => {
+  const topoLigne = (a, n) => {
     // La classe distingue les deux formes de ligne : elles n'ont ni le meme
     // nombre de colonnes ni les memes etiquettes.
     // Le meme libelle que dans les messages de coherence, au mot pres : un
@@ -1967,20 +1966,25 @@ function renderTopoEditor() {
       + topoField(topoIsInput(a.role) ? 'Canal (entree)' : 'Canal (relais)',
           '<select data-topo="channel" data-n="' + n + '" title="numero de la voie sur cette carte, a partir de 0">' + topoChannelOptions(a.board, a.channel) + '</select>')
       + '<button class="io-del" data-onclick="topoRemoveAssign(' + n + ')">&#10007;</button></div>';
+  };
+  // Un bouton par liste : le sens se choisit des la creation (memes couleurs
+  // que le badge SORTIE/ENTREE des lignes, .io-sens-out/.io-sens-in).
+  [['out', 'Sorties', 'Chaque sortie relie un role (vanne de zone, pompe&hellip;) a une voie physique : carte + canal.',
+    'Aucune sortie.', 'io-out', '+ Ajouter une sortie'],
+   ['in', 'Entr&eacute;es', 'Chaque entr&eacute;e lit une voie physique (capteur, contact) ; les scripts la citent par son identifiant.',
+    'Aucune entr&eacute;e.', 'io-in', '+ Ajouter une entr&eacute;e']].forEach(([sens, titre, aide, vide, cls, bouton]) => {
+    h += '<div class="cfg-subsection-title" style="margin-top:12px">' + titre + '</div>';
+    h += '<div class="cfg-hint">' + aide + '</div>';
+    let nb = 0;
+    topoAssign.forEach((a, n) => {
+      if ((sens === 'in') !== topoIsInput(a.role)) return;
+      h += topoLigne(a, n);
+      nb++;
+    });
+    if (!nb) h += '<div class="cfg-hint">' + vide + '</div>';
+    h += '<button class="btn-cfg ' + cls + '" style="width:auto;margin:6px 0" '
+       + 'data-onclick="topoAddAssign(\'' + sens + '\')">' + bouton + '</button>';
   });
-  // Deux boutons plutot qu'un choix a faire APRES coup : l'utilisateur
-  // demande explicitement de choisir des la creation si la nouvelle ligne
-  // est une entree ou une sortie, plutot que de recevoir une sortie par
-  // defaut et devoir la reconfigurer via le role. Memes couleurs que le
-  // badge SORTIE/ENTREE des lignes (.io-sens-out/.io-sens-in) : le bouton
-  // annonce d'avance ce que la ligne sera, dans le meme langage visuel.
-  h += '<div style="display:flex;gap:8px;margin:6px 0">'
-     + '<button class="btn-cfg io-out" style="width:auto;margin:0" '
-     + 'data-onclick="topoAddAssign(\'out\')">+ Ajouter une sortie</button>'
-     + '<button class="btn-cfg io-in" style="width:auto;margin:0" '
-     + 'data-onclick="topoAddAssign(\'in\')">+ Ajouter une entr&eacute;e</button>'
-     + '</div>';
-
   // Les incoherences se voient AVANT d'enregistrer, et a l'endroit ou elles
   // sont : les lignes fautives sont deja surlignees ci-dessus (topoAlertes,
   // calculee plus haut). Le message ci-dessous nomme en plus le probleme --
