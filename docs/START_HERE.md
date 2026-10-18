@@ -14,6 +14,10 @@ Mis à jour le 14 octobre 2026.
 6. `docs/engineering/01_PROJECT_STATUS.md` — situation consolidée ;
 7. les documents spécialisés (`docs/engineering/00_MANUAL_INDEX.md` et suivants). Plusieurs chapitres du manuel sont antérieurs au portage ESP32-S3 : en cas d'écart, les sources 1 à 4 priment.
 
+## Guides pratiques
+
+- `docs/guides/MONTER_UN_MODULE_NEUF.md` — monter un module neuf, de la carte nue au rattachement (liste de contrôle comprise).
+
 ## Source de vérité
 
 Le dépôt Git `cnuma/AquaLook` constitue la mémoire officielle du projet. Une décision importante n'est considérée comme acquise que lorsqu'elle est intégrée dans le dépôt sous forme de documentation, d'ADR, d'invariant, de test, de checkpoint ou de code versionné.
