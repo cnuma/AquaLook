@@ -105,6 +105,14 @@ void StorageManager::begin() {
         return;
     }
 
+    // P3.33 : carte neuve ou videe. La remonter n'apporterait rien (les
+    // fichiers ne reviendraient pas) et un remontage pendant l'installation
+    // des pages couperait leur ecriture.
+    if (_status == StorageStatus::WEB_ASSETS_MISSING && _cardMounted) {
+        enterWebAssetsMissing("demarrage");
+        return;
+    }
+
     // Sans alarme : si la carte ne revient pas, l'escalade apres les essais
     // de remontage la leve (IncidentManager, P3.2).
     FaultManager::setActive(FaultId::STORAGE_SD, true, false);
@@ -173,6 +181,11 @@ void StorageManager::update() {
         if (deadlineReached(nowMs, _nextRecoveryAttemptMs)) {
             startRecoveryTask(nowMs);
         }
+        return;
+    }
+
+    if (_status == StorageStatus::WEB_ASSETS_MISSING && _cardMounted) {
+        watchWebAssets(nowMs);
         return;
     }
 
@@ -906,6 +919,18 @@ void StorageManager::processRecoveryTaskResult(uint32_t nowMs) {
         return;
     }
 
+    // P3.33 : la carte repond de nouveau, seules les pages manquent. Les
+    // essais suivants ne les feraient pas revenir : fin de l'incident SD.
+    if (result == RecoveryTaskResult::FAILED &&
+        _status == StorageStatus::WEB_ASSETS_MISSING && _cardMounted) {
+        _recoveryState = StorageRecoveryState::IDLE;
+        _nextRecoveryAttemptMs = 0;
+        _restartRecommended = false;
+        _slowRecoveryMode = false;
+        enterWebAssetsMissing("remontage");
+        return;
+    }
+
     if (result == RecoveryTaskResult::START_FAILED) {
         _lastMountFailureReason = "task_start_failed";
     }
@@ -971,6 +996,56 @@ void StorageManager::logMounted(bool recovered, uint32_t downtimeMs) {
             static_cast<unsigned long>(downtimeMs / 1000U)
         );
     }
+}
+
+void StorageManager::enterWebAssetsMissing(const char* context) {
+    FaultManager::setActive(FaultId::STORAGE_SD, false);
+    if (IncidentManager::storageSd().state == IncidentState::ACTIVE) {
+        IncidentManager::recoverStorageSd("card_ok_web_assets_missing");
+    }
+    _healthFailureCount = 0;
+    _lastHealthCheckMs = millis();
+
+    bool wwwPresent = false;
+    if (lockSd(1000U)) {
+        wwwPresent = _sd.exists("/www");
+        unlockSd();
+    }
+    EventLog::log(
+        LOG_WARN,
+        "[SD-PAGES] %s : carte saine, %s ; installer les pages depuis /ota",
+        context,
+        wwwPresent ? "/www/index.html absent (pages incompletes)"
+                   : "aucun /www (carte neuve ou videe)"
+    );
+}
+
+// Simple test de presence, sans remontage : les pages deposees ou
+// installees sont servies des qu'elles sont la. Une vraie erreur de la carte
+// reprend le chemin d'incident habituel.
+void StorageManager::watchWebAssets(uint32_t nowMs) {
+    if (nowMs - _lastHealthCheckMs < SD_HEALTH_CHECK_INTERVAL_MS) return;
+    _lastHealthCheckMs = nowMs;
+
+    if (!lockSd(50U)) return;
+    const bool indexPresent = _sd.exists("/www/index.html");
+    const uint8_t sdError = indexPresent ? 0U : _sd.sdErrorCode();
+    unlockSd();
+
+    if (indexPresent) {
+        _status = StorageStatus::READY;
+        _lastMountFailureReason = "none";
+        _healthFailureCount = 0;
+        _sdAvailable = true;
+        EventLog::log(LOG_INFO, "[SD-PAGES] pages presentes : interface complete servie");
+        logMounted(false, 0);
+        return;
+    }
+    if (sdError == 0U) return;
+
+    if (_healthFailureCount < 0xFFU) _healthFailureCount++;
+    if (_healthFailureCount < SD_HEALTH_FAILURE_CONFIRMATIONS) return;
+    markUnavailable(StorageStatus::READ_ERROR, "health_check_failed", "/www/index.html", sdError);
 }
 
 const char* StorageManager::statusCode() const {

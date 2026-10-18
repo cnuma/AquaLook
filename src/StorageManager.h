@@ -133,6 +133,12 @@ private:
     void startRecoveryTask(uint32_t nowMs);
     void processRecoveryTaskResult(uint32_t nowMs);
     void logMounted(bool recovered, uint32_t downtimeMs);
+    // P3.33 : carte montee et saine, mais sans /www/index.html (carte neuve
+    // ou pages perdues). Ni defaut SD, ni incident, ni remontage : seule la
+    // presence des pages est surveillee (watchWebAssets) jusqu'a leur
+    // installation.
+    void enterWebAssetsMissing(const char* context);
+    void watchWebAssets(uint32_t nowMs);
 
     // Valide une fois au montage que le chemin d'ecriture (openWrite/
     // writeChunk/renameOnSd) fonctionne reellement sur ce matériel — voir
