@@ -35,10 +35,12 @@ mot de passe) fait l'objet d'un guide séparé :
 - **« Libellé »** : texte exact affiché par l'écran ou la page.
 - **Écran > Page** : chemin à suivre, par exemple ADMIN > Systeme.
 - `[capture : …]` : emplacement d'une photo de l'écran du module, à ajouter.
-- Les captures des pages Web sont dans `images/`.
+- `[capture Web : …]` : emplacement d'une capture de page Web, à produire
+  (dossier `images/`).
 
 ## Tenue à jour
 
 Toute évolution qui change un libellé, un écran ou un comportement décrit
-ici met à jour le chapitre concerné dans le même lot. Le manuel ne décrit que ce qui est réellement
-en place : une fonction prévue mais absente n'y figure pas.
+ici met à jour le chapitre concerné dans le même lot. Le manuel ne décrit
+que ce qui est réellement en place : une fonction prévue mais absente n'y
+figure pas.
