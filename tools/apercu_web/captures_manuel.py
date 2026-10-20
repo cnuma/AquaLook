@@ -43,7 +43,7 @@ NAVIGATEURS = [
     "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
 ]
 
-# ── Jardin d'exemple ─────────────────────────────────────────────
+# ── Jardin d'exemple (a Lyon) ────────────────────────────────────
 AUJ = datetime.date.today()
 EPOCH_AUJ = (AUJ - datetime.date(1970, 1, 1)).days
 ESP_AUJ = AUJ.weekday()            # 0 = lundi, comme le module
@@ -140,7 +140,8 @@ GET = {
     "/api/status": status,
     "/api/zonesConfig": zones_config,
     "/api/forecast": lambda: {"forecast": forecast()},
-    "/api/adminStatus": lambda: {"cloudSync": CLOUDSYNC, "wifi": {"rssi": -58, "ssid": "Maison"}},
+    "/api/adminStatus": lambda: {"cloudSync": CLOUDSYNC, "wifi": {"rssi": -58, "ssid": "Maison"},
+                                  "owm": {"city": "Lyon", "country": "FR"}},
     "/api/session/state": lambda: {"configure": True, "active": True},
     "/assets-version.json": lambda: {"version": "5.20.0"},
     "/api/diagnostics": lambda: {"build": {"version": "5.20.0", "number": "1718", "gitSha": "24fa2d1"}},

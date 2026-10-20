@@ -14,7 +14,7 @@ De haut en bas :
 
 | Élément | Sens |
 |---|---|
-| nom du module et ville | identité du module |
+| « AQUALOOK » et la ville (par exemple « Lyon ») | la ville est celle réglée dans « Météo » (chapitre 4) |
 | pastille de l'heure | heure du module ; « NTP... » tant qu'il ne l'a pas encore reçue |
 | « ⬆ MAJ » (violet, clignotant) | une mise à jour est disponible ; un toucher ouvre la page « Mises a jour » (chapitre 11) |
 | pastille nuage | synchro avec l'espace en ligne : **vert** à jour, **orange** échange en cours ou en attente, **rouge** en panne ; un toucher ouvre « Synchro cloud » |

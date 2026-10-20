@@ -11,7 +11,7 @@ le planning.
 | Réglage | Choix |
 |---|---|
 | « Source des prévisions » | « Open-Meteo — modèles Météo-France » (sans inscription) ou « OpenWeatherMap » (demande une « Clé API OpenWeatherMap », gratuite sur leur site) |
-| « Localisation » | « Ville / Pays » (par exemple Toulouse, FR) ou « Coordonnées GPS » (latitude, longitude : plus précis à la campagne) |
+| « Localisation » | « Ville / Pays » (par exemple Lyon, FR) ou « Coordonnées GPS » (latitude, longitude : plus précis à la campagne) |
 | « Unités » | « Métrique (°C) » ou « Impérial (°F) » |
 
 Le module relit les prévisions **toutes les 2 heures** (une minute plus tard
