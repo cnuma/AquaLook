@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
+  <title>Comment AquaLook décide d'arroser à l'heure d'un créneau</title>
+  <defs><marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#555"/></marker></defs>
+  <rect width="640" height="420" fill="#ffffff"/>
+  <text x="20" y="28" font-size="16" font-weight="bold" fill="#1b5e20">À l'heure d'un créneau programmé…</text>
+  <g stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#f)">
+    <path d="M190 74 V100"/><path d="M190 146 V172"/><path d="M190 218 V244"/><path d="M190 290 V316"/>
+    <path d="M300 123 H400"/><path d="M300 195 H400"/><path d="M300 267 H400"/>
+  </g>
+  <g>
+    <rect x="80" y="44" width="220" height="30" rx="15" fill="#e8f5e9" stroke="#2e7d32"/><text x="190" y="64" text-anchor="middle">Créneau 07:00 de la zone</text>
+    <rect x="80" y="100" width="220" height="46" rx="6" fill="#f5f7f6" stroke="#789c80"/><text x="190" y="120" text-anchor="middle">Le module connaît-il</text><text x="190" y="137" text-anchor="middle">l'heure ?</text>
+    <rect x="80" y="172" width="220" height="46" rx="6" fill="#f5f7f6" stroke="#789c80"/><text x="190" y="192" text-anchor="middle">Ce jour est-il prévu ?</text><text x="190" y="209" text-anchor="middle" font-size="11" fill="#555">(jours fixes ou intervalle)</text>
+    <rect x="80" y="244" width="220" height="46" rx="6" fill="#f5f7f6" stroke="#789c80"/><text x="190" y="264" text-anchor="middle">Pluie annoncée aujourd'hui</text><text x="190" y="281" text-anchor="middle">≥ seuil de la zone ?</text>
+    <rect x="80" y="316" width="220" height="40" rx="20" fill="#0277bd"/><text x="190" y="341" text-anchor="middle" fill="#fff" font-weight="bold">La zone arrose</text>
+    <rect x="400" y="102" width="220" height="42" rx="6" fill="#fbe9e7" stroke="#c62828"/><text x="510" y="128" text-anchor="middle">Pas d'arrosage</text>
+    <rect x="400" y="174" width="220" height="42" rx="6" fill="#f5f5f5" stroke="#9e9e9e"/><text x="510" y="193" text-anchor="middle">Pas d'arrosage</text><text x="510" y="209" text-anchor="middle" font-size="11" fill="#555">« Jour non prevu »</text>
+    <rect x="400" y="246" width="220" height="42" rx="6" fill="#fff3e0" stroke="#ef6c00"/><text x="510" y="265" text-anchor="middle">Pas d'arrosage</text><text x="510" y="281" text-anchor="middle" font-size="11" fill="#555">« Reporté (pluie) », LED orange</text>
+  </g>
+  <g font-size="11" fill="#555"><text x="310" y="117">non</text><text x="310" y="189">non</text><text x="310" y="261">oui</text>
+    <text x="198" y="168">oui</text><text x="198" y="240">oui</text><text x="198" y="312">non</text></g>
+  <text x="20" y="384" font-size="11" fill="#555">Un arrosage lancé à la main ne passe pas par ces questions. Quelle que soit son origine,</text>
+  <text x="20" y="400" font-size="11" fill="#555">aucune vanne ne reste ouverte au-delà de la durée maximale (60 min par défaut).</text>
+</svg>
