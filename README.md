@@ -30,6 +30,11 @@ pio run -e ProgrammeArrosage -t upload
 pio run -e ProgrammeArrosage -t uploadfs
 ```
 
+## Documentation utilisateur
+
+- `docs/guides/manuel/` : manuel utilisateur (commencer par `README.md`)
+- `docs/guides/MONTER_UN_MODULE_NEUF.md` : installer un module neuf
+
 ## Documentation technique
 
 La documentation destinée aux développeurs et à Codex est dans :

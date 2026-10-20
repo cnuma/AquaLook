@@ -16,6 +16,7 @@ Mis à jour le 14 octobre 2026.
 
 ## Guides pratiques
 
+- `docs/guides/manuel/` — **manuel utilisateur** (sommaire dans `README.md`) : référence de ce que voit et fait l'utilisateur (écran, pages Web, planning, pluie, arrosage manuel…). Tenu à jour avec chaque évolution visible (`AGENTS.md`, « Manuel utilisateur »).
 - `docs/guides/MONTER_UN_MODULE_NEUF.md` — monter un module neuf, de la carte nue au rattachement (liste de contrôle comprise).
 
 ## Source de vérité
