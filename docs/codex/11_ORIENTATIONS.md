@@ -6,7 +6,7 @@
 2. Ajouter une CI PlatformIO.
 3. Corriger le doublon HTML historique.
 4. Retirer ou conditionner le scan I²C temporaire.
-5. Valider complètement le contrôleur MCP23017.
+5. Valider sur matériel une carte MCP23017 déclarée dans « Cartes interfaces » (D023).
 6. Préserver la marge LittleFS.
 
 ## Gestion de la carte SD et préparation de l’OTA

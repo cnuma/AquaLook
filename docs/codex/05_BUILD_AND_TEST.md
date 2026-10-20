@@ -162,8 +162,8 @@ surveillance.
 ## Tests Web de non-régression
 
 Page principale, zones, planning, modales, démarrage et arrêt manuels,
-modification de zone, créneaux, météo, paramètres utilisateur, verrouillage
-administrateur, sauvegarde Wi-Fi avant redémarrage, journaux, portail captif,
+modification de zone, créneaux, météo, paramètres utilisateur, session Web
+(`/login`, écriture refusée sans session), sauvegarde Wi-Fi avant redémarrage, journaux, portail captif,
 pages Santé, Synchro cloud, OTA, scripts.
 
 ## Tests NVS
