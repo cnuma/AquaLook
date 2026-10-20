@@ -115,7 +115,7 @@ décision), *les deux*.
 
 | # | Sujet |
 |---|---|
-| P4.1 | D6 : pas de CI (compilation S3, buildfs, diff check, validation HTML) |
+| P4.1 | D6 : CI **partielle** (constat du 20 oct. 2026, lecture des workflows) — existant : `platformio-v4-domain.yml` compile `ProgrammeArrosage` (CYD) et `ProgrammeArrosage_s3` à chaque envoi et pull request sur `main` ; `security-contracts.yml` lance `tests/contracts` ; `ota-release.yml` construit la release brouillon sur tag `vX.Y.Z` ; `materialize-run6-22.yml` est lié à une ancienne branche de travail (à vérifier, probablement à retirer). Écarts : la compilation CYD est contraire à la règle « CYD sur demande explicite seulement » (un échec CYD met `main` en rouge sans rapport avec le S3) ; `ProgrammeArrosage_s3_banc`, buildfs, `git diff --check` et banc CSP des pages (390 px) absents ; tous les workflows sur `ubuntu-latest` (passage à Ubuntu 26 annoncé à partir du 19 oct.). À faire : retirer la CYD de la matrice, ajouter les contrôles manquants, fixer la version d'Ubuntu, état de la CI non relu sur GitHub depuis la session cloud |
 | P4.2 | D7 : peu de tests automatiques du planning (pluie, intervalle, minuit, durée max) |
 | P4.3 | D8 : capacité 16 / fonctionnelle 8, garde `MAX_ACTIVE_ZONES` sans test |
 | P4.4 | D1 : scan I²C de diagnostic au boot ; D3 : env `debug_boot` fragile |

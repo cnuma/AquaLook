@@ -174,3 +174,12 @@ Remarque et choix du propriétaire du 18 octobre 2026 : une carte d'entrées/sor
 - **Détection de présence d'électrovanne** (seule fonction propre à `IoExpander`, jamais en service) : retirée avec elle. Elle reviendra par les entrées déclarées dans « Cartes interfaces » (rôle `ROLE_INPUT_PRESENCE`, déjà présent), lue par un script ou par un consommateur générique, le jour où le montage optocoupleur existera et pourra être essayé.
 - **Pages** : les pages publiées avant ce changement ouvrent encore la rubrique retirée ; sur un programme qui n'a plus `/api/io`, elle affiche « Lecture impossible », sans autre effet. Les nouvelles pages n'ont plus la rubrique et restent compatibles avec un programme plus ancien.
 - **Suite** : une rubrique unique « Cartes interfaces » (cartes, puis sorties, puis entrées), éventuellement renommée (lot C).
+
+## D024 — Licence GPL-3.0 (20 oct. 2026)
+
+Choix du propriétaire du 20 octobre 2026, après relevé qu'un dépôt public sans licence n'accorde aucun droit de réutilisation.
+
+- **Décision** : AquaLook (firmware, pages Web, service en ligne, outils) est distribué sous **GNU GPL version 3** ; texte officiel dans `LICENSE` à la racine, section « Licence » du `README.md`.
+- **Effet** : chacun peut utiliser, étudier, modifier et redistribuer le code ; toute version modifiée redistribuée doit l'être sous GPL-3.0, avec ses sources.
+- **Dépendances** : les bibliothèques téléchargées à la compilation (ArduinoJson, ESPAsyncWebServer, AsyncTCP, SdFat, GFX Library for Arduino, TAMC_GT911, Adafruit NeoPixel) gardent leur licence, compatible avec la GPL-3.0. Aucun code tiers n'est recopié dans le dépôt (relevé du 20 oct. 2026 : aucune mention de droits d'auteur tiers dans `src/`, `lib/`, `include/`, `data/`, `tools/`, `cloud/`).
+- **Inchangé** : la sécurité ne repose jamais sur le secret du code ; aucun secret dans Git.

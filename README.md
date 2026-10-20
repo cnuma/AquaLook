@@ -108,6 +108,14 @@ chaque envoi sur `main` (`.github/workflows/platformio-v4-domain.yml`) et
 construit la release brouillon à chaque tag `vX.Y.Z`
 (`ota-release.yml`).
 
+## Licence
+
+AquaLook est un logiciel libre distribué sous licence
+[GNU GPL version 3](LICENSE) (GPL-3.0). Les bibliothèques tierces
+téléchargées à la compilation (ArduinoJson, ESPAsyncWebServer, AsyncTCP,
+SdFat, GFX Library for Arduino, TAMC_GT911, Adafruit NeoPixel) gardent
+leur propre licence.
+
 ## Sécurité
 
 Le dépôt est public : la sécurité ne repose jamais sur le secret du code, et
