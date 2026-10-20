@@ -18,7 +18,9 @@ Le petit bouton en forme d'**ampoule** ne fait pas arroser : il fait
 clignoter en **blanc** la LED de la zone pendant 20 secondes, pour la
 repérer sur le ruban pendant un raccordement.
 
-`[capture Web : tuiles de zone]`
+![Tuiles de zone sur téléphone](images/accueil-telephone.png)
+
+*Sur téléphone : « Potager » arrose (« Arreter »), « Pots terrasse » n'a pas de vanne (« Sans sortie »).*
 
 ## Depuis l'écran du module
 

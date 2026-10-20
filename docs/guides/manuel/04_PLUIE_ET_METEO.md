@@ -29,6 +29,8 @@ défaut, réglable de 0 à 50 mm dans « Config -- <zone> », chapitre 3) :
   (écran), et sa LED passe à l'orange ;
 - sinon, l'arrosage part normalement.
 
+![Comment AquaLook décide d'arroser](images/pluie-decision.svg)
+
 Le seuil dépend des plantes : une pelouse se contente d'un seuil bas
 (2-3 mm), un potager gourmand demande un seuil plus haut.
 
