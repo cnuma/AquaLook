@@ -87,6 +87,21 @@ Afin de rendre visible la profondeur d’un échange, de détecter les conversat
 - Proposer une évolution du numéro de version à chaque palier fonctionnel, release, correction publiée ou évolution significative.
 - Réutiliser cette identité dans les checkpoints, archives, releases et procédures de reprise.
 
+### Choix soumis au propriétaire : impacts d’abord
+
+Règle du propriétaire (20 octobre 2026). Une option mal comprise conduit à une mauvaise décision : l’agent doit donner au propriétaire de quoi choisir en connaissance de cause, sans qu’il ait à le demander.
+
+Avant de demander une décision (choix entre options, action irréversible ou visible de l’extérieur, écart à une règle du dépôt) :
+
+- expliquer en mots simples ce qui s’est passé ou ce qui est proposé, sans jargon non défini ;
+- pour chaque option : l’action exacte, ce qu’elle change, ce qu’elle ne change pas, ce que le propriétaire aura à faire ensuite, le risque et ce qui est irréversible ;
+- présenter les impacts par domaine concerné (firmware et releases, modules, pages Web et service en ligne, poste du propriétaire, historique Git, règles du dépôt) ;
+- donner une recommandation argumentée, et dire quelles informations pourraient la changer ;
+- poser les questions dont la réponse change la recommandation (par exemple : « le PC a-t-il récupéré `main` ? ») ;
+- ne jamais lancer l’action avant l’accord explicite donné après cette explication.
+
+Si le propriétaire dit ne pas comprendre, reprendre l’explication plus simplement plutôt que de répéter les options.
+
 ## Déclencheur permanent : checkpoint
 
 Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiquement la procédure suivante sans attendre de demande complémentaire :
@@ -266,6 +281,8 @@ Quand plus de deux fichiers sont modifiés :
 - Ne pas pousser un code non compilé.
 - Ne pas fusionner vers `main` avant validation firmware et LittleFS.
 - Les checkpoints doivent inclure l’origine dans leur nom.
+- Vérifier un patch ou une série de commits dans une copie détachée (`git worktree add --detach <dossier> <base>`), jamais sur une branche existante : un `git am` dans un worktree ouvert sur `main` modifie `main` (incident du 18 octobre 2026 : 6 commits en double poussés avec une fusion).
+- Ne jamais réécrire une branche publiée (`main` surtout) sans l’accord explicite du propriétaire, donné après l’explication des impacts (section « Choix soumis au propriétaire ») ; si accordé, envoi par `git push --force-with-lease=<branche>:<sha attendu>` uniquement.
 
 ## Style de travail Codex
 
