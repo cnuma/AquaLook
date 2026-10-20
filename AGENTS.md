@@ -102,6 +102,15 @@ Avant de demander une décision (choix entre options, action irréversible ou vi
 
 Si le propriétaire dit ne pas comprendre, reprendre l’explication plus simplement plutôt que de répéter les options.
 
+### Manuel utilisateur : référence tenue à jour
+
+Règle du propriétaire (20 octobre 2026). Le manuel utilisateur (`docs/guides/manuel/`, sommaire dans `README.md`) est la référence de ce que voit et fait l’utilisateur ; le guide `docs/guides/MONTER_UN_MODULE_NEUF.md` est celle de l’installation.
+
+- Toute évolution qui change un libellé, un écran LCD, une page Web, un comportement visible ou une valeur par défaut met à jour le ou les chapitres concernés **dans le même lot** (même branche, commit dédié), avant la fusion.
+- Le manuel ne décrit que ce qui est réellement en place, vérifié dans le code de la version courante : une fonction prévue mais absente n’y figure pas ; un défaut connu qui touche l’utilisateur y est décrit tel qu’il se comporte, avec renvoi à `docs/TODO.md`.
+- Les libellés sont cités exactement (sans accents pour l’écran LCD).
+- Le livrable d’une évolution liste les chapitres mis à jour, ou dit explicitement qu’aucun n’est concerné.
+
 ## Déclencheur permanent : checkpoint
 
 Lorsque l’utilisateur écrit exactement « checkpoint », exécuter automatiquement la procédure suivante sans attendre de demande complémentaire :
