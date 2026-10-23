@@ -103,7 +103,8 @@ actif » et certaines fonctions sont suspendues.
 
 1. Consultez le « Journal du module » ou la « Page Santé » pour comprendre
    la cause.
-2. Puis touchez « Réactiver les fonctions suspendues » : elles reprennent au
-   prochain démarrage.
+2. Puis touchez « Réactiver les fonctions suspendues » : la météo, la
+   synchro et la vérification des mises à jour reprennent aussitôt. Si une
+   fonction ne revient pas, redémarrez le module (coupure de courant).
 
 Le module réessaie aussi tout seul après une période stable.
