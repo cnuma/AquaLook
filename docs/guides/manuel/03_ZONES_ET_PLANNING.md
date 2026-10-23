@@ -36,7 +36,9 @@ fenêtre « Config -- <nom> » s'ouvre :
 
 Puis « Enregistrer ».
 
-`[capture Web : réglages d'une zone]`
+![Fenêtre de réglage d'une zone](images/zone-config.png)
+
+*Fenêtre « Config -- Potager » (jardin d'exemple).*
 
 ## Les deux modes de programmation
 
@@ -54,7 +56,9 @@ Sur l'accueil des pages Web, « Planning semaine » montre les 7 prochains
 jours, aujourd'hui en premier (marqué `<<`), une ligne par zone, avec la
 météo de chaque jour au-dessus.
 
-`[capture Web : planning de la semaine]`
+![Planning de la semaine](images/accueil-pc.png)
+
+*Jardin d'exemple : 2,4 mm annoncés mardi et 7,8 mm vendredi. Hachurés : « Haies » et « Pots terrasse » mardi (seuil 2 mm), « Potager » et « Pots terrasse » vendredi (seuils 6 et 2 mm). « Pelouse » arrose tous les 3 jours : les chevrons « prochain jeu. 22 » montrent le prochain jour arrosé.*
 
 Comment le lire :
 
@@ -63,7 +67,7 @@ Comment le lire :
 | barres colorées | créneaux prévus ce jour-là |
 | **hachures** | arrosage prévu mais annulé par la pluie annoncée |
 | **grand chevron gris** avec « prochain … » | mode intervalle : pas d'arrosage ce jour-là ; le chevron indique le prochain jour arrosé |
-| ligne tramée « N/C » | zone sans vanne raccordée |
+| tuile grise tramée « N/C » (en haut) | zone sans vanne raccordée : le planning reste affiché, mais rien ne part |
 
 Survolez (ordinateur) ou touchez (téléphone) la météo d'un jour pour voir le
 détail des prévisions.
@@ -78,6 +82,10 @@ détail des prévisions.
    - « h » et « min » : heure de départ (0-23, 0-59) ;
    - « Duree » : durée en minutes (1 à 120).
 3. « Enregistrer ».
+
+![Fenêtre des créneaux d'un jour](images/creneaux.png)
+
+*Deux créneaux actifs le lundi : 07:00 pendant 15 min et 19:30 pendant 10 min.*
 
 Pour arrêter d'arroser un jour, désactivez ses créneaux.
 

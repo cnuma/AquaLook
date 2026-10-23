@@ -9,7 +9,10 @@ L'écran n'affiche pas d'accents : les libellés cités ici sont écrits comme
 
 ## L'écran d'accueil
 
-`[capture : écran d'accueil, 4 zones]`
+![Illustration de l'écran d'accueil avec 4 zones](images/lcd-accueil.svg)
+
+*Illustration (pas une photo) : disposition de l'accueil avec 4 zones.*
+`[capture : photo de l'écran d'accueil, à ajouter]`
 
 On y trouve :
 

@@ -46,6 +46,8 @@ pluie, pages Web, notifications, espace en ligne, mises à jour.
 Le module porte un ruban lumineux : une première LED pour l'état général,
 puis une LED par zone.
 
+![Le ruban lumineux et ses couleurs](images/ruban-led.svg)
+
 | LED | Couleur | Sens |
 |---|---|---|
 | État général | bleu clignotant | un arrosage est en cours |

@@ -11,7 +11,7 @@ le planning.
 | Réglage | Choix |
 |---|---|
 | « Source des prévisions » | « Open-Meteo — modèles Météo-France » (sans inscription) ou « OpenWeatherMap » (demande une « Clé API OpenWeatherMap », gratuite sur leur site) |
-| « Localisation » | « Ville / Pays » (par exemple Toulouse, FR) ou « Coordonnées GPS » (latitude, longitude : plus précis à la campagne) |
+| « Localisation » | « Ville / Pays » (par exemple Lyon, FR) ou « Coordonnées GPS » (latitude, longitude : plus précis à la campagne) |
 | « Unités » | « Métrique (°C) » ou « Impérial (°F) » |
 
 Le module relit les prévisions **toutes les 2 heures** (une minute plus tard
@@ -28,6 +28,8 @@ défaut, réglable de 0 à 50 mm dans « Config -- <zone> », chapitre 3) :
   La zone affiche « Reporté (pluie) » (pages Web) ou « Pluie 3.2mm »
   (écran), et sa LED passe à l'orange ;
 - sinon, l'arrosage part normalement.
+
+![Comment AquaLook décide d'arroser](images/pluie-decision.svg)
 
 Le seuil dépend des plantes : une pelouse se contente d'un seuil bas
 (2-3 mm), un potager gourmand demande un seuil plus haut.

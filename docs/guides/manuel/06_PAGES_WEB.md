@@ -6,7 +6,7 @@ s'adaptent à l'écran d'un téléphone.
 
 ## L'accueil
 
-`[capture Web : accueil, ordinateur]`
+![Accueil des pages Web sur ordinateur](images/accueil-pc.png)
 
 De haut en bas :
 
@@ -14,8 +14,8 @@ De haut en bas :
 
 | Élément | Sens |
 |---|---|
-| nom du module et ville | identité du module |
-| pastille Wi-Fi | qualité du signal |
+| « AQUALOOK » et la ville (par exemple « Lyon ») | la ville est celle réglée dans « Météo » (chapitre 4) |
+| pastille de l'heure | heure du module ; « NTP... » tant qu'il ne l'a pas encore reçue |
 | « ⬆ MAJ » (violet, clignotant) | une mise à jour est disponible ; un toucher ouvre la page « Mises a jour » (chapitre 11) |
 | pastille nuage | synchro avec l'espace en ligne : **vert** à jour, **orange** échange en cours ou en attente, **rouge** en panne ; un toucher ouvre « Synchro cloud » |
 | bouton à trois traits | ouvre les « Paramètres » |
@@ -54,6 +54,8 @@ Par défaut, seules les rubriques du quotidien sont visibles :
 
 et trois liens : « Santé du module », « Scripts », « Synchro cloud ».
 
+![Paramètres, rubriques du quotidien](images/parametres.png)
+
 **« Options avancées du module »** affiche le reste. Le module demande alors
 le mot de passe Web si la session est fermée (« Les options avancées
 modifient la configuration du module »). « Masquer les options avancées »
@@ -71,6 +73,8 @@ les replie.
 | « Cartes interfaces » | raccordement des vannes et des entrées | 7 |
 
 et le lien « Liste des URLs disponibles ».
+
+![Paramètres avec les options avancées](images/parametres-avances.png)
 
 > **Prudence :** « Reset configuration (reboot) » remet **tous** les
 > réglages d'origine (zones, planning, Wi-Fi…) et redémarre le module. À ne

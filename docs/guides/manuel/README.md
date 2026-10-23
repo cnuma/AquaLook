@@ -35,8 +35,11 @@ mot de passe) fait l'objet d'un guide séparé :
 - **« Libellé »** : texte exact affiché par l'écran ou la page.
 - **Écran > Page** : chemin à suivre, par exemple ADMIN > Systeme.
 - `[capture : …]` : emplacement d'une photo de l'écran du module, à ajouter.
-- `[capture Web : …]` : emplacement d'une capture de page Web, à produire
-  (dossier `images/`).
+- Images : dossier `images/`. Les captures des pages Web sont de vraies
+  pages 5.20.0 avec un jardin d'exemple, produites par
+  `python tools/apercu_web/captures_manuel.py` (à relancer quand une page
+  change). Les dessins `.svg` sont des illustrations, signalées comme
+  telles ; les photos de l'écran du module restent à ajouter.
 
 ## Tenue à jour
 
