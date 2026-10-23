@@ -23,11 +23,11 @@ mot de passe) fait l'objet d'un guide séparé :
 | 6 | [Les pages Web du module](06_PAGES_WEB.md) | rédigé |
 | 7 | Cartes interfaces et raccordement | à rédiger |
 | 8 | Scripts | à rédiger |
-| 9 | Notifications | à rédiger |
+| 9 | [Notifications](09_NOTIFICATIONS.md) | rédigé |
 | 10 | Espace en ligne | à rédiger |
-| 11 | Mises à jour | à rédiger |
-| 12 | Sécurité | à rédiger |
-| 13 | En cas de problème | à rédiger |
+| 11 | [Mises à jour](11_MISES_A_JOUR.md) | rédigé |
+| 12 | [Sécurité](12_SECURITE.md) | rédigé |
+| 13 | [En cas de problème](13_EN_CAS_DE_PROBLEME.md) | rédigé |
 | 14 | Glossaire | à rédiger |
 
 ## Conventions
