@@ -7,6 +7,8 @@ dépôt GitHub. Usage prévu : **essentiellement la documentation**.
 Il complète, sans les remplacer, `AGENTS.md`, `docs/REPRISE_INGENIEUR.md`, le
 checkpoint le plus récent de `docs/checkpoints/` et `docs/TODO.md`.
 
+> **PROJET EN PAUSE depuis le 27 octobre 2026.** Point d'entrée : `docs/checkpoints/CHECKPOINT_2026-10-27_ba86d50_PAUSE.md`.
+
 ## 1. Point de départ (18 oct. 2026)
 
 | Élément | Valeur |

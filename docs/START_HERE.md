@@ -1,5 +1,7 @@
 # AquaLook — START HERE
 
+> **PROJET EN PAUSE depuis le 27 octobre 2026.** Point d'entrée : `docs/checkpoints/CHECKPOINT_2026-10-27_ba86d50_PAUSE.md`.
+
 Ce fichier est le point d'entrée officiel de la documentation AquaLook.
 
 ## Ordre de lecture recommandé
